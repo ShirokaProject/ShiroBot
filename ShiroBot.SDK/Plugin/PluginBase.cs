@@ -72,41 +72,6 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
     protected virtual Task<bool> BeforeDispatchFriendCommandAsync(FriendIncomingMessage message) =>
         Task.FromResult(true);
 
-    [Obsolete("Use Events.Map<MessageRecallEvent>(...) instead.")]
-    protected virtual Task OnMessageRecallAsync(MessageRecallEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<FriendRequestEvent>(...) instead.")]
-    protected virtual Task OnFriendRequestAsync(FriendRequestEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupJoinRequestEvent>(...) instead.")]
-    protected virtual Task OnGroupJoinRequestAsync(GroupJoinRequestEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupInvitedJoinRequestEvent>(...) instead.")]
-    protected virtual Task OnGroupInvitedJoinRequestAsync(GroupInvitedJoinRequestEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupInvitationEvent>(...) instead.")]
-    protected virtual Task OnGroupInvitationAsync(GroupInvitationEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<FriendNudgeEvent>(...) instead.")]
-    protected virtual Task OnFriendNudgeAsync(FriendNudgeEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<FriendFileUploadEvent>(...) instead.")]
-    protected virtual Task OnFriendFileUploadAsync(FriendFileUploadEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupAdminChangeEvent>(...) instead.")]
-    protected virtual Task OnGroupAdminChangeAsync(GroupAdminChangeEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupEssenceMessageChangeEvent>(...) instead.")]
-    protected virtual Task OnGroupEssenceMessageChangeAsync(GroupEssenceMessageChangeEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupMemberIncreaseEvent>(...) instead.")]
-    protected virtual Task OnGroupMemberIncreaseAsync(GroupMemberIncreaseEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupMemberDecreaseEvent>(...) instead.")]
-    protected virtual Task OnGroupMemberDecreaseAsync(GroupMemberDecreaseEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupNameChangeEvent>(...) instead.")]
-    protected virtual Task OnGroupNameChangeAsync(GroupNameChangeEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupMessageReactionEvent>(...) instead.")]
-    protected virtual Task OnGroupMessageReactionAsync(GroupMessageReactionEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupMuteEvent>(...) instead.")]
-    protected virtual Task OnGroupMuteAsync(GroupMuteEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupWholeMuteEvent>(...) instead.")]
-    protected virtual Task OnGroupWholeMuteAsync(GroupWholeMuteEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupNudgeEvent>(...) instead.")]
-    protected virtual Task OnGroupNudgeAsync(GroupNudgeEvent e) => Task.CompletedTask;
-    [Obsolete("Use Events.Map<GroupFileUploadEvent>(...) instead.")]
-    protected virtual Task OnGroupFileUploadAsync(GroupFileUploadEvent e) => Task.CompletedTask;
-
     async Task IBotEventSubscriber.OnEventAsync(Event e)
     {
         if (EventDispatchers.TryGetValue(e.GetType(), out var dispatcher))
@@ -170,91 +135,6 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
         if (Overrides<FriendIncomingMessage>(runtimeType, nameof(OnFriendMessageAsync)))
         {
             subscriptions |= BotEventSubscriptions.FriendMessage;
-        }
-
-        if (Overrides<MessageRecallEvent>(runtimeType, nameof(OnMessageRecallAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.MessageRecall;
-        }
-
-        if (Overrides<FriendRequestEvent>(runtimeType, nameof(OnFriendRequestAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.FriendRequest;
-        }
-
-        if (Overrides<GroupJoinRequestEvent>(runtimeType, nameof(OnGroupJoinRequestAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupJoinRequest;
-        }
-
-        if (Overrides<GroupInvitedJoinRequestEvent>(runtimeType, nameof(OnGroupInvitedJoinRequestAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupInvitedJoinRequest;
-        }
-
-        if (Overrides<GroupInvitationEvent>(runtimeType, nameof(OnGroupInvitationAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupInvitation;
-        }
-
-        if (Overrides<FriendNudgeEvent>(runtimeType, nameof(OnFriendNudgeAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.FriendNudge;
-        }
-
-        if (Overrides<FriendFileUploadEvent>(runtimeType, nameof(OnFriendFileUploadAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.FriendFileUpload;
-        }
-
-        if (Overrides<GroupAdminChangeEvent>(runtimeType, nameof(OnGroupAdminChangeAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupAdminChange;
-        }
-
-        if (Overrides<GroupEssenceMessageChangeEvent>(runtimeType, nameof(OnGroupEssenceMessageChangeAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupEssenceMessageChange;
-        }
-
-        if (Overrides<GroupMemberIncreaseEvent>(runtimeType, nameof(OnGroupMemberIncreaseAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupMemberIncrease;
-        }
-
-        if (Overrides<GroupMemberDecreaseEvent>(runtimeType, nameof(OnGroupMemberDecreaseAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupMemberDecrease;
-        }
-
-        if (Overrides<GroupNameChangeEvent>(runtimeType, nameof(OnGroupNameChangeAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupNameChange;
-        }
-
-        if (Overrides<GroupMessageReactionEvent>(runtimeType, nameof(OnGroupMessageReactionAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupMessageReaction;
-        }
-
-        if (Overrides<GroupMuteEvent>(runtimeType, nameof(OnGroupMuteAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupMute;
-        }
-
-        if (Overrides<GroupWholeMuteEvent>(runtimeType, nameof(OnGroupWholeMuteAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupWholeMute;
-        }
-
-        if (Overrides<GroupNudgeEvent>(runtimeType, nameof(OnGroupNudgeAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupNudge;
-        }
-
-        if (Overrides<GroupFileUploadEvent>(runtimeType, nameof(OnGroupFileUploadAsync)))
-        {
-            subscriptions |= BotEventSubscriptions.GroupFileUpload;
         }
 
         return subscriptions;

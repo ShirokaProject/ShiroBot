@@ -35,13 +35,13 @@ public interface IMessageContext : IMessageService
         GroupIncomingMessage message,
         string text,
         params OutgoingSegment[] additionalSegments) =>
-        SendGroupMessageAsync(message.Group.GroupId, additionalSegments);
+        SendGroupMessageAsync(message.Group.GroupId, BuildSegments(text, additionalSegments));
     
     Task<SendPrivateMessageResponse> ReplyAsync(
         FriendIncomingMessage message,
         params OutgoingSegment[] segments) =>
         SendPrivateMessageAsync(message.SenderId, segments);
-
+    
     Task<SendGroupMessageResponse> ReplyAsync(
         GroupIncomingMessage message,
         params OutgoingSegment[] segments) =>
