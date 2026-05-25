@@ -30,6 +30,7 @@ public static class Program
     private static List<LoadedPluginHandle> _loadedPlugins = new();
     private static readonly List<Task> PluginBackgroundTasks = [];
     private static bool _isShuttingDown;
+    private static IDisposable? _coreConfigWatcher;
 
     private static readonly IReadOnlyList<CH.ConsoleCommandOption> ConsoleCommands =
     [
@@ -197,6 +198,12 @@ public static class Program
                 (ownerId, content) => Context.Message.SendPrivateMessageAsync(ownerId, content));
             var hostEventDispatcher = new HostEventDispatcher(PluginLifecycleLock);
 
+            // 核心配置热重载：监听 config.toml，动态把变化应用到 owners/admins/插件路由/日志开关。
+            _coreConfigWatcher = ConfigContext.ForCore(coreConfigPath).Watch<CoreConfig>(updated =>
+            {
+                ApplyCoreConfigChange(coreConfig, updated);
+            });
+
             var commandPluginDirectory = parserResult.GetValue(pluginOption);
             if (!string.IsNullOrWhiteSpace(commandPluginDirectory))
             {
@@ -281,6 +288,19 @@ public static class Program
         }
         finally
         {
+            try
+            {
+                _coreConfigWatcher?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                CH.Warning("释放核心配置监听器时出现异常: " + ex.Message);
+            }
+            finally
+            {
+                _coreConfigWatcher = null;
+            }
+
             await AwaitPluginBackgroundTasksAsync();
 
             foreach (var pluginHandle in Enumerable.Reverse(GetLoadedPluginSnapshot()))
@@ -302,6 +322,80 @@ public static class Program
         return Environment.UserInteractive &&
                !Console.IsInputRedirected &&
                !Console.IsOutputRedirected;
+    }
+
+    /// <summary>
+    /// 把磁盘上重新加载到的核心配置应用到运行中的宿主：
+    /// 同步 owners/admins、插件路由策略、日志开关，并就地修改 <paramref name="active"/> 让现有引用立即看到新值。
+    /// 不会替换 adapter / 重新加载插件，避免一次配置编辑导致整个连接重启。
+    /// </summary>
+    private static void ApplyCoreConfigChange(CoreConfig active, CoreConfig updated)
+    {
+        if (active is null || updated is null) return;
+
+        var changes = new List<string>();
+
+        if (!ArrayEquals(active.OwnerList, updated.OwnerList))
+        {
+            active.OwnerList = updated.OwnerList;
+            Context?.UpdateOwnerList(updated.OwnerList);
+            changes.Add($"owners[{updated.OwnerList.Length}]");
+        }
+
+        if (!ArrayEquals(active.AdminList, updated.AdminList))
+        {
+            active.AdminList = updated.AdminList;
+            Context?.UpdateAdminList(updated.AdminList);
+            changes.Add($"admins[{updated.AdminList.Length}]");
+        }
+
+        if (active.EnableLog != updated.EnableLog)
+        {
+            active.EnableLog = updated.EnableLog;
+            CH.IsEnabled = updated.EnableLog;
+            changes.Add($"enable_log={updated.EnableLog}");
+        }
+
+        if (active.DisableConsoleInput != updated.DisableConsoleInput)
+        {
+            // 控制台输入循环是启动期一次性决定的，运行期改这个值不会即时生效。
+            active.DisableConsoleInput = updated.DisableConsoleInput;
+            changes.Add("disable_console_input(下次启动生效)");
+        }
+
+        if (!string.Equals(active.Protocol, updated.Protocol, StringComparison.OrdinalIgnoreCase))
+        {
+            active.Protocol = updated.Protocol;
+            changes.Add("protocol(下次启动生效)");
+        }
+
+        if (updated.PluginRoutes is not null)
+        {
+            active.PluginRoutes.CopyFrom(updated.PluginRoutes);
+            changes.Add("plugin_routes");
+        }
+
+        if (changes.Count > 0)
+        {
+            CH.Success("核心配置热重载完成: " + string.Join(", ", changes));
+        }
+        else
+        {
+            CH.Info("核心配置热重载: 无字段变化。");
+        }
+    }
+
+    private static bool ArrayEquals(long[]? left, long[]? right)
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if (left is null || right is null) return false;
+        if (left.Length != right.Length) return false;
+        for (var i = 0; i < left.Length; i++)
+        {
+            if (left[i] != right[i]) return false;
+        }
+
+        return true;
     }
 
     private static string ResolveAdapterConfigPath(string adapterRoot, string adapterPath)

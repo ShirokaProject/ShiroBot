@@ -3,14 +3,40 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Context;
 
-internal sealed class BotContext(IBotAdapter adapter, IReadOnlyList<long> ownerList, IReadOnlyList<long> adminList)
+internal sealed class BotContext
 {
-    public IFileContext File { get; } = new FileContext(adapter.File);
-    public IFriendContext Friend { get; } = new FriendContext(adapter.Friend);
-    public IGroupContext Group { get; } = new GroupContext(adapter.Group);
-    public IMessageContext Message { get; } = new MessageContext(adapter.Message);
-    public ISystemContext System { get; } = new SystemContext(adapter.System);
-    public IUpdater Updater { get; } = new UpdaterContext();
-    public IReadOnlyList<long> OwnerList { get; } = ownerList;
-    public IReadOnlyList<long> AdminList { get; } = adminList;
+    private IReadOnlyList<long> _ownerList;
+    private IReadOnlyList<long> _adminList;
+
+    public BotContext(IBotAdapter adapter, IReadOnlyList<long> ownerList, IReadOnlyList<long> adminList)
+    {
+        File = new FileContext(adapter.File);
+        Friend = new FriendContext(adapter.Friend);
+        Group = new GroupContext(adapter.Group);
+        Message = new MessageContext(adapter.Message);
+        System = new SystemContext(adapter.System);
+        Updater = new UpdaterContext();
+        _ownerList = ownerList;
+        _adminList = adminList;
+    }
+
+    public IFileContext File { get; }
+    public IFriendContext Friend { get; }
+    public IGroupContext Group { get; }
+    public IMessageContext Message { get; }
+    public ISystemContext System { get; }
+    public IUpdater Updater { get; }
+
+    public IReadOnlyList<long> OwnerList => Volatile.Read(ref _ownerList);
+    public IReadOnlyList<long> AdminList => Volatile.Read(ref _adminList);
+
+    public void UpdateOwnerList(IReadOnlyList<long> ownerList)
+    {
+        Volatile.Write(ref _ownerList, ownerList);
+    }
+
+    public void UpdateAdminList(IReadOnlyList<long> adminList)
+    {
+        Volatile.Write(ref _adminList, adminList);
+    }
 }

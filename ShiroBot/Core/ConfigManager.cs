@@ -35,12 +35,25 @@ public class PluginRouteConfig
 
     public bool AllowsGroup(string pluginName, long groupId)
     {
-        if (!Plugins.TryGetValue(pluginName, out var rule))
+        var plugins = Plugins;
+        if (plugins is null || !plugins.TryGetValue(pluginName, out var rule))
         {
             return Default.IsMatch(groupId);
         }
 
         return rule.IsMatch(groupId);
+    }
+
+    /// <summary>
+    /// 把 <paramref name="other"/> 的内容原子地拷贝进当前实例，使得已经引用本实例的代码无需替换引用即可看到新规则。
+    /// </summary>
+    public void CopyFrom(PluginRouteConfig other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        Default = other.Default ?? new PluginRouteRuleConfig();
+        Plugins = new Dictionary<string, PluginRouteRuleConfig>(
+            other.Plugins ?? new Dictionary<string, PluginRouteRuleConfig>(),
+            StringComparer.OrdinalIgnoreCase);
     }
 }
 
