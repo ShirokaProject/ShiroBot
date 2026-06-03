@@ -1,9 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <PackageId>ShiroBot.Model</PackageId>
+    <Version>0.1.0</Version>
+    <IsPackable>true</IsPackable>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Authors>ShiroBot</Authors>
+    <Description>Shared model definitions for ShiroBot adapters and plugins.</Description>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageTags>ShiroBot;bot;model</PackageTags>
+    <RepositoryUrl>https://github.com/greepar/ShiroBot</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

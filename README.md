@@ -52,5 +52,5 @@ dotnet build .\ShiroBot.slnx -p:EnableAvalonia=false
 
 ## 许可证
 
-本项目使用 GNU General Public License v2.0。
+本项目使用 GNU General Public License v3.0。
 详见 [LICENSE](/C:/Users/greep/RiderProjects/QB/QBotSharp/LICENSE)。

@@ -1,0 +1,60 @@
+name: Publish NuGet packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version, for example 0.1.0
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            "value=${{ inputs.version }}" >> $env:GITHUB_OUTPUT
+          } else {
+            $tag = '${{ github.ref_name }}'
+            "value=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Restore
+        run: dotnet restore .\ShiroBot.slnx
+
+      - name: Pack SDK packages
+        run: |
+          dotnet pack .\ShiroBot.Model\ShiroBot.Model.csproj -c Release -o artifacts\nuget -p:PackageVersion=${{ steps.version.outputs.value }} --no-restore
+          dotnet pack .\ShiroBot.SDK\ShiroBot.SDK.csproj -c Release -o artifacts\nuget -p:PackageVersion=${{ steps.version.outputs.value }} --no-restore
+          dotnet pack .\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj -c Release -o artifacts\nuget -p:PackageVersion=${{ steps.version.outputs.value }} --no-restore
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/nuget/*.nupkg
+
+      - name: Push to NuGet.org
+        if: ${{ env.NUGET_API_KEY != '' }}
+        run: dotnet nuget push artifacts\nuget\*.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate

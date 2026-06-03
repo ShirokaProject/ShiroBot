@@ -3,10 +3,14 @@
     <PropertyGroup>
         <PackageId>ShiroBot.SDK</PackageId>
         <Version>0.1.0</Version>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <IsPackable>true</IsPackable>
-        <DevelopmentDependency>true</DevelopmentDependency>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Authors>ShiroBot</Authors>
+        <Description>SDK for developing ShiroBot plugins and adapters.</Description>
+        <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+        <PackageTags>ShiroBot;bot;sdk;plugin;adapter</PackageTags>
+        <RepositoryUrl>https://github.com/greepar/ShiroBot</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
