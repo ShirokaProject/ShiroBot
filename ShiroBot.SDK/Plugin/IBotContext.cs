@@ -15,6 +15,11 @@ public interface IBotContext
     public IReadOnlyList<long> OwnerList { get; }
     public IReadOnlyList<long> AdminList { get; }
 
+    /// <summary>
+    /// 由 library plugin 提供的渲染服务。没有任何 library plugin 注册过时为 null。
+    /// </summary>
+    public IRenderContext? Render { get; }
+
     public bool IsOwner(long userId) => OwnerList.Contains(userId);
 
     public bool IsAdmin(long userId) => IsOwner(userId) || AdminList.Contains(userId);

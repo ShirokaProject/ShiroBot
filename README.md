@@ -18,12 +18,25 @@
 - `ShiroBot.DemoPlugin`: 标准示例插件
 - `templates/ShiroBot.PluginTemplate`: 可复制插件模板
 - `ShiroBot.DemoAdapter`: 标准示例适配器
+- `ShiroBot.AvaloniaIntegration`: 可选 Avalonia Headless 渲染集成模块
+- `ShiroBot.AvaloniaSdk`: 插件侧使用的 Avalonia 渲染 SDK
+- `ShiroBot.AvaloniaDemoPlugin`: Avalonia 渲染示例插件
 
 ## 构建
 
 ```powershell
 dotnet build .\ShiroBot.slnx
 ```
+
+默认构建会启用 Avalonia 渲染集成，并把 Avalonia 运行时、`ShiroBot.AvaloniaIntegration`、`ShiroBot.AvaloniaSdk` 和示例插件一起放入宿主输出目录。
+
+如需构建不包含 Avalonia 的轻量版本：
+
+```powershell
+dotnet build .\ShiroBot.slnx -p:EnableAvalonia=false
+```
+
+禁用后宿主不会引用 Avalonia/Skia/HarfBuzz，也不会复制 `ShiroBot.AvaloniaDemoPlugin`。
 
 ## 快速创建插件
 

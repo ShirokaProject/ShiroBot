@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ShiroBot.AvaloniaDemoPlugin.ViewModels"
+             x:Class="ShiroBot.AvaloniaDemoPlugin.Views.ScreenshotView"
+             x:DataType="vm:ScreenshotViewModel"
+             Width="540" Height="280">
+    
+    <Design.DataContext>
+        <vm:ScreenshotViewModel/>
+    </Design.DataContext>
+    
+    <Border CornerRadius="18" Padding="28">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Color="#1E1E2E" Offset="0" />
+                <GradientStop Color="#3B3B5C" Offset="1" />
+            </LinearGradientBrush>
+        </Border.Background>
+
+        <DockPanel LastChildFill="True">
+            <TextBlock DockPanel.Dock="Top"
+                       Text="{Binding Title}"
+                       FontSize="26"
+                       FontWeight="Bold"
+                       Foreground="White" />
+
+            <TextBlock DockPanel.Dock="Bottom"
+                       Text="{Binding Footer}"
+                       FontSize="12"
+                       Foreground="#80E0A0"
+                       Margin="0,16,0,0" />
+
+            <StackPanel Spacing="10" Margin="0,16,0,0">
+                <TextBlock Text="{Binding RequestedBy, StringFormat='请求者: {0}'}"
+                           FontSize="16"
+                           Foreground="#A0A0C0" />
+                <TextBlock Text="{Binding Timestamp, StringFormat='生成时间: {0}'}"
+                           FontSize="14"
+                           Foreground="#A0A0C0" />
+                <TextBlock Text="✅ 这是来自独立 .axaml 文件的 UserControl 哈喽"
+                           FontSize="13"
+                           Foreground="#80E0A0" />
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</UserControl>

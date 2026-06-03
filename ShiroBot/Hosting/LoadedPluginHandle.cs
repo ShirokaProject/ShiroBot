@@ -29,6 +29,7 @@ internal sealed class LoadedPluginHandle
         _groupRouteFilter = groupRouteFilter;
 
         Name = plugin.Name;
+        Version = plugin.Metadata.Version;
         Subscriptions = plugin is PluginBase pluginBase ? pluginBase.GetEffectiveSubscriptions() : BotEventSubscriptions.None;
         GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         FriendMessageRoutes = plugin is PluginBase friendPluginBase ? friendPluginBase.GetFriendMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
@@ -37,6 +38,7 @@ internal sealed class LoadedPluginHandle
     }
 
     public string Name { get; }
+    public string Version { get; }
     public BotEventSubscriptions Subscriptions { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
     public IReadOnlyList<MessageRouteDescriptor> FriendMessageRoutes { get; }
@@ -59,6 +61,39 @@ internal sealed class LoadedPluginHandle
         }
 
         return _groupRouteFilter(groupId.Value);
+    }
+
+    public long GetLoadedAssemblyBytes()
+    {
+        var loader = _loader;
+        if (loader?.Alc is null)
+        {
+            return 0;
+        }
+
+        long totalBytes = 0;
+        foreach (var assembly in loader.Alc.Assemblies)
+        {
+            if (assembly.IsDynamic || string.IsNullOrWhiteSpace(assembly.Location))
+            {
+                continue;
+            }
+
+            try
+            {
+                var fileInfo = new FileInfo(assembly.Location);
+                if (fileInfo.Exists)
+                {
+                    totalBytes += fileInfo.Length;
+                }
+            }
+            catch (Exception)
+            {
+                // The plugin may be unloading or the assembly file may no longer be readable.
+            }
+        }
+
+        return totalBytes;
     }
 
     public bool Supports<THandler>()

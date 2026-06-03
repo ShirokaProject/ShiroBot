@@ -6,6 +6,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Configurations>Debug;DebugPlugin;DebugAdapter;DebugAll;Release</Configurations>
+        <!-- 是否在宿主中集成 Avalonia 渲染模块。默认开启；关闭时不会引入 Avalonia/Skia/HarfBuzz。 -->
+        <EnableAvalonia Condition="'$(EnableAvalonia)'==''">true</EnableAvalonia>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
@@ -15,6 +17,10 @@
     <PropertyGroup>
         <ManagedDemoPluginDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\plugins\ShiroBot.DemoPlugin</ManagedDemoPluginDebugDir>
         <ManagedAdapterDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\adapters\ShiroBot.DemoAdapter</ManagedAdapterDebugDir>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(EnableAvalonia)'=='true'">
+        <DefineConstants>$(DefineConstants);AVALONIA</DefineConstants>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
@@ -30,15 +36,21 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
-        <PackageReference Include="SkiaSharp" Version="4.147.0-preview.1.1" />
-        <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.147.0-preview.1.1" />
         <PackageReference Include="Spectre.Console" Version="0.54.1-alpha.0.80" />
         <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
-        <PackageReference Include="Tomlyn" Version="2.2.0" />
+        <PackageReference Include="Tomlyn" Version="2.4.1" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
+    </ItemGroup>
+
+    <!-- Avalonia 集成模块（runtime 资产随宿主一起进入输出目录） -->
+    <ItemGroup Condition="'$(EnableAvalonia)'=='true'">
+        <ProjectReference Include="..\ShiroBot.AvaloniaIntegration\ShiroBot.AvaloniaIntegration.csproj" />
+        <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
+        <!-- Avalonia 演示插件：仅在 EnableAvalonia=true 时拷贝到 plugins/。slnx 中保留始终构建以便 IDE 调试。 -->
+        <ProjectReference Include="..\ShiroBot.AvaloniaDemoPlugin\ShiroBot.AvaloniaDemoPlugin.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
@@ -57,10 +69,19 @@
                  Properties="Configuration=$(Configuration)"
                  Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll'" />
 
+        <MSBuild Projects="..\ShiroBot.AvaloniaDemoPlugin\ShiroBot.AvaloniaDemoPlugin.csproj"
+                 Targets="CopyPluginToHost"
+                 Properties="Configuration=$(Configuration)"
+                 Condition="'$(EnableAvalonia)'=='true' and ('$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll')" />
+
         <MSBuild Projects="..\ShiroBot.DemoAdapter\ShiroBot.DemoAdapter.csproj"
                  Targets="CopyAdapterToHost"
                  Properties="Configuration=$(Configuration)"
                  Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'" />
+
+        <!-- EnableAvalonia=false 时清理之前残留的 AvaloniaDemoPlugin 目录 -->
+        <RemoveDir Directories="$(OutputPath)plugins\ShiroBot.AvaloniaDemoPlugin"
+                   Condition="'$(EnableAvalonia)'!='true'" />
     </Target>
 
 </Project>

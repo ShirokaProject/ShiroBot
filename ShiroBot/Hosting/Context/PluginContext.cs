@@ -3,21 +3,21 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Context;
 
-internal sealed class PluginContext : IBotContext, IDisposable
+internal class PluginContext : IBotContext, IDisposable
 {
-    
-    public IFileContext File => _botContext.File;
-    public IFriendContext Friend => _botContext.Friend;
-    public IGroupContext Group => _botContext.Group;
-    public IMessageContext Message => _botContext.Message;
-    public ISystemContext System => _botContext.System;
-    public IUpdater Updater => _botContext.Updater;
+    public IFileContext File => BotContext.File;
+    public IFriendContext Friend => BotContext.Friend;
+    public IGroupContext Group => BotContext.Group;
+    public IMessageContext Message => BotContext.Message;
+    public ISystemContext System => BotContext.System;
+    public IUpdater Updater => BotContext.Updater;
     public IConfigContext Config { get; private set; }
-    public IReadOnlyList<long> OwnerList => _botContext.OwnerList;
-    public IReadOnlyList<long> AdminList => _botContext.AdminList;
+    public IReadOnlyList<long> OwnerList => BotContext.OwnerList;
+    public IReadOnlyList<long> AdminList => BotContext.AdminList;
+    public IRenderContext? Render => BotContext.Renderer;
     public IConsoleLogger Logger { get; }
 
-    private readonly BotContext _botContext;
+    protected BotContext BotContext { get; }
 
     public PluginContext(
         BotContext botContext,
@@ -25,14 +25,14 @@ internal sealed class PluginContext : IBotContext, IDisposable
         string? pluginDirectory,
         Func<long, bool> groupRouteFilter)
     {
-        _botContext = botContext;
+        BotContext = botContext;
         Logger = new ConsoleLogger($"[Plugin:{pluginName}]");
-        Config = string.IsNullOrEmpty(pluginDirectory) ? 
-            ConfigContext.NullConfig()
-            : ConfigContext.ForPlugin(Path.Combine(pluginDirectory, $"config.toml")) ;
+        Config = string.IsNullOrEmpty(pluginDirectory)
+            ? ConfigContext.NullConfig()
+            : ConfigContext.ForPlugin(Path.Combine(pluginDirectory, "config.toml"));
     }
 
-    public void Dispose()
+    public virtual void Dispose()
     {
         Config = null!;
     }

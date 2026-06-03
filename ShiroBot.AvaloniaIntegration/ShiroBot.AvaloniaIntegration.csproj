@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+        <IsPackable>false</IsPackable>
+        <Configurations>Debug;DebugPlugin;DebugAdapter;DebugAll;Release</Configurations>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
+        <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
+    </ItemGroup>
+
+    <!--
+        作为宿主直接引用的集成模块：runtime 资产保留，随宿主输出/发布目录一起带上。
+        Avalonia/SkiaSharp/HarfBuzzSharp 都加载到 AssemblyLoadContext.Default，
+        feature plugin 的 ALC 通过宿主 SharedAssemblyResolver 转发命中宿主已加载的同一份程序集。
+    -->
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="12.0.3" />
+        <PackageReference Include="Avalonia.Skia" Version="12.0.3" />
+        <PackageReference Include="Avalonia.Headless" Version="12.0.3" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
+        <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.0.3" />
+    </ItemGroup>
+
+</Project>
