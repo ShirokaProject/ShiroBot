@@ -7,9 +7,7 @@ using ShiroBot.Core;
 using ShiroBot.Hosting;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Core;
-using ShiroBot.SDK.Plugin;
 using CH = ShiroBot.Core.ConsoleHelper;
 
 namespace ShiroBot;
@@ -46,7 +44,7 @@ public static class Program
 
         var sharedAssemblies = new SharedAssemblyResolver();
         sharedAssemblies.Register(["ShiroBot.SDK", "ShiroBot.Model"], AssemblyLoadContext.Default);
-        BotContext? botContext = null;
+        BotContext? botContext;
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
 
@@ -83,7 +81,7 @@ public static class Program
                 Directory.CreateDirectory(adapterRoot);
             }
 
-            var adapterPath = ResolveAdapterPath(coreConfig, adapterRoot, parserResult.GetValue(adapterOption));
+            var adapterPath = ResolveAdapterPath(coreConfig, parserResult.GetValue(adapterOption));
             if (adapterPath is null)
             {
                 CH.Warning("请确认 adapters 目录下存在对应的适配器文件，或在 config.toml 中配置 protocol...");
@@ -235,7 +233,7 @@ public static class Program
     private static bool CanReadInteractiveKey() =>
         Environment.UserInteractive && !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
-    private static string? ResolveAdapterPath(CoreConfig coreConfig, string adapterRoot, string? commandAdapterPath)
+    private static string? ResolveAdapterPath(CoreConfig coreConfig, string? commandAdapterPath)
     {
         var adapterName = coreConfig.Protocol.EndsWith("dll", StringComparison.OrdinalIgnoreCase)
             ? coreConfig.Protocol[..^4]

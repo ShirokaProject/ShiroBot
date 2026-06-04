@@ -7,11 +7,15 @@ namespace ShiroBot.AvaloniaSdk;
 /// 控件渲染选项。和 AxamlRenderOptions 平级，但用于直接传 Avalonia.Controls.Control 的场景。
 /// </summary>
 public sealed record ControlRenderOptions(
-    int Width = 800,
-    int Height = 600,
-    double Dpi = 96)
+    int? Width = 800,
+    int? Height = 600,
+    double Dpi = 96,
+    int MaxWidth = 1200,
+    int MaxHeight = 4000)
 {
     public static ControlRenderOptions Default { get; } = new();
+
+    public static ControlRenderOptions AutoSize { get; } = new(Width: null, Height: null);
 }
 
 /// <summary>

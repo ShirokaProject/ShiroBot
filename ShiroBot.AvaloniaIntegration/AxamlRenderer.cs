@@ -51,6 +51,8 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             opts.Width,
             opts.Height,
             opts.Dpi,
+            1200,
+            4000,
             ct);
     }
 
@@ -86,7 +88,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
     {
         ArgumentNullException.ThrowIfNull(factory);
         var opts = options ?? ControlRenderOptions.Default;
-        return RenderInternalAsync(factory, opts.Width, opts.Height, opts.Dpi, ct);
+        return RenderInternalAsync(factory, opts.Width, opts.Height, opts.Dpi, opts.MaxWidth, opts.MaxHeight, ct);
     }
 
     public async Task<string> RenderControlPngToFileUriAsync(
@@ -100,12 +102,14 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
 
     private static Task<byte[]> RenderInternalAsync(
         Func<Control> controlFactory,
-        int width,
-        int height,
+        int? width,
+        int? height,
         double dpi,
+        int maxWidth,
+        int maxHeight,
         CancellationToken ct)
     {
-        if (width <= 0 || height <= 0)
+        if (width <= 0 || height <= 0 || maxWidth <= 0 || maxHeight <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(width), "宽高必须为正整数。");
         }
@@ -118,10 +122,16 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                 var content = controlFactory()
                     ?? throw new InvalidOperationException("控件工厂返回了 null。");
 
+                var constraint = new Size(width ?? maxWidth, height ?? maxHeight);
+                content.Measure(constraint);
+                var desired = content.DesiredSize;
+                var finalWidth = width ?? (int)Math.Ceiling(Math.Clamp(desired.Width, 1, maxWidth));
+                var finalHeight = height ?? (int)Math.Ceiling(Math.Clamp(desired.Height, 1, maxHeight));
+
                 var window = new Window
                 {
-                    Width = width,
-                    Height = height,
+                    Width = finalWidth,
+                    Height = finalHeight,
                     Content = content
                 };
 
@@ -132,7 +142,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     window.Show();
 
                     // 强制布局更新到目标尺寸。
-                    var size = new Size(width, height);
+                    var size = new Size(finalWidth, finalHeight);
                     window.Measure(size);
                     window.Arrange(new Rect(size));
                     window.UpdateLayout();

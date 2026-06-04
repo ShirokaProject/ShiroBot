@@ -49,13 +49,25 @@ public interface IMessageContext : IMessageService
     
     Task<SendPrivateMessageResponse> QuoteReplyAsync(
         FriendIncomingMessage message,
+        string text,
         params OutgoingSegment[] segments) =>
-        SendPrivateMessageAsync(message.SenderId, segments.Prepend(new ReplyOutgoingSegment(message.SenderId)).ToArray());
+        SendPrivateMessageAsync(message.SenderId,  segments.Prepend(new TextOutgoingSegment(text)).Prepend(new ReplyOutgoingSegment(message.MessageSeq)).ToArray());
+    
+    Task<SendGroupMessageResponse> QuoteReplyAsync(
+        GroupIncomingMessage message,
+        string text,
+        params OutgoingSegment[] segments) =>
+        SendGroupMessageAsync(message.Group.GroupId, segments.Prepend(new TextOutgoingSegment(text)).Prepend(new ReplyOutgoingSegment(message.MessageSeq)).ToArray());
+    
+    Task<SendPrivateMessageResponse> QuoteReplyAsync(
+        FriendIncomingMessage message,
+        params OutgoingSegment[] segments) =>
+        SendPrivateMessageAsync(message.SenderId, segments.Prepend(new ReplyOutgoingSegment(message.MessageSeq)).ToArray());
     
     Task<SendGroupMessageResponse> QuoteReplyAsync(
         GroupIncomingMessage message,
         params OutgoingSegment[] segments) =>
-        SendGroupMessageAsync(message.Group.GroupId, segments.Prepend(new ReplyOutgoingSegment(message.SenderId)).ToArray());
+        SendGroupMessageAsync(message.Group.GroupId, segments.Prepend(new ReplyOutgoingSegment(message.MessageSeq)).ToArray());
 
     Task RecallPrivateMessageAsync(long userId, long messageSeq) =>
         RecallPrivateMessageAsync(new RecallPrivateMessageRequest(userId, messageSeq));
