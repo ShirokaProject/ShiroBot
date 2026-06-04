@@ -55,11 +55,40 @@ public sealed class SharedAssemblyResolver
             }
             catch (FileNotFoundException)
             {
+                if (TryLoadFromDefaultBaseDirectory(entry.Alc, name) is { } assembly)
+                {
+                    return assembly;
+                }
+
                 // 该 ALC 没有这个程序集，继续下一个候选。
             }
         }
 
         return null;
+    }
+
+    private static Assembly? TryLoadFromDefaultBaseDirectory(AssemblyLoadContext alc, AssemblyName name)
+    {
+        if (alc != AssemblyLoadContext.Default || string.IsNullOrWhiteSpace(name.Name))
+        {
+            return null;
+        }
+
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
+        if (!File.Exists(assemblyPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return alc.LoadFromAssemblyPath(assemblyPath);
+        }
+        catch (FileLoadException)
+        {
+            return alc.Assemblies.FirstOrDefault(assembly =>
+                string.Equals(assembly.GetName().Name, name.Name, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     private static bool Matches(string assemblyName, string[] prefixes)

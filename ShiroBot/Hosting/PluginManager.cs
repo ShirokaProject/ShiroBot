@@ -63,6 +63,41 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         }
     }
 
+    public List<string> GetLoadablePluginCandidates()
+    {
+        if (string.IsNullOrWhiteSpace(PluginRootPath) || !Directory.Exists(PluginRootPath))
+            return [];
+
+        var pluginRoot = Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar);
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var assemblyPath in EnumeratePluginEntryAssemblies(pluginRoot))
+        {
+            var parent = Path.GetDirectoryName(assemblyPath);
+            if (string.IsNullOrWhiteSpace(parent)) continue;
+
+            var normalizedParent = Path.GetFullPath(parent).TrimEnd(Path.DirectorySeparatorChar);
+            var candidate = string.Equals(normalizedParent, pluginRoot, StringComparison.OrdinalIgnoreCase)
+                ? Path.GetFileNameWithoutExtension(assemblyPath)
+                : new DirectoryInfo(normalizedParent).Name;
+
+            if (!string.IsNullOrWhiteSpace(candidate))
+            {
+                candidates.Add(candidate);
+            }
+
+            var pluginName = TryProbePluginName(assemblyPath);
+            if (!string.IsNullOrWhiteSpace(pluginName))
+            {
+                candidates.Add(pluginName);
+            }
+        }
+
+        return candidates
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public List<LoadedPluginHandle> GetLoadedPluginSnapshot()
     {
         lock (PluginLifecycleLock)
@@ -154,10 +189,14 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         }
 
         CH.Info($"已加入热卸载队列: {pluginHandle.Name}");
-        if (TryQueuePluginBackgroundTask(() => ProcessPluginUnloadAsync(pluginHandle)) is null)
+        var task = TryQueuePluginBackgroundTask(() => ProcessPluginUnloadAsync(pluginHandle));
+        if (task is null)
+        {
             CH.Warning($"程序正在退出，取消热卸载任务: {pluginHandle.Name}");
+            return Task.CompletedTask;
+        }
 
-        return Task.CompletedTask;
+        return task;
     }
 
     private async Task ProcessPluginUnloadAsync(
@@ -183,32 +222,32 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             PluginUnloadSemaphore.Release();
         }
 
-        if (unloadResult.Error is null)
-            if (TryQueuePluginBackgroundTask(async () =>
-                {
-                    // Let the unload call stack unwind before forcing collections, otherwise the async state machine
-                    // that awaited OnUnload may temporarily keep the plugin instance alive.
-                    await Task.Delay(300);
+        if (unloadResult.Error is not null)
+        {
+            return;
+        }
 
-                    var assemblyUnloaded =
-                        DllLoader<IBotPlugin>.WaitForUnload(unloadResult.AssemblyLoadContextWeakReference);
-                    if (!assemblyUnloaded)
-                    {
-                        var aliveObjects = new List<string>();
-                        if (unloadResult.PluginWeakReference?.IsAlive == true) aliveObjects.Add("plugin");
+        // Let the unload call stack unwind before forcing collections, otherwise the async state machine
+        // that awaited OnUnload may temporarily keep the plugin instance alive.
+        await Task.Delay(300);
 
-                        if (unloadResult.ContextWeakReference?.IsAlive == true) aliveObjects.Add("plugin-context");
+        var assemblyUnloaded =
+            DllLoader<IBotPlugin>.WaitForUnload(unloadResult.AssemblyLoadContextWeakReference);
+        if (!assemblyUnloaded)
+        {
+            var aliveObjects = new List<string>();
+            if (unloadResult.PluginWeakReference?.IsAlive == true) aliveObjects.Add("plugin");
 
-                        if (aliveObjects.Count > 0)
-                            CH.Warning($"热卸载诊断: {unloadResult.Name} 存活对象: {string.Join(", ", aliveObjects)}");
+            if (unloadResult.ContextWeakReference?.IsAlive == true) aliveObjects.Add("plugin-context");
 
-                        CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})");
-                        return;
-                    }
+            if (aliveObjects.Count > 0)
+                CH.Warning($"热卸载诊断: {unloadResult.Name} 存活对象: {string.Join(", ", aliveObjects)}");
 
-                    CH.Success($"插件热卸载成功: {unloadResult.Name}");
-                }) is null)
-                CH.Warning($"程序正在退出，跳过热卸载验证任务: {unloadResult.Name}");
+            CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})");
+            return;
+        }
+
+        CH.Success($"插件热卸载成功: {unloadResult.Name}");
     }
 
     public Task ScheduleLoadPluginByName(
@@ -233,13 +272,17 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         }
 
         CH.Info($"已加入热加载队列: {pluginNameOrPath}");
-        if (TryQueuePluginBackgroundTask(() => ProcessPluginLoadAsync(
+        var task = TryQueuePluginBackgroundTask(() => ProcessPluginLoadAsync(
                 candidateAssemblies,
                 hostEventDispatcher,
-                routePolicy)) is null)
+                routePolicy));
+        if (task is null)
+        {
             CH.Warning($"程序正在退出，取消热加载任务: {pluginNameOrPath}");
+            return Task.CompletedTask;
+        }
 
-        return Task.CompletedTask;
+        return task;
     }
 
     private async Task ProcessPluginLoadAsync(
@@ -468,10 +511,34 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             {
                 var fileName = Path.GetFileNameWithoutExtension(path);
                 var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
+                var pluginName = TryProbePluginName(path);
                 return string.Equals(fileName, normalizedInput, StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals(directoryName, normalizedInput, StringComparison.OrdinalIgnoreCase);
+                       string.Equals(directoryName, normalizedInput, StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(pluginName, normalizedInput, StringComparison.OrdinalIgnoreCase);
             })
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private string? TryProbePluginName(string assemblyPath)
+    {
+        DllLoader<IBotPlugin>? loader = null;
+        IBotPlugin? plugin = null;
+        try
+        {
+            loader = CreateLoader();
+            plugin = loader.Load(assemblyPath);
+            return plugin.Name;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            plugin = null;
+            var weak = loader?.BeginUnload();
+            DllLoader<IBotPlugin>.WaitForUnload(weak, maxAttempts: 5, delayMs: 20);
+        }
     }
 }

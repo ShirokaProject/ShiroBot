@@ -46,7 +46,11 @@ internal sealed class HostCommandHandler
     {
         while (true)
         {
-            var input = CH.ReadPrompt("> ", BuildConsoleCompletions(_pluginManager.GetLoadedPluginNames()));
+            var input = CH.ReadPrompt(
+                "> ",
+                BuildConsoleCompletions(
+                    _pluginManager.GetLoadedPluginNames(),
+                    _pluginManager.GetLoadablePluginCandidates()));
             if (string.IsNullOrWhiteSpace(input)) continue;
 
             if (CH.IsEnabled ||
@@ -265,7 +269,8 @@ internal sealed class HostCommandHandler
     }
 
     private static IReadOnlyList<CH.ConsoleCommandOption> BuildConsoleCompletions(
-        IReadOnlyList<string> loadedPluginNames)
+        IReadOnlyList<string> loadedPluginNames,
+        IReadOnlyList<string> loadablePluginCandidates)
     {
         var completions = new List<ConsoleHelper.ConsoleCommandOption>(ConsoleCommands);
 
@@ -273,7 +278,11 @@ internal sealed class HostCommandHandler
         {
             completions.Add(
                 new ConsoleHelper.ConsoleCommandOption($"unload-plugin {pluginName}", $"热卸载插件 {pluginName}"));
-            completions.Add(new ConsoleHelper.ConsoleCommandOption($"load-plugin {pluginName}", $"热加载插件 {pluginName}"));
+        }
+
+        foreach (var candidate in loadablePluginCandidates.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+        {
+            completions.Add(new ConsoleHelper.ConsoleCommandOption($"load-plugin {candidate}", $"热加载插件 {candidate}"));
         }
 
         return completions;

@@ -45,6 +45,7 @@ public static class Program
         CH.Info("ShiroBot 启动中...");
 
         var sharedAssemblies = new SharedAssemblyResolver();
+        sharedAssemblies.Register(["ShiroBot.SDK", "ShiroBot.Model"], AssemblyLoadContext.Default);
         BotContext? botContext = null;
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
@@ -91,7 +92,7 @@ public static class Program
             }
 
             CH.Log("开始加载适配器: " + adapterPath);
-            var adapterLoader = new DllLoader<IBotAdapter>();
+            var adapterLoader = new DllLoader<IBotAdapter>(collectible: true, shared: sharedAssemblies);
             var adapter = adapterLoader.Load(adapterPath);
             adapter.Config = ConfigContext.ForAdapter(ResolveAdapterConfigPath(adapterRoot, adapterPath));
             adapter.Logger = new ConsoleLogger($"[Adapter:{adapter.Name}]");
