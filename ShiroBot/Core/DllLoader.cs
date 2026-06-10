@@ -41,7 +41,7 @@ public class DllLoader<T>
 
         var assembly = _alc.LoadFromAssemblyPath(dllPath);
 
-        var candidateTypes = assembly.GetTypes()
+        var candidateTypes = GetLoadableTypes(assembly)
             .Where(t =>
                 typeof(T).IsAssignableFrom(t) &&
                 t is { IsAbstract: false, IsInterface: false })
@@ -90,6 +90,25 @@ public class DllLoader<T>
         }
 
         return !alcWeakReference.IsAlive;
+    }
+
+    private static Type[] GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            var details = string.Join(
+                Environment.NewLine,
+                ex.LoaderExceptions
+                    .Where(loaderException => loaderException is not null)
+                    .Select(loaderException => loaderException!.Message));
+
+            throw new InvalidOperationException(
+                $"加载程序集类型失败: {assembly.FullName}{Environment.NewLine}{details}", ex);
+        }
     }
 
 

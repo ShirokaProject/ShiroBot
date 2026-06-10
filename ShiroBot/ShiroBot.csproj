@@ -35,6 +35,8 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="HotAvalonia" Version="3.1.1" PrivateAssets="All" Publish="True"
+                          Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
         <PackageReference Include="Spectre.Console" Version="0.54.1-alpha.0.80" />
         <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />

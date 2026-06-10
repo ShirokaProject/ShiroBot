@@ -23,7 +23,7 @@ public sealed class DemoPlugin : PluginBase
         {
             foreach (var id in Context.OwnerList)
             {
-                await Context.Message.SendPrivateMessageAsync(id, "ShiroBot已启动！");
+                // await Context.Message.SendPrivateMessageAsync(id, "ShiroBot已启动！");
             }
         }
         FriendCommands.MapExact("#help", HandleFriendHelpAsync);

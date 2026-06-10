@@ -51,8 +51,8 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             opts.Width,
             opts.Height,
             opts.Dpi,
-            1200,
-            4000,
+            opts.MaxWidth,
+            opts.MaxHeight,
             ct);
     }
 
@@ -109,9 +109,9 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         int maxHeight,
         CancellationToken ct)
     {
-        if (width <= 0 || height <= 0 || maxWidth <= 0 || maxHeight <= 0)
+        if (width is <= 0 || height is <= 0 || dpi <= 0 || maxWidth <= 0 || maxHeight <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(width), "宽高必须为正整数。");
+            throw new ArgumentOutOfRangeException(nameof(width), "宽高、DPI 和最大尺寸必须为正数。");
         }
 
         return Dispatcher.UIThread.InvokeAsync(
@@ -122,16 +122,10 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                 var content = controlFactory()
                     ?? throw new InvalidOperationException("控件工厂返回了 null。");
 
-                var constraint = new Size(width ?? maxWidth, height ?? maxHeight);
-                content.Measure(constraint);
-                var desired = content.DesiredSize;
-                var finalWidth = width ?? (int)Math.Ceiling(Math.Clamp(desired.Width, 1, maxWidth));
-                var finalHeight = height ?? (int)Math.Ceiling(Math.Clamp(desired.Height, 1, maxHeight));
-
                 var window = new Window
                 {
-                    Width = finalWidth,
-                    Height = finalHeight,
+                    Width = 1,
+                    Height = 1,
                     Content = content
                 };
 
@@ -140,6 +134,15 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     // 在 Window 上调 Show 让 visual tree attach + style/font/template 应用 + layout 计算。
                     // Headless 平台的 Window.Show 不会真的弹窗。
                     window.Show();
+
+                    var constraint = new Size(width ?? maxWidth, height ?? maxHeight);
+                    content.Measure(constraint);
+                    var desired = content.DesiredSize;
+                    var finalWidth = ResolvePixelSize(width, desired.Width, maxWidth, "宽度");
+                    var finalHeight = ResolvePixelSize(height, desired.Height, maxHeight, "高度");
+
+                    window.Width = finalWidth;
+                    window.Height = finalHeight;
 
                     // 强制布局更新到目标尺寸。
                     var size = new Size(finalWidth, finalHeight);
@@ -150,8 +153,12 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     // 推动 headless 渲染时钟，确保至少完成一帧渲染。
                     AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
-                    using var frame = window.CaptureRenderedFrame()
-                                      ?? throw new InvalidOperationException("CaptureRenderedFrame 返回 null。");
+                    var pixelWidth = (int)Math.Ceiling(finalWidth * dpi / 96d);
+                    var pixelHeight = (int)Math.Ceiling(finalHeight * dpi / 96d);
+                    using var frame = new RenderTargetBitmap(
+                        new PixelSize(pixelWidth, pixelHeight),
+                        new Vector(dpi, dpi));
+                    frame.Render(content);
 
                     using var ms = new MemoryStream();
                     frame.Save(ms);
@@ -163,6 +170,22 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                 }
             },
             DispatcherPriority.Render).GetTask();
+    }
+
+    private static int ResolvePixelSize(int? requested, double desired, int max, string name)
+    {
+        if (requested is { } value)
+        {
+            return value;
+        }
+
+        if (double.IsNaN(desired) || double.IsInfinity(desired))
+        {
+            throw new InvalidOperationException(
+                $"无法自动确定渲染{name}。请在 AXAML 根控件上设置有限尺寸，或通过渲染选项显式指定{name}。");
+        }
+
+        return (int)Math.Ceiling(Math.Clamp(desired, 1, max));
     }
 
     private static async Task<string> WritePngAndBuildUriAsync(byte[] bytes, CancellationToken ct)

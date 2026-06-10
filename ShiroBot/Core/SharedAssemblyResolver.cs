@@ -51,6 +51,11 @@ public sealed class SharedAssemblyResolver
 
             try
             {
+                if (TryGetLoadedAssembly(entry.Alc, name) is { } loadedAssembly)
+                {
+                    return loadedAssembly;
+                }
+
                 return entry.Alc.LoadFromAssemblyName(name);
             }
             catch (FileNotFoundException)
@@ -65,6 +70,17 @@ public sealed class SharedAssemblyResolver
         }
 
         return null;
+    }
+
+    private static Assembly? TryGetLoadedAssembly(AssemblyLoadContext alc, AssemblyName name)
+    {
+        if (string.IsNullOrWhiteSpace(name.Name))
+        {
+            return null;
+        }
+
+        return alc.Assemblies.FirstOrDefault(assembly =>
+            string.Equals(assembly.GetName().Name, name.Name, StringComparison.OrdinalIgnoreCase));
     }
 
     private static Assembly? TryLoadFromDefaultBaseDirectory(AssemblyLoadContext alc, AssemblyName name)

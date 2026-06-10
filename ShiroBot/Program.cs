@@ -6,6 +6,7 @@ using Avalonia;
 using ShiroBot.Core;
 using ShiroBot.Hosting;
 using ShiroBot.Hosting.Context;
+using ShiroBot.Model.Common;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using CH = ShiroBot.Core.ConsoleHelper;
@@ -43,6 +44,7 @@ public static class Program
         CH.Info("ShiroBot 启动中...");
 
         var sharedAssemblies = new SharedAssemblyResolver();
+        _ = typeof(IncomingMessage).Assembly;
         sharedAssemblies.Register(["ShiroBot.SDK", "ShiroBot.Model"], AssemblyLoadContext.Default);
         BotContext? botContext;
         PluginManager? pluginManager = null;

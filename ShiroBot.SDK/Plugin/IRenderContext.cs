@@ -4,9 +4,11 @@ namespace ShiroBot.SDK.Plugin;
 /// 通用渲染选项，所有 IRenderContext 实现都应支持。
 /// </summary>
 public sealed record AxamlRenderOptions(
-    int Width = 800,
-    int Height = 600,
-    double Dpi = 96)
+    int? Width = null,
+    int? Height = null,
+    double Dpi = 192,
+    int MaxWidth = 1200,
+    int MaxHeight = 4000)
 {
     public static AxamlRenderOptions Default { get; } = new();
 }
