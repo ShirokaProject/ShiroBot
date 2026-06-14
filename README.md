@@ -10,17 +10,17 @@
 
 </div>
 
+## 插件与适配器
+这里收集了 ShiroBot 的插件与适配器列表，欢迎到此处提交 PR 添加你的插件或适配器。
+- [awesome-shirobot](https://github.com/ShirokaProject/awesome-shirobot)
+
 ## 项目结构
 
 - `ShiroBot`: 主程序
 - `ShiroBot.SDK`: 插件与适配器开发 SDK
 - `ShiroBot.Model`: 共享模型
-- `ShiroBot.DemoPlugin`: 标准示例插件
-- `templates/ShiroBot.PluginTemplate`: 可复制插件模板
-- `ShiroBot.DemoAdapter`: 标准示例适配器
 - `ShiroBot.AvaloniaIntegration`: 可选 Avalonia Headless 渲染集成模块
 - `ShiroBot.AvaloniaSdk`: 插件侧使用的 Avalonia 渲染 SDK
-- `ShiroBot.AvaloniaDemoPlugin`: Avalonia 渲染示例插件
 
 ## 构建
 
@@ -28,27 +28,24 @@
 dotnet build .\ShiroBot.slnx
 ```
 
-默认构建会启用 Avalonia 渲染集成，并把 Avalonia 运行时、`ShiroBot.AvaloniaIntegration`、`ShiroBot.AvaloniaSdk` 和示例插件一起放入宿主输出目录。
-
-如需构建不包含 Avalonia 的轻量版本：
+默认构建会启用 Avalonia 渲染集成，如需构建不包含 Avalonia 的轻量版本：
 
 ```powershell
 dotnet build .\ShiroBot.slnx -p:EnableAvalonia=false
 ```
 
-禁用后宿主不会引用 Avalonia/Skia/HarfBuzz，也不会复制 `ShiroBot.AvaloniaDemoPlugin`。
+禁用后宿主不会引用 Avalonia/Skia/HarfBuzz。
 
-## 快速创建插件
+## 插件模板
 
-基于模版插件(DemoPlugin)生成：
+插件模板请使用独立示例仓库作为起点：
 
-```bash
-./scripts/new-plugin.sh HelloPlugin 你好插件
-```
+- [Shirobot.Plugin.DemoPlugin](https://github.com/ShirokaProject/Shirobot.Plugin.DemoPlugin)
+- [Shirobot.Plugin.AvaloniaDemo](https://github.com/ShirokaProject/Shirobot.Plugin.AvaloniaDemo)
 
-执行后会自动生成一个新的插件目录，并替换项目名、类名、配置类名、命名空间和元数据占位符。
+适配器模板:
 
-如果不想跑脚本，也可以手动复制 `templates/ShiroBot.PluginTemplate` 并全局替换 `__PLUGIN_NAME__` 和 `__PLUGIN_DISPLAY_NAME__`。
+- [Shirobot.Adapter.DemoAdapter](https://github.com/ShirokaProject/Shirobot.Adapter.DemoAdapter)
 
 ## 许可证
 
