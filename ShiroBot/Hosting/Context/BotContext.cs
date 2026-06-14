@@ -1,5 +1,6 @@
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.SDK.Adapter;
 
 namespace ShiroBot.Hosting.Context;
 
@@ -8,13 +9,16 @@ internal sealed class BotContext
     private IReadOnlyList<long> _ownerList;
     private IReadOnlyList<long> _adminList;
     private IRenderContext? _renderer;
+    private readonly IMessageService _messageService;
 
     public BotContext(IBotAdapter adapter, IReadOnlyList<long> ownerList, IReadOnlyList<long> adminList, IWebHostContext webHost)
     {
         File = new FileContext(adapter.File);
         Friend = new FriendContext(adapter.Friend);
         Group = new GroupContext(adapter.Group);
-        Message = new MessageContext(adapter.Message);
+        _messageService = adapter.Message;
+        ReplySubscriptions = new ReplySubscriptionManager();
+        Message = new MessageContext(_messageService, ReplySubscriptions, "__host");
         System = new SystemContext(adapter.System);
         Updater = new UpdaterContext();
         WebHost = webHost;
@@ -37,6 +41,11 @@ internal sealed class BotContext
     /// 由 library plugin 注册的渲染服务。没有 library plugin 提供时为 null。
     /// </summary>
     public IRenderContext? Renderer => Volatile.Read(ref _renderer);
+
+    internal ReplySubscriptionManager ReplySubscriptions { get; }
+
+    internal IMessageContext CreatePluginMessageContext(string pluginName) =>
+        new MessageContext(_messageService, ReplySubscriptions, pluginName);
 
     public void UpdateOwnerList(IReadOnlyList<long> ownerList)
     {

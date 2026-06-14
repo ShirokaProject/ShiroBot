@@ -5,10 +5,12 @@ namespace ShiroBot.Hosting.Context;
 
 internal class PluginContext : IBotContext, IDisposable
 {
+    private readonly string _pluginName;
+
     public IFileContext File => BotContext.File;
     public IFriendContext Friend => BotContext.Friend;
     public IGroupContext Group => BotContext.Group;
-    public IMessageContext Message => BotContext.Message;
+    public IMessageContext Message { get; }
     public ISystemContext System => BotContext.System;
     public IUpdater Updater => BotContext.Updater;
     public IWebHostContext WebHost => BotContext.WebHost;
@@ -27,6 +29,8 @@ internal class PluginContext : IBotContext, IDisposable
         Func<long, bool> groupRouteFilter)
     {
         BotContext = botContext;
+        _pluginName = pluginName;
+        Message = botContext.CreatePluginMessageContext(pluginName);
         Logger = new ConsoleLogger($"[Plugin:{pluginName}]");
         Config = string.IsNullOrEmpty(pluginDirectory)
             ? ConfigContext.NullConfig()
@@ -35,6 +39,7 @@ internal class PluginContext : IBotContext, IDisposable
 
     public virtual void Dispose()
     {
+        BotContext.ReplySubscriptions.UnregisterOwner(_pluginName);
         Config = null!;
     }
 }

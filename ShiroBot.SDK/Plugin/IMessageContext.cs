@@ -7,6 +7,8 @@ namespace ShiroBot.SDK.Plugin;
 
 public interface IMessageContext : IMessageService
 {
+    IReplySubscription SubscribeReply(long messageSeq, TimeSpan duration, ReplyMessageHandler handler);
+
     Task<SendPrivateMessageResponse> SendPrivateMessageAsync(long userId, params OutgoingSegment[] segments) =>
         SendPrivateMessageAsync(new SendPrivateMessageRequest(userId, segments));
 

@@ -130,7 +130,7 @@ public static class Program
                 () => botContext.OwnerList,
                 (ownerId, content) => botContext.Message.SendPrivateMessageAsync(ownerId, content));
 
-            var hostEventDispatcher = new HostEventDispatcher(new Lock());
+            var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions);
             pluginManager = new PluginManager(botContext, sharedAssemblies);
 
 #if AVALONIA

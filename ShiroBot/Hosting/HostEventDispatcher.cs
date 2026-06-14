@@ -4,7 +4,7 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting;
 
-internal sealed class HostEventDispatcher(Lock pluginLifecycleLock)
+internal sealed class HostEventDispatcher(Lock pluginLifecycleLock, ReplySubscriptionManager replySubscriptions)
 {
     private static readonly IReadOnlyDictionary<Type, BotEventSubscriptions> EventSubscriptions =
         CreateEventSubscriptions();
@@ -62,12 +62,21 @@ internal sealed class HostEventDispatcher(Lock pluginLifecycleLock)
     public Task PublishAsync(Event message) =>
         message switch
         {
-            GroupIncomingMessage groupMessage =>
-                DispatchAsync("群消息", groupMessage, MatchGroupMessageHandlers(groupMessage), handler => handler.OnEventAsync(groupMessage)),
-            FriendIncomingMessage friendMessage =>
-                DispatchAsync("好友消息", friendMessage, MatchFriendMessageHandlers(friendMessage), handler => handler.OnEventAsync(friendMessage)),
+            GroupIncomingMessage groupMessage => PublishMessageAsync("群消息", groupMessage, MatchGroupMessageHandlers(groupMessage), handler => handler.OnEventAsync(groupMessage)),
+            FriendIncomingMessage friendMessage => PublishMessageAsync("好友消息", friendMessage, MatchFriendMessageHandlers(friendMessage), handler => handler.OnEventAsync(friendMessage)),
             _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()), handler => handler.OnEventAsync(message))
         };
+
+    private async Task PublishMessageAsync<TMessage>(
+        string eventName,
+        TMessage message,
+        IReadOnlyList<LoadedPluginHandle> handlers,
+        Func<IBotEventSubscriber, Task> dispatch)
+        where TMessage : IncomingMessage
+    {
+        await replySubscriptions.PublishAsync(message).ConfigureAwait(false);
+        await DispatchAsync(eventName, message, handlers, dispatch).ConfigureAwait(false);
+    }
 
     private void RegisterEventHandlers(LoadedPluginHandle pluginHandle)
     {

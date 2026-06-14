@@ -6,8 +6,11 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Context;
 
-public class MessageContext(IMessageService message) : IMessageContext
+internal sealed class MessageContext(IMessageService message, ReplySubscriptionManager replySubscriptions, string ownerId) : IMessageContext
 {
+    public IReplySubscription SubscribeReply(long messageSeq, TimeSpan duration, ReplyMessageHandler handler) =>
+        replySubscriptions.Subscribe(ownerId, messageSeq, duration, handler);
+
     public Task<SendPrivateMessageResponse> SendPrivateMessageAsync(SendPrivateMessageRequest request) =>
         message.SendPrivateMessageAsync(request);
 
