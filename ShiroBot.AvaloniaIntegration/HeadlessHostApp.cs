@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 
 namespace ShiroBot.AvaloniaIntegration;
@@ -14,6 +15,7 @@ public sealed class HeadlessHostApp : Application
 {
     public override void Initialize()
     {
+        RequestedThemeVariant = ThemeVariant.Light;
         Styles.Add(new FluentTheme());
     }
 }

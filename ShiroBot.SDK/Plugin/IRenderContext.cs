@@ -1,14 +1,18 @@
 namespace ShiroBot.SDK.Plugin;
 
+public enum RenderTheme
+{
+    Light,
+    Dark,
+    Auto
+}
+
 /// <summary>
 /// 通用渲染选项，所有 IRenderContext 实现都应支持。
 /// </summary>
 public sealed record AxamlRenderOptions(
-    int? Width = null,
-    int? Height = null,
-    double Dpi = 192,
-    int MaxWidth = 1200,
-    int MaxHeight = 4000)
+    RenderTheme Theme = RenderTheme.Light,
+    double Dpi = 192)
 {
     public static AxamlRenderOptions Default { get; } = new();
 }

@@ -5,22 +5,21 @@ namespace ShiroBot.Core;
 
 internal sealed class CoreConfigWatcher : IDisposable
 {
-    private readonly CoreConfig _activeConfig;
     private readonly BotContext _botContext;
     private readonly IDisposable _watcherSubscription;
 
     public CoreConfigWatcher(string coreConfigPath, CoreConfig initialConfig, BotContext botContext)
     {
-        _activeConfig = initialConfig;
+        var activeConfig = initialConfig;
         _botContext = botContext;
 
         _watcherSubscription = ConfigContext.ForCore(coreConfigPath).Watch<CoreConfig>(updated =>
         {
-            ApplyCoreConfigChange(_activeConfig, updated);
+            ApplyCoreConfigChange(activeConfig, updated);
         });
     }
 
-    private void ApplyCoreConfigChange(CoreConfig active, CoreConfig updated)
+    private void ApplyCoreConfigChange(CoreConfig? active, CoreConfig? updated)
     {
         if (active is null || updated is null) return;
 
@@ -29,14 +28,14 @@ internal sealed class CoreConfigWatcher : IDisposable
         if (!ArrayEquals(active.OwnerList, updated.OwnerList))
         {
             active.OwnerList = updated.OwnerList;
-            _botContext?.UpdateOwnerList(updated.OwnerList);
+            _botContext.UpdateOwnerList(updated.OwnerList);
             changes.Add($"owners[{updated.OwnerList.Length}]");
         }
 
         if (!ArrayEquals(active.AdminList, updated.AdminList))
         {
             active.AdminList = updated.AdminList;
-            _botContext?.UpdateAdminList(updated.AdminList);
+            _botContext.UpdateAdminList(updated.AdminList);
             changes.Add($"admins[{updated.AdminList.Length}]");
         }
 
@@ -54,17 +53,25 @@ internal sealed class CoreConfigWatcher : IDisposable
             changes.Add("disable_console_input(下次启动生效)");
         }
 
+        if (!string.Equals(active.AvaloniaTheme, updated.AvaloniaTheme, StringComparison.OrdinalIgnoreCase))
+        {
+            active.AvaloniaTheme = updated.AvaloniaTheme;
+#if AVALONIA
+            AvaloniaIntegration.AvaloniaIntegration.SetThemeMode(updated.AvaloniaTheme);
+            changes.Add($"avalonia_theme={updated.AvaloniaTheme}");
+#else
+            changes.Add("avalonia_theme(未启用 Avalonia)");
+#endif
+        }
+
         if (!string.Equals(active.Protocol, updated.Protocol, StringComparison.OrdinalIgnoreCase))
         {
             active.Protocol = updated.Protocol;
             changes.Add("protocol(下次启动生效)");
         }
 
-        if (updated.PluginRoutes is not null)
-        {
-            active.PluginRoutes.CopyFrom(updated.PluginRoutes);
-            changes.Add("plugin_routes");
-        }
+        active.PluginRoutes.CopyFrom(updated.PluginRoutes);
+        changes.Add("plugin_routes");
 
         if (changes.Count > 0)
         {

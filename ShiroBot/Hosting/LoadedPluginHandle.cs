@@ -159,6 +159,7 @@ internal sealed class LoadedPluginHandle
             }
 
             scope = BotLog.BeginScope(new ConsoleLogger($"[Plugin:{name}]"));
+            ReleaseAvaloniaPluginResources(plugin.GetType().Assembly.GetName().Name);
             var unloadTask = plugin.OnUnload();
 
             if (!unloadTask.IsCompletedSuccessfully)
@@ -242,6 +243,15 @@ internal sealed class LoadedPluginHandle
             pluginWeakReference,
             contextWeakReference,
             unloadException);
+    }
+
+    private static void ReleaseAvaloniaPluginResources(string? assemblyName)
+    {
+#if AVALONIA
+        AvaloniaIntegration.AvaloniaIntegration.ReleasePluginAssembly(assemblyName);
+#else
+        _ = assemblyName;
+#endif
     }
 }
 

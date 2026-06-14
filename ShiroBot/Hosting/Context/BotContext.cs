@@ -9,7 +9,7 @@ internal sealed class BotContext
     private IReadOnlyList<long> _adminList;
     private IRenderContext? _renderer;
 
-    public BotContext(IBotAdapter adapter, IReadOnlyList<long> ownerList, IReadOnlyList<long> adminList)
+    public BotContext(IBotAdapter adapter, IReadOnlyList<long> ownerList, IReadOnlyList<long> adminList, IWebHostContext webHost)
     {
         File = new FileContext(adapter.File);
         Friend = new FriendContext(adapter.Friend);
@@ -17,6 +17,7 @@ internal sealed class BotContext
         Message = new MessageContext(adapter.Message);
         System = new SystemContext(adapter.System);
         Updater = new UpdaterContext();
+        WebHost = webHost;
         _ownerList = ownerList;
         _adminList = adminList;
     }
@@ -27,6 +28,7 @@ internal sealed class BotContext
     public IMessageContext Message { get; }
     public ISystemContext System { get; }
     public IUpdater Updater { get; }
+    public IWebHostContext WebHost { get; }
 
     public IReadOnlyList<long> OwnerList => Volatile.Read(ref _ownerList);
     public IReadOnlyList<long> AdminList => Volatile.Read(ref _adminList);

@@ -13,6 +13,9 @@ public class CoreConfig
 
     public bool DisableConsoleInput { get; set; } = false;
 
+    /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
+    public string AvaloniaTheme { get; set; } = "Light";
+
     public long[] OwnerList { get; set; } = [];
 
     public long[] AdminList { get; set; } = [];
@@ -25,6 +28,28 @@ public class CoreConfig
             Groups = []
         }
     };
+
+    public ApiHostConfig Api { get; set; } = new();
+}
+
+public class ApiHostConfig
+{
+    public bool Enable { get; set; } = true;
+
+    public string ListenUrl { get; set; } = "http://127.0.0.1:7001";
+
+    public string[] ListenUrls { get; set; } = [];
+
+    public string? PublicBaseUrl { get; set; }
+
+    public ApiAuthConfig Auth { get; set; } = new();
+}
+
+public class ApiAuthConfig
+{
+    public bool Enable { get; set; } = true;
+
+    public string Key { get; set; } = string.Empty;
 }
 
 public class PluginRouteConfig
@@ -36,12 +61,7 @@ public class PluginRouteConfig
     public bool AllowsGroup(string pluginName, long groupId)
     {
         var plugins = Plugins;
-        if (plugins is null || !plugins.TryGetValue(pluginName, out var rule))
-        {
-            return Default.IsMatch(groupId);
-        }
-
-        return rule.IsMatch(groupId);
+        return !plugins.TryGetValue(pluginName, out var rule) ? Default.IsMatch(groupId) : rule.IsMatch(groupId);
     }
 
     /// <summary>
@@ -50,9 +70,9 @@ public class PluginRouteConfig
     public void CopyFrom(PluginRouteConfig other)
     {
         ArgumentNullException.ThrowIfNull(other);
-        Default = other.Default ?? new PluginRouteRuleConfig();
+        Default = other.Default;
         Plugins = new Dictionary<string, PluginRouteRuleConfig>(
-            other.Plugins ?? new Dictionary<string, PluginRouteRuleConfig>(),
+            other.Plugins,
             StringComparer.OrdinalIgnoreCase);
     }
 }
@@ -149,6 +169,11 @@ public class ConfigManager(string? coreConfigPath = null)
             }
 
             var toml = File.ReadAllText(normalizedConfigPath);
+            if (TryEnsureTomlDefaults(normalizedConfigPath, toml, Activator.CreateInstance<T>(), _options, out var updatedToml))
+            {
+                toml = updatedToml;
+            }
+
             var config = TomlSerializer.Deserialize<T>(toml, _options);
             return config;
         }
@@ -171,6 +196,175 @@ public class ConfigManager(string? coreConfigPath = null)
     public T? LoadScopedConfig<T>(string directory, string scopeName) where T : class, new()
     {
         return LoadConfig<T>(Path.Combine(directory, "config.toml"), scopeName);
+    }
+
+    private static bool TryEnsureTomlDefaults<T>(
+        string configPath,
+        string currentToml,
+        T defaultConfig,
+        TomlSerializerOptions options,
+        out string updatedToml) where T : class
+    {
+        updatedToml = currentToml;
+        if (string.IsNullOrWhiteSpace(currentToml)) return false;
+
+        var defaultToml = FormatToml(TomlSerializer.Serialize(defaultConfig, options));
+        var currentSections = ParseTomlSections(currentToml);
+        var defaultSections = ParseTomlSections(defaultToml);
+        var lines = currentToml.Replace("\r\n", "\n").Split('\n').ToList();
+        var changed = false;
+
+        foreach (var (sectionName, defaultSection) in defaultSections)
+        {
+            if (!currentSections.TryGetValue(sectionName, out var currentSection))
+            {
+                AppendMissingSection(lines, sectionName, defaultSection.Lines);
+                changed = true;
+                continue;
+            }
+
+            var missingLines = defaultSection.Lines
+                .Where(line => TryGetTomlKey(line, out var key) && !currentSection.Keys.Contains(key))
+                .ToList();
+            if (missingLines.Count == 0) continue;
+
+            var insertAt = sectionName.Length == 0
+                ? FindFirstSectionIndex(lines)
+                : FindSectionInsertIndex(lines, currentSection.HeaderLineIndex);
+            lines.InsertRange(insertAt, missingLines);
+            changed = true;
+        }
+
+        if (!changed) return false;
+
+        updatedToml = string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine;
+        File.WriteAllText(configPath, updatedToml);
+        return true;
+    }
+
+    private static Dictionary<string, TomlSectionInfo> ParseTomlSections(string toml)
+    {
+        var sections = new Dictionary<string, TomlSectionInfo>(StringComparer.OrdinalIgnoreCase);
+        var current = GetOrCreateSection("");
+        var rawLines = toml.Replace("\r\n", "\n").Split('\n');
+
+        for (var i = 0; i < rawLines.Length; i++)
+        {
+            var line = rawLines[i];
+            var trimmed = line.Trim();
+            if (TryParseTomlHeader(trimmed, out var sectionName, out var isArrayTable))
+            {
+                if (isArrayTable)
+                {
+                    GetOrCreateSection("").Keys.Add(sectionName);
+                }
+
+                current = GetOrCreateSection(sectionName);
+                current.HeaderLineIndex = i;
+                current.Lines.Add(line);
+                continue;
+            }
+
+            current.Lines.Add(line);
+            if (TryGetTomlKey(line, out var key))
+            {
+                current.Keys.Add(key);
+            }
+        }
+
+        return sections;
+
+        TomlSectionInfo GetOrCreateSection(string name)
+        {
+            if (!sections.TryGetValue(name, out var section))
+            {
+                section = new TomlSectionInfo(name);
+                sections[name] = section;
+            }
+
+            return section;
+        }
+    }
+
+    private static bool TryParseTomlHeader(string trimmed, out string sectionName, out bool isArrayTable)
+    {
+        sectionName = string.Empty;
+        isArrayTable = false;
+
+        if (!trimmed.StartsWith('[') || !trimmed.EndsWith(']')) return false;
+
+        if (trimmed.StartsWith("[[") && trimmed.EndsWith("]]"))
+        {
+            sectionName = trimmed[2..^2].Trim();
+            isArrayTable = true;
+            return sectionName.Length > 0;
+        }
+
+        sectionName = trimmed[1..^1].Trim();
+        return sectionName.Length > 0;
+    }
+
+    private static bool TryGetTomlKey(string line, out string key)
+    {
+        key = string.Empty;
+        var trimmed = line.Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#') || trimmed.StartsWith('[')) return false;
+
+        var equalsIndex = trimmed.IndexOf('=');
+        if (equalsIndex <= 0) return false;
+
+        key = trimmed[..equalsIndex].Trim();
+        return !string.IsNullOrEmpty(key);
+    }
+
+    private static int FindSectionInsertIndex(List<string> lines, int headerLineIndex)
+    {
+        if (headerLineIndex < 0) headerLineIndex = -1;
+        for (var i = headerLineIndex + 1; i < lines.Count; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (TryParseTomlHeader(trimmed, out _, out _)) return i;
+        }
+
+        return lines.Count;
+    }
+
+    private static int FindFirstSectionIndex(List<string> lines)
+    {
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (TryParseTomlHeader(trimmed, out _, out _)) return i;
+        }
+
+        return lines.Count;
+    }
+
+    private static void AppendMissingSection(List<string> lines, string sectionName, List<string> sectionLines)
+    {
+        if (sectionName.Length == 0)
+        {
+            lines.InsertRange(FindFirstSectionIndex(lines), sectionLines.Where(TryGetTomlKeyLine));
+            return;
+        }
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+
+        if (lines.Count > 0) lines.Add(string.Empty);
+        lines.AddRange(sectionLines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private static bool TryGetTomlKeyLine(string line) => TryGetTomlKey(line, out _);
+
+    private sealed class TomlSectionInfo(string name)
+    {
+        public string Name { get; } = name;
+        public int HeaderLineIndex { get; set; } = name.Length == 0 ? -1 : 0;
+        public List<string> Lines { get; } = [];
+        public HashSet<string> Keys { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     public void SaveScopedConfig<T>(string directory, T config) where T : class

@@ -10,7 +10,7 @@ namespace ShiroBot.Core;
 /// </summary>
 public sealed class SharedAssemblyResolver
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private readonly List<Entry> _entries = new();
 
     public void Register(string[] prefixes, AssemblyLoadContext alc)

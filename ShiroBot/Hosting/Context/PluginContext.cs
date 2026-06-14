@@ -11,6 +11,7 @@ internal class PluginContext : IBotContext, IDisposable
     public IMessageContext Message => BotContext.Message;
     public ISystemContext System => BotContext.System;
     public IUpdater Updater => BotContext.Updater;
+    public IWebHostContext WebHost => BotContext.WebHost;
     public IConfigContext Config { get; private set; }
     public IReadOnlyList<long> OwnerList => BotContext.OwnerList;
     public IReadOnlyList<long> AdminList => BotContext.AdminList;

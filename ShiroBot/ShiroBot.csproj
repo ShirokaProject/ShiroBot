@@ -15,7 +15,6 @@
     </PropertyGroup>
 
     <PropertyGroup>
-        <ManagedDemoPluginDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\plugins\ShiroBot.DemoPlugin</ManagedDemoPluginDebugDir>
         <ManagedAdapterDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\adapters\ShiroBot.DemoAdapter</ManagedAdapterDebugDir>
     </PropertyGroup>
 
@@ -35,55 +34,67 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="HotAvalonia" Version="3.1.1" PrivateAssets="All" Publish="True"
                           Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'" />
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
-        <PackageReference Include="Spectre.Console" Version="0.54.1-alpha.0.80" />
+        <PackageReference Include="Spectre.Console" Version="0.57.0" />
         <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
-        <PackageReference Include="Tomlyn" Version="2.4.1" />
+        <PackageReference Include="Tomlyn" Version="2.6.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="Assets\dashboard\**\*" LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
     </ItemGroup>
 
+    <!--
+        调试期自动构建并拷贝仓库内插件项目到宿主 plugins/ 目录。
+        新增插件项目只需要实现 CopyPluginToHost target，不需要再改宿主 ProjectReference。
+    -->
+    <ItemGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll'">
+        <ShiroBotPluginProject Include="..\*\*.csproj"
+                               Exclude="..\ShiroBot\ShiroBot.csproj;
+                                        ..\ShiroBot.SDK\ShiroBot.SDK.csproj;
+                                        ..\ShiroBot.Model\ShiroBot.Model.csproj;
+                                        ..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj;
+                                        ..\ShiroBot.AvaloniaIntegration\ShiroBot.AvaloniaIntegration.csproj;
+                                        ..\ShiroBot.DemoAdapter\ShiroBot.DemoAdapter.csproj;
+                                        ..\Shirobot.MilkyAdapter\ShiroBot.MilkyAdapter.csproj;
+                                        ..\MilkyModelGenerator.Net\MilkyModelGenerator.Net.csproj" />
+        <ProjectReference Include="@(ShiroBotPluginProject)" ReferenceOutputAssembly="false" PrivateAssets="all" />
+        <ShiroBotPluginProject Remove="..\ShiroBot.AiChatPlugin\**" />
+        <ShiroBotPluginProject Remove="..\ShiroBot.AvaloniaDemoPlugin\**" />
+        <ShiroBotPluginProject Remove="..\ShiroBot.DemoPlugin\**" />
+        <ShiroBotPluginProject Remove="..\ShiroBot.JmParser\**" />
+        <ShiroBotPluginProject Remove="..\ShiroBot.Plugin.Github\**" />
+        <ShiroBotPluginProject Remove="..\ShiroBot.VideoPreviewPlugin\**" />
+    </ItemGroup>
+
     <!-- Avalonia 集成模块（runtime 资产随宿主一起进入输出目录） -->
     <ItemGroup Condition="'$(EnableAvalonia)'=='true'">
         <ProjectReference Include="..\ShiroBot.AvaloniaIntegration\ShiroBot.AvaloniaIntegration.csproj" />
         <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
-        <!-- Avalonia 演示插件：仅在 EnableAvalonia=true 时拷贝到 plugins/。slnx 中保留始终构建以便 IDE 调试。 -->
-        <ProjectReference Include="..\ShiroBot.AvaloniaDemoPlugin\ShiroBot.AvaloniaDemoPlugin.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
         <ProjectReference Include="..\ShiroBot.DemoAdapter\ShiroBot.DemoAdapter.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
     </ItemGroup>
 
-    <ItemGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll'">
-        <ProjectReference Include="..\ShiroBot.DemoPlugin\ShiroBot.DemoPlugin.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
-    </ItemGroup>
-
     <Target Name="CopyManagedDebugArtifacts"
             AfterTargets="Build"
             Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
-        <MSBuild Projects="..\ShiroBot.DemoPlugin\ShiroBot.DemoPlugin.csproj"
+        <!-- 调试配置下将插件/适配器输出复制到 ShiroBot 输出目录以便调试 -->
+    </Target>
+
+    <Target Name="CopyShiroBotPluginProjectsToHost"
+            AfterTargets="Build"
+            Condition="'@(ShiroBotPluginProject)'!='' and ('$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll')">
+        <MSBuild Projects="@(ShiroBotPluginProject)"
                  Targets="CopyPluginToHost"
-                 Properties="Configuration=$(Configuration)"
-                 Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll'" />
-
-        <MSBuild Projects="..\ShiroBot.AvaloniaDemoPlugin\ShiroBot.AvaloniaDemoPlugin.csproj"
-                 Targets="CopyPluginToHost"
-                 Properties="Configuration=$(Configuration)"
-                 Condition="'$(EnableAvalonia)'=='true' and ('$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll')" />
-
-        <MSBuild Projects="..\ShiroBot.DemoAdapter\ShiroBot.DemoAdapter.csproj"
-                 Targets="CopyAdapterToHost"
-                 Properties="Configuration=$(Configuration)"
-                 Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'" />
-
-        <!-- EnableAvalonia=false 时清理之前残留的 AvaloniaDemoPlugin 目录 -->
-        <RemoveDir Directories="$(OutputPath)plugins\ShiroBot.AvaloniaDemoPlugin"
-                   Condition="'$(EnableAvalonia)'!='true'" />
+                 Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);EnableAvalonia=$(EnableAvalonia)" />
     </Target>
 
 </Project>

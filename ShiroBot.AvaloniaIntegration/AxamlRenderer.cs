@@ -48,11 +48,8 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
 
                 return control;
             },
-            opts.Width,
-            opts.Height,
             opts.Dpi,
-            opts.MaxWidth,
-            opts.MaxHeight,
+            opts.Theme,
             ct);
     }
 
@@ -81,52 +78,70 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         return await WritePngAndBuildUriAsync(bytes, ct).ConfigureAwait(false);
     }
 
-    public Task<byte[]> RenderControlPngAsync(
-        Func<Control> factory,
+    public Task<byte[]> RenderControlPngAsync<TControl>(
+        object? dataContext = null,
         ControlRenderOptions? options = null,
         CancellationToken ct = default)
+        where TControl : Control, new()
     {
-        ArgumentNullException.ThrowIfNull(factory);
         var opts = options ?? ControlRenderOptions.Default;
-        return RenderInternalAsync(factory, opts.Width, opts.Height, opts.Dpi, opts.MaxWidth, opts.MaxHeight, ct);
+        return RenderInternalAsync(
+            () =>
+            {
+                var control = new TControl();
+                if (dataContext is not null)
+                {
+                    control.DataContext = dataContext;
+                }
+
+                return control;
+            },
+            opts.Dpi,
+            opts.Theme,
+            ct);
     }
 
-    public async Task<string> RenderControlPngToFileUriAsync(
-        Func<Control> factory,
+    public async Task<string> RenderControlPngToFileUriAsync<TControl>(
+        object? dataContext = null,
         ControlRenderOptions? options = null,
         CancellationToken ct = default)
+        where TControl : Control, new()
     {
-        var bytes = await RenderControlPngAsync(factory, options, ct).ConfigureAwait(false);
+        var bytes = await RenderControlPngAsync<TControl>(dataContext, options, ct).ConfigureAwait(false);
         return await WritePngAndBuildUriAsync(bytes, ct).ConfigureAwait(false);
     }
 
     private static Task<byte[]> RenderInternalAsync(
         Func<Control> controlFactory,
-        int? width,
-        int? height,
         double dpi,
-        int maxWidth,
-        int maxHeight,
+        RenderTheme theme,
         CancellationToken ct)
     {
-        if (width is <= 0 || height is <= 0 || dpi <= 0 || maxWidth <= 0 || maxHeight <= 0)
+        if (dpi <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(width), "宽高、DPI 和最大尺寸必须为正数。");
+            throw new ArgumentOutOfRangeException(nameof(dpi), "DPI 必须为正数。");
         }
 
         return Dispatcher.UIThread.InvokeAsync(
             () =>
             {
                 ct.ThrowIfCancellationRequested();
+                AvaloniaIntegration.ApplyRenderTheme(theme);
 
                 var content = controlFactory()
                     ?? throw new InvalidOperationException("控件工厂返回了 null。");
+
+                var host = new Grid
+                {
+                    ClipToBounds = false
+                };
+                host.Children.Add(content);
 
                 var window = new Window
                 {
                     Width = 1,
                     Height = 1,
-                    Content = content
+                    Content = host
                 };
 
                 try
@@ -135,17 +150,29 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     // Headless 平台的 Window.Show 不会真的弹窗。
                     window.Show();
 
-                    var constraint = new Size(width ?? maxWidth, height ?? maxHeight);
+                    var constraint = ResolveMeasureConstraint(content);
                     content.Measure(constraint);
                     var desired = content.DesiredSize;
-                    var finalWidth = ResolvePixelSize(width, desired.Width, maxWidth, "宽度");
-                    var finalHeight = ResolvePixelSize(height, desired.Height, maxHeight, "高度");
+                    if (double.IsNaN(desired.Width) || double.IsInfinity(desired.Width) || desired.Width <= 0 ||
+                        double.IsNaN(desired.Height) || double.IsInfinity(desired.Height) || desired.Height <= 0)
+                    {
+                        throw new InvalidOperationException("无法自动确定渲染尺寸。请在 AXAML 根控件上设置有限的 Width/Height，或确保内容能计算出有限的 DesiredSize。");
+                    }
 
+                    var finalWidth = ResolveFinalAxisSize(content.Width, content.MinWidth, content.MaxWidth, desired.Width);
+                    var finalHeight = ResolveFinalAxisSize(content.Height, content.MinHeight, content.MaxHeight, desired.Height);
+
+                    content.Width = finalWidth;
+                    content.Height = finalHeight;
+                    host.Width = finalWidth;
+                    host.Height = finalHeight;
                     window.Width = finalWidth;
                     window.Height = finalHeight;
 
                     // 强制布局更新到目标尺寸。
                     var size = new Size(finalWidth, finalHeight);
+                    host.Measure(size);
+                    host.Arrange(new Rect(size));
                     window.Measure(size);
                     window.Arrange(new Rect(size));
                     window.UpdateLayout();
@@ -158,7 +185,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     using var frame = new RenderTargetBitmap(
                         new PixelSize(pixelWidth, pixelHeight),
                         new Vector(dpi, dpi));
-                    frame.Render(content);
+                    frame.Render(host);
 
                     using var ms = new MemoryStream();
                     frame.Save(ms);
@@ -166,26 +193,47 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                 }
                 finally
                 {
+                    content.DataContext = null;
+                    host.Children.Clear();
+                    window.Content = null;
                     window.Close();
                 }
             },
             DispatcherPriority.Render).GetTask();
     }
 
-    private static int ResolvePixelSize(int? requested, double desired, int max, string name)
+    private static Size ResolveMeasureConstraint(Control control)
     {
-        if (requested is { } value)
-        {
-            return value;
-        }
+        var width = ResolveWidthMeasureConstraint(control.Width, control.MinWidth, control.MaxWidth);
+        var height = ResolveHeightMeasureConstraint(control.Height, control.MaxHeight);
+        return new Size(width, height);
+    }
 
-        if (double.IsNaN(desired) || double.IsInfinity(desired))
-        {
-            throw new InvalidOperationException(
-                $"无法自动确定渲染{name}。请在 AXAML 根控件上设置有限尺寸，或通过渲染选项显式指定{name}。");
-        }
+    private static double ResolveWidthMeasureConstraint(double value, double min, double max)
+    {
+        if (IsFinitePositive(value)) return value;
+        if (IsFinitePositive(max)) return max;
+        return double.PositiveInfinity;
+    }
 
-        return (int)Math.Ceiling(Math.Clamp(desired, 1, max));
+    private static double ResolveHeightMeasureConstraint(double value, double max)
+    {
+        if (IsFinitePositive(value)) return value;
+        if (IsFinitePositive(max)) return max;
+        return double.PositiveInfinity;
+    }
+
+    private static bool IsFinitePositive(double value) =>
+        !double.IsNaN(value) && !double.IsInfinity(value) && value > 0;
+
+    private static double ResolveFinalAxisSize(double value, double min, double max, double desired)
+    {
+        if (IsFinitePositive(value)) return value;
+
+        var result = desired;
+        if (IsFinitePositive(min)) result = Math.Max(result, min);
+        if (IsFinitePositive(max)) result = Math.Min(result, max);
+        return result;
     }
 
     private static async Task<string> WritePngAndBuildUriAsync(byte[] bytes, CancellationToken ct)

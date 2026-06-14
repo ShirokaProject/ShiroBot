@@ -12,6 +12,7 @@ public interface IBotContext
     public ISystemContext System { get; }
     public IUpdater Updater { get; }
     public IConfigContext Config { get; }
+    public IWebHostContext WebHost { get; }
     public IReadOnlyList<long> OwnerList { get; }
     public IReadOnlyList<long> AdminList { get; }
 

@@ -6,7 +6,7 @@ using CH = ShiroBot.Core.ConsoleHelper;
 
 namespace ShiroBot.Hosting;
 
-internal sealed class AdapterEventBridge
+internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
 {
     private static readonly MethodInfo CreateAdapterEventBridgeHandlerMethod =
         typeof(AdapterEventBridge).GetMethod(nameof(CreateAdapterEventBridgeHandler), BindingFlags.NonPublic | BindingFlags.Static)
@@ -15,13 +15,6 @@ internal sealed class AdapterEventBridge
     private static readonly MethodInfo PublishAdapterEventAsyncMethod =
         typeof(AdapterEventBridge).GetMethod(nameof(PublishAdapterEventAsync), BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException($"Failed to locate {nameof(PublishAdapterEventAsync)}.");
-
-    private readonly HostEventDispatcher _eventDispatcher;
-
-    public AdapterEventBridge(HostEventDispatcher eventDispatcher)
-    {
-        _eventDispatcher = eventDispatcher;
-    }
 
     public void Bridge(
         IEventService eventService,
@@ -53,8 +46,8 @@ internal sealed class AdapterEventBridge
         var eventName = GetAdapterEventDisplayName(eventInfo.Name, payloadType);
 
         if (payloadType == typeof(FriendIncomingMessage))
-            return CreateAdapterEventBridgeHandler<FriendIncomingMessage>(
-                message => friendMessageHandler(message),
+            return CreateAdapterEventBridgeHandler(
+                friendMessageHandler,
                 eventName);
 
         if (!typeof(Event).IsAssignableFrom(payloadType))
@@ -62,7 +55,7 @@ internal sealed class AdapterEventBridge
                 $"Adapter event '{eventInfo.Name}' payload '{payloadType.Name}' does not implement '{nameof(Event)}'.");
 
         var factory = CreateAdapterEventBridgeHandlerMethod.MakeGenericMethod(payloadType);
-        return (Delegate)factory.Invoke(null, [CreateEventPublisher(_eventDispatcher, payloadType), eventName])!;
+        return (Delegate)factory.Invoke(null, [CreateEventPublisher(eventDispatcher, payloadType), eventName])!;
     }
 
     private static Type GetAdapterEventPayloadType(EventInfo eventInfo)

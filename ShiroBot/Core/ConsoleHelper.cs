@@ -12,6 +12,7 @@ public static class ConsoleHelper
     private static readonly List<string> History = [];
 
     private static IReadOnlyList<ConsoleCommandOption>? _completionOptions;
+    private static Func<IReadOnlyList<ConsoleCommandOption>>? _completionProvider;
     private static bool _isReadingInput;
     private static string? _activePrompt;
     private static int _cursorIndex;
@@ -47,9 +48,15 @@ public static class ConsoleHelper
 
     public static string ReadPrompt(string prompt, IReadOnlyList<ConsoleCommandOption>? completions = null)
     {
+        return ReadPrompt(prompt, () => completions ?? []);
+    }
+
+    public static string ReadPrompt(string prompt, Func<IReadOnlyList<ConsoleCommandOption>>? completions)
+    {
         lock (OutputLock)
         {
-            _completionOptions = completions;
+            _completionProvider = completions;
+            _completionOptions = completions?.Invoke();
             _activePrompt = prompt;
             _isReadingInput = true;
             InputBuffer.Clear();
@@ -83,12 +90,13 @@ public static class ConsoleHelper
                 {
                     _isReadingInput = false;
                     _activePrompt = null;
+                    _completionProvider = null;
                     InputBuffer.Clear();
                     _cursorIndex = 0;
                     _inlineCompletionSuffix = string.Empty;
                 }
 
-                return ReadPromptFallback(prompt, completions);
+                return ReadPromptFallback(prompt, _completionOptions);
             }
 
             lock (OutputLock)
@@ -122,6 +130,7 @@ public static class ConsoleHelper
                         SetCursorPositionSafe(0, _inputTop);
                         _isReadingInput = false;
                         _activePrompt = null;
+                        _completionProvider = null;
 
                         if (!string.IsNullOrWhiteSpace(result) &&
                             (History.Count == 0 || !string.Equals(History[^1], result, StringComparison.Ordinal)))
@@ -258,6 +267,11 @@ public static class ConsoleHelper
 
     private static void UpdateInlineCompletion()
     {
+        if (_completionProvider is not null)
+        {
+            _completionOptions = _completionProvider();
+        }
+
         var completions = _completionOptions;
         if (completions is null || completions.Count == 0)
         {

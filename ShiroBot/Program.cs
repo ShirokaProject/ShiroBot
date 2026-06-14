@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Security.Cryptography;
 using System.Runtime.Loader;
 #if AVALONIA
 using Avalonia;
@@ -49,6 +50,7 @@ public static class Program
         BotContext? botContext;
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
+        HostHttpServer? hostHttpServer = null;
 
         try
         {
@@ -72,6 +74,7 @@ public static class Program
 
             var coreConfigManager = new ConfigManager(coreConfigPath);
             var coreConfig = await coreConfigManager.LoadCoreConfig();
+            EnsureApiAuthKey(coreConfig, coreConfigManager, coreConfigPath);
             CH.IsEnabled = coreConfig.EnableLog;
             var groupRoutePolicy = coreConfig.PluginRoutes;
 
@@ -108,7 +111,21 @@ public static class Program
             CH.Success("加载适配器成功: " + adapter.Name);
 
             // ─── BotContext + 基础设施 ───
-            botContext = new BotContext(adapter, coreConfig.OwnerList, coreConfig.AdminList);
+            var webPublicBaseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
+                ? (coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? coreConfig.Api.ListenUrl)
+                : coreConfig.Api.PublicBaseUrl;
+            var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
+            hostHttpServer = await HostHttpServer.StartAsync(coreConfig.Api, webHostContext);
+            if (coreConfig.Api.Enable)
+            {
+                CH.Success("API 地址: " + webPublicBaseUrl);
+                if (coreConfig.Api.Auth.Enable)
+                {
+                    CH.Warning("API 鉴权密钥: " + coreConfig.Api.Auth.Key);
+                }
+            }
+
+            botContext = new BotContext(adapter, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
             Updater.Initialize(
                 () => botContext.OwnerList,
                 (ownerId, content) => botContext.Message.SendPrivateMessageAsync(ownerId, content));
@@ -120,7 +137,7 @@ public static class Program
             // ─── Avalonia 渲染集成 ───
             try
             {
-                var avaloniaRenderer = AvaloniaIntegration.AvaloniaIntegration.Initialize();
+                var avaloniaRenderer = AvaloniaIntegration.AvaloniaIntegration.Initialize(coreConfig.AvaloniaTheme);
                 botContext.AttachRenderer(avaloniaRenderer);
                 sharedAssemblies.Register(
                     ["Avalonia", "SkiaSharp", "HarfBuzzSharp", "ShiroBot.AvaloniaSdk"],
@@ -157,7 +174,14 @@ public static class Program
             pluginManager.PluginRootPath = pluginRootPath;
 
             // ─── 适配器事件桥接 ───
-            var commandHandler = new HostCommandHandler(botContext, pluginManager, hostEventDispatcher, groupRoutePolicy);
+            var commandHandler = new HostCommandHandler(
+                botContext,
+                pluginManager,
+                hostEventDispatcher,
+                groupRoutePolicy,
+                coreConfig,
+                coreConfigManager,
+                coreConfigPath);
             var adapterBridge = new AdapterEventBridge(hostEventDispatcher);
             adapterBridge.Bridge(
                 adapter.Event,
@@ -205,6 +229,11 @@ public static class Program
         {
             configWatcher?.Dispose();
 
+            if (hostHttpServer is not null)
+            {
+                await hostHttpServer.DisposeAsync();
+            }
+
             if (pluginManager is not null)
             {
                 await pluginManager.AwaitPluginBackgroundTasksAsync();
@@ -234,6 +263,16 @@ public static class Program
 
     private static bool CanReadInteractiveKey() =>
         Environment.UserInteractive && !Console.IsInputRedirected && !Console.IsOutputRedirected;
+
+    private static void EnsureApiAuthKey(CoreConfig coreConfig, ConfigManager manager, string configPath)
+    {
+        if (!coreConfig.Api.Auth.Enable || !string.IsNullOrWhiteSpace(coreConfig.Api.Auth.Key)) return;
+
+        Span<byte> bytes = stackalloc byte[32];
+        RandomNumberGenerator.Fill(bytes);
+        coreConfig.Api.Auth.Key = Convert.ToHexString(bytes).ToLowerInvariant();
+        manager.SaveConfig(configPath, coreConfig);
+    }
 
     private static string? ResolveAdapterPath(CoreConfig coreConfig, string? commandAdapterPath)
     {

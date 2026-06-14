@@ -7,15 +7,10 @@ namespace ShiroBot.AvaloniaSdk;
 /// 控件渲染选项。和 AxamlRenderOptions 平级，但用于直接传 Avalonia.Controls.Control 的场景。
 /// </summary>
 public sealed record ControlRenderOptions(
-    int? Width = null,
-    int? Height = null,
-    double Dpi = 192,
-    int MaxWidth = 1200,
-    int MaxHeight = 4000)
+    RenderTheme Theme = RenderTheme.Light,
+    double Dpi = 192)
 {
     public static ControlRenderOptions Default { get; } = new();
-
-    public static ControlRenderOptions AutoSize { get; } = new(Width: null, Height: null);
 }
 
 /// <summary>
@@ -26,21 +21,23 @@ public sealed record ControlRenderOptions(
 public interface IAvaloniaRenderContext : IRenderContext
 {
     /// <summary>
-    /// 在 Avalonia UI 线程上调用 factory 创建控件，渲染为 PNG 字节。
-    /// factory 必须在每次调用都返回一个全新的控件实例（不要复用同一个根）。
+    /// 在 Avalonia UI 线程上创建并渲染控件实例。推荐用于 .axaml UserControl。
     /// </summary>
-    Task<byte[]> RenderControlPngAsync(
-        Func<Control> factory,
+    Task<byte[]> RenderControlPngAsync<TControl>(
+        object? dataContext = null,
         ControlRenderOptions? options = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default)
+        where TControl : Control, new();
 
     /// <summary>
-    /// RenderControlPngAsync 的便捷重载，写入临时文件并返回 file:// URI。
+    /// 在 Avalonia UI 线程上创建并渲染控件实例，写入临时文件并返回 file:// URI。
     /// </summary>
-    Task<string> RenderControlPngToFileUriAsync(
-        Func<Control> factory,
+    Task<string> RenderControlPngToFileUriAsync<TControl>(
+        object? dataContext = null,
         ControlRenderOptions? options = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default)
+        where TControl : Control, new();
+
 }
 
 public static class RenderContextExtensions
@@ -49,8 +46,30 @@ public static class RenderContextExtensions
     /// 把 IRenderContext 强转成 Avalonia 渲染上下文。
     /// 当前宿主未启用 Avalonia 时会抛出 InvalidOperationException。
     /// </summary>
-    public static IAvaloniaRenderContext AsAvalonia(this IRenderContext? renderer) =>
+    private static IAvaloniaRenderContext AsAvalonia(this IRenderContext? renderer) =>
         renderer as IAvaloniaRenderContext
         ?? throw new InvalidOperationException(
             "当前没有 Avalonia 渲染服务可用。请确认宿主以 EnableAvalonia=true 编译，并已加载 ShiroBot.AvaloniaIntegration。");
+
+    extension(IBotContext context)
+    {
+        /// <summary>
+        /// 直接从 BotContext 在 Avalonia UI 线程上创建并渲染控件实例。
+        /// </summary>
+        public Task<byte[]> RenderControlPngAsync<TControl>(object? dataContext = null,
+            ControlRenderOptions? options = null,
+            CancellationToken ct = default)
+            where TControl : Control, new() =>
+            context.Render.AsAvalonia().RenderControlPngAsync<TControl>(dataContext, options, ct);
+
+        /// <summary>
+        /// 直接从 BotContext 在 Avalonia UI 线程上创建并渲染控件实例，返回 file:// URI。
+        /// </summary>
+        public Task<string> RenderControlPngToFileUriAsync<TControl>(object? dataContext = null,
+            ControlRenderOptions? options = null,
+            CancellationToken ct = default)
+            where TControl : Control, new() =>
+            context.Render.AsAvalonia().RenderControlPngToFileUriAsync<TControl>(dataContext, options, ct);
+
+    }
 }

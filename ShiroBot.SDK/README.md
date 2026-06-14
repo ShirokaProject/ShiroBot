@@ -1,64 +1,103 @@
-# QBotSharp.SDK
+# ShiroBot.SDK
 
-`QBotSharp.SDK` 提供插件和 adapter 的宿主契约，以及一层更适合开发者直接使用的高层 API。
+`ShiroBot.SDK` provides the core contracts and helper APIs for ShiroBot plugins and adapters.
 
-## 插件开发
+## Plugin Usage
 
-推荐继承 [PluginBase.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.SDK/Plugin/PluginBase.cs)，不要直接手动订阅 `context.Event.*`。
+Most plugins should inherit `PluginBase`.
 
 ```csharp
-using QBotSharp.Model.Common;
-using QBotSharp.SDK;
-using QBotSharp.SDK.Plugin;
+using ShiroBot.Model.Common;
+using ShiroBot.SDK.Core;
+using ShiroBot.SDK.Plugin;
 
 public sealed class HelloPlugin : PluginBase
 {
     public override string Name => "HelloPlugin";
 
-    public BotComponentMetadata Metadata { get; } = new()
+    public override BotComponentMetadata Metadata { get; } = new()
     {
         Name = "HelloPlugin",
         Version = "1.0.0",
-        ApiVersion = "1.0.0",
-        Description = "示例插件"
+        Description = "Example plugin"
     };
 
     protected override async Task OnGroupMessageAsync(GroupIncomingMessage message)
     {
-        var text = message.GetPlainText();
-        if (!text.StartsWith("#hello", StringComparison.OrdinalIgnoreCase))
+        if (!message.GetPlainText().Trim().StartsWith("#hello", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        await Context.Message.ReplyTextAsync(message, "hello");
+        await Context.Message.ReplyAsync(message, "hello");
     }
 }
 ```
 
-如果插件主要是处理多个消息前缀，直接使用 `PluginBase` 自带的 `FriendCommands` 和 `GroupCommands`。
+## Lifecycle
+
+Override `LoadAsync()` and `OnUnloadAsync()` for plugin setup and cleanup.
 
 ```csharp
-public sealed class MyPlugin : PluginBase
+protected override Task LoadAsync()
 {
-    protected override Task OnLoadAsync(IBotContext context)
-    {
-        FriendCommands.Map("#help", HandleHelpAsync);
-        GroupCommands.Map("#ping", HandlePingAsync);
-        GroupCommands.Map("#status", HandleStatusAsync);
-        return Task.CompletedTask;
-    }
+    GroupCommands.MapExact("#ping", HandlePingAsync);
+    GroupCommands.MapPrefix("#echo", HandleEchoAsync);
+    return Task.CompletedTask;
+}
 
-    private Task HandlePingAsync(GroupIncomingMessage message) =>
-        Context.Message.ReplyTextAsync(message, "pong");
+protected override Task OnUnloadAsync()
+{
+    return Task.CompletedTask;
 }
 ```
 
-### PluginBase 可直接重写的事件
+`PluginBase` automatically clears command routes, event routes and `Context` after unload.
+
+## Command Routes
+
+`PluginBase` exposes two command routers:
+
+```csharp
+protected CommandRouter<GroupIncomingMessage> GroupCommands { get; }
+protected CommandRouter<FriendIncomingMessage> FriendCommands { get; }
+```
+
+Supported route types:
+
+```csharp
+GroupCommands.MapExact("#ping", HandlePingAsync);
+GroupCommands.MapPrefix("#echo", HandleEchoAsync);
+GroupCommands.MapAll(HandleAnyGroupMessageAsync);
+GroupCommands.MapWhen(message => message.HasMention(), HandleMentionAsync);
+GroupCommands.MapMention(botUserId, HandleMentionAsync);
+GroupCommands.MapReply(HandleReplyAsync);
+```
+
+Example handler:
+
+```csharp
+private Task HandlePingAsync(GroupIncomingMessage message) =>
+    Context.Message.ReplyAsync(message, "pong");
+```
+
+## Event Routes
+
+You can either override built-in event methods or map events in `LoadAsync()`.
+
+```csharp
+protected override Task LoadAsync()
+{
+    Events.Map<GroupMemberIncreaseEvent>(HandleMemberIncreaseAsync);
+    Events.MapWhen<GroupMessageReactionEvent>(e => e.IsAdd, HandleReactionAddAsync);
+    return Task.CompletedTask;
+}
+```
+
+Common overridable methods include:
 
 - `OnFriendMessageAsync`
 - `OnGroupMessageAsync`
-- `OnMessageRecallAsync`
 - `OnFriendRequestAsync`
 - `OnGroupJoinRequestAsync`
 - `OnGroupInvitedJoinRequestAsync`
@@ -75,72 +114,63 @@ public sealed class MyPlugin : PluginBase
 - `OnGroupWholeMuteAsync`
 - `OnGroupNudgeAsync`
 - `OnGroupFileUploadAsync`
+- `OnMessageRecallAsync`
 
-如果你没有继承 `PluginBase`，但又想手动订阅事件，现在也可以直接用 `Action<T>` 风格，不必每次手写 `Task.CompletedTask`：
+## Messages
 
-```csharp
-context.Event.OnFriendFileUpload(e =>
-{
-    context.Logger.Info($"收到文件: {e.FileName}");
-});
-```
-
-这些同步注册辅助在 [EventContextExtensions.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.SDK/Plugin/EventContextExtensions.cs)。
-
-### 常用消息快捷方法
-
-这些扩展方法在 [MessageContextExtensions.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.SDK/Plugin/MessageContextExtensions.cs)：
+`Context.Message` exposes adapter message APIs plus helper overloads.
 
 ```csharp
-await Context.Message.SendPrivateTextAsync(userId, "hello");
-await Context.Message.SendGroupTextAsync(groupId, "hello");
-await Context.Message.ReplyTextAsync(friendMessage, "pong");
-await Context.Message.ReplyTextAsync(groupMessage, "pong");
+await Context.Message.SendPrivateMessageAsync(userId, "hello");
+await Context.Message.SendGroupMessageAsync(groupId, "hello");
+await Context.Message.ReplyAsync(friendMessage, "pong");
+await Context.Message.ReplyAsync(groupMessage, "pong");
+await Context.Message.QuoteReplyAsync(groupMessage, "quoted reply");
 ```
 
-### 命令路由
+Send segments directly:
 
-命令路由器在 [CommandRouter.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.SDK/Plugin/CommandRouter.cs)。
+```csharp
+await Context.Message.SendGroupMessageAsync(
+    groupId,
+    new TextOutgoingSegment("hello"),
+    new ImageOutgoingSegment(fileUri));
+```
 
-适合场景：
-
-- 一个插件监听多个关键词前缀
-- 私聊命令和群命令分开管理
-- 不想在 `OnGroupMessageAsync` 里写很长的 `if/else`
-
-纯文本提取在 [IncomingMessageExtensions.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.SDK/Plugin/IncomingMessageExtensions.cs)：
+## Incoming Message Helpers
 
 ```csharp
 var text = message.GetPlainText();
+var reply = message.GetReply();
+var mentioned = message.HasMention(userId);
+var mentionAll = message.HasMentionAll();
 ```
 
-## 插件配置
+## Config
 
-插件配置通过 `context.Config` 访问，配置文件路径固定在：
+Plugin config is stored at:
 
-`plugins/<PluginFolder>/config.toml`
+```text
+plugins/<PluginFolder>/config.toml
+```
 
-常用操作：
+Load and save:
 
 ```csharp
-var config = context.Config.Load<MyPluginConfig>();
-context.Config.Save(config);
+var config = Context.Config.Load<MyPluginConfig>();
+Context.Config.Save(config);
 ```
 
-首次读取时如果文件不存在，宿主会自动生成默认配置文件。
-
-### 插件配置热重载
-
-如果插件需要监听配置变化，可以主动订阅：
+Watch for config changes:
 
 ```csharp
 private IDisposable? _configWatcher;
 
-protected override Task OnLoadAsync(IBotContext context)
+protected override Task LoadAsync()
 {
-    _configWatcher = context.Config.Watch<MyPluginConfig>(updated =>
+    _configWatcher = Context.Config.Watch<MyPluginConfig>(updated =>
     {
-        // 应用新配置
+        // Apply new config.
     });
 
     return Task.CompletedTask;
@@ -153,136 +183,82 @@ protected override Task OnUnloadAsync()
 }
 ```
 
-说明：
+`Watch<T>()` returns an `IDisposable`; dispose it during unload to avoid leaking a `FileSystemWatcher`.
 
-- 不调用 `Watch<T>()` 就不会监听
-- 默认防抖时间是 `500ms`
-- 返回值必须在插件卸载时释放
+## Logging
 
-## 插件群路由
-
-宿主支持按群号限制某些插件接收群相关事件。配置写在主配置 `config.toml`：
-
-```toml
-[plugin_routes.default]
-mode = "blacklist"
-groups = []
-
-[plugin_routes.plugins.DemoPlugin]
-mode = "whitelist"
-groups = [622603336, 742274811]
-```
-
-规则说明：
-
-- `whitelist`: 只有列表中的群会分发给该插件
-- `blacklist`: 除列表中的群外，其它群都会分发给该插件
-- `plugin_routes.default`: 给所有没有单独配置的插件使用
-- `plugin_routes.plugins.<PluginName>`: 覆盖单个插件
-
-当前会被宿主统一过滤的群事件包括：
-
-- 群消息
-- 群撤回
-- 入群请求 / 邀请
-- 群管理员变更
-- 群成员增减
-- 群名称变更
-- 群消息表情回应
-- 群禁言 / 全员禁言
-- 群戳一戳
-- 群文件上传
-
-## 插件日志
-
-`Logger` 现在直接在 `IBotContext` 上可用，不需要再做类型判断：
+Use `BotLog` inside plugin code. The host scopes plugin dispatches to the plugin logger.
 
 ```csharp
-protected override Task OnLoadAsync(IBotContext context)
+using ShiroBot.SDK.Abstractions;
+
+BotLog.Info("plugin loaded");
+BotLog.Warning("something happened");
+BotLog.Error("operation failed");
+```
+
+## Bot Context
+
+`IBotContext` provides:
+
+- `File`
+- `Friend`
+- `Group`
+- `Message`
+- `System`
+- `Updater`
+- `Config`
+- `OwnerList`
+- `AdminList`
+- `Render`
+
+Admin helpers:
+
+```csharp
+if (!Context.IsAdmin(message.SenderId))
 {
-    context.Logger.Info($"插件 {Name} 已加载");
-    return Task.CompletedTask;
+    await Context.Message.ReplyAsync(message, "permission denied");
+    return;
 }
 ```
 
-可用方法：
+## Adapter Usage
 
-- `Log(...)`
-- `Info(...)`
-- `Success(...)`
-- `Warning(...)`
-- `Error(...)`
-
-如果插件继承的是 [PluginBase.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.SDK/Plugin/PluginBase.cs)，也可以直接用：
+Adapters implement `IBotAdapter`.
 
 ```csharp
-BotLogger.Info($"插件 {Name} 已加载");
-```
+using ShiroBot.SDK.Adapter;
+using ShiroBot.SDK.Config;
+using ShiroBot.SDK.Core;
+using ShiroBot.SDK.Plugin;
 
-## Adapter 开发
-
-adapter 需要实现 [IBotAdapter.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.SDK/IBotAdapter.cs)。
-
-```csharp
 public sealed class MyAdapter : IBotAdapter
 {
-    public string Name => "my-adapter";
+    public string Name => "MyAdapter";
+
     public BotComponentMetadata Metadata { get; } = new()
     {
         Name = "MyAdapter",
-        Version = "1.0.0",
-        ApiVersion = "1.0.0"
+        Version = "1.0.0"
     };
 
     public IConfigContext Config { get; set; } = null!;
+    public IConsoleLogger Logger { get; set; } = null!;
 
-    public async Task StartAsync()
+    public IFileService File { get; } = new MyFileService();
+    public IFriendService Friend { get; } = new MyFriendService();
+    public IGroupService Group { get; } = new MyGroupService();
+    public IMessageService Message { get; } = new MyMessageService();
+    public ISystemService System { get; } = new MySystemService();
+    public IEventService Event { get; } = new MyEventService();
+
+    public Task StartAsync()
     {
         var config = Config.Load<MyAdapterConfig>();
-        Config.Save(config);
+        Logger.Info("adapter started");
+        return Task.CompletedTask;
     }
 }
 ```
 
-adapter 支持两种部署方式：
-
-`adapters/<AdapterName>.dll` + `adapters/<AdapterName>.toml`
-
-`adapters/<AdapterFolder>/<AdapterFolder>.dll` + `adapters/<AdapterFolder>/config.toml`
-
-### Adapter 配置热重载
-
-如果 adapter 需要监听配置变化：
-
-```csharp
-private IDisposable? _configWatcher;
-
-public async Task StartAsync()
-{
-    _configWatcher = Config.Watch<MyAdapterConfig>(updated =>
-    {
-        // 应用新配置
-    });
-}
-
-public Task StopAsync()
-{
-    _configWatcher?.Dispose();
-    return Task.CompletedTask;
-}
-```
-
-### Adapter 元数据和停止接口
-
-`Metadata`、`Config` 和 `StopAsync()` 已经并入 `IBotAdapter`。
-
-宿主会直接读取 `adapter.Metadata`，初始化 `adapter.Config`，并在退出时调用 `adapter.StopAsync()` 做资源释放。
-
-## 示例
-
-当前可以直接参考：
-
-- [DemoPlugin.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.PluginDemo/DemoPlugin.cs)
-- [DemoPluginConfig.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.PluginDemo/DemoPluginConfig.cs)
-- [DemoAdapter.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.AdapterDemo/DemoAdapter.cs)
-- [MilkyAdapter.cs](/C:/Users/greep/RiderProjects/QB/QBotSharp/QBotSharp.MilkyAdapter/MilkyAdapter.cs)
+Adapter config is loaded from the adapter directory through `Config.Load<T>()`.

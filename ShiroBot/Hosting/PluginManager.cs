@@ -63,7 +63,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         }
     }
 
-    public List<string> GetLoadablePluginCandidates()
+    public List<string> GetLoadablePluginCandidates(bool includePluginNames = true)
     {
         if (string.IsNullOrWhiteSpace(PluginRootPath) || !Directory.Exists(PluginRootPath))
             return [];
@@ -71,7 +71,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         var pluginRoot = Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar);
         var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var assemblyPath in EnumeratePluginEntryAssemblies(pluginRoot))
+        foreach (var assemblyPath in EnumerateLoadableCandidateAssemblies(pluginRoot))
         {
             var parent = Path.GetDirectoryName(assemblyPath);
             if (string.IsNullOrWhiteSpace(parent)) continue;
@@ -80,16 +80,26 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             var candidate = string.Equals(normalizedParent, pluginRoot, StringComparison.OrdinalIgnoreCase)
                 ? Path.GetFileNameWithoutExtension(assemblyPath)
                 : new DirectoryInfo(normalizedParent).Name;
+            var relativeCandidate = Path.GetRelativePath(pluginRoot, assemblyPath)
+                .Replace(Path.DirectorySeparatorChar, '/');
+
+            if (!string.IsNullOrWhiteSpace(relativeCandidate) && !relativeCandidate.StartsWith("..", StringComparison.Ordinal))
+            {
+                candidates.Add(relativeCandidate);
+            }
 
             if (!string.IsNullOrWhiteSpace(candidate))
             {
                 candidates.Add(candidate);
             }
 
-            var pluginName = TryProbePluginName(assemblyPath);
-            if (!string.IsNullOrWhiteSpace(pluginName))
+            if (includePluginNames)
             {
-                candidates.Add(pluginName);
+                var pluginName = TryProbePluginName(assemblyPath);
+                if (!string.IsNullOrWhiteSpace(pluginName))
+                {
+                    candidates.Add(pluginName);
+                }
             }
         }
 
@@ -103,6 +113,35 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         lock (PluginLifecycleLock)
         {
             return _loadedPlugins.ToList();
+        }
+    }
+
+    private static IEnumerable<string> EnumerateLoadableCandidateAssemblies(string pluginRoot)
+    {
+        var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ShiroBot.SDK.dll",
+            "ShiroBot.Model.dll",
+            "ShiroBot.AvaloniaSdk.dll",
+            "ShiroBot.AvaloniaIntegration.dll"
+        };
+        var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in EnumeratePluginEntryAssemblies(pluginRoot).Where(yieldedPaths.Add))
+        {
+            yield return entry;
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(pluginRoot).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
+                         .Where(dll => !sharedAssemblies.Contains(Path.GetFileName(dll)))
+                         .OrderBy(dll => dll, StringComparer.OrdinalIgnoreCase)
+                         .Select(Path.GetFullPath)
+                         .Where(yieldedPaths.Add))
+            {
+                yield return dll;
+            }
         }
     }
 
@@ -379,23 +418,28 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                     else
                     {
                         //move plugin
+                        var pluginDisplayName = pluginInfo.Name;
+                        var targetDllRootPath = Path.Combine(PluginRootPath, pluginName);
+                        var targetDllPath = Path.Combine(targetDllRootPath, $"{pluginName}.dll");
+
+                        tempPlugin = null;
+                        var tempAlcWeakReference = tempLoader.BeginUnload();
+                        if (!DllLoader<IBotPlugin>.WaitForUnload(tempAlcWeakReference))
+                        {
+                            throw new IOException($"插件探测程序集尚未释放，无法移动文件: {actualDllPath}");
+                        }
+
                         try
                         {
-                            var targetDllRootPath = Path.Combine(PluginRootPath, pluginName);
-
                             Directory.CreateDirectory(targetDllRootPath);
-                            File.Copy(actualDllPath, Path.Combine(targetDllRootPath, $"{pluginName}.dll"), true);
+                            File.Copy(actualDllPath, targetDllPath, true);
                             File.Delete(actualDllPath);
+                            actualDllPath = targetDllPath;
                         }
                         catch (Exception e)
                         {
-                            BotLog.Error($"插件移动/删除出错: {pluginInfo.Name} - {e.Message}");
+                            BotLog.Error($"插件移动/删除出错: {pluginDisplayName} - {e.Message}");
                             throw;
-                        }
-                        finally
-                        {
-                            tempLoader.Unload();
-                            tempPlugin = null;
                         }
                     }
                 }
@@ -466,7 +510,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         }
     }
 
-    public DllLoader<IBotPlugin> CreateLoader() =>
+    private DllLoader<IBotPlugin> CreateLoader() =>
         new(collectible: true, shared: SharedAssemblies);
 
     /// <summary>
@@ -497,27 +541,106 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                 ? Path.GetFullPath(normalizedInput)
                 : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, normalizedInput));
 
-            return File.Exists(fullPath) ? [fullPath] : [];
+            if (File.Exists(fullPath)) return [fullPath];
+
+            if (Directory.Exists(fullPath))
+            {
+                return ResolvePluginDirectoryCandidates(fullPath, normalizedInput);
+            }
+
+            if (!Path.IsPathRooted(normalizedInput))
+            {
+                var pluginRelativePath = Path.GetFullPath(Path.Combine(pluginRoot, normalizedInput));
+                if (File.Exists(pluginRelativePath)) return [pluginRelativePath];
+                if (Directory.Exists(pluginRelativePath)) return ResolvePluginDirectoryCandidates(pluginRelativePath, normalizedInput);
+            }
+
+            return [];
         }
 
-        var directDll = Path.Combine(pluginRoot, $"{normalizedInput}.dll");
-        if (File.Exists(directDll)) return [Path.GetFullPath(directDll)];
+        foreach (var alias in GetPluginNameAliases(normalizedInput))
+        {
+            var directDll = Path.Combine(pluginRoot, $"{alias}.dll");
+            if (File.Exists(directDll)) return [Path.GetFullPath(directDll)];
 
-        var pluginDirectoryDll = Path.Combine(pluginRoot, normalizedInput, $"{normalizedInput}.dll");
-        if (File.Exists(pluginDirectoryDll)) return [Path.GetFullPath(pluginDirectoryDll)];
+            var pluginDirectoryDll = Path.Combine(pluginRoot, alias, $"{alias}.dll");
+            if (File.Exists(pluginDirectoryDll)) return [Path.GetFullPath(pluginDirectoryDll)];
 
-        return EnumeratePluginEntryAssemblies(pluginRoot)
+            var pluginDirectory = Path.Combine(pluginRoot, alias);
+            if (Directory.Exists(pluginDirectory)) return ResolvePluginDirectoryCandidates(pluginDirectory, normalizedInput);
+        }
+
+        var inputAliases = GetPluginNameAliases(normalizedInput).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return EnumerateLoadableCandidateAssemblies(pluginRoot)
             .Where(path =>
             {
                 var fileName = Path.GetFileNameWithoutExtension(path);
                 var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
                 var pluginName = TryProbePluginName(path);
-                return string.Equals(fileName, normalizedInput, StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals(directoryName, normalizedInput, StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals(pluginName, normalizedInput, StringComparison.OrdinalIgnoreCase);
+                return NameMatches(fileName, inputAliases) ||
+                       (NameMatches(directoryName, inputAliases) &&
+                        string.Equals(fileName, directoryName, StringComparison.OrdinalIgnoreCase)) ||
+                       NameMatches(pluginName, inputAliases);
             })
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private IReadOnlyList<string> ResolvePluginDirectoryCandidates(string pluginDirectory, string pluginNameOrPath)
+    {
+        var directoryName = new DirectoryInfo(pluginDirectory).Name;
+        var inputName = Path.GetFileName(pluginNameOrPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var aliases = GetPluginNameAliases(inputName).Concat(GetPluginNameAliases(directoryName)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var sameNameDll = Path.Combine(pluginDirectory, $"{directoryName}.dll");
+        if (File.Exists(sameNameDll)) return [Path.GetFullPath(sameNameDll)];
+
+        var pluginDlls = Directory.EnumerateFiles(pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Where(path =>
+            {
+                var fileName = Path.GetFileNameWithoutExtension(path);
+                if (NameMatches(fileName, aliases)) return true;
+
+                var pluginName = TryProbePluginName(path);
+                return NameMatches(pluginName, aliases);
+            })
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (pluginDlls.Count > 0) return pluginDlls;
+
+        var loadableDlls = Directory.EnumerateFiles(pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Where(path => TryProbePluginName(path) is not null)
+            .Select(Path.GetFullPath)
+            .ToList();
+
+        return loadableDlls.Count == 1 ? loadableDlls : [];
+    }
+
+    private static IEnumerable<string> GetPluginNameAliases(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) yield break;
+
+        yield return name;
+
+        const string shiroBotPrefix = "ShiroBot.";
+        if (name.StartsWith(shiroBotPrefix, StringComparison.OrdinalIgnoreCase) && name.Length > shiroBotPrefix.Length)
+        {
+            yield return name[shiroBotPrefix.Length..];
+        }
+    }
+
+    private static bool NameMatches(string? candidate, HashSet<string> aliases)
+    {
+        if (string.IsNullOrWhiteSpace(candidate)) return false;
+        if (aliases.Contains(candidate)) return true;
+
+        return candidate.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
+               aliases.Contains(candidate["ShiroBot.".Length..]);
     }
 
     private string? TryProbePluginName(string assemblyPath)
