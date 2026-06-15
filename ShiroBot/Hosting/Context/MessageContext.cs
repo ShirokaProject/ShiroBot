@@ -1,4 +1,3 @@
-using ShiroBot.Model.Common;
 using ShiroBot.Model.Message.Requests;
 using ShiroBot.Model.Message.Responses;
 using ShiroBot.SDK.Adapter;
@@ -8,8 +7,12 @@ namespace ShiroBot.Hosting.Context;
 
 internal sealed class MessageContext(IMessageService message, ReplySubscriptionManager replySubscriptions, string ownerId) : IMessageContext
 {
-    public IReplySubscription SubscribeReply(long messageSeq, TimeSpan duration, ReplyMessageHandler handler) =>
-        replySubscriptions.Subscribe(ownerId, messageSeq, duration, handler);
+    public IReplySubscription SubscribeReply(
+        long messageSeq,
+        TimeSpan duration,
+        ReplyMessageHandler handler,
+        bool disposeOnReply = true) =>
+        replySubscriptions.Subscribe(ownerId, messageSeq, duration, handler, disposeOnReply);
 
     public Task<SendPrivateMessageResponse> SendPrivateMessageAsync(SendPrivateMessageRequest request) =>
         message.SendPrivateMessageAsync(request);

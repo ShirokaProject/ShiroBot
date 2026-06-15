@@ -59,7 +59,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     private static void MapApiEndpoints(WebApplication app, ApiHostConfig config)
     {
-        var api = app.MapGroup("/api");
+        var api = app.MapGroup("/api/v1");
         api.AddEndpointFilter(async (context, next) =>
         {
             if (!IsAuthorized(context.HttpContext, config))
@@ -70,6 +70,69 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             return await next(context).ConfigureAwait(false);
         });
 
+        //鉴权
+        api.MapGet("/auth", () => Results.Ok(new { ok = true }));
+        
+        //概览
+        api.MapGet("/overview", () => Results.Ok(new
+        {
+            bot_version = "v1.0",
+            plugins_count = 5,
+            adapter = "discord",
+            message_count = 1000,
+            uptime = "1234567890", 
+        }));
+        
+        //插件
+        api.MapGet("/plugins/list", () => Results.Ok(new[]
+        {
+            new
+            {
+                name = "示例插件1",
+                auther = "",
+                version = "v1.0",
+                enabled = true
+            }
+        }));
+        
+        api.MapGet("/plugins/{id}", (string id) =>
+        {
+            //获取插件详情的逻辑
+            return Results.Ok(new
+            {
+                name = $"示例插件 {id}",
+                version = "v1.0",
+                enabled = true,
+                description = "这是一个示例插件的描述信息。"
+            });
+        });
+        
+        
+        
+        api.MapPost("/plugins/{id}/enable", (string id) =>
+        {
+            //启用插件的逻辑
+            return Results.Ok(new { ok = true, message = $"Plugin {id} enabled." });
+        });
+        
+        api.MapPost("/plugins/{id}/disable", (string id) =>
+        {
+            //禁用插件的逻辑
+            return Results.Ok(new { ok = true, message = $"Plugin {id} disabled." });
+        });
+        
+        api.MapPost("/plugins/{id}/update", (string id) =>
+        {
+            //更新插件的逻辑
+            return Results.Ok(new { ok = true, message = $"Plugin {id} updated." });
+        });
+        
+        
+        
+        
+        
+        
+        
         api.MapGet("/status", () => Results.Ok(new
         {
             name = "ShiroBot",
@@ -81,8 +144,6 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                 auth_enabled = config.Auth.Enable
             }
         }));
-
-        api.MapGet("/auth/check", () => Results.Ok(new { ok = true }));
     }
 
     private static bool IsAuthorized(HttpContext context, ApiHostConfig config)

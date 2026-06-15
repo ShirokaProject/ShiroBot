@@ -9,7 +9,12 @@ internal sealed class ReplySubscriptionManager
 {
     private readonly ConcurrentDictionary<Guid, ReplySubscription> _subscriptions = [];
 
-    public IReplySubscription Subscribe(string ownerId, long messageSeq, TimeSpan duration, ReplyMessageHandler handler)
+    public IReplySubscription Subscribe(
+        string ownerId,
+        long messageSeq,
+        TimeSpan duration,
+        ReplyMessageHandler handler,
+        bool disposeOnReply = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentNullException.ThrowIfNull(handler);
@@ -18,7 +23,7 @@ internal sealed class ReplySubscriptionManager
         var expiresAt = duration == Timeout.InfiniteTimeSpan
             ? (DateTimeOffset?)null
             : DateTimeOffset.UtcNow.Add(duration);
-        var subscription = new ReplySubscription(id, ownerId, messageSeq, expiresAt, handler, Remove);
+        var subscription = new ReplySubscription(id, ownerId, messageSeq, expiresAt, handler, disposeOnReply, Remove);
         _subscriptions[id] = subscription;
         return subscription;
     }
@@ -59,6 +64,11 @@ internal sealed class ReplySubscriptionManager
 
         foreach (var subscription in matches)
         {
+            if (subscription.DisposeOnReply)
+            {
+                subscription.Dispose();
+            }
+
             try
             {
                 await subscription.Handler(message).ConfigureAwait(false);
@@ -86,6 +96,7 @@ internal sealed class ReplySubscriptionManager
         long messageSeq,
         DateTimeOffset? expiresAt,
         ReplyMessageHandler handler,
+        bool disposeOnReply,
         Action<Guid> remove) : IReplySubscription
     {
         private int _disposed;
@@ -94,6 +105,7 @@ internal sealed class ReplySubscriptionManager
         public long MessageSeq { get; } = messageSeq;
         public DateTimeOffset? ExpiresAt { get; } = expiresAt;
         public ReplyMessageHandler Handler { get; } = handler;
+        public bool DisposeOnReply { get; } = disposeOnReply;
 
         public void Dispose()
         {

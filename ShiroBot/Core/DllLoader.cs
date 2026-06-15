@@ -34,7 +34,7 @@ public class DllLoader<T>
     /// </summary>
     public AssemblyLoadContext? Alc => _alc;
 
-    public T Load(string dllPath)
+    public T Load(string dllPath, string? typeFullName = null)
     {
         _alc = new PluginAssemblyLoadContext(dllPath, _collectible, _shared);
         _alcWeakReference = new WeakReference(_alc);
@@ -50,8 +50,10 @@ public class DllLoader<T>
         if (candidateTypes.Count == 0)
             throw new Exception($"No {typeof(T).Name} found in DLL");
 
-        var primaryType = candidateTypes
-            .FirstOrDefault() ?? candidateTypes.First();
+        var primaryType = string.IsNullOrWhiteSpace(typeFullName)
+            ? candidateTypes.First()
+            : candidateTypes.FirstOrDefault(type => string.Equals(type.FullName, typeFullName, StringComparison.Ordinal))
+              ?? throw new InvalidOperationException($"Type {typeFullName} not found in DLL");
 
         return Activator.CreateInstance(primaryType) as T
                ?? throw new InvalidOperationException("Failed to create dllInstance");

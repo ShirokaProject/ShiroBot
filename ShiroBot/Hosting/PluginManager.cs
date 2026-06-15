@@ -2,14 +2,31 @@ using ShiroBot.Core;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
+using System.Collections.Concurrent;
+using System.Reflection;
 using CH = ShiroBot.Core.ConsoleHelper;
 
 namespace ShiroBot.Hosting;
+
+internal sealed record PluginProbeInfo(
+    string TypeFullName,
+    string Id,
+    string Name,
+    string Version,
+    string? Description,
+    string? GithubRepo,
+    bool IsPluginSingleFile);
+
+internal sealed record PluginProbeCacheEntry(long Length, DateTime LastWriteTimeUtc, PluginProbeInfo? Info);
 
 internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolver sharedAssemblies)
 {
     private readonly List<LoadedPluginHandle> _loadedPlugins = [];
     private readonly List<Task> _pluginBackgroundTasks = [];
+    private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
+    private FileSystemWatcher? _pluginRootWatcher;
+    private string? _watchedPluginRoot;
     private bool _isShuttingDown;
 
     public string PluginRootPath { get; set; } = string.Empty;
@@ -69,10 +86,16 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             return [];
 
         var pluginRoot = Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar);
+        EnsurePluginRootWatcher(pluginRoot);
         var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenPluginIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var assemblyPath in EnumerateLoadableCandidateAssemblies(pluginRoot))
         {
+            var pluginInfo = TryProbePluginInfoCached(assemblyPath);
+            if (pluginInfo is null) continue;
+            if (!seenPluginIds.Add(pluginInfo.Id)) continue;
+
             var parent = Path.GetDirectoryName(assemblyPath);
             if (string.IsNullOrWhiteSpace(parent)) continue;
 
@@ -95,10 +118,9 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
 
             if (includePluginNames)
             {
-                var pluginName = TryProbePluginName(assemblyPath);
-                if (!string.IsNullOrWhiteSpace(pluginName))
+                if (!string.IsNullOrWhiteSpace(pluginInfo.Id))
                 {
-                    candidates.Add(pluginName);
+                    candidates.Add(pluginInfo.Id);
                 }
             }
         }
@@ -106,6 +128,129 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         return candidates
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private void EnsurePluginRootWatcher(string pluginRoot)
+    {
+        if (string.Equals(_watchedPluginRoot, pluginRoot, StringComparison.OrdinalIgnoreCase)) return;
+
+        _pluginRootWatcher?.Dispose();
+        _watchedPluginRoot = pluginRoot;
+        _pluginRootWatcher = new FileSystemWatcher(pluginRoot)
+        {
+            Filter = "*",
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName,
+            EnableRaisingEvents = true
+        };
+
+        _pluginRootWatcher.Changed += (_, e) => MarkProbeDirty(e.FullPath);
+        _pluginRootWatcher.Created += (_, e) => HandleCreatedPluginPath(e.FullPath);
+        _pluginRootWatcher.Deleted += (_, e) => RemoveProbeCache(e.FullPath);
+        _pluginRootWatcher.Renamed += (_, e) =>
+        {
+            RemoveProbeCache(e.OldFullPath);
+            HandleCreatedPluginPath(e.FullPath);
+        };
+    }
+
+    private void MarkProbeDirty(string path)
+    {
+        if (Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            _dirtyProbePaths[Path.GetFullPath(path)] = 1;
+        }
+    }
+
+    private void HandleCreatedPluginPath(string path)
+    {
+        if (Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            HandleCreatedPluginFile(path);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            var fullPath = Path.GetFullPath(path);
+            for (var i = 0; i < 20; i++)
+            {
+                if (Directory.Exists(fullPath)) break;
+                await Task.Delay(200).ConfigureAwait(false);
+            }
+
+            if (!Directory.Exists(fullPath)) return;
+
+            var directoryName = new DirectoryInfo(fullPath).Name;
+            var entryDll = Path.Combine(fullPath, $"{directoryName}.dll");
+            if (File.Exists(entryDll))
+            {
+                HandleCreatedPluginFile(entryDll);
+            }
+        });
+    }
+
+    private void HandleCreatedPluginFile(string path)
+    {
+        MarkProbeDirty(path);
+        if (!Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase)) return;
+
+        _ = Task.Run(async () =>
+        {
+            var fullPath = Path.GetFullPath(path);
+            await WaitForFileReadyAsync(fullPath).ConfigureAwait(false);
+
+            var info = TryProbePluginInfoCached(fullPath);
+            if (info is null)
+            {
+                CH.Info($"检测到新 DLL，非插件已忽略: {Path.GetFileName(fullPath)}");
+                return;
+            }
+
+            CH.Info($"检测到新插件: {info.Name} ({info.Id}) - {fullPath}");
+        });
+    }
+
+    private static async Task WaitForFileReadyAsync(string path)
+    {
+        for (var i = 0; i < 20; i++)
+        {
+            try
+            {
+                if (!File.Exists(path)) return;
+                using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (stream.Length > 0) return;
+            }
+            catch (IOException)
+            {
+                // File is still being copied.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // File is still being copied or locked by another process.
+            }
+
+            await Task.Delay(200).ConfigureAwait(false);
+        }
+    }
+
+    private void RemoveProbeCache(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (!Path.GetExtension(fullPath).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            var directoryPrefix = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            foreach (var cachedPath in _probeCache.Keys.Where(item => item.StartsWith(directoryPrefix, StringComparison.OrdinalIgnoreCase)).ToArray())
+            {
+                _probeCache.TryRemove(cachedPath, out _);
+                _dirtyProbePaths.TryRemove(cachedPath, out _);
+            }
+
+            return;
+        }
+
+        _probeCache.TryRemove(fullPath, out _);
+        _dirtyProbePaths.TryRemove(fullPath, out _);
     }
 
     public List<LoadedPluginHandle> GetLoadedPluginSnapshot()
@@ -365,69 +510,74 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         try
         {
             var actualDllPath = Path.GetFullPath(dll);
+            var pluginInfo = ProbePluginInfo(actualDllPath);
+
+            lock (PluginLifecycleLock)
+            {
+                if (IsPluginLoaded(pluginInfo.Id))
+                {
+                    CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
+                    return;
+                }
+            }
 
             var isRootLevelPluginAssembly = string.Equals(
                 Path.GetFullPath(Path.GetDirectoryName(dll) ?? PluginRootPath).TrimEnd(Path.DirectorySeparatorChar),
                 Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar),
                 StringComparison.OrdinalIgnoreCase);
 
-            IBotPlugin? tempPlugin = null;
             if (isRootLevelPluginAssembly)
             {
-                //getplugininfo
-                string? pluginName;
-                var tempLoader = CreateLoader();
-
                 try
                 {
-                    tempPlugin = tempLoader.Load(actualDllPath);
-                    var pluginInfo = tempPlugin.Metadata;
-                    pluginName = tempPlugin.Name;
-
-                    // getPluginInfo
                     if (pluginInfo.IsPluginSingleFile is true)
                     {
+                        loader = CreateLoader();
+                        var plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
+
                         var pluginContext = CreatePluginContext(
-                            tempPlugin.Name,
+                            pluginInfo.Id,
                             pluginDirectory: null,
                             routePolicy);
 
-                        var metadata = tempPlugin.Metadata;
-                        CH.Info($"开始加载插件: {metadata.Name} v{metadata.Version} ");
+                        CH.Info($"开始加载插件: {pluginInfo.Name} v{pluginInfo.Version} ");
 
                         using (BotLog.BeginScope(pluginContext.Logger))
                         {
-                            await tempPlugin.OnLoad(pluginContext);
+                            await plugin.OnLoad(pluginContext);
                         }
 
                         var pluginHandle = new LoadedPluginHandle(
-                            tempPlugin,
+                            plugin,
                             pluginContext,
-                            tempLoader,
+                            loader,
                             actualDllPath,
-                            CreateGroupRouteFilter(tempPlugin.Name, routePolicy));
+                            pluginInfo,
+                            CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
 
                         lock (PluginLifecycleLock)
                         {
+                            if (IsPluginLoaded(pluginInfo.Id))
+                            {
+                                CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
+                                loader.Unload();
+                                return;
+                            }
+
                             _loadedPlugins.Add(pluginHandle);
                             hostEventDispatcher.RegisterPlugin(pluginHandle);
                         }
 
-                        CH.Success($"插件加载成功: {tempPlugin.Name} ({actualDllPath})");
+                        CH.Success($"插件加载成功: {pluginInfo.Id} ({actualDllPath})");
+                        loader = null;
+                        return;
                     }
                     else
                     {
                         //move plugin
                         var pluginDisplayName = pluginInfo.Name;
-                        var targetDllRootPath = Path.Combine(PluginRootPath, pluginName);
-                        var targetDllPath = Path.Combine(targetDllRootPath, $"{pluginName}.dll");
-
-                        tempPlugin = null;
-                        var tempAlcWeakReference = tempLoader.BeginUnload();
-                        if (!DllLoader<IBotPlugin>.WaitForUnload(tempAlcWeakReference))
-                        {
-                            throw new IOException($"插件探测程序集尚未释放，无法移动文件: {actualDllPath}");
-                        }
+                        var targetDllRootPath = Path.Combine(PluginRootPath, pluginInfo.Id);
+                        var targetDllPath = Path.Combine(targetDllRootPath, $"{pluginInfo.Id}.dll");
 
                         try
                         {
@@ -450,17 +600,16 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                 }
             }
 
-            if (tempPlugin is null)
+            if (loader is null)
             {
                 loader = CreateLoader();
-                var plugin = loader.Load(actualDllPath);
+                var plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
 
                 lock (PluginLifecycleLock)
                 {
-                    if (_loadedPlugins.Any(item =>
-                            string.Equals(item.Name, plugin.Name, StringComparison.OrdinalIgnoreCase)))
+                    if (IsPluginLoaded(pluginInfo.Id))
                     {
-                        CH.Warning($"插件名重复，已跳过：{plugin.Name} ({actualDllPath})");
+                        CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
                         loader.Unload();
                         return;
                     }
@@ -474,12 +623,11 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                     ? null
                     : dllDirectory;
                 var pluginContext = CreatePluginContext(
-                    plugin.Name,
+                    pluginInfo.Id,
                     pluginDirectory,
                     routePolicy);
 
-                var metadata = plugin.Metadata;
-                CH.Info($"开始加载插件: {metadata.Name} v{metadata.Version} ");
+                CH.Info($"开始加载插件: {pluginInfo.Name} v{pluginInfo.Version} ");
 
                 using (BotLog.BeginScope(pluginContext.Logger))
                 {
@@ -491,15 +639,23 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                     pluginContext,
                     loader,
                     actualDllPath,
-                    CreateGroupRouteFilter(plugin.Name, routePolicy));
+                    pluginInfo,
+                    CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
 
                 lock (PluginLifecycleLock)
                 {
+                    if (IsPluginLoaded(pluginInfo.Id))
+                    {
+                        CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
+                        loader.Unload();
+                        return;
+                    }
+
                     _loadedPlugins.Add(pluginHandle);
                     hostEventDispatcher.RegisterPlugin(pluginHandle);
                 }
 
-                CH.Success($"插件加载成功: {plugin.Name} ({actualDllPath})");
+                CH.Success($"插件加载成功: {pluginInfo.Id} ({actualDllPath})");
                 loader = null;
             }
         }
@@ -509,6 +665,9 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             loader?.Unload();
         }
     }
+
+    private bool IsPluginLoaded(string pluginId) =>
+        _loadedPlugins.Any(item => string.Equals(item.Name, pluginId, StringComparison.OrdinalIgnoreCase));
 
     private DllLoader<IBotPlugin> CreateLoader() =>
         new(collectible: true, shared: SharedAssemblies);
@@ -577,7 +736,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             {
                 var fileName = Path.GetFileNameWithoutExtension(path);
                 var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
-                var pluginName = TryProbePluginName(path);
+                var pluginName = TryProbePluginInfoCached(path)?.Id;
                 return NameMatches(fileName, inputAliases) ||
                        (NameMatches(directoryName, inputAliases) &&
                         string.Equals(fileName, directoryName, StringComparison.OrdinalIgnoreCase)) ||
@@ -603,7 +762,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                 var fileName = Path.GetFileNameWithoutExtension(path);
                 if (NameMatches(fileName, aliases)) return true;
 
-                var pluginName = TryProbePluginName(path);
+                var pluginName = TryProbePluginInfoCached(path)?.Id;
                 return NameMatches(pluginName, aliases);
             })
             .Select(Path.GetFullPath)
@@ -614,7 +773,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
 
         var loadableDlls = Directory.EnumerateFiles(pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .Where(path => TryProbePluginName(path) is not null)
+            .Where(path => TryProbePluginInfoCached(path) is not null)
             .Select(Path.GetFullPath)
             .ToList();
 
@@ -643,25 +802,113 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                aliases.Contains(candidate["ShiroBot.".Length..]);
     }
 
-    private string? TryProbePluginName(string assemblyPath)
+    private PluginProbeInfo ProbePluginInfo(string assemblyPath) =>
+        TryProbePluginInfoCached(assemblyPath)
+        ?? throw new InvalidOperationException($"No {nameof(BotPluginAttribute)} found on IBotPlugin type in DLL");
+
+    private PluginProbeInfo? TryProbePluginInfoCached(string assemblyPath)
     {
-        DllLoader<IBotPlugin>? loader = null;
-        IBotPlugin? plugin = null;
+        var fullPath = Path.GetFullPath(assemblyPath);
+        if (!File.Exists(fullPath))
+        {
+            RemoveProbeCache(fullPath);
+            return null;
+        }
+
+        var fileInfo = new FileInfo(fullPath);
+        var dirty = _dirtyProbePaths.ContainsKey(fullPath);
+        if (!dirty &&
+            _probeCache.TryGetValue(fullPath, out var cached) &&
+            cached.Length == fileInfo.Length &&
+            cached.LastWriteTimeUtc == fileInfo.LastWriteTimeUtc)
+        {
+            return cached.Info;
+        }
+
+        _dirtyProbePaths.TryRemove(fullPath, out _);
+        var info = TryProbePluginInfo(fullPath);
+        _probeCache[fullPath] = new PluginProbeCacheEntry(fileInfo.Length, fileInfo.LastWriteTimeUtc, info);
+        return info;
+    }
+
+    private static PluginProbeInfo? TryProbePluginInfo(string assemblyPath)
+    {
         try
         {
-            loader = CreateLoader();
-            plugin = loader.Load(assemblyPath);
-            return plugin.Name;
+            var resolverPaths = BuildMetadataResolverPaths(assemblyPath);
+            using var metadataContext = new MetadataLoadContext(new PathAssemblyResolver(resolverPaths));
+            var assembly = metadataContext.LoadFromAssemblyPath(assemblyPath);
+            var pluginType = assembly.GetTypes()
+                .FirstOrDefault(type =>
+                    !type.IsAbstract &&
+                    !type.IsInterface &&
+                    type.GetInterfaces().Any(item => item.FullName == typeof(IBotPlugin).FullName) &&
+                    type.GetCustomAttributesData().Any(IsBotPluginAttribute));
+
+            if (pluginType is null) return null;
+
+            var attribute = pluginType.GetCustomAttributesData().First(IsBotPluginAttribute);
+            var id = attribute.ConstructorArguments.FirstOrDefault().Value as string;
+            if (string.IsNullOrWhiteSpace(id)) return null;
+
+            var name = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.Name)) ?? id;
+            var version = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.Version)) ?? "1.0.0";
+            var description = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.Description));
+            var githubRepo = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.GithubRepo));
+            var isPluginSingleFile = GetNamedArgument<bool?>(attribute, nameof(BotPluginAttribute.IsPluginSingleFile)) ?? false;
+
+            return new PluginProbeInfo(
+                pluginType.FullName ?? pluginType.Name,
+                id,
+                name,
+                version,
+                description,
+                githubRepo,
+                isPluginSingleFile);
         }
         catch
         {
             return null;
         }
-        finally
+    }
+
+    private static bool IsBotPluginAttribute(CustomAttributeData attribute) =>
+        attribute.AttributeType.FullName == typeof(BotPluginAttribute).FullName;
+
+    private static T? GetNamedArgument<T>(CustomAttributeData attribute, string name)
+    {
+        foreach (var namedArgument in attribute.NamedArguments)
         {
-            plugin = null;
-            var weak = loader?.BeginUnload();
-            DllLoader<IBotPlugin>.WaitForUnload(weak, maxAttempts: 5, delayMs: 20);
+            if (namedArgument.MemberName == name && namedArgument.TypedValue.Value is T value)
+            {
+                return value;
+            }
         }
+
+        return default;
+    }
+
+    private static IReadOnlyList<string> BuildMetadataResolverPaths(string assemblyPath)
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string trustedAssemblies)
+        {
+            foreach (var path in trustedAssemblies.Split(Path.PathSeparator))
+            {
+                if (!string.IsNullOrWhiteSpace(path)) paths.Add(path);
+            }
+        }
+
+        var pluginDir = Path.GetDirectoryName(assemblyPath);
+        if (!string.IsNullOrWhiteSpace(pluginDir))
+        {
+            foreach (var dll in Directory.EnumerateFiles(pluginDir, "*.dll"))
+            {
+                paths.Add(dll);
+            }
+        }
+
+        paths.Add(assemblyPath);
+        return paths.ToArray();
     }
 }

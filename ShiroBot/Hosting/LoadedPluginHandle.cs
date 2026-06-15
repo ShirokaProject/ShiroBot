@@ -20,6 +20,7 @@ internal sealed class LoadedPluginHandle
         PluginContext context,
         DllLoader<IBotPlugin> loader,
         string assemblyPath,
+        PluginProbeInfo metadata,
         Func<long, bool>? groupRouteFilter = null)
     {
         _plugin = plugin;
@@ -28,8 +29,10 @@ internal sealed class LoadedPluginHandle
         _assemblyPath = assemblyPath;
         _groupRouteFilter = groupRouteFilter;
 
-        Name = plugin.Name;
-        Version = plugin.Metadata.Version;
+        Name = metadata.Id;
+        DisplayName = metadata.Name;
+        Version = metadata.Version;
+        GithubRepo = metadata.GithubRepo;
         Subscriptions = plugin is PluginBase pluginBase ? pluginBase.GetEffectiveSubscriptions() : BotEventSubscriptions.None;
         GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         FriendMessageRoutes = plugin is PluginBase friendPluginBase ? friendPluginBase.GetFriendMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
@@ -38,7 +41,10 @@ internal sealed class LoadedPluginHandle
     }
 
     public string Name { get; }
+    public string DisplayName { get; }
     public string Version { get; }
+    public string? GithubRepo { get; }
+    public string AssemblyPath => _assemblyPath;
     public BotEventSubscriptions Subscriptions { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
     public IReadOnlyList<MessageRouteDescriptor> FriendMessageRoutes { get; }
@@ -74,6 +80,7 @@ internal sealed class LoadedPluginHandle
         long totalBytes = 0;
         foreach (var assembly in loader.Alc.Assemblies)
         {
+#pragma warning disable IL3000
             if (assembly.IsDynamic || string.IsNullOrWhiteSpace(assembly.Location))
             {
                 continue;
@@ -82,6 +89,7 @@ internal sealed class LoadedPluginHandle
             try
             {
                 var fileInfo = new FileInfo(assembly.Location);
+#pragma warning restore IL3000
                 if (fileInfo.Exists)
                 {
                     totalBytes += fileInfo.Length;
