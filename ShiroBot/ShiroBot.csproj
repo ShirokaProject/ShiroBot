@@ -30,7 +30,6 @@
         <PublishSingleFile>true</PublishSingleFile>
         <PublishAot>false</PublishAot>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-        <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
         <DebuggerSupport>false</DebuggerSupport>
         <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
         <ServerGarbageCollection>true</ServerGarbageCollection>
@@ -42,7 +41,6 @@
                           Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'" />
         <PackageReference Include="Spectre.Console" Version="0.57.0" />
         <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
-        <PackageReference Include="System.Reflection.MetadataLoadContext" Version="10.0.0" />
         <PackageReference Include="Tomlyn" Version="2.6.0" />
     </ItemGroup>
 

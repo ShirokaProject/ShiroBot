@@ -76,7 +76,13 @@ jobs:
                 fi
 
                 output_dir="artifacts/host/${runtime}-${flavor}-${publish_kind}"
-                archive_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}.zip"
+                asset_ext=""
+                host_exe="ShiroBot"
+                if [[ "$runtime" == win-* ]]; then
+                  asset_ext=".exe"
+                  host_exe="ShiroBot.exe"
+                fi
+                asset_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}${asset_ext}"
 
                 dotnet publish "${{ env.HOST_PROJECT }}" \
                   --configuration "${{ env.CONFIGURATION }}" \
@@ -88,8 +94,8 @@ jobs:
                   /p:PublishSingleFile=true \
                   /p:IncludeNativeLibrariesForSelfExtract=true
 
-                find "$output_dir" -type f -name '*.pdb' -delete
-                (cd "$output_dir" && zip -r "$archive_path" .)
+                cp "$output_dir/$host_exe" "$asset_path"
+                chmod +x "$asset_path"
               done
             done
           done
@@ -116,7 +122,11 @@ jobs:
             local flavor="$2"
             local publish="$3"
             local label="$4"
-            link_asset "shirobot-host-${runtime}-${flavor}-${publish}.zip" "$label"
+            local ext=""
+            if [[ "$runtime" == win-* ]]; then
+              ext=".exe"
+            fi
+            link_asset "shirobot-host-${runtime}-${flavor}-${publish}${ext}" "$label"
           }
 
           {
@@ -166,7 +176,7 @@ jobs:
         with:
           name: release-assets
           path: |
-            artifacts/archives/*.zip
+            artifacts/archives/*
             artifacts/nuget/*.nupkg
           if-no-files-found: error
 
@@ -175,6 +185,6 @@ jobs:
         with:
           body_path: RELEASE_NOTES.md
           files: |
-            artifacts/archives/*.zip
+            artifacts/archives/*
             artifacts/nuget/*.nupkg
           fail_on_unmatched_files: true

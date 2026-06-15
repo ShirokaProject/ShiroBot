@@ -4,6 +4,8 @@ using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using CH = ShiroBot.Core.ConsoleHelper;
 
 namespace ShiroBot.Hosting;
@@ -25,6 +27,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
     private readonly List<Task> _pluginBackgroundTasks = [];
     private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTime> _suppressedWatcherPaths = new(StringComparer.OrdinalIgnoreCase);
     private FileSystemWatcher? _pluginRootWatcher;
     private string? _watchedPluginRoot;
     private bool _isShuttingDown;
@@ -164,6 +167,8 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
 
     private void HandleCreatedPluginPath(string path)
     {
+        if (IsWatcherPathSuppressed(path)) return;
+
         if (Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase))
         {
             HandleCreatedPluginFile(path);
@@ -199,6 +204,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         {
             var fullPath = Path.GetFullPath(path);
             await WaitForFileReadyAsync(fullPath).ConfigureAwait(false);
+            if (IsWatcherPathSuppressed(fullPath)) return;
 
             var info = TryProbePluginInfoCached(fullPath);
             if (info is null)
@@ -233,6 +239,38 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             await Task.Delay(200).ConfigureAwait(false);
         }
     }
+
+    private void SuppressWatcherPath(string path, int seconds = 10)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        _suppressedWatcherPaths[NormalizeWatcherPath(path)] = DateTime.UtcNow.AddSeconds(seconds);
+    }
+
+    private bool IsWatcherPathSuppressed(string path)
+    {
+        var now = DateTime.UtcNow;
+        var fullPath = NormalizeWatcherPath(path);
+
+        foreach (var (suppressedPath, expiresAt) in _suppressedWatcherPaths.ToArray())
+        {
+            if (expiresAt <= now)
+            {
+                _suppressedWatcherPaths.TryRemove(suppressedPath, out _);
+                continue;
+            }
+
+            if (string.Equals(fullPath, suppressedPath, StringComparison.OrdinalIgnoreCase) ||
+                fullPath.StartsWith(suppressedPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeWatcherPath(string path) =>
+        Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     private void RemoveProbeCache(string path)
     {
@@ -581,6 +619,8 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
 
                         try
                         {
+                            SuppressWatcherPath(targetDllRootPath);
+                            SuppressWatcherPath(targetDllPath);
                             Directory.CreateDirectory(targetDllRootPath);
                             File.Copy(actualDllPath, targetDllPath, true);
                             File.Delete(actualDllPath);
@@ -835,35 +875,39 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
     {
         try
         {
-            var resolverPaths = BuildMetadataResolverPaths(assemblyPath);
-            using var metadataContext = new MetadataLoadContext(new PathAssemblyResolver(resolverPaths));
-            var assembly = metadataContext.LoadFromAssemblyPath(assemblyPath);
-            var pluginType = assembly.GetTypes()
-                .FirstOrDefault(type =>
-                    type is { IsAbstract: false, IsInterface: false } &&
-                    type.GetInterfaces().Any(item => item.FullName == typeof(IBotPlugin).FullName) &&
-                    type.GetCustomAttributesData().Any(IsBotPluginAttribute));
+            using var stream = File.OpenRead(assemblyPath);
+            using var peReader = new PEReader(stream);
+            if (!peReader.HasMetadata) return null;
 
-            if (pluginType is null) return null;
+            var reader = peReader.GetMetadataReader();
+            foreach (var typeHandle in reader.TypeDefinitions)
+            {
+                var type = reader.GetTypeDefinition(typeHandle);
+                var attributes = type.Attributes;
+                if ((attributes & TypeAttributes.Interface) != 0 || (attributes & TypeAttributes.Abstract) != 0)
+                {
+                    continue;
+                }
 
-            var attribute = pluginType.GetCustomAttributesData().First(IsBotPluginAttribute);
-            var id = attribute.ConstructorArguments.FirstOrDefault().Value as string;
-            if (string.IsNullOrWhiteSpace(id)) return null;
+                foreach (var attributeHandle in type.GetCustomAttributes())
+                {
+                    if (!TryReadBotPluginAttribute(reader, attributeHandle, out var pluginAttribute)) continue;
 
-            var name = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.Name)) ?? id;
-            var version = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.Version)) ?? "1.0.0";
-            var description = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.Description));
-            var githubRepo = GetNamedArgument<string>(attribute, nameof(BotPluginAttribute.GithubRepo));
-            var isPluginSingleFile = GetNamedArgument<bool?>(attribute, nameof(BotPluginAttribute.IsPluginSingleFile)) ?? false;
+                    var id = pluginAttribute.Id;
+                    if (string.IsNullOrWhiteSpace(id)) return null;
 
-            return new PluginProbeInfo(
-                pluginType.FullName ?? pluginType.Name,
-                id,
-                name,
-                version,
-                description,
-                githubRepo,
-                isPluginSingleFile);
+                    return new PluginProbeInfo(
+                        GetTypeDefinitionFullName(reader, type),
+                        id,
+                        pluginAttribute.Name ?? id,
+                        pluginAttribute.Version ?? "1.0.0",
+                        pluginAttribute.Description,
+                        pluginAttribute.GithubRepo,
+                        pluginAttribute.IsPluginSingleFile ?? false);
+                }
+            }
+
+            return null;
         }
         catch
         {
@@ -871,61 +915,162 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         }
     }
 
-    private static bool IsBotPluginAttribute(CustomAttributeData attribute) =>
-        attribute.AttributeType.FullName == typeof(BotPluginAttribute).FullName;
-
-    private static T? GetNamedArgument<T>(CustomAttributeData attribute, string name)
+    private static bool TryReadBotPluginAttribute(
+        MetadataReader reader,
+        CustomAttributeHandle attributeHandle,
+        out RawBotPluginAttribute attribute)
     {
-        foreach (var namedArgument in attribute.NamedArguments)
+        attribute = default;
+
+        var customAttribute = reader.GetCustomAttribute(attributeHandle);
+        if (!string.Equals(
+                GetAttributeTypeFullName(reader, customAttribute),
+                typeof(BotPluginAttribute).FullName,
+                StringComparison.Ordinal))
         {
-            if (namedArgument.MemberName == name && namedArgument.TypedValue.Value is T value)
+            return false;
+        }
+
+        var blob = reader.GetBlobReader(customAttribute.Value);
+        if (blob.ReadUInt16() != 1) return false; // CustomAttribute prolog
+
+        var id = blob.ReadSerializedString();
+        if (string.IsNullOrWhiteSpace(id)) return false;
+
+        string? name = null;
+        string? version = null;
+        string? description = null;
+        string? githubRepo = null;
+        bool? isPluginSingleFile = null;
+
+        var namedArgumentCount = blob.ReadUInt16();
+        for (var i = 0; i < namedArgumentCount; i++)
+        {
+            _ = blob.ReadByte(); // FIELD(0x53) or PROPERTY(0x54)
+            var typeCode = blob.ReadByte();
+            var memberName = blob.ReadSerializedString();
+
+            switch (memberName)
             {
-                return value;
+                case nameof(BotPluginAttribute.Name) when typeCode == SerializedTypeString:
+                    name = blob.ReadSerializedString();
+                    break;
+                case nameof(BotPluginAttribute.Version) when typeCode == SerializedTypeString:
+                    version = blob.ReadSerializedString();
+                    break;
+                case nameof(BotPluginAttribute.Description) when typeCode == SerializedTypeString:
+                    description = blob.ReadSerializedString();
+                    break;
+                case nameof(BotPluginAttribute.GithubRepo) when typeCode == SerializedTypeString:
+                    githubRepo = blob.ReadSerializedString();
+                    break;
+                case nameof(BotPluginAttribute.IsPluginSingleFile) when typeCode == SerializedTypeBoolean:
+                    isPluginSingleFile = blob.ReadBoolean();
+                    break;
+                default:
+                    if (!TrySkipSerializedFixedArgument(ref blob, typeCode)) return false;
+                    break;
             }
         }
 
-        return default;
+        attribute = new RawBotPluginAttribute(id, name, version, description, githubRepo, isPluginSingleFile);
+        return true;
     }
 
-    private static IReadOnlyList<string> BuildMetadataResolverPaths(string assemblyPath)
+    private static bool TrySkipSerializedFixedArgument(ref BlobReader blob, byte typeCode)
     {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        try
         {
-            if (!string.IsNullOrWhiteSpace(assembly.Location))
+            switch (typeCode)
             {
-                paths.Add(assembly.Location);
+                case SerializedTypeBoolean:
+                case SerializedTypeI1:
+                case SerializedTypeU1:
+                    blob.ReadByte();
+                    return true;
+                case SerializedTypeChar:
+                case SerializedTypeI2:
+                case SerializedTypeU2:
+                    blob.ReadBytes(2);
+                    return true;
+                case SerializedTypeI4:
+                case SerializedTypeU4:
+                case SerializedTypeR4:
+                    blob.ReadBytes(4);
+                    return true;
+                case SerializedTypeI8:
+                case SerializedTypeU8:
+                case SerializedTypeR8:
+                    blob.ReadBytes(8);
+                    return true;
+                case SerializedTypeString:
+                case SerializedTypeType:
+                    blob.ReadSerializedString();
+                    return true;
+                default:
+                    return false;
             }
         }
-
-        if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string trustedAssemblies)
+        catch
         {
-            foreach (var path in trustedAssemblies.Split(Path.PathSeparator))
-            {
-                if (!string.IsNullOrWhiteSpace(path)) paths.Add(path);
-            }
+            return false;
         }
-
-        AddDirectoryAssemblies(paths, AppContext.BaseDirectory);
-
-        var pluginDir = Path.GetDirectoryName(assemblyPath);
-        if (!string.IsNullOrWhiteSpace(pluginDir))
-        {
-            AddDirectoryAssemblies(paths, pluginDir);
-        }
-
-        paths.Add(assemblyPath);
-        return paths.ToArray();
     }
 
-    private static void AddDirectoryAssemblies(HashSet<string> paths, string directory)
+    private static string? GetAttributeTypeFullName(MetadataReader reader, CustomAttribute attribute)
     {
-        if (!Directory.Exists(directory)) return;
-
-        foreach (var dll in Directory.EnumerateFiles(directory, "*.dll"))
+        return attribute.Constructor.Kind switch
         {
-            paths.Add(dll);
-        }
+            HandleKind.MemberReference => GetMemberReferenceParentTypeFullName(reader, reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor)),
+            HandleKind.MethodDefinition => GetTypeDefinitionFullName(reader, reader.GetTypeDefinition(reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType())),
+            _ => null
+        };
     }
+
+    private static string? GetMemberReferenceParentTypeFullName(MetadataReader reader, MemberReference memberReference)
+    {
+        return memberReference.Parent.Kind switch
+        {
+            HandleKind.TypeReference => GetTypeReferenceFullName(reader, reader.GetTypeReference((TypeReferenceHandle)memberReference.Parent)),
+            HandleKind.TypeDefinition => GetTypeDefinitionFullName(reader, reader.GetTypeDefinition((TypeDefinitionHandle)memberReference.Parent)),
+            _ => null
+        };
+    }
+
+    private static string GetTypeDefinitionFullName(MetadataReader reader, TypeDefinition type)
+    {
+        var name = reader.GetString(type.Name);
+        var ns = reader.GetString(type.Namespace);
+        return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
+    }
+
+    private static string GetTypeReferenceFullName(MetadataReader reader, TypeReference type)
+    {
+        var name = reader.GetString(type.Name);
+        var ns = reader.GetString(type.Namespace);
+        return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
+    }
+
+    private const byte SerializedTypeBoolean = 0x02;
+    private const byte SerializedTypeChar = 0x03;
+    private const byte SerializedTypeI1 = 0x04;
+    private const byte SerializedTypeU1 = 0x05;
+    private const byte SerializedTypeI2 = 0x06;
+    private const byte SerializedTypeU2 = 0x07;
+    private const byte SerializedTypeI4 = 0x08;
+    private const byte SerializedTypeU4 = 0x09;
+    private const byte SerializedTypeI8 = 0x0A;
+    private const byte SerializedTypeU8 = 0x0B;
+    private const byte SerializedTypeR4 = 0x0C;
+    private const byte SerializedTypeR8 = 0x0D;
+    private const byte SerializedTypeString = 0x0E;
+    private const byte SerializedTypeType = 0x50;
+
+    private readonly record struct RawBotPluginAttribute(
+        string Id,
+        string? Name,
+        string? Version,
+        string? Description,
+        string? GithubRepo,
+        bool? IsPluginSingleFile);
 }

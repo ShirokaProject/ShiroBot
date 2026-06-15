@@ -385,7 +385,8 @@ internal sealed class HostCommandHandler(
             ? "self-contained"
             : "framework-dependent";
 
-        return $"shirobot-host-{runtime}-{flavor}-{publishKind}.zip";
+        var extension = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : string.Empty;
+        return $"shirobot-host-{runtime}-{flavor}-{publishKind}{extension}";
     }
 
     private static string? GetAssemblyMetadata(Assembly? assembly, string key)
