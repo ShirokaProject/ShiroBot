@@ -1,0 +1,180 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+  DOTNET_NOLOGO: '1'
+  CONFIGURATION: Release
+  HOST_PROJECT: ShiroBot/ShiroBot.csproj
+  SOLUTION_FILE: Shirobot.slnx
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Pack NuGet packages
+        run: |
+          set -euo pipefail
+
+          dotnet restore "${{ env.SOLUTION_FILE }}" --property:Configuration="${{ env.CONFIGURATION }}"
+
+          dotnet pack ShiroBot.Model/ShiroBot.Model.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --no-restore \
+            --output artifacts/nuget \
+            /p:ContinuousIntegrationBuild=true
+
+          dotnet pack ShiroBot.SDK/ShiroBot.SDK.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --no-restore \
+            --output artifacts/nuget \
+            /p:ContinuousIntegrationBuild=true
+
+          dotnet pack ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --no-restore \
+            --output artifacts/nuget \
+            /p:ContinuousIntegrationBuild=true
+
+      - name: Publish host packages
+        run: |
+          set -euo pipefail
+
+          runtimes=(win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64)
+          flavors=(full lite)
+          publish_kinds=(framework-dependent self-contained)
+
+          mkdir -p artifacts/archives
+
+          for runtime in "${runtimes[@]}"; do
+            for flavor in "${flavors[@]}"; do
+              enable_avalonia=true
+              if [ "$flavor" = "lite" ]; then
+                enable_avalonia=false
+              fi
+
+              for publish_kind in "${publish_kinds[@]}"; do
+                self_contained=false
+                if [ "$publish_kind" = "self-contained" ]; then
+                  self_contained=true
+                fi
+
+                output_dir="artifacts/host/${runtime}-${flavor}-${publish_kind}"
+                archive_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}.zip"
+
+                dotnet publish "${{ env.HOST_PROJECT }}" \
+                  --configuration "${{ env.CONFIGURATION }}" \
+                  --runtime "$runtime" \
+                  --self-contained "$self_contained" \
+                  --output "$output_dir" \
+                  /p:ContinuousIntegrationBuild=true \
+                  /p:EnableAvalonia="$enable_avalonia" \
+                  /p:PublishSingleFile=true \
+                  /p:IncludeNativeLibrariesForSelfExtract=true
+
+                find "$output_dir" -type f -name '*.pdb' -delete
+                (cd "$output_dir" && zip -r "$archive_path" .)
+              done
+            done
+          done
+
+      - name: Create release notes
+        run: |
+          set -euo pipefail
+
+          tag='${{ github.ref_name }}'
+          repo='${{ github.repository }}'
+          base_url="https://github.com/${repo}/releases/download/${tag}"
+
+          link_asset() {
+            local name="$1"
+            if [ -f "artifacts/archives/${name}" ] || [ -f "artifacts/nuget/${name}" ]; then
+              printf '[%s](%s/%s)' "$2" "$base_url" "$name"
+            else
+              printf '%s' "$2"
+            fi
+          }
+
+          host_link() {
+            local runtime="$1"
+            local flavor="$2"
+            local publish="$3"
+            local label="$4"
+            link_asset "shirobot-host-${runtime}-${flavor}-${publish}.zip" "$label"
+          }
+
+          {
+            echo "## ${tag}"
+            echo
+            echo "## 下载地址"
+            echo
+            echo "### 完整版 full（包含 Avalonia 渲染模块）"
+            echo
+            echo "#### 自带运行时 self-contained（推荐，不需要预装 .NET）"
+            echo
+            echo "- Windows: $(host_link win-x64 full self-contained x64) | $(host_link win-arm64 full self-contained ARM64)"
+            echo "- macOS: $(host_link osx-arm64 full self-contained Apple芯片) | $(host_link osx-x64 full self-contained Intel芯片)"
+            echo "- Linux: $(host_link linux-x64 full self-contained x64) | $(host_link linux-arm64 full self-contained ARM64)"
+            echo
+            echo "#### 不自带运行时 framework-dependent（需要安装 .NET 10 Runtime）"
+            echo
+            echo "- Windows: $(host_link win-x64 full framework-dependent x64) | $(host_link win-arm64 full framework-dependent ARM64)"
+            echo "- macOS: $(host_link osx-arm64 full framework-dependent Apple芯片) | $(host_link osx-x64 full framework-dependent Intel芯片)"
+            echo "- Linux: $(host_link linux-x64 full framework-dependent x64) | $(host_link linux-arm64 full framework-dependent ARM64)"
+            echo
+            echo "### Lite 版（不包含 Avalonia 渲染模块）"
+            echo
+            echo "#### 自带运行时 self-contained（推荐，不需要预装 .NET）"
+            echo
+            echo "- Windows: $(host_link win-x64 lite self-contained x64) | $(host_link win-arm64 lite self-contained ARM64)"
+            echo "- macOS: $(host_link osx-arm64 lite self-contained Apple芯片) | $(host_link osx-x64 lite self-contained Intel芯片)"
+            echo "- Linux: $(host_link linux-x64 lite self-contained x64) | $(host_link linux-arm64 lite self-contained ARM64)"
+            echo
+            echo "#### 不自带运行时 framework-dependent（需要安装 .NET 10 Runtime）"
+            echo
+            echo "- Windows: $(host_link win-x64 lite framework-dependent x64) | $(host_link win-arm64 lite framework-dependent ARM64)"
+            echo "- macOS: $(host_link osx-arm64 lite framework-dependent Apple芯片) | $(host_link osx-x64 lite framework-dependent Intel芯片)"
+            echo "- Linux: $(host_link linux-x64 lite framework-dependent x64) | $(host_link linux-arm64 lite framework-dependent ARM64)"
+            echo
+            echo "### NuGet 包"
+            echo
+            for package in artifacts/nuget/*.nupkg; do
+              [ -e "$package" ] || continue
+              file_name="$(basename "$package")"
+              echo "- [${file_name}](${base_url}/${file_name})"
+            done
+          } > RELEASE_NOTES.md
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            artifacts/archives/*.zip
+            artifacts/nuget/*.nupkg
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            artifacts/archives/*.zip
+            artifacts/nuget/*.nupkg
+          fail_on_unmatched_files: true

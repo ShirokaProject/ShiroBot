@@ -10,13 +10,16 @@ public static class Updater
     private static readonly ConcurrentDictionary<string, PendingUpdateEntry> PendingUpdates = new(StringComparer.OrdinalIgnoreCase);
     private static Func<IReadOnlyList<long>> _getOwnerIds = () => [];
     private static Func<long, string, Task> _sendPrivateMessageAsync = (_, _) => Task.CompletedTask;
+    private static string? _githubProxy;
 
     public static void Initialize(
         Func<IReadOnlyList<long>> getOwnerIds,
-        Func<long, string, Task> sendPrivateMessageAsync)
+        Func<long, string, Task> sendPrivateMessageAsync,
+        string? githubProxy = null)
     {
         _getOwnerIds = getOwnerIds;
         _sendPrivateMessageAsync = sendPrivateMessageAsync;
+        _githubProxy = githubProxy;
     }
 
     public static async Task<GitHubReleaseUpdate?> CheckGitHubReleaseAsync(
@@ -47,7 +50,44 @@ public static class Updater
             NormalizeVersion(release.TagName),
             release.Name,
             release.HtmlUrl,
-            release.Body);
+            release.Body,
+            release.Assets.FirstOrDefault(asset => asset.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))?.DownloadUrl,
+            release.Assets.FirstOrDefault(asset => asset.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))?.Name);
+    }
+
+    public static async Task<GitHubReleaseUpdate?> CheckGitHubReleaseAssetAsync(
+        string repository,
+        string currentVersion,
+        string assetName,
+        bool includePrerelease = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(repository))
+        {
+            throw new ArgumentException("Repository cannot be empty.", nameof(repository));
+        }
+
+        if (string.IsNullOrWhiteSpace(assetName))
+        {
+            throw new ArgumentException("Asset name cannot be empty.", nameof(assetName));
+        }
+
+        var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
+        if (release is null || !IsNewerVersion(release.TagName, currentVersion))
+        {
+            return null;
+        }
+
+        var asset = release.Assets.FirstOrDefault(item => string.Equals(item.Name, assetName, StringComparison.OrdinalIgnoreCase));
+        return new GitHubReleaseUpdate(
+            repository,
+            NormalizeVersion(currentVersion),
+            NormalizeVersion(release.TagName),
+            release.Name,
+            release.HtmlUrl,
+            release.Body,
+            asset?.DownloadUrl,
+            asset?.Name);
     }
 
     public static async Task<string> RequestHostUpdateAsync(
@@ -65,6 +105,7 @@ public static class Updater
         await NotifyOwnersAsync(
             $"检测到宿主更新: {update.CurrentVersion} -> {update.LatestVersion}\n" +
             $"来源: {update.Repository}\n" +
+            (string.IsNullOrWhiteSpace(update.AssetName) ? string.Empty : $"文件: {update.AssetName}\n") +
             $"确认更新: update confirm {id}\n" +
             $"取消更新: update cancel {id}",
             cancellationToken);
@@ -82,11 +123,12 @@ public static class Updater
             request.CurrentVersion,
             request.LatestVersion,
             request.ReleaseUrl,
-            async () => await UpdatePluginAsync(request.PluginName, cancellationToken));
+            async () => await UpdatePluginAsync(request.PluginName, request.AssetDownloadUrl, request.TargetPath, cancellationToken));
 
         await NotifyOwnersAsync(
             $"检测到插件更新: {request.PluginName} {request.CurrentVersion} -> {request.LatestVersion}\n" +
             (string.IsNullOrWhiteSpace(request.ReleaseUrl) ? string.Empty : $"来源: {request.ReleaseUrl}\n") +
+            (string.IsNullOrWhiteSpace(request.AssetDownloadUrl) ? string.Empty : $"文件: {request.AssetDownloadUrl}\n") +
             $"确认更新: update confirm {id}\n" +
             $"取消更新: update cancel {id}",
             cancellationToken);
@@ -130,9 +172,32 @@ public static class Updater
         return Task.CompletedTask;
     }
 
-    public static Task UpdatePluginAsync(string pluginName, CancellationToken cancellationToken = default)
+    public static async Task UpdatePluginAsync(string pluginName, string? assetDownloadUrl, string? targetPath, CancellationToken cancellationToken = default)
     {
-        return Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(assetDownloadUrl))
+        {
+            throw new InvalidOperationException($"插件 {pluginName} 的更新缺少 DLL 下载地址。");
+        }
+
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            throw new InvalidOperationException($"插件 {pluginName} 的更新缺少目标路径。");
+        }
+
+        var tempPath = targetPath + ".download";
+        using var request = new HttpRequestMessage(HttpMethod.Get, ApplyGithubProxy(assetDownloadUrl));
+        request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
+        using var response = await HttpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using (var input = await response.Content.ReadAsStreamAsync(cancellationToken))
+        await using (var output = File.Create(tempPath))
+        {
+            await input.CopyToAsync(output, cancellationToken);
+        }
+
+        File.Copy(tempPath, targetPath, overwrite: true);
+        File.Delete(tempPath);
     }
 
     private static string CreatePendingUpdate(
@@ -170,47 +235,37 @@ public static class Updater
         bool includePrerelease,
         CancellationToken cancellationToken)
     {
-        var releases = await GetReleasesAsync(repository, cancellationToken);
-        if (releases.Count == 0)
-        {
-            return null;
-        }
-
-        var release = includePrerelease
-            ? releases.FirstOrDefault()
-            : releases.FirstOrDefault(item => !item.Prerelease && !item.Draft);
-
-        return release;
+        return await GetLatestReleaseFromApiAsync(repository, cancellationToken);
     }
 
-    private static async Task<List<GitHubRelease>> GetReleasesAsync(string repository, CancellationToken cancellationToken)
+    private static async Task<GitHubRelease?> GetLatestReleaseFromApiAsync(string repository, CancellationToken cancellationToken)
     {
         var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"https://api.github.com/repos/{repository}/releases?per_page=20");
+            $"https://api.github.com/repos/{repository}/releases/latest");
 
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
 
         using var response = await HttpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        var releases = new List<GitHubRelease>();
-
-        foreach (var item in document.RootElement.EnumerateArray())
-        {
-            releases.Add(new GitHubRelease(
-                item.GetPropertyOrDefault("tag_name"),
-                item.GetPropertyOrDefault("name"),
-                item.GetPropertyOrDefault("html_url"),
-                item.GetPropertyOrDefault("body"),
-                item.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean(),
-                item.TryGetProperty("draft", out var draft) && draft.GetBoolean()));
-        }
-
-        return releases;
+        var item = document.RootElement;
+        return new GitHubRelease(
+            item.GetPropertyOrDefault("tag_name"),
+            item.GetPropertyOrDefault("name"),
+            item.GetPropertyOrDefault("html_url"),
+            item.GetPropertyOrDefault("body"),
+            item.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean(),
+            item.TryGetProperty("draft", out var draft) && draft.GetBoolean(),
+            GetReleaseAssets(item));
     }
 
     private static bool IsNewerVersion(string latestVersion, string currentVersion)
@@ -240,7 +295,31 @@ public static class Updater
         string HtmlUrl,
         string Body,
         bool Prerelease,
-        bool Draft);
+        bool Draft,
+        IReadOnlyList<GitHubReleaseAsset> Assets);
+
+    private sealed record GitHubReleaseAsset(string Name, string DownloadUrl);
+
+    private static IReadOnlyList<GitHubReleaseAsset> GetReleaseAssets(JsonElement release)
+    {
+        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var results = new List<GitHubReleaseAsset>();
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.GetPropertyOrDefault("name");
+            var downloadUrl = asset.GetPropertyOrDefault("browser_download_url");
+            if (!string.IsNullOrWhiteSpace(downloadUrl))
+            {
+                results.Add(new GitHubReleaseAsset(name, downloadUrl));
+            }
+        }
+
+        return results;
+    }
 
     private sealed record PendingUpdateEntry(
         string Id,
@@ -258,6 +337,13 @@ public static class Updater
             cancellationToken.ThrowIfCancellationRequested();
             return Execute();
         }
+    }
+
+    private static string ApplyGithubProxy(string url)
+    {
+        if (string.IsNullOrWhiteSpace(_githubProxy)) return url;
+
+        return _githubProxy.TrimEnd('/') + "/" + url;
     }
 }
 

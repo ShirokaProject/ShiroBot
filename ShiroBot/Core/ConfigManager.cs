@@ -13,6 +13,10 @@ public class CoreConfig
 
     public bool DisableConsoleInput { get; set; } = false;
 
+    public string? GithubProxy { get; set; }
+
+    public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
+
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
     public string AvaloniaTheme { get; set; } = "Light";
 

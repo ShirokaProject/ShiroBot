@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using ShiroBot.Core;
@@ -42,7 +44,7 @@ internal sealed class HostCommandHandler(
                 "> ",
                 () => BuildConsoleCompletions(
                     pluginManager.GetLoadedPluginNames(),
-                    pluginManager.GetLoadablePluginCandidates(includePluginNames: false)));
+                    pluginManager.GetLoadablePluginCandidates(includePluginNames: true)));
             if (string.IsNullOrWhiteSpace(input)) continue;
 
             if (CH.IsEnabled ||
@@ -91,6 +93,9 @@ internal sealed class HostCommandHandler(
                         break;
                     case "api":
                         CH.Info(HandleApiCommand(splitInput));
+                        break;
+                    case "update":
+                        CH.Info(HandleUpdateCommandAsync(splitInput).GetAwaiter().GetResult());
                         break;
                     case "help":
                         var orderedCommands = ConsoleCommands
@@ -182,59 +187,8 @@ internal sealed class HostCommandHandler(
             }
             case "update":
             {
-                if (splitInput.Length < 2)
-                {
-                    var pending = Updater.GetPendingUpdates();
-                    await botContext.Message.ReplyAsync(
-                        message,
-                        pending.Count == 0
-                            ? "当前没有待确认的更新请求。"
-                            : string.Join("\n", pending.Select(item =>
-                                $"{item.Id} | {item.Target} | {item.Name} {item.CurrentVersion} -> {item.LatestVersion}")));
-                    return true;
-                }
-
-                switch (splitInput[1].ToLowerInvariant())
-                {
-                    case "list":
-                    {
-                        var pending = Updater.GetPendingUpdates();
-                        await botContext.Message.ReplyAsync(
-                            message,
-                            pending.Count == 0
-                                ? "当前没有待确认的更新请求。"
-                                : string.Join("\n", pending.Select(item =>
-                                    $"{item.Id} | {item.Target} | {item.Name} {item.CurrentVersion} -> {item.LatestVersion}")));
-                        return true;
-                    }
-                    case "confirm":
-                    {
-                        if (splitInput.Length < 3)
-                        {
-                            await botContext.Message.ReplyAsync(message, "用法: update confirm <id>");
-                            return true;
-                        }
-
-                        var ok = await Updater.ConfirmUpdateAsync(splitInput[2]);
-                        await botContext.Message.ReplyAsync(message, ok ? "已开始执行更新。" : "未找到该更新请求。");
-                        return true;
-                    }
-                    case "cancel":
-                    {
-                        if (splitInput.Length < 3)
-                        {
-                            await botContext.Message.ReplyAsync(message, "用法: update cancel <id>");
-                            return true;
-                        }
-
-                        var ok = Updater.CancelUpdate(splitInput[2]);
-                        await botContext.Message.ReplyAsync(message, ok ? "已取消更新请求。" : "未找到该更新请求。");
-                        return true;
-                    }
-                    default:
-                        await botContext.Message.ReplyAsync(message, "用法: update [list|confirm|cancel]");
-                        return true;
-                }
+                await botContext.Message.ReplyAsync(message, await HandleUpdateCommandAsync(splitInput));
+                return true;
             }
             case "api":
             {
@@ -322,6 +276,185 @@ internal sealed class HostCommandHandler(
     }
 
     private static string? NormalizeCommand(string? command) => command?.TrimStart('/').ToLowerInvariant();
+
+    private async Task<string> HandleUpdateCommandAsync(string[] splitInput)
+    {
+        if (splitInput.Length < 2 || string.Equals(splitInput[1], "list", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildPendingUpdatesText();
+        }
+
+        switch (splitInput[1].ToLowerInvariant())
+        {
+            case "check":
+                return splitInput.Length >= 3 && string.Equals(splitInput[2], "host", StringComparison.OrdinalIgnoreCase)
+                    ? await CheckHostUpdateAsync()
+                    : splitInput.Length >= 3 && string.Equals(splitInput[2], "plugins", StringComparison.OrdinalIgnoreCase)
+                        ? await CheckPluginUpdatesAsync()
+                        : await CheckAllUpdatesAsync();
+            case "confirm":
+            {
+                if (splitInput.Length < 3) return "用法: update confirm <id>";
+
+                try
+                {
+                    var pending = Updater.GetPendingUpdates()
+                        .FirstOrDefault(item => string.Equals(item.Id, splitInput[2], StringComparison.OrdinalIgnoreCase));
+                    if (pending is { Target: UpdateTarget.Plugin })
+                    {
+                        await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, pending.Name);
+                    }
+
+                    var ok = await Updater.ConfirmUpdateAsync(splitInput[2]);
+                    if (!ok) return "未找到该更新请求。";
+
+                    if (pending is { Target: UpdateTarget.Plugin })
+                    {
+                        await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, pending.Name);
+                        return $"已执行更新任务并重新加载插件: {pending.Name}";
+                    }
+
+                    return "已执行更新任务。";
+                }
+                catch (Exception ex)
+                {
+                    return "更新执行失败: " + ex.Message;
+                }
+            }
+            case "cancel":
+            {
+                if (splitInput.Length < 3) return "用法: update cancel <id>";
+
+                var ok = Updater.CancelUpdate(splitInput[2]);
+                return ok ? "已取消更新请求。" : "未找到该更新请求。";
+            }
+            default:
+                return "用法: update [list|check [host|plugins]|confirm|cancel]";
+        }
+    }
+
+    private async Task<string> CheckAllUpdatesAsync()
+    {
+        var host = await CheckHostUpdateAsync();
+        var plugins = await CheckPluginUpdatesAsync();
+        return host + "\n" + plugins;
+    }
+
+    private async Task<string> CheckHostUpdateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(coreConfig.HostUpdateRepository))
+        {
+            return "宿主没有配置 HostUpdateRepository。";
+        }
+
+        var currentVersion = GetCurrentHostVersion();
+        var assetName = GetCurrentHostAssetName();
+        var update = await Updater.CheckGitHubReleaseAssetAsync(coreConfig.HostUpdateRepository, currentVersion, assetName);
+        if (update is null)
+        {
+            return $"宿主: 已是最新版本 ({currentVersion})";
+        }
+
+        if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl))
+        {
+            return $"宿主: 发现 {update.LatestVersion}，但 release 中没有当前运行形态对应的文件: {assetName}";
+        }
+
+        var id = await Updater.RequestHostUpdateAsync(update);
+        return $"宿主: {update.CurrentVersion} -> {update.LatestVersion} ({assetName})，更新任务 {id}";
+    }
+
+    private static string GetCurrentHostVersion()
+    {
+        return Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
+    }
+
+    private static string GetCurrentHostAssetName()
+    {
+        var assembly = Assembly.GetEntryAssembly();
+        var runtime = GetAssemblyMetadata(assembly, "ShiroBot.RuntimeIdentifier");
+        if (string.IsNullOrWhiteSpace(runtime))
+        {
+            runtime = RuntimeInformation.RuntimeIdentifier;
+        }
+
+        var flavor = string.Equals(GetAssemblyMetadata(assembly, "ShiroBot.EnableAvalonia"), "false", StringComparison.OrdinalIgnoreCase)
+            ? "lite"
+            : "full";
+        var publishKind = string.Equals(GetAssemblyMetadata(assembly, "ShiroBot.SelfContained"), "true", StringComparison.OrdinalIgnoreCase)
+            ? "self-contained"
+            : "framework-dependent";
+
+        return $"shirobot-host-{runtime}-{flavor}-{publishKind}.zip";
+    }
+
+    private static string? GetAssemblyMetadata(Assembly? assembly, string key)
+    {
+        return assembly?
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.OrdinalIgnoreCase))
+            ?.Value;
+    }
+
+    private async Task<string> CheckPluginUpdatesAsync()
+    {
+        var plugins = pluginManager.GetLoadedPluginSnapshot()
+            .Where(plugin => !string.IsNullOrWhiteSpace(plugin.GithubRepo))
+            .ToList();
+
+        if (plugins.Count == 0)
+        {
+            return "当前没有配置 GithubRepo 的已加载插件。";
+        }
+
+        var builder = new StringBuilder();
+        foreach (var plugin in plugins)
+        {
+            try
+            {
+                var update = await Updater.CheckGitHubReleaseAsync(plugin.GithubRepo!, plugin.Version);
+                if (update is null)
+                {
+                    builder.AppendLine($"{plugin.Name}: 已是最新版本 ({plugin.Version})");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) ||
+                    string.IsNullOrWhiteSpace(update.AssetName) ||
+                    !update.AssetName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    builder.AppendLine($"{plugin.Name}: 发现 {update.LatestVersion}，但 release 中没有裸 .dll asset。");
+                    continue;
+                }
+
+                var id = await Updater.RequestPluginUpdateAsync(new PluginUpdateRequest(
+                    plugin.Name,
+                    update.CurrentVersion,
+                    update.LatestVersion,
+                    update.ReleaseUrl,
+                    update.ReleaseNotes,
+                    update.AssetDownloadUrl,
+                    plugin.AssemblyPath));
+
+                builder.AppendLine($"{plugin.Name}: {update.CurrentVersion} -> {update.LatestVersion}，更新任务 {id}");
+            }
+            catch (Exception ex)
+            {
+                builder.AppendLine($"{plugin.Name}: 检查失败 - {ex.Message}");
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildPendingUpdatesText()
+    {
+        var pending = Updater.GetPendingUpdates();
+        return pending.Count == 0
+            ? "当前没有待确认的更新请求。"
+            : string.Join("\n", pending.Select(item =>
+                $"{item.Id} | {item.Target} | {item.Name} {item.CurrentVersion} -> {item.LatestVersion}"));
+    }
 
     private static IReadOnlyList<CH.ConsoleCommandOption> BuildConsoleCompletions(
         IReadOnlyList<string> loadedPluginNames,

@@ -24,14 +24,15 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
     protected IBotContext Context { get; private set; } = null!;
     protected CommandRouter<GroupIncomingMessage> GroupCommands { get; } = new();
     protected CommandRouter<FriendIncomingMessage> FriendCommands { get; } = new();
+    protected AllMapCommands AllCommands { get; }
     protected EventRouter Events { get; } = new();
     private static BotEventSubscriptions Subscriptions => BotEventSubscriptions.None;
     public virtual string Name => GetType().Name;
-    public virtual BotComponentMetadata Metadata => new()
+
+    protected PluginBase()
     {
-        Name = Name,
-        Version = "1.0.0"
-    };
+        AllCommands = new AllMapCommands(GroupCommands, FriendCommands);
+    }
 
     public async Task OnLoad(IBotContext context)
     {

@@ -12,14 +12,18 @@ public sealed record GitHubReleaseUpdate(
     string LatestVersion,
     string? ReleaseName,
     string? ReleaseUrl,
-    string? ReleaseNotes);
+    string? ReleaseNotes,
+    string? AssetDownloadUrl = null,
+    string? AssetName = null);
 
 public sealed record PluginUpdateRequest(
     string PluginName,
     string CurrentVersion,
     string LatestVersion,
     string? ReleaseUrl = null,
-    string? ReleaseNotes = null);
+    string? ReleaseNotes = null,
+    string? AssetDownloadUrl = null,
+    string? TargetPath = null);
 
 public sealed record PendingUpdateInfo(
     string Id,

@@ -128,7 +128,8 @@ public static class Program
             botContext = new BotContext(adapter, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
             Updater.Initialize(
                 () => botContext.OwnerList,
-                (ownerId, content) => botContext.Message.SendPrivateMessageAsync(ownerId, content));
+                (ownerId, content) => botContext.Message.SendPrivateMessageAsync(ownerId, content),
+                coreConfig.GithubProxy);
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions);
             pluginManager = new PluginManager(botContext, sharedAssemblies);

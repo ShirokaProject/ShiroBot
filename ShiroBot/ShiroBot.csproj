@@ -3,11 +3,13 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
+        <Version>0.1.0</Version>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Configurations>Debug;DebugPlugin;DebugAdapter;DebugAll;Release</Configurations>
         <!-- 是否在宿主中集成 Avalonia 渲染模块。默认开启；关闭时不会引入 Avalonia/Skia/HarfBuzz。 -->
         <EnableAvalonia Condition="'$(EnableAvalonia)'==''">true</EnableAvalonia>
+        <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
@@ -39,7 +41,23 @@
                           Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'" />
         <PackageReference Include="Spectre.Console" Version="0.57.0" />
         <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
+        <PackageReference Include="System.Reflection.MetadataLoadContext" Version="10.0.0" />
         <PackageReference Include="Tomlyn" Version="2.6.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>ShiroBot.EnableAvalonia</_Parameter1>
+            <_Parameter2>$(EnableAvalonia)</_Parameter2>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>ShiroBot.SelfContained</_Parameter1>
+            <_Parameter2>$(SelfContained)</_Parameter2>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>ShiroBot.RuntimeIdentifier</_Parameter1>
+            <_Parameter2>$(RuntimeIdentifier)</_Parameter2>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>

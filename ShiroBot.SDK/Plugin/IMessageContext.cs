@@ -7,7 +7,42 @@ namespace ShiroBot.SDK.Plugin;
 
 public interface IMessageContext : IMessageService
 {
-    IReplySubscription SubscribeReply(long messageSeq, TimeSpan duration, ReplyMessageHandler handler);
+    IReplySubscription SubscribeReply(
+        long messageSeq,
+        TimeSpan duration,
+        ReplyMessageHandler handler,
+        bool disposeOnReply = true);
+
+    IReplySubscription SubscribeReply(
+        long messageSeq,
+        string text,
+        TimeSpan duration,
+        ReplyMessageHandler handler,
+        bool disposeOnReply = true)
+    {
+        IReplySubscription? subscription = null;
+        subscription = SubscribeReply(messageSeq, duration, async message =>
+        {
+            if (!HasTextSegment(message, text))
+            {
+                return;
+            }
+
+            try
+            {
+                await handler(message);
+            }
+            finally
+            {
+                if (disposeOnReply)
+                {
+                    subscription?.Dispose();
+                }
+            }
+        }, disposeOnReply: false);
+
+        return subscription;
+    }
 
     Task<SendPrivateMessageResponse> SendPrivateMessageAsync(long userId, params OutgoingSegment[] segments) =>
         SendPrivateMessageAsync(new SendPrivateMessageRequest(userId, segments));
@@ -26,6 +61,26 @@ public interface IMessageContext : IMessageService
         string text,
         params OutgoingSegment[] additionalSegments) =>
         SendGroupMessageAsync(groupId, BuildSegments(text, additionalSegments));
+
+    async Task<SendMessageResult> ReplyAsync(
+        IncomingMessage message,
+        string text,
+        params OutgoingSegment[] additionalSegments)
+    {
+        return await ReplyAsync(message, BuildSegments(text, additionalSegments));
+    }
+
+    async Task<SendMessageResult> ReplyAsync(
+        IncomingMessage message,
+        params OutgoingSegment[] segments)
+    {
+        return message switch
+        {
+            FriendIncomingMessage friend => ToResult(await ReplyAsync(friend, segments)),
+            GroupIncomingMessage group => ToResult(await ReplyAsync(group, segments)),
+            _ => throw new NotSupportedException($"Unsupported incoming message type: {message.GetType().Name}")
+        };
+    }
 
     Task<SendPrivateMessageResponse> ReplyAsync(
         FriendIncomingMessage message,
@@ -71,6 +126,26 @@ public interface IMessageContext : IMessageService
         params OutgoingSegment[] segments) =>
         SendGroupMessageAsync(message.Group.GroupId, segments.Prepend(new ReplyOutgoingSegment(message.MessageSeq)).ToArray());
 
+    async Task<SendMessageResult> QuoteReplyAsync(
+        IncomingMessage message,
+        string text,
+        params OutgoingSegment[] segments)
+    {
+        return await QuoteReplyAsync(message, segments.Prepend(new TextOutgoingSegment(text)).ToArray());
+    }
+
+    async Task<SendMessageResult> QuoteReplyAsync(
+        IncomingMessage message,
+        params OutgoingSegment[] segments)
+    {
+        return message switch
+        {
+            FriendIncomingMessage friend => ToResult(await QuoteReplyAsync(friend, segments)),
+            GroupIncomingMessage group => ToResult(await QuoteReplyAsync(group, segments)),
+            _ => throw new NotSupportedException($"Unsupported incoming message type: {message.GetType().Name}")
+        };
+    }
+
     Task RecallPrivateMessageAsync(long userId, long messageSeq) =>
         RecallPrivateMessageAsync(new RecallPrivateMessageRequest(userId, messageSeq));
 
@@ -104,4 +179,22 @@ public interface IMessageContext : IMessageService
 
         return segments;
     }
+
+    private static SendMessageResult ToResult(SendPrivateMessageResponse response) =>
+        new(response.MessageSeq, response.Time);
+
+    private static SendMessageResult ToResult(SendGroupMessageResponse response) =>
+        new(response.MessageSeq, response.Time);
+
+    private static bool HasTextSegment(IncomingMessage message, string text) =>
+        message switch
+        {
+            FriendIncomingMessage friend => HasTextSegment(friend.Segments, text),
+            GroupIncomingMessage group => HasTextSegment(group.Segments, text),
+            TempIncomingMessage temp => HasTextSegment(temp.Segments, text),
+            _ => false
+        };
+
+    private static bool HasTextSegment(IEnumerable<IncomingSegment> segments, string text) =>
+        segments.OfType<TextIncomingSegment>().Any(segment => segment.Text == text);
 }

@@ -8,28 +8,29 @@ Most plugins should inherit `PluginBase`.
 
 ```csharp
 using ShiroBot.Model.Common;
+using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
 
+[BotPlugin(id: "HelloPlugin",
+    Name = "HelloPlugin",
+    Version = "1.0.0",
+    Description = "Example plugin",
+    GithubRepo = "example/HelloPlugin",
+    IsPluginSingleFile = false)
+]
 public sealed class HelloPlugin : PluginBase
 {
     public override string Name => "HelloPlugin";
 
-    public override BotComponentMetadata Metadata { get; } = new()
+    protected override async Task LoadAsync()
     {
-        Name = "HelloPlugin",
-        Version = "1.0.0",
-        Description = "Example plugin"
-    };
-
-    protected override async Task OnGroupMessageAsync(GroupIncomingMessage message)
-    {
-        if (!message.GetPlainText().Trim().StartsWith("#hello", StringComparison.OrdinalIgnoreCase))
+        GroupCommands.MapPrefix("#hello", async message =>
         {
-            return;
-        }
+            await Context.Message.ReplyAsync(message, "hello");
+        });
 
-        await Context.Message.ReplyAsync(message, "hello");
+        BotLog.Info("HelloPlugin loaded.");
     }
 }
 ```
@@ -126,6 +127,37 @@ await Context.Message.SendGroupMessageAsync(groupId, "hello");
 await Context.Message.ReplyAsync(friendMessage, "pong");
 await Context.Message.ReplyAsync(groupMessage, "pong");
 await Context.Message.QuoteReplyAsync(groupMessage, "quoted reply");
+```
+
+Subscribe to replies for a sent message (default: automatically dispose on reply):
+
+```csharp
+var sent = await Context.Message.SendGroupMessageAsync(groupId, "reply to me");
+
+Context.Message.SubscribeReply(
+    sent.MessageSeq,
+    TimeSpan.FromMinutes(5),
+    async reply => await Context.Message.ReplyAsync(reply, "got it"));
+```
+
+Pass `disposeOnReply: false` to keep listening until the timeout expires or the subscription is disposed manually:
+
+```csharp
+var subscription = Context.Message.SubscribeReply(
+    sent.MessageSeq,
+    TimeSpan.FromMinutes(5),
+    async reply => await Context.Message.ReplyAsync(reply, "still listening"),
+    disposeOnReply: false);
+```
+
+Subscribe only to replies containing a matching text segment:
+
+```csharp
+Context.Message.SubscribeReply(
+    sent.MessageSeq,
+    "confirm",
+    TimeSpan.FromMinutes(5),
+    async reply => await Context.Message.ReplyAsync(reply, "confirmed"));
 ```
 
 Send segments directly:

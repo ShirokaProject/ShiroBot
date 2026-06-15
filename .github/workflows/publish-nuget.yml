@@ -7,9 +7,6 @@ on:
         description: Package version, for example 0.1.0
         required: true
         type: string
-  push:
-    tags:
-      - "v*.*.*"
 
 jobs:
   publish:
@@ -41,7 +38,7 @@ jobs:
           }
 
       - name: Restore
-        run: dotnet restore .\ShiroBot.slnx
+        run: dotnet restore .\Shirobot.slnx
 
       - name: Pack SDK packages
         run: |
