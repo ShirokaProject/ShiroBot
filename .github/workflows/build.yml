@@ -76,13 +76,11 @@ jobs:
                 fi
 
                 output_dir="artifacts/host/${runtime}-${flavor}-${publish_kind}"
-                asset_ext=""
                 host_exe="ShiroBot"
                 if [[ "$runtime" == win-* ]]; then
-                  asset_ext=".exe"
                   host_exe="ShiroBot.exe"
                 fi
-                asset_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}${asset_ext}"
+                archive_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}.zip"
 
                 dotnet publish "${{ env.HOST_PROJECT }}" \
                   --configuration "${{ env.CONFIGURATION }}" \
@@ -94,8 +92,8 @@ jobs:
                   /p:PublishSingleFile=true \
                   /p:IncludeNativeLibrariesForSelfExtract=true
 
-                cp "$output_dir/$host_exe" "$asset_path"
-                chmod +x "$asset_path"
+                chmod +x "$output_dir/$host_exe"
+                (cd "$output_dir" && zip -9 -j "$archive_path" "$host_exe")
               done
             done
           done
@@ -122,11 +120,7 @@ jobs:
             local flavor="$2"
             local publish="$3"
             local label="$4"
-            local ext=""
-            if [[ "$runtime" == win-* ]]; then
-              ext=".exe"
-            fi
-            link_asset "shirobot-host-${runtime}-${flavor}-${publish}${ext}" "$label"
+            link_asset "shirobot-host-${runtime}-${flavor}-${publish}.zip" "$label"
           }
 
           {
