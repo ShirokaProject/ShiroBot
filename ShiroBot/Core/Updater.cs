@@ -195,7 +195,7 @@ public static class Updater
         }
 
         var installDirectory = Path.GetFullPath(AppContext.BaseDirectory);
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Update", Guid.NewGuid().ToString("N"));
+        var tempRoot = Path.Combine(installDirectory, ".tmp", "ShiroBot.Update", Guid.NewGuid().ToString("N"));
         var assetFileName = GetDownloadFileName(assetDownloadUrl);
         var packagePath = Path.Combine(tempRoot, assetFileName);
         var extractRoot = Path.Combine(tempRoot, "extract");
@@ -205,15 +205,13 @@ public static class Updater
         try
         {
             await DownloadFileAsync(assetDownloadUrl, packagePath, cancellationToken);
-
-            var replacementExecutable = IsZipPackage(packagePath)
-                ? FindReplacementExecutableInZipPackage(packagePath, extractRoot, processPath)
-                : packagePath;
-
-            if (replacementExecutable is null)
+            if (!IsZipPackage(packagePath))
             {
-                throw new InvalidOperationException($"更新包中未找到宿主可执行文件: {Path.GetFileName(processPath)}");
+                throw new InvalidOperationException($"宿主更新包必须是 zip 文件: {assetFileName}");
             }
+
+            var replacementExecutable = FindReplacementExecutableInZipPackage(packagePath, extractRoot, processPath)
+                                        ?? throw new InvalidOperationException($"更新包中未找到宿主可执行文件: {Path.GetFileName(processPath)}");
             var restartArguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
             var scriptPath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
                 ? CreateWindowsSelfUpdateScript(tempRoot, replacementExecutable, processPath, restartArguments)
@@ -306,14 +304,23 @@ public static class Updater
         var scriptPath = Path.Combine(tempRoot, "apply-update.cmd");
         var currentPid = Environment.ProcessId;
         var arguments = string.Join(" ", restartArguments.Select(WindowsArgumentQuote));
+        var executableDirectory = Path.GetDirectoryName(processPath) ?? AppContext.BaseDirectory;
+        var logPath = Path.Combine(executableDirectory, "ShiroBot.update.log");
         var script = $$"""
 @echo off
 setlocal
 set "PID={{currentPid}}"
 set "SRC={{sourceExecutable}}"
 set "EXE={{processPath}}"
-set "TMP={{tempRoot}}"
+set "EXEDIR={{executableDirectory}}"
+set "UPDATE_TMP={{tempRoot}}"
+set "RUNTIME_TMP=%EXEDIR%\.tmp\runtime"
 set "ARGS={{arguments}}"
+set "LOG={{logPath}}"
+
+(
+  echo [%date% %time%] waiting process %PID%
+) >> "%LOG%" 2>&1
 
 :wait_process
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Get-Process -Id %PID% -ErrorAction Stop ^| Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
@@ -322,12 +329,26 @@ if %ERRORLEVEL% EQU 0 (
     goto wait_process
 )
 
-copy /Y "%SRC%" "%EXE%" >nul
+(
+  echo [%date% %time%] copying "%SRC%" to "%EXE%"
+  copy /Y "%SRC%" "%EXE%"
+) >> "%LOG%" 2>&1
 if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
-start "" "%EXE%" %ARGS%
+if not exist "%RUNTIME_TMP%" mkdir "%RUNTIME_TMP%" >nul 2>nul
+set "TMP=%RUNTIME_TMP%"
+set "TEMP=%RUNTIME_TMP%"
+
+(
+  echo [%date% %time%] runtime temp dir "%RUNTIME_TMP%"
+  echo [%date% %time%] starting new cmd: "%EXE%" %ARGS%
+  start "ShiroBot" /D "%EXEDIR%" cmd.exe /k ""%EXE%" %ARGS%"
+  echo [%date% %time%] start command returned %ERRORLEVEL%
+) >> "%LOG%" 2>&1
+
 cd /d "%TEMP%"
-rmdir /s /q "%TMP%" >nul 2>nul
+rmdir /s /q "%UPDATE_TMP%" >nul 2>nul
+rmdir "%EXEDIR%\.tmp\ShiroBot.Update" >nul 2>nul
 exit /b 0
 """;
         File.WriteAllText(scriptPath, script, Encoding.UTF8);
@@ -343,23 +364,40 @@ exit /b 0
         var scriptPath = Path.Combine(tempRoot, "apply-update.sh");
         var currentPid = Environment.ProcessId;
         var arguments = string.Join(" ", restartArguments.Select(ShellQuote));
+        var executableDirectory = Path.GetDirectoryName(processPath) ?? AppContext.BaseDirectory;
+        var logPath = Path.Combine(executableDirectory, "ShiroBot.update.log");
         var script = $$"""
 #!/bin/sh
 PID={{currentPid}}
 SRC={{ShellQuote(sourceExecutable)}}
 EXE={{ShellQuote(processPath)}}
-TMP={{ShellQuote(tempRoot)}}
+EXEDIR={{ShellQuote(executableDirectory)}}
+UPDATE_TMP={{ShellQuote(tempRoot)}}
+RUNTIME_TMP="$EXEDIR/.tmp/runtime"
 ARGS="{{arguments}}"
+LOG={{ShellQuote(logPath)}}
 
+echo "[$(date)] waiting process $PID" >> "$LOG" 2>&1
 while kill -0 "$PID" 2>/dev/null; do
   sleep 1
 done
 
-cp -f "$SRC" "$EXE"
+echo "[$(date)] copying $SRC to $EXE" >> "$LOG" 2>&1
+cp -f "$SRC" "$EXE" >> "$LOG" 2>&1
 chmod +x "$EXE" 2>/dev/null || true
+
+mkdir -p "$RUNTIME_TMP"
+export TMPDIR="$RUNTIME_TMP"
+export TMP="$RUNTIME_TMP"
+export TEMP="$RUNTIME_TMP"
+echo "[$(date)] runtime temp dir $RUNTIME_TMP" >> "$LOG" 2>&1
+echo "[$(date)] starting $EXE $ARGS" >> "$LOG" 2>&1
+cd "$EXEDIR" || exit 1
 # shellcheck disable=SC2086
 nohup "$EXE" $ARGS >/dev/null 2>&1 &
-rm -rf "$TMP"
+echo "[$(date)] started pid $!" >> "$LOG" 2>&1
+rm -rf "$UPDATE_TMP"
+rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
 """;
         File.WriteAllText(scriptPath, script, Encoding.UTF8);
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -451,11 +489,38 @@ rm -rf "$TMP"
             throw new InvalidOperationException($"插件 {pluginName} 的更新缺少目标路径。");
         }
 
-        var tempPath = targetPath + ".download";
-        await DownloadFileAsync(assetDownloadUrl, tempPath, cancellationToken);
+        var targetDirectory = Path.GetDirectoryName(Path.GetFullPath(targetPath)) ?? AppContext.BaseDirectory;
+        var tempDirectory = Path.Combine(targetDirectory, ".tmp");
+        Directory.CreateDirectory(tempDirectory);
 
-        File.Copy(tempPath, targetPath, overwrite: true);
-        File.Delete(tempPath);
+        var tempPath = Path.Combine(
+            tempDirectory,
+            $"{Path.GetFileName(targetPath)}.{Guid.NewGuid():N}.download");
+
+        try
+        {
+            await DownloadFileAsync(assetDownloadUrl, tempPath, cancellationToken);
+            File.Copy(tempPath, targetPath, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath)) File.Delete(tempPath);
+                DeleteDirectoryIfEmpty(tempDirectory);
+            }
+            catch
+            {
+                // ignored: best-effort cleanup
+            }
+        }
+    }
+
+    private static void DeleteDirectoryIfEmpty(string directory)
+    {
+        if (!Directory.Exists(directory)) return;
+        if (Directory.EnumerateFileSystemEntries(directory).Any()) return;
+        Directory.Delete(directory);
     }
 
     private static string CreatePendingUpdate(
