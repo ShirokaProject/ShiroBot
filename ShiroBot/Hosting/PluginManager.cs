@@ -840,8 +840,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             var assembly = metadataContext.LoadFromAssemblyPath(assemblyPath);
             var pluginType = assembly.GetTypes()
                 .FirstOrDefault(type =>
-                    !type.IsAbstract &&
-                    !type.IsInterface &&
+                    type is { IsAbstract: false, IsInterface: false } &&
                     type.GetInterfaces().Any(item => item.FullName == typeof(IBotPlugin).FullName) &&
                     type.GetCustomAttributesData().Any(IsBotPluginAttribute));
 
@@ -891,6 +890,15 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
     private static IReadOnlyList<string> BuildMetadataResolverPaths(string assemblyPath)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (!string.IsNullOrWhiteSpace(assembly.Location))
+            {
+                paths.Add(assembly.Location);
+            }
+        }
+
         if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string trustedAssemblies)
         {
             foreach (var path in trustedAssemblies.Split(Path.PathSeparator))
@@ -899,16 +907,25 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             }
         }
 
+        AddDirectoryAssemblies(paths, AppContext.BaseDirectory);
+
         var pluginDir = Path.GetDirectoryName(assemblyPath);
         if (!string.IsNullOrWhiteSpace(pluginDir))
         {
-            foreach (var dll in Directory.EnumerateFiles(pluginDir, "*.dll"))
-            {
-                paths.Add(dll);
-            }
+            AddDirectoryAssemblies(paths, pluginDir);
         }
 
         paths.Add(assemblyPath);
         return paths.ToArray();
+    }
+
+    private static void AddDirectoryAssemblies(HashSet<string> paths, string directory)
+    {
+        if (!Directory.Exists(directory)) return;
+
+        foreach (var dll in Directory.EnumerateFiles(directory, "*.dll"))
+        {
+            paths.Add(dll);
+        }
     }
 }
