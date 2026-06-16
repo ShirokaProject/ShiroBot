@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace ShiroBot.SDK.Plugin;
 
 public interface IWebHostContext
@@ -10,6 +12,22 @@ public interface IWebHostContext
         string filePath,
         TimeSpan? expiresAfter = null,
         string? contentType = null);
+
+    string Map(
+        string ownerId,
+        string method,
+        string routePath,
+        Func<HttpContext, Task<IResult>> handler);
+
+    string MapGet(
+        string ownerId,
+        string routePath,
+        Func<HttpContext, Task<IResult>> handler);
+
+    string MapPost(
+        string ownerId,
+        string routePath,
+        Func<HttpContext, Task<IResult>> handler);
 
     void UnregisterOwner(string ownerId);
 }

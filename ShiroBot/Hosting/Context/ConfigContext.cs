@@ -20,6 +20,7 @@ internal sealed class ConfigContext : IConfigContext
         public string ConfigPath => string.Empty;
         public T Load<T>() where T : class, new() => new T();
         public void Save<T>(T config) where T : class { }
+        public void SetValue(string keyPath, object? value) { }
 
         public IDisposable Watch<T>(Action<T> onChanged, int debounceMs = 500) where T : class, new()
         {
@@ -61,6 +62,11 @@ internal sealed class ConfigContext : IConfigContext
     public void Save<T>(T config) where T : class
     {
         _configManager.SaveConfig(ConfigPath, config);
+    }
+
+    public void SetValue(string keyPath, object? value)
+    {
+        _configManager.SetConfigValue(ConfigPath, keyPath, value);
     }
 
     public IDisposable Watch<T>(Action<T> onChanged, int debounceMs = 500) where T : class, new()

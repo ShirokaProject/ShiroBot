@@ -3,7 +3,7 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Context;
 
-internal class PluginContext : IBotContext, IDisposable
+internal sealed class PluginContext : IBotContext, IDisposable
 {
     private readonly string _pluginName;
 
@@ -14,30 +14,32 @@ internal class PluginContext : IBotContext, IDisposable
     public ISystemContext System => BotContext.System;
     public IUpdater Updater => BotContext.Updater;
     public IWebHostContext WebHost => BotContext.WebHost;
+    public string PluginDirectory { get; }
     public IConfigContext Config { get; private set; }
     public IReadOnlyList<long> OwnerList => BotContext.OwnerList;
     public IReadOnlyList<long> AdminList => BotContext.AdminList;
     public IRenderContext? Render => BotContext.Renderer;
     public IConsoleLogger Logger { get; }
 
-    protected BotContext BotContext { get; }
+    private BotContext BotContext { get; }
 
     public PluginContext(
         BotContext botContext,
         string pluginName,
-        string? pluginDirectory,
-        Func<long, bool> groupRouteFilter)
+        string pluginDirectory,
+        Func<long, bool> groupRouteFilter,
+        HostLogHub logHub)
     {
         BotContext = botContext;
         _pluginName = pluginName;
         Message = botContext.CreatePluginMessageContext(pluginName);
-        Logger = new ConsoleLogger($"[Plugin:{pluginName}]");
-        Config = string.IsNullOrEmpty(pluginDirectory)
-            ? ConfigContext.NullConfig()
-            : ConfigContext.ForPlugin(Path.Combine(pluginDirectory, "config.toml"));
+        Logger = new ConsoleLogger($"[Plugin:{pluginName}]", logHub);
+        PluginDirectory = Path.GetFullPath(pluginDirectory);
+        Directory.CreateDirectory(PluginDirectory);
+        Config = ConfigContext.ForPlugin(Path.Combine(PluginDirectory, "config.toml"));
     }
 
-    public virtual void Dispose()
+    public void Dispose()
     {
         BotContext.ReplySubscriptions.UnregisterOwner(_pluginName);
         Config = null!;

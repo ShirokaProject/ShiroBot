@@ -32,7 +32,8 @@ public static class Program
 
     public static async Task Main(string[] args)
     {
-        BotLog.SetDefault(new ConsoleLogger());
+        var logHub = new HostLogHub();
+        BotLog.SetDefault(new ConsoleLogger(logHub: logHub));
 
         var configOption = new Option<string?>("--config", "-c") { Description = "指定配置文件路径" };
         var adapterOption = new Option<string?>("--adapter") { Description = "指定适配器 DLL 路径" };
@@ -51,6 +52,7 @@ public static class Program
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
         HostHttpServer? hostHttpServer = null;
+        var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
 
         try
         {
@@ -98,7 +100,7 @@ public static class Program
             var adapterLoader = new DllLoader<IBotAdapter>(collectible: true, shared: sharedAssemblies);
             var adapter = adapterLoader.Load(adapterPath);
             adapter.Config = ConfigContext.ForAdapter(ResolveAdapterConfigPath(adapterRoot, adapterPath));
-            adapter.Logger = new ConsoleLogger($"[Adapter:{adapter.Name}]");
+            adapter.Logger = new ConsoleLogger($"[Adapter:{adapter.Name}]", logHub);
 
             var adapterMetadata = adapter.Metadata;
             CH.Log($"适配器信息: {adapterMetadata.Name} v{adapterMetadata.Version}");
@@ -107,6 +109,13 @@ public static class Program
             {
                 await adapter.StartAsync();
             }
+            runtimeState.SetAdapter(adapter, "connected");
+            var adapterDisplayName = string.IsNullOrWhiteSpace(adapter.Metadata.Name) ? adapter.Name : adapter.Metadata.Name;
+            logHub.RegisterSource(
+                adapter.Name,
+                adapter.Metadata.Description ?? $"{adapterDisplayName} 适配器日志",
+                adapterDisplayName);
+            runtimeState.RecordEvent($"{adapterDisplayName} 连接成功");
 
             CH.Success("加载适配器成功: " + adapter.Name);
 
@@ -115,7 +124,26 @@ public static class Program
                 ? (coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? coreConfig.Api.ListenUrl)
                 : coreConfig.Api.PublicBaseUrl;
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
-            hostHttpServer = await HostHttpServer.StartAsync(coreConfig.Api, webHostContext);
+            botContext = new BotContext(adapter, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
+            Updater.Initialize(
+                () => botContext.OwnerList,
+                (ownerId, content) => botContext.Message.SendPrivateMessageAsync(ownerId, content),
+                coreConfig.GithubProxy);
+
+            var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub);
+            pluginManager = new PluginManager(botContext, sharedAssemblies, runtimeState, logHub);
+
+            hostHttpServer = await HostHttpServer.StartAsync(
+                coreConfig.Api,
+                coreConfig,
+                coreConfigManager,
+                coreConfigPath,
+                pluginManager,
+                hostEventDispatcher,
+                groupRoutePolicy,
+                webHostContext,
+                runtimeState,
+                logHub);
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
@@ -124,15 +152,6 @@ public static class Program
                     CH.Warning("API 鉴权密钥: " + coreConfig.Api.Auth.Key);
                 }
             }
-
-            botContext = new BotContext(adapter, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
-            Updater.Initialize(
-                () => botContext.OwnerList,
-                (ownerId, content) => botContext.Message.SendPrivateMessageAsync(ownerId, content),
-                coreConfig.GithubProxy);
-
-            var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions);
-            pluginManager = new PluginManager(botContext, sharedAssemblies);
 
 #if AVALONIA
             // ─── Avalonia 渲染集成 ───

@@ -4,7 +4,11 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting;
 
-internal sealed class HostEventDispatcher(Lock pluginLifecycleLock, ReplySubscriptionManager replySubscriptions)
+internal sealed class HostEventDispatcher(
+    Lock pluginLifecycleLock,
+    ReplySubscriptionManager replySubscriptions,
+    HostRuntimeState runtimeState,
+    HostLogHub logHub)
 {
     private static readonly IReadOnlyDictionary<Type, BotEventSubscriptions> EventSubscriptions =
         CreateEventSubscriptions();
@@ -74,6 +78,7 @@ internal sealed class HostEventDispatcher(Lock pluginLifecycleLock, ReplySubscri
         Func<IBotEventSubscriber, Task> dispatch)
         where TMessage : IncomingMessage
     {
+        runtimeState.RecordIncomingMessage();
         await replySubscriptions.PublishAsync(message).ConfigureAwait(false);
         await DispatchAsync(eventName, message, handlers, dispatch).ConfigureAwait(false);
     }
@@ -235,13 +240,15 @@ internal sealed class HostEventDispatcher(Lock pluginLifecycleLock, ReplySubscri
         return matches.ToArray();
     }
 
-    private static async Task DispatchAsync<TEvent>(
+    private async Task DispatchAsync<TEvent>(
         string eventName,
         TEvent message,
         IReadOnlyList<LoadedPluginHandle> handlers,
         Func<IBotEventSubscriber, Task> dispatch)
     {
-        ConsoleHelper.Log($"收到{eventName} {Describe(message)}");
+        var text = $"收到{eventName} {Describe(message)}";
+        logHub.Record("system", "log", text);
+        ConsoleHelper.Log(text);
 
         if (handlers.Count == 0)
         {
@@ -259,7 +266,10 @@ internal sealed class HostEventDispatcher(Lock pluginLifecycleLock, ReplySubscri
                 }
                 catch (Exception ex)
                 {
-                    ConsoleHelper.Error($"插件功能执行失败: {plugin.Name} - {ex.Message}");
+                    var errorMessage = $"插件功能执行失败: {plugin.Name} - {ex.Message}";
+                    logHub.Record(plugin.Name, "error", errorMessage);
+                    ConsoleHelper.Error(errorMessage);
+                    runtimeState.RecordEvent(errorMessage, "error");
                 }
             });
 

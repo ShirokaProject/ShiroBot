@@ -16,12 +16,18 @@ internal sealed record PluginProbeInfo(
     string Name,
     string Version,
     string? Description,
+    string? Author,
+    PluginCategory Category,
     string? GithubRepo,
     bool IsPluginSingleFile);
 
 internal sealed record PluginProbeCacheEntry(long Length, DateTime LastWriteTimeUtc, PluginProbeInfo? Info);
 
-internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolver sharedAssemblies)
+internal sealed class PluginManager(
+    BotContext botContext,
+    SharedAssemblyResolver sharedAssemblies,
+    HostRuntimeState runtimeState,
+    HostLogHub logHub)
 {
     private readonly List<LoadedPluginHandle> _loadedPlugins = [];
     private readonly List<Task> _pluginBackgroundTasks = [];
@@ -224,7 +230,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             try
             {
                 if (!File.Exists(path)) return;
-                using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                await using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                 if (stream.Length > 0) return;
             }
             catch (IOException)
@@ -401,6 +407,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             {
                 _loadedPlugins.Remove(pluginHandle);
                 hostEventDispatcher.UnregisterPlugin(pluginHandle);
+                runtimeState.SetPluginsCount(_loadedPlugins.Count);
             }
         }
 
@@ -470,6 +477,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         }
 
         CH.Success($"插件热卸载成功: {unloadResult.Name}");
+        runtimeState.RecordEvent($"{unloadResult.Name} 插件已卸载");
     }
 
     public Task ScheduleLoadPluginByName(
@@ -568,17 +576,21 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             {
                 try
                 {
-                    if (pluginInfo.IsPluginSingleFile is true)
+                    if (pluginInfo.IsPluginSingleFile)
                     {
                         loader = CreateLoader();
                         var plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
 
                         var pluginContext = CreatePluginContext(
                             pluginInfo.Id,
-                            pluginDirectory: null,
+                            GetStablePluginDirectory(pluginInfo.Id),
                             routePolicy);
 
                         CH.Info($"开始加载插件: {pluginInfo.Name} v{pluginInfo.Version} ");
+                        logHub.RegisterSource(
+                            pluginInfo.Id,
+                            pluginInfo.Description ?? $"{pluginInfo.Name} 日志",
+                            pluginInfo.Name);
 
                         using (BotLog.BeginScope(pluginContext.Logger))
                         {
@@ -591,6 +603,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                             loader,
                             actualDllPath,
                             pluginInfo,
+                            logHub,
                             CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
 
                         lock (PluginLifecycleLock)
@@ -604,9 +617,11 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
 
                             _loadedPlugins.Add(pluginHandle);
                             hostEventDispatcher.RegisterPlugin(pluginHandle);
+                            runtimeState.SetPluginsCount(_loadedPlugins.Count);
                         }
 
                         CH.Success($"插件加载成功: {pluginInfo.Id} ({actualDllPath})");
+                        runtimeState.RecordEvent($"{pluginInfo.Name} 插件已加载");
                         loader = null;
                         return;
                     }
@@ -629,6 +644,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                         catch (Exception e)
                         {
                             BotLog.Error($"插件移动/删除出错: {pluginDisplayName} - {e.Message}");
+                            runtimeState.RecordEvent($"插件移动/删除出错: {pluginDisplayName} - {e.Message}", "error");
                             throw;
                         }
                     }
@@ -636,6 +652,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                 catch (Exception e)
                 {
                     BotLog.Error(e.Message);
+                    runtimeState.RecordEvent(e.Message, "error");
                     return;
                 }
             }
@@ -655,12 +672,12 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                     }
                 }
 
-                // 配置目录使用 dll 实际所在目录；若 dll 直接放在 plugins 根目录（单文件插件），则不绑定配置目录。
+                // 配置目录使用 dll 实际所在目录；若 dll 直接放在 plugins 根目录，则使用稳定的 plugins/{id} 目录。
                 var dllDirectory = Path.GetFullPath(Path.GetDirectoryName(actualDllPath) ?? PluginRootPath)
                     .TrimEnd(Path.DirectorySeparatorChar);
                 var normalizedPluginRoot = Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar);
                 var pluginDirectory = string.Equals(dllDirectory, normalizedPluginRoot, StringComparison.OrdinalIgnoreCase)
-                    ? null
+                    ? GetStablePluginDirectory(pluginInfo.Id)
                     : dllDirectory;
                 var pluginContext = CreatePluginContext(
                     pluginInfo.Id,
@@ -668,6 +685,10 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                     routePolicy);
 
                 CH.Info($"开始加载插件: {pluginInfo.Name} v{pluginInfo.Version} ");
+                logHub.RegisterSource(
+                    pluginInfo.Id,
+                    pluginInfo.Description ?? $"{pluginInfo.Name} 日志",
+                    pluginInfo.Name);
 
                 using (BotLog.BeginScope(pluginContext.Logger))
                 {
@@ -680,6 +701,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                     loader,
                     actualDllPath,
                     pluginInfo,
+                    logHub,
                     CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
 
                 lock (PluginLifecycleLock)
@@ -693,15 +715,18 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
 
                     _loadedPlugins.Add(pluginHandle);
                     hostEventDispatcher.RegisterPlugin(pluginHandle);
+                    runtimeState.SetPluginsCount(_loadedPlugins.Count);
                 }
 
                 CH.Success($"插件加载成功: {pluginInfo.Id} ({actualDllPath})");
+                runtimeState.RecordEvent($"{pluginInfo.Name} 插件已加载");
                 loader = null;
             }
         }
         catch (Exception ex)
         {
             CH.Error($"插件加载失败: {dll} - {ex.Message}");
+            runtimeState.RecordEvent($"插件加载失败: {Path.GetFileNameWithoutExtension(dll)} - {ex.Message}", "error");
             loader?.Unload();
         }
     }
@@ -716,18 +741,22 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
     /// 仅捕获 plugin 名（string）和 routePolicy 引用，不要让闭包捕获 <see cref="IBotPlugin"/>
     /// 实例本身——否则 LoadedPluginHandle 永远握着 plugin 引用，可回收 ALC 卸不掉。
     /// </summary>
-    public static Func<long, bool> CreateGroupRouteFilter(string pluginName, PluginRouteConfig routePolicy) =>
+    private static Func<long, bool> CreateGroupRouteFilter(string pluginName, PluginRouteConfig routePolicy) =>
         groupId => routePolicy.AllowsGroup(pluginName, groupId);
 
-    public PluginContext CreatePluginContext(
+    private PluginContext CreatePluginContext(
         string pluginName,
-        string? pluginDirectory,
+        string pluginDirectory,
         PluginRouteConfig routePolicy) =>
         new(
             botContext,
             pluginName,
             pluginDirectory,
-            groupId => routePolicy.AllowsGroup(pluginName, groupId));
+            groupId => routePolicy.AllowsGroup(pluginName, groupId),
+            logHub);
+
+    private string GetStablePluginDirectory(string pluginName) =>
+        Path.Combine(PluginRootPath, pluginName);
 
     public IReadOnlyList<string> ResolvePluginLoadCandidates(string pluginRoot, string pluginNameOrPath)
     {
@@ -820,6 +849,8 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         return loadableDlls.Count == 1 ? loadableDlls : [];
     }
 
+    internal PluginProbeInfo? TryProbePluginInfoFile(string assemblyPath) => TryProbePluginInfoCached(assemblyPath);
+
     private static IEnumerable<string> GetPluginNameAliases(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) yield break;
@@ -902,6 +933,8 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                         pluginAttribute.Name ?? id,
                         pluginAttribute.Version ?? "1.0.0",
                         pluginAttribute.Description,
+                        pluginAttribute.Author,
+                        pluginAttribute.Category ?? PluginCategory.Other,
                         pluginAttribute.GithubRepo,
                         pluginAttribute.IsPluginSingleFile ?? false);
                 }
@@ -940,6 +973,8 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         string? name = null;
         string? version = null;
         string? description = null;
+        string? author = null;
+        PluginCategory? category = null;
         string? githubRepo = null;
         bool? isPluginSingleFile = null;
 
@@ -948,6 +983,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
         {
             _ = blob.ReadByte(); // FIELD(0x53) or PROPERTY(0x54)
             var typeCode = blob.ReadByte();
+            _ = typeCode == SerializedTypeEnum ? blob.ReadSerializedString() : null;
             var memberName = blob.ReadSerializedString();
 
             switch (memberName)
@@ -961,6 +997,12 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                 case nameof(BotPluginAttribute.Description) when typeCode == SerializedTypeString:
                     description = blob.ReadSerializedString();
                     break;
+                case nameof(BotPluginAttribute.Author) when typeCode == SerializedTypeString:
+                    author = blob.ReadSerializedString();
+                    break;
+                case nameof(BotPluginAttribute.Category) when typeCode == SerializedTypeEnum:
+                    category = (PluginCategory)blob.ReadInt32();
+                    break;
                 case nameof(BotPluginAttribute.GithubRepo) when typeCode == SerializedTypeString:
                     githubRepo = blob.ReadSerializedString();
                     break;
@@ -973,7 +1015,7 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
             }
         }
 
-        attribute = new RawBotPluginAttribute(id, name, version, description, githubRepo, isPluginSingleFile);
+        attribute = new RawBotPluginAttribute(id, name, version, description, author, category, githubRepo, isPluginSingleFile);
         return true;
     }
 
@@ -997,6 +1039,9 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
                 case SerializedTypeU4:
                 case SerializedTypeR4:
                     blob.ReadBytes(4);
+                    return true;
+                case SerializedTypeEnum:
+                    blob.ReadInt32();
                     return true;
                 case SerializedTypeI8:
                 case SerializedTypeU8:
@@ -1065,12 +1110,15 @@ internal sealed class PluginManager(BotContext botContext, SharedAssemblyResolve
     private const byte SerializedTypeR8 = 0x0D;
     private const byte SerializedTypeString = 0x0E;
     private const byte SerializedTypeType = 0x50;
+    private const byte SerializedTypeEnum = 0x55;
 
     private readonly record struct RawBotPluginAttribute(
         string Id,
         string? Name,
         string? Version,
         string? Description,
+        string? Author,
+        PluginCategory? Category,
         string? GithubRepo,
         bool? IsPluginSingleFile);
 }

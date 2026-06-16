@@ -8,6 +8,16 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Core;
 
+public sealed record GitHubPluginPackage(
+    string Repository,
+    string Version,
+    string ReleaseName,
+    string ReleaseUrl,
+    string Body,
+    string? AssetDownloadUrl,
+    string? AssetName,
+    string? AssetType);
+
 public static class Updater
 {
     private static readonly HttpClient HttpClient = new();
@@ -37,7 +47,7 @@ public static class Updater
             throw new ArgumentException("Repository cannot be empty.", nameof(repository));
         }
 
-        var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
+        var release = await GetLatestReleaseAsync(repository, cancellationToken);
         if (release is null)
         {
             return null;
@@ -76,7 +86,7 @@ public static class Updater
             throw new ArgumentException("Asset name cannot be empty.", nameof(assetName));
         }
 
-        var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
+        var release = await GetLatestReleaseAsync(repository, cancellationToken);
         if (release is null || !IsNewerVersion(release.TagName, currentVersion))
         {
             return null;
@@ -92,6 +102,48 @@ public static class Updater
             release.Body,
             asset?.DownloadUrl,
             asset?.Name);
+    }
+
+    public static async Task<GitHubPluginPackage?> GetLatestPluginPackageAsync(
+        string repository,
+        bool includePrerelease = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(repository))
+        {
+            throw new ArgumentException("Repository cannot be empty.", nameof(repository));
+        }
+
+        var release = await GetLatestReleaseAsync(repository, cancellationToken);
+        if (release is null)
+        {
+            return null;
+        }
+
+        var asset = release.Assets.FirstOrDefault(item => item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    ?? release.Assets.FirstOrDefault(item => item.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+        if (asset is null)
+        {
+            return new GitHubPluginPackage(
+                repository,
+                NormalizeVersion(release.TagName),
+                release.Name,
+                release.HtmlUrl,
+                release.Body,
+                null,
+                null,
+                null);
+        }
+
+        return new GitHubPluginPackage(
+            repository,
+            NormalizeVersion(release.TagName),
+            release.Name,
+            release.HtmlUrl,
+            release.Body,
+            asset.DownloadUrl,
+            asset.Name,
+            Path.GetExtension(asset.Name).TrimStart('.').ToLowerInvariant());
     }
 
     public static async Task<string> RequestHostUpdateAsync(
@@ -181,7 +233,7 @@ public static class Updater
     public static Task UpdateSelfAsync(CancellationToken cancellationToken = default) =>
         UpdateSelfAsync(assetDownloadUrl: null, cancellationToken);
 
-    public static async Task UpdateSelfAsync(string? assetDownloadUrl, CancellationToken cancellationToken = default)
+    private static async Task UpdateSelfAsync(string? assetDownloadUrl, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(assetDownloadUrl))
         {
@@ -236,7 +288,7 @@ public static class Updater
         Environment.Exit(0);
     }
 
-    private static async Task DownloadFileAsync(string url, string destinationPath, CancellationToken cancellationToken)
+    public static async Task DownloadFileAsync(string url, string destinationPath, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, ApplyGithubProxy(url));
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
@@ -555,7 +607,6 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
 
     private static async Task<GitHubRelease?> GetLatestReleaseAsync(
         string repository,
-        bool includePrerelease,
         CancellationToken cancellationToken)
     {
         return await GetLatestReleaseFromApiAsync(repository, cancellationToken);

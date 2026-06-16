@@ -13,6 +13,7 @@ public interface IBotContext
     public IUpdater Updater { get; }
     public IConfigContext Config { get; }
     public IWebHostContext WebHost { get; }
+    public string PluginDirectory { get; }
     public IReadOnlyList<long> OwnerList { get; }
     public IReadOnlyList<long> AdminList { get; }
 

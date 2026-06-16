@@ -9,6 +9,8 @@ public sealed class BotPluginAttribute(string id) : Attribute
 
     public string Version { get; init; } = "1.0.0";
     public string? Description { get; init; }
+    public string? Author { get; init; }
+    public PluginCategory Category { get; init; } = PluginCategory.Other;
     public string? GithubRepo { get; init; }
     public bool IsPluginSingleFile { get; init; }
 }

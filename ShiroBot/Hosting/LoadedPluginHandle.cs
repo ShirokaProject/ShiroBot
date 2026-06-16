@@ -14,6 +14,7 @@ internal sealed class LoadedPluginHandle
     private DllLoader<IBotPlugin>? _loader;
     private readonly Func<long, bool>? _groupRouteFilter;
     private readonly string _assemblyPath;
+    private readonly HostLogHub _logHub;
 
     public LoadedPluginHandle(
         IBotPlugin plugin,
@@ -21,17 +22,22 @@ internal sealed class LoadedPluginHandle
         DllLoader<IBotPlugin> loader,
         string assemblyPath,
         PluginProbeInfo metadata,
+        HostLogHub logHub,
         Func<long, bool>? groupRouteFilter = null)
     {
         _plugin = plugin;
         _context = context;
         _loader = loader;
         _assemblyPath = assemblyPath;
+        _logHub = logHub;
         _groupRouteFilter = groupRouteFilter;
 
         Name = metadata.Id;
         DisplayName = metadata.Name;
         Version = metadata.Version;
+        Description = metadata.Description;
+        Author = metadata.Author;
+        Category = metadata.Category;
         GithubRepo = metadata.GithubRepo;
         Subscriptions = plugin is PluginBase pluginBase ? pluginBase.GetEffectiveSubscriptions() : BotEventSubscriptions.None;
         GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
@@ -43,6 +49,9 @@ internal sealed class LoadedPluginHandle
     public string Name { get; }
     public string DisplayName { get; }
     public string Version { get; }
+    public string? Description { get; }
+    public string? Author { get; }
+    public PluginCategory Category { get; }
     public string? GithubRepo { get; }
     public string AssemblyPath => _assemblyPath;
     public BotEventSubscriptions Subscriptions { get; }
@@ -145,7 +154,7 @@ internal sealed class LoadedPluginHandle
         _context = null;
         _loader = null;
 
-        return BeginUnloadCore(Name, _assemblyPath, plugin, context, loader);
+        return BeginUnloadCore(Name, _assemblyPath, plugin, context, loader, _logHub);
     }
 
     private static Task<PluginUnloadResult> BeginUnloadCore(
@@ -153,11 +162,12 @@ internal sealed class LoadedPluginHandle
         string assemblyPath,
         IBotPlugin? plugin,
         PluginContext? context,
-        DllLoader<IBotPlugin>? loader)
+        DllLoader<IBotPlugin>? loader,
+        HostLogHub logHub)
     {
         var pluginWeakReference = plugin is null ? null : new WeakReference(plugin);
         var contextWeakReference = context is null ? null : new WeakReference(context);
-        Exception? unloadException = null;
+        Exception? unloadException;
         IDisposable? scope = null;
         try
         {
@@ -166,7 +176,7 @@ internal sealed class LoadedPluginHandle
                 throw new InvalidOperationException("Plugin is not available for unload.");
             }
 
-            scope = BotLog.BeginScope(new ConsoleLogger($"[Plugin:{name}]"));
+            scope = BotLog.BeginScope(new ConsoleLogger($"[Plugin:{name}]", logHub));
             ReleaseAvaloniaPluginResources(plugin.GetType().Assembly.GetName().Name);
             var unloadTask = plugin.OnUnload();
 

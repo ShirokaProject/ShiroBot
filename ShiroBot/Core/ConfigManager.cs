@@ -381,6 +381,42 @@ public class ConfigManager(string? coreConfigPath = null)
         SaveToml(configPath, config, _options);
     }
 
+    public void SetConfigValue(string configPath, string keyPath, object? value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
+
+        var normalizedConfigPath = Path.GetFullPath(configPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(normalizedConfigPath)!);
+
+        var toml = File.Exists(normalizedConfigPath) ? File.ReadAllText(normalizedConfigPath) : string.Empty;
+        var lines = toml.Replace("\r\n", "\n").Split('\n').ToList();
+        if (lines is [{ Length: 0 }]) lines.Clear();
+
+        var pathParts = keyPath.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pathParts.Length == 0) throw new ArgumentException("配置键路径不能为空。", nameof(keyPath));
+
+        var key = pathParts[^1];
+        var sectionName = string.Join('.', pathParts[..^1]);
+        var valueLiteral = FormatTomlValue(value);
+
+        var (sectionStart, sectionEnd) = FindOrAppendSection(lines, sectionName);
+        for (var i = sectionStart; i < sectionEnd; i++)
+        {
+            if (!TryGetTomlKey(lines[i], out var existingKey)
+                || !string.Equals(existingKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            lines[i] = ReplaceTomlValue(lines[i], valueLiteral);
+            WritePatchedToml(normalizedConfigPath, lines);
+            return;
+        }
+
+        lines.Insert(sectionEnd, $"{key} = {valueLiteral}");
+        WritePatchedToml(normalizedConfigPath, lines);
+    }
+
     private static void SaveToml<T>(string configPath, T config, TomlSerializerOptions options) where T : class
     {
         Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
@@ -411,5 +447,129 @@ public class ConfigManager(string? coreConfigPath = null)
         }
 
         return builder.ToString();
+    }
+
+    private static (int Start, int End) FindOrAppendSection(List<string> lines, string sectionName)
+    {
+        if (sectionName.Length == 0)
+        {
+            return (0, FindFirstSectionIndex(lines));
+        }
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (!TryParseTomlHeader(trimmed, out var currentSection, out var isArrayTable)
+                || isArrayTable
+                || !string.Equals(currentSection, sectionName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return (i + 1, FindSectionInsertIndex(lines, i));
+        }
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+
+        if (lines.Count > 0) lines.Add(string.Empty);
+        lines.Add($"[{sectionName}]");
+        return (lines.Count, lines.Count);
+    }
+
+    private static string ReplaceTomlValue(string line, string valueLiteral)
+    {
+        var equalsIndex = line.IndexOf('=');
+        if (equalsIndex < 0) return line;
+
+        var commentIndex = FindInlineCommentIndex(line, equalsIndex + 1);
+        var prefix = line[..(equalsIndex + 1)].TrimEnd();
+        var spacing = GetValueSpacing(line, equalsIndex + 1);
+        var comment = commentIndex >= 0 ? line[commentIndex..] : string.Empty;
+        var beforeCommentSpacing = commentIndex >= 0 ? GetBeforeCommentSpacing(line, commentIndex) : string.Empty;
+
+        return prefix + spacing + valueLiteral + beforeCommentSpacing + comment;
+    }
+
+    private static int FindInlineCommentIndex(string line, int startIndex)
+    {
+        var inString = false;
+        var quote = '\0';
+        var escaped = false;
+
+        for (var i = startIndex; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (inString)
+            {
+                if (quote == '"' && c == '\\' && !escaped)
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (c == quote && !escaped) inString = false;
+                escaped = false;
+                continue;
+            }
+
+            if (c is '"' or '\'')
+            {
+                inString = true;
+                quote = c;
+                continue;
+            }
+
+            if (c == '#') return i;
+        }
+
+        return -1;
+    }
+
+    private static string GetValueSpacing(string line, int valueStart)
+    {
+        var end = valueStart;
+        while (end < line.Length && char.IsWhiteSpace(line[end])) end++;
+        return end == valueStart ? " " : line[valueStart..end];
+    }
+
+    private static string GetBeforeCommentSpacing(string line, int commentIndex)
+    {
+        var start = commentIndex;
+        while (start > 0 && char.IsWhiteSpace(line[start - 1])) start--;
+        return start == commentIndex ? " " : line[start..commentIndex];
+    }
+
+    private static string FormatTomlValue(object? value)
+    {
+        return value switch
+        {
+            null => "\"\"",
+            string text => QuoteTomlString(text),
+            bool boolean => boolean ? "true" : "false",
+            sbyte or byte or short or ushort or int or uint or long or ulong => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
+            float or double or decimal => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
+            Enum enumValue => QuoteTomlString(enumValue.ToString()),
+            System.Collections.IEnumerable items when value is not string => FormatTomlArray(items),
+            _ => QuoteTomlString(value.ToString() ?? string.Empty)
+        };
+    }
+
+    private static string FormatTomlArray(System.Collections.IEnumerable items)
+    {
+        var values = items.Cast<object?>().Select(FormatTomlValue);
+        return "[" + string.Join(", ", values) + "]";
+    }
+
+    private static string QuoteTomlString(string value)
+    {
+        return JsonSerializer.Serialize(value);
+    }
+
+    private static void WritePatchedToml(string configPath, List<string> lines)
+    {
+        File.WriteAllText(configPath, string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine);
     }
 }
