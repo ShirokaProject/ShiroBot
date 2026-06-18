@@ -1,0 +1,3 @@
+[submodule "Shirobot.Dashboard"]
+	path = Shirobot.Dashboard
+	url = https://github.com/ShirokaProject/Shirobot.Dashboard.git

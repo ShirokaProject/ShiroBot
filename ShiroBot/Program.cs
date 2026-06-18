@@ -44,6 +44,7 @@ public static class Program
         var parserResult = rootCommand.Parse(args);
 
         CH.Info("ShiroBot 启动中...");
+        CH.Info(BotMetaDataProvider.StartupVersionText);
 
         var sharedAssemblies = new SharedAssemblyResolver();
         _ = typeof(IncomingMessage).Assembly;
@@ -345,4 +346,5 @@ public static class Program
             ? Path.ChangeExtension(adapterPath, ".toml")
             : Path.Combine(normalizedParent, "config.toml");
     }
+
 }

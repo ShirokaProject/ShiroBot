@@ -3,10 +3,10 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
-        <Version>0.5.0</Version>
+        <Version>0.6.0</Version>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <Configurations>Debug;DebugPlugin;DebugAdapter;DebugAll;Release</Configurations>
+        <Configurations>Debug;Release</Configurations>
         <!-- 是否在宿主中集成 Avalonia 渲染模块。默认开启；关闭时不会引入 Avalonia/Skia/HarfBuzz。 -->
         <EnableAvalonia Condition="'$(EnableAvalonia)'==''">true</EnableAvalonia>
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
@@ -18,6 +18,9 @@
 
     <PropertyGroup>
         <ManagedAdapterDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\adapters\ShiroBot.DemoAdapter</ManagedAdapterDebugDir>
+        <DashboardSourceDir>$(MSBuildThisFileDirectory)..\Shirobot.Dashboard\</DashboardSourceDir>
+        <BuildDashboard Condition="'$(BuildDashboard)'==''">false</BuildDashboard>
+        <BuildDashboardOnPublish Condition="'$(BuildDashboardOnPublish)'==''">true</BuildDashboardOnPublish>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(EnableAvalonia)'=='true'">
@@ -59,35 +62,70 @@
         </AssemblyAttribute>
     </ItemGroup>
 
-    <ItemGroup>
-        <EmbeddedResource Include="Assets\dashboard\**\*" LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
-    </ItemGroup>
+    <Target Name="BuildDashboardForPublish" BeforeTargets="Publish"
+            Condition="'$(BuildDashboard)'!='true' and '$(BuildDashboardOnPublish)'=='true' and '$(NoBuild)'!='true'">
+        <Message Importance="high" Text="Publish requested; rebuilding host once with dashboard assets enabled." />
+        <MSBuild Projects="$(MSBuildProjectFullPath)"
+                 Targets="Build"
+                 Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);EnableAvalonia=$(EnableAvalonia);BuildDashboard=true;BuildDashboardOnPublish=false;RestoreIgnoreFailedSources=$(RestoreIgnoreFailedSources);NoRestore=true" />
+    </Target>
+
+    <Target Name="BuildDashboardAssets" BeforeTargets="PrepareResourceNames"
+            Condition="'$(BuildDashboard)'=='true'">
+        <Warning Condition="!Exists('$(DashboardSourceDir)package.json')"
+                 Text="Dashboard 源码未找到，跳过 Dashboard 构建: $(DashboardSourceDir)。宿主仍会继续构建，但 /dashboard 可能不可用。" />
+
+        <Exec Command="npm --version" IgnoreExitCode="true" ConsoleToMSBuild="true"
+              Condition="Exists('$(DashboardSourceDir)package.json')">
+            <Output TaskParameter="ExitCode" PropertyName="DashboardNpmExitCode" />
+        </Exec>
+        <Warning Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'!='0'"
+                 Text="未检测到可用的 npm，跳过 Dashboard 构建。宿主仍会继续构建，但 /dashboard 可能不可用。" />
+
+        <Message Importance="high"
+                 Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0'"
+                 Text="Building dashboard assets from $(DashboardSourceDir)" />
+        <Exec WorkingDirectory="$(DashboardSourceDir)" Command="npm ci" IgnoreExitCode="true"
+              Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and !Exists('$(DashboardSourceDir)node_modules')">
+            <Output TaskParameter="ExitCode" PropertyName="DashboardNpmCiExitCode" />
+        </Exec>
+
+        <PropertyGroup>
+            <DashboardNpmCiOk Condition="Exists('$(DashboardSourceDir)node_modules') or '$(DashboardNpmCiExitCode)'=='0'">true</DashboardNpmCiOk>
+        </PropertyGroup>
+        <Warning Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and '$(DashboardNpmCiOk)'!='true'"
+                 Text="npm ci 执行失败，跳过 Dashboard 构建。宿主仍会继续构建，但 /dashboard 可能不可用。" />
+
+        <Exec WorkingDirectory="$(DashboardSourceDir)" Command="npm run build" IgnoreExitCode="true"
+              Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and '$(DashboardNpmCiOk)'=='true'">
+            <Output TaskParameter="ExitCode" PropertyName="DashboardNpmBuildExitCode" />
+        </Exec>
+        <Warning Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and '$(DashboardNpmCiOk)'=='true' and '$(DashboardNpmBuildExitCode)'!='0'"
+                 Text="npm run build 执行失败，跳过 Dashboard 资源更新。宿主仍会继续构建。" />
+
+        <Warning Condition="'$(DashboardNpmBuildExitCode)'=='0' and !Exists('$(DashboardSourceDir)dist\index.html')"
+                 Text="Dashboard 构建完成但未找到 dist/index.html，跳过 Dashboard 资源更新。宿主仍会继续构建。" />
+        <RemoveDir Directories="$(MSBuildProjectDirectory)\Assets\dashboard"
+                   Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')" />
+        <MakeDir Directories="$(MSBuildProjectDirectory)\Assets\dashboard"
+                 Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')" />
+        <ItemGroup Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')">
+            <DashboardDistFiles Include="$(DashboardSourceDir)dist\**\*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(DashboardDistFiles)"
+              DestinationFiles="@(DashboardDistFiles->'$(MSBuildProjectDirectory)\Assets\dashboard\%(RecursiveDir)%(Filename)%(Extension)')"
+              Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')" />
+    </Target>
+
+    <Target Name="IncludeDashboardAssets" BeforeTargets="PrepareResourceNames">
+        <ItemGroup>
+            <EmbeddedResource Remove="Assets\dashboard\**\*" />
+            <EmbeddedResource Include="Assets\dashboard\**\*" LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
+        </ItemGroup>
+    </Target>
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
-    </ItemGroup>
-
-    <!--
-        调试期自动构建并拷贝仓库内插件项目到宿主 plugins/ 目录。
-        新增插件项目只需要实现 CopyPluginToHost target，不需要再改宿主 ProjectReference。
-    -->
-    <ItemGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll'">
-        <ShiroBotPluginProject Include="..\*\*.csproj"
-                               Exclude="..\ShiroBot\ShiroBot.csproj;
-                                        ..\ShiroBot.SDK\ShiroBot.SDK.csproj;
-                                        ..\ShiroBot.Model\ShiroBot.Model.csproj;
-                                        ..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj;
-                                        ..\ShiroBot.AvaloniaIntegration\ShiroBot.AvaloniaIntegration.csproj;
-                                        ..\ShiroBot.DemoAdapter\ShiroBot.DemoAdapter.csproj;
-                                        ..\Shirobot.MilkyAdapter\ShiroBot.MilkyAdapter.csproj;
-                                        ..\MilkyModelGenerator.Net\MilkyModelGenerator.Net.csproj" />
-        <ProjectReference Include="@(ShiroBotPluginProject)" ReferenceOutputAssembly="false" PrivateAssets="all" />
-        <ShiroBotPluginProject Remove="..\ShiroBot.AiChatPlugin\**" />
-        <ShiroBotPluginProject Remove="..\ShiroBot.AvaloniaDemoPlugin\**" />
-        <ShiroBotPluginProject Remove="..\ShiroBot.DemoPlugin\**" />
-        <ShiroBotPluginProject Remove="..\ShiroBot.JmParser\**" />
-        <ShiroBotPluginProject Remove="..\ShiroBot.Plugin.Github\**" />
-        <ShiroBotPluginProject Remove="..\ShiroBot.VideoPreviewPlugin\**" />
     </ItemGroup>
 
     <!-- Avalonia 集成模块（runtime 资产随宿主一起进入输出目录） -->
@@ -95,23 +133,5 @@
         <ProjectReference Include="..\ShiroBot.AvaloniaIntegration\ShiroBot.AvaloniaIntegration.csproj" />
         <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
     </ItemGroup>
-
-    <ItemGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
-        <ProjectReference Include="..\ShiroBot.DemoAdapter\ShiroBot.DemoAdapter.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
-    </ItemGroup>
-
-    <Target Name="CopyManagedDebugArtifacts"
-            AfterTargets="Build"
-            Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
-        <!-- 调试配置下将插件/适配器输出复制到 ShiroBot 输出目录以便调试 -->
-    </Target>
-
-    <Target Name="CopyShiroBotPluginProjectsToHost"
-            AfterTargets="Build"
-            Condition="'@(ShiroBotPluginProject)'!='' and ('$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll')">
-        <MSBuild Projects="@(ShiroBotPluginProject)"
-                 Targets="CopyPluginToHost"
-                 Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);EnableAvalonia=$(EnableAvalonia)" />
-    </Target>
 
 </Project>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -72,18 +73,30 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     private static void MapDashboardAssets(WebApplication app, ApiHostConfig config)
     {
-        var fileProvider = new EmbeddedFileProvider(Assembly.GetExecutingAssembly(), "Assets.dashboard");
+        const string dashboardPath = "/dashboard";
+        const string resourcePrefix = "Assets.dashboard.";
+        var assembly = Assembly.GetExecutingAssembly();
+        var contentTypeProvider = new FileExtensionContentTypeProvider();
 
-        app.UseDefaultFiles(new DefaultFilesOptions
+        IResult ServeDashboardFile(string path)
         {
-            FileProvider = fileProvider,
-            RequestPath = string.Empty
-        });
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = fileProvider,
-            RequestPath = string.Empty
-        });
+            path = path.TrimStart('/', '\\').Replace('/', '\\');
+            var stream = assembly.GetManifestResourceStream(resourcePrefix + path);
+            if (stream is null) return Results.NotFound();
+
+            if (!contentTypeProvider.TryGetContentType(path, out var contentType))
+            {
+                contentType = "application/octet-stream";
+            }
+
+            return Results.File(stream, contentType, enableRangeProcessing: true);
+        }
+
+        IResult ServeIndex() => ServeDashboardFile("index.html");
+
+        app.MapGet($"{dashboardPath}/favicon.png", () => ServeDashboardFile("favicon.png"));
+        app.MapGet($"{dashboardPath}/assets/{{**path}}", (string path) => ServeDashboardFile($"assets/{path}"));
+        app.MapGet($"{dashboardPath}/{{**path}}", ServeIndex);
     }
 
     private static void MapApiEndpoints(
