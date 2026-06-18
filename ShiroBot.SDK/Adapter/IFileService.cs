@@ -37,4 +37,7 @@ public interface IFileService
 
     Task DeleteGroupFolderAsync(DeleteGroupFolderRequest request)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(DeleteGroupFolderAsync)}'.");
+    
+    Task PersistGroupFileAsync(PersistGroupFileRequest request) 
+        => throw new NotSupportedException($"Current adapter does not support '{nameof(PersistGroupFileRequest)}'.");
 }

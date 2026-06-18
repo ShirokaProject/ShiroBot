@@ -118,6 +118,9 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
             nameof(GroupWholeMuteEvent) => "群全体禁言",
             nameof(GroupNudgeEvent) => "群戳一戳",
             nameof(GroupFileUploadEvent) => "群文件上传",
+            nameof(PeerPinChangeEvent) => "会话置顶变更",
+            nameof(GroupDisbandEvent) => "群解散",
+            nameof(BotOfflineEvent) => "机器人离线",
             _ => eventName
         };
     }

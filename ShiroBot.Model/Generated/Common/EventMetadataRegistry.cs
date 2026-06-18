@@ -68,6 +68,13 @@ public static class EventMetadataRegistry
             new(nameof(GroupAdminChangeEvent.OperatorId), "操作者 QQ 号"),
             new(nameof(GroupAdminChangeEvent.IsSet), "是否被设置为管理员，`false` 表示被取消管理员")
         ]),
+        [typeof(GroupDisbandEvent)] = new("群解散事件",
+        [
+            new(nameof(GroupDisbandEvent.Time), "事件 Unix 时间戳（秒）"),
+            new(nameof(GroupDisbandEvent.SelfId), "机器人 QQ 号"),
+            new(nameof(GroupDisbandEvent.GroupId), "群号"),
+            new(nameof(GroupDisbandEvent.OperatorId), "操作者 QQ 号")
+        ]),
         [typeof(GroupEssenceMessageChangeEvent)] = new("群精华消息变更事件",
         [
             new(nameof(GroupEssenceMessageChangeEvent.Time), "事件 Unix 时间戳（秒）"),

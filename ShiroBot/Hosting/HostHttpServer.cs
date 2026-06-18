@@ -80,8 +80,10 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
         IResult ServeDashboardFile(string path)
         {
-            path = path.TrimStart('/', '\\').Replace('/', '\\');
-            var stream = assembly.GetManifestResourceStream(resourcePrefix + path);
+            path = path.TrimStart('/', '\\');
+            var resourcePath = path.Replace('/', '\\');
+            var stream = assembly.GetManifestResourceStream(resourcePrefix + resourcePath)
+                         ?? assembly.GetManifestResourceStream(resourcePrefix + path.Replace('\\', '/'));
             if (stream is null) return Results.NotFound();
 
             if (!contentTypeProvider.TryGetContentType(path, out var contentType))

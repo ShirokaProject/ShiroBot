@@ -22,5 +22,8 @@ public enum BotEventSubscriptions
     GroupMute = 1 << 15,
     GroupWholeMute = 1 << 16,
     GroupNudge = 1 << 17,
-    GroupFileUpload = 1 << 18
+    GroupFileUpload = 1 << 18,
+    PeerPinChange = 1 << 19,
+    GroupDisband = 1 << 20,
+    BotOffline = 1 << 21
 }

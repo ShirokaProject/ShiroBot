@@ -1,0 +1,49 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ShiroBotAvaloniaPreviewerSupport Condition="'$(ShiroBotAvaloniaPreviewerSupport)' == '' and '$(Configuration)' == 'Release'">false</ShiroBotAvaloniaPreviewerSupport>
+    <ShiroBotAvaloniaPreviewerSupport Condition="'$(ShiroBotAvaloniaPreviewerSupport)' == ''">true</ShiroBotAvaloniaPreviewerSupport>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ShiroBotAvaloniaPreviewerSupport)' != 'false'">
+    <ShiroBotAvaloniaPreviewerStartupObject>ShiroBot.AvaloniaSdk.DesignerPreviewEntryPoint</ShiroBotAvaloniaPreviewerStartupObject>
+    <OutputType Condition="'$(OutputType)' == '' or '$(OutputType)' == 'Library'">Exe</OutputType>
+    <UseAppHost Condition="'$(UseAppHost)' == ''">false</UseAppHost>
+    <StartupObject Condition="'$(StartupObject)' == ''">$(ShiroBotAvaloniaPreviewerStartupObject)</StartupObject>
+    <GenerateRuntimeConfigurationFiles Condition="'$(GenerateRuntimeConfigurationFiles)' == ''">true</GenerateRuntimeConfigurationFiles>
+    <CopyLocalLockFileAssemblies Condition="'$(CopyLocalLockFileAssemblies)' == ''">true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectCapability Include="Avalonia" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ShiroBotAvaloniaPreviewerSupport)' != 'false' and '$(StartupObject)' == '$(ShiroBotAvaloniaPreviewerStartupObject)'">
+    <Compile Include="$(IntermediateOutputPath)ShiroBot.AvaloniaSdk.DesignerPreviewEntryPoint.g.cs"
+             Visible="false" />
+  </ItemGroup>
+
+  <Target Name="GenerateShiroBotAvaloniaSdkDesignerPreviewEntryPoint"
+          BeforeTargets="CoreCompile"
+          Condition="'$(ShiroBotAvaloniaPreviewerSupport)' != 'false' and '$(StartupObject)' == '$(ShiroBotAvaloniaPreviewerStartupObject)'">
+    <ItemGroup>
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="using Avalonia%3B" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="namespace ShiroBot.AvaloniaSdk%3B" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="public static class DesignerPreviewEntryPoint" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="{" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="    public static void Main(string[] args)" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="    {" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="    }" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="    public static AppBuilder BuildAvaloniaApp()" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="    {" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="        return AppBuilder.Configure&lt;Application&gt;()" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="            .UseHarfBuzz()" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="            .UseSkia()%3B" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="    }" />
+      <_ShiroBotAvaloniaPreviewerEntryPointLine Include="}" />
+    </ItemGroup>
+
+    <WriteLinesToFile File="$(IntermediateOutputPath)ShiroBot.AvaloniaSdk.DesignerPreviewEntryPoint.g.cs"
+                      Lines="@(_ShiroBotAvaloniaPreviewerEntryPointLine)"
+                      Overwrite="true" />
+  </Target>
+</Project>

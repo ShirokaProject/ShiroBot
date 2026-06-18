@@ -38,4 +38,7 @@ public interface IFileContext : IFileService
 
     Task DeleteGroupFolderAsync(long groupId, string folderId) =>
         DeleteGroupFolderAsync(new DeleteGroupFolderRequest(groupId, folderId));
+    
+    Task PersistGroupFileAsync(long groupId,string fileId) =>
+        PersistGroupFileAsync(new PersistGroupFileRequest(groupId, fileId));
 }

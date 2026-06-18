@@ -16,8 +16,8 @@ env:
   SOLUTION_FILE: Shirobot.slnx
 
 jobs:
-  release:
-    name: Build and publish release
+  prepare:
+    name: Prepare shared assets
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -61,52 +61,127 @@ jobs:
             --output artifacts/nuget \
             /p:ContinuousIntegrationBuild=true
 
-      - name: Publish host packages
+      - name: Build dashboard assets once
         run: |
           set -euo pipefail
 
-          runtimes=(win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64)
-          flavors=(full lite)
-          publish_kinds=(framework-dependent self-contained)
+          dotnet msbuild "${{ env.HOST_PROJECT }}" \
+            -target:BuildDashboardAssets \
+            -property:Configuration="${{ env.CONFIGURATION }}" \
+            /p:ContinuousIntegrationBuild=true \
+            /p:EnableAvalonia=false \
+            /p:BuildDashboard=true \
+            /p:BuildDashboardOnPublish=false
+
+          test -f ShiroBot/Assets/dashboard/index.html
+
+      - name: Upload NuGet packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/nuget/*.nupkg
+          if-no-files-found: error
+
+      - name: Upload dashboard assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-assets
+          path: ShiroBot/Assets/dashboard/**
+          if-no-files-found: error
+
+  publish-host:
+    name: Publish ${{ matrix.runtime }} ${{ matrix.flavor }} ${{ matrix.publish_kind }}
+    runs-on: ubuntu-latest
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64]
+        flavor: [full, lite]
+        publish_kind: [framework-dependent, self-contained]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Download dashboard assets
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-assets
+          path: ShiroBot/Assets/dashboard
+
+      - name: Publish host package
+        run: |
+          set -euo pipefail
 
           mkdir -p artifacts/archives
 
-          for runtime in "${runtimes[@]}"; do
-            for flavor in "${flavors[@]}"; do
-              enable_avalonia=true
-              if [ "$flavor" = "lite" ]; then
-                enable_avalonia=false
-              fi
+          runtime='${{ matrix.runtime }}'
+          flavor='${{ matrix.flavor }}'
+          publish_kind='${{ matrix.publish_kind }}'
 
-              for publish_kind in "${publish_kinds[@]}"; do
-                self_contained=false
-                if [ "$publish_kind" = "self-contained" ]; then
-                  self_contained=true
-                fi
+          enable_avalonia=true
+          if [ "$flavor" = "lite" ]; then
+            enable_avalonia=false
+          fi
 
-                output_dir="artifacts/host/${runtime}-${flavor}-${publish_kind}"
-                host_exe="ShiroBot"
-                if [[ "$runtime" == win-* ]]; then
-                  host_exe="ShiroBot.exe"
-                fi
-                archive_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}.zip"
+          self_contained=false
+          if [ "$publish_kind" = "self-contained" ]; then
+            self_contained=true
+          fi
 
-                dotnet publish "${{ env.HOST_PROJECT }}" \
-                  --configuration "${{ env.CONFIGURATION }}" \
-                  --runtime "$runtime" \
-                  --self-contained "$self_contained" \
-                  --output "$output_dir" \
-                  /p:ContinuousIntegrationBuild=true \
-                  /p:EnableAvalonia="$enable_avalonia" \
-                  /p:BuildDashboard=true \
-                  /p:PublishSingleFile=true \
-                  /p:IncludeNativeLibrariesForSelfExtract=true
+          output_dir="artifacts/host/${runtime}-${flavor}-${publish_kind}"
+          host_exe="ShiroBot"
+          if [[ "$runtime" == win-* ]]; then
+            host_exe="ShiroBot.exe"
+          fi
+          archive_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}.zip"
 
-                chmod +x "$output_dir/$host_exe"
-                (cd "$output_dir" && zip -9 -j "$archive_path" "$host_exe")
-              done
-            done
-          done
+          dotnet publish "${{ env.HOST_PROJECT }}" \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --runtime "$runtime" \
+            --self-contained "$self_contained" \
+            --output "$output_dir" \
+            /p:ContinuousIntegrationBuild=true \
+            /p:EnableAvalonia="$enable_avalonia" \
+            /p:BuildDashboard=false \
+            /p:BuildDashboardOnPublish=false \
+            /p:PublishSingleFile=true \
+            /p:IncludeNativeLibrariesForSelfExtract=true
+
+          chmod +x "$output_dir/$host_exe"
+          (cd "$output_dir" && zip -9 -j "$archive_path" "$host_exe")
+
+      - name: Upload host archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: shirobot-host-${{ matrix.runtime }}-${{ matrix.flavor }}-${{ matrix.publish_kind }}
+          path: artifacts/archives/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prepare, publish-host]
+    steps:
+      - name: Download NuGet packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/nuget
+
+      - name: Download host archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shirobot-host-*
+          path: artifacts/archives
+          merge-multiple: true
 
       - name: Create release notes
         run: |
@@ -175,7 +250,7 @@ jobs:
             done
           } > RELEASE_NOTES.md
 
-      - name: Upload workflow artifacts
+      - name: Upload release assets
         uses: actions/upload-artifact@v4
         with:
           name: release-assets

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using ShiroBot.AvaloniaSdk;
@@ -133,15 +134,22 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
 
                 var host = new Grid
                 {
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
                     ClipToBounds = false
                 };
                 host.Children.Add(content);
+                var renderRoot = new Viewbox
+                {
+                    Stretch = Stretch.Fill,
+                    Child = host
+                };
 
                 var window = new Window
                 {
                     Width = 1,
                     Height = 1,
-                    Content = host
+                    Content = renderRoot
                 };
 
                 try
@@ -180,12 +188,21 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     // 推动 headless 渲染时钟，确保至少完成一帧渲染。
                     AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
-                    var pixelWidth = (int)Math.Ceiling(finalWidth * dpi / 96d);
-                    var pixelHeight = (int)Math.Ceiling(finalHeight * dpi / 96d);
+                    var renderScale = dpi / 96d;
+                    var pixelWidth = (int)Math.Ceiling(finalWidth * renderScale);
+                    var pixelHeight = (int)Math.Ceiling(finalHeight * renderScale);
+                    renderRoot.Width = pixelWidth;
+                    renderRoot.Height = pixelHeight;
+                    window.Width = pixelWidth;
+                    window.Height = pixelHeight;
+                    renderRoot.Measure(new Size(pixelWidth, pixelHeight));
+                    renderRoot.Arrange(new Rect(0, 0, pixelWidth, pixelHeight));
+                    window.UpdateLayout();
+
                     using var frame = new RenderTargetBitmap(
                         new PixelSize(pixelWidth, pixelHeight),
-                        new Vector(dpi, dpi));
-                    frame.Render(host);
+                        new Vector(96, 96));
+                    frame.Render(renderRoot);
 
                     using var ms = new MemoryStream();
                     frame.Save(ms);
@@ -195,6 +212,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                 {
                     content.DataContext = null;
                     host.Children.Clear();
+                    renderRoot.Child = null;
                     window.Content = null;
                     window.Close();
                 }

@@ -7,4 +7,5 @@ namespace ShiroBot.Model.Common;
 public sealed partial record OutgoingForwardedMessage(
     long UserId,
     string SenderName,
-    IReadOnlyList<OutgoingSegment> Segments);
+    IReadOnlyList<OutgoingSegment> Segments,
+    long? Time = null);

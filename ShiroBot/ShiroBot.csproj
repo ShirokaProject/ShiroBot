@@ -19,8 +19,10 @@
     <PropertyGroup>
         <ManagedAdapterDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\adapters\ShiroBot.DemoAdapter</ManagedAdapterDebugDir>
         <DashboardSourceDir>$(MSBuildThisFileDirectory)..\Shirobot.Dashboard\</DashboardSourceDir>
+        <DashboardAssetsDir>$(MSBuildProjectDirectory)/Assets/dashboard</DashboardAssetsDir>
+        <DashboardDistIndex>$(DashboardSourceDir)dist/index.html</DashboardDistIndex>
         <BuildDashboard Condition="'$(BuildDashboard)'==''">false</BuildDashboard>
-        <BuildDashboardOnPublish Condition="'$(BuildDashboardOnPublish)'==''">true</BuildDashboardOnPublish>
+        <BuildDashboardOnPublish Condition="'$(BuildDashboardOnPublish)'==''">false</BuildDashboardOnPublish>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(EnableAvalonia)'=='true'">
@@ -70,8 +72,7 @@
                  Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);EnableAvalonia=$(EnableAvalonia);BuildDashboard=true;BuildDashboardOnPublish=false;RestoreIgnoreFailedSources=$(RestoreIgnoreFailedSources);NoRestore=true" />
     </Target>
 
-    <Target Name="BuildDashboardAssets" BeforeTargets="PrepareResourceNames"
-            Condition="'$(BuildDashboard)'=='true'">
+    <Target Name="BuildDashboardAssets" Condition="'$(BuildDashboard)'=='true'">
         <Warning Condition="!Exists('$(DashboardSourceDir)package.json')"
                  Text="Dashboard 源码未找到，跳过 Dashboard 构建: $(DashboardSourceDir)。宿主仍会继续构建，但 /dashboard 可能不可用。" />
 
@@ -103,26 +104,24 @@
         <Warning Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and '$(DashboardNpmCiOk)'=='true' and '$(DashboardNpmBuildExitCode)'!='0'"
                  Text="npm run build 执行失败，跳过 Dashboard 资源更新。宿主仍会继续构建。" />
 
-        <Warning Condition="'$(DashboardNpmBuildExitCode)'=='0' and !Exists('$(DashboardSourceDir)dist\index.html')"
+        <Warning Condition="'$(DashboardNpmBuildExitCode)'=='0' and !Exists('$(DashboardDistIndex)')"
                  Text="Dashboard 构建完成但未找到 dist/index.html，跳过 Dashboard 资源更新。宿主仍会继续构建。" />
-        <RemoveDir Directories="$(MSBuildProjectDirectory)\Assets\dashboard"
-                   Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')" />
-        <MakeDir Directories="$(MSBuildProjectDirectory)\Assets\dashboard"
-                 Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')" />
-        <ItemGroup Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')">
-            <DashboardDistFiles Include="$(DashboardSourceDir)dist\**\*" />
+        <RemoveDir Directories="$(DashboardAssetsDir)"
+                   Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
+        <MakeDir Directories="$(DashboardAssetsDir)"
+                 Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
+        <ItemGroup Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')">
+            <DashboardDistFiles Include="$(DashboardSourceDir)dist/**/*" />
         </ItemGroup>
         <Copy SourceFiles="@(DashboardDistFiles)"
-              DestinationFiles="@(DashboardDistFiles->'$(MSBuildProjectDirectory)\Assets\dashboard\%(RecursiveDir)%(Filename)%(Extension)')"
-              Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardSourceDir)dist\index.html')" />
+              DestinationFiles="@(DashboardDistFiles->'$(DashboardAssetsDir)/%(RecursiveDir)%(Filename)%(Extension)')"
+              Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
     </Target>
 
-    <Target Name="IncludeDashboardAssets" BeforeTargets="PrepareResourceNames">
-        <ItemGroup>
-            <EmbeddedResource Remove="Assets\dashboard\**\*" />
-            <EmbeddedResource Include="Assets\dashboard\**\*" LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
-        </ItemGroup>
-    </Target>
+    <ItemGroup>
+        <EmbeddedResource Remove="Assets\dashboard\**\*" />
+        <EmbeddedResource Include="Assets\dashboard\**\*" LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
