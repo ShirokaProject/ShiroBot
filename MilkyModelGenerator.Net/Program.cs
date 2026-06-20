@@ -455,7 +455,8 @@ static void GenerateSimpleStruct(
         GenerateEnum(generatedDir, area, enumDefinition, options);
     }
 
-    var members = OrderFieldsForCtor(fields)
+    var orderedFields = OrderFieldsForCtor(fields);
+    var members = orderedFields
         .Select(field => RenderCtorParameter(name, field))
         .ToList();
 
@@ -487,15 +488,86 @@ static void GenerateSimpleStruct(
     }
     else
     {
+        var needsBody = baseClause.Length > 0 || orderedFields.Any(IsCtorOptional);
         sb.AppendLine($"public sealed partial record {name}(");
         for (var i = 0; i < members.Count; i++)
         {
-            var suffix = i == members.Count - 1 ? $"){baseClause};" : ",";
+            var suffix = i == members.Count - 1
+                ? needsBody ? ")" : $"){baseClause};"
+                : ",";
             sb.AppendLine($"    {members[i]}{suffix}");
+        }
+
+        if (needsBody)
+        {
+            if (baseClause.Length > 0)
+            {
+                sb.AppendLine($"    {baseClause}");
+            }
+
+            sb.AppendLine("{");
+            RenderOptionalConstructorOverloads(sb, name, orderedFields, indent: "    ");
+            sb.AppendLine("}");
         }
     }
 
     WriteFile(Path.Combine(targetDir, $"{name}.cs"), sb.ToString());
+}
+
+static void RenderOptionalConstructorOverloads(StringBuilder sb, string ownerName, IReadOnlyList<JsonObject> orderedFields, string indent)
+{
+    var optionalStart = -1;
+    for (var i = 0; i < orderedFields.Count; i++)
+    {
+        if (IsCtorOptional(orderedFields[i]))
+        {
+            optionalStart = i;
+            break;
+        }
+    }
+
+    if (optionalStart < 0)
+    {
+        return;
+    }
+
+    var fullArguments = orderedFields
+        .Select(field => SnakeToPascal(field["name"]?.GetValue<string>() ?? "Unknown"))
+        .ToArray();
+
+    for (var count = optionalStart; count < orderedFields.Count; count++)
+    {
+        sb.AppendLine();
+        sb.AppendLine($"{indent}public {ownerName}(");
+        for (var i = 0; i < count; i++)
+        {
+            var suffix = i == count - 1 ? ")" : ",";
+            sb.AppendLine($"{indent}    {RenderRequiredCtorParameter(ownerName, orderedFields[i])}{suffix}");
+        }
+
+        if (count == 0)
+        {
+            sb.AppendLine($"{indent}    )");
+        }
+
+        sb.AppendLine($"{indent}    : this({string.Join(", ", fullArguments.Select((argument, index) => index < count ? LowerFirst(argument) : RenderDefaultValue(ownerName, orderedFields[index]) ?? "default"))})");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}}}");
+    }
+}
+
+static string RenderRequiredCtorParameter(string ownerName, JsonObject field)
+{
+    var type = ResolveFieldType(ownerName, field);
+    var name = SnakeToPascal(field["name"]?.GetValue<string>() ?? "Unknown");
+    return $"{type} {LowerFirst(name)}";
+}
+
+static string LowerFirst(string value)
+{
+    return string.IsNullOrEmpty(value)
+        ? value
+        : char.ToLowerInvariant(value[0]) + value[1..];
 }
 
 static IReadOnlyList<string> GetUsings(string area, JsonArray fields, GeneratorOptions options)

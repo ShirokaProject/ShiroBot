@@ -940,12 +940,26 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             if (!peReader.HasMetadata) return [];
 
             var reader = peReader.GetMetadataReader();
+            TypeDefinitionHandle configTypeHandle = default;
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var type = reader.GetTypeDefinition(typeHandle);
-                if (!reader.GetString(type.Name).Equals("PluginConfig", StringComparison.OrdinalIgnoreCase)) continue;
+                if (reader.GetString(type.Name).Equals("PluginConfig", StringComparison.OrdinalIgnoreCase))
+                {
+                    configTypeHandle = typeHandle;
+                    break;
+                }
 
-                return type.GetProperties()
+                if (configTypeHandle.IsNil && type.GetProperties().Any(propertyHandle =>
+                    ReadConfigFieldAttribute(reader, reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes()) is not null))
+                {
+                    configTypeHandle = typeHandle;
+                }
+            }
+
+            if (!configTypeHandle.IsNil)
+            {
+                return reader.GetTypeDefinition(configTypeHandle).GetProperties()
                     .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle)))
                     .Where(item => item is not null)
                     .Cast<object>()

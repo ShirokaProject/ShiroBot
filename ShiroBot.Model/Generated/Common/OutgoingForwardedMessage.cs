@@ -8,4 +8,13 @@ public sealed partial record OutgoingForwardedMessage(
     long UserId,
     string SenderName,
     IReadOnlyList<OutgoingSegment> Segments,
-    long? Time = null);
+    long? Time = null)
+{
+    public OutgoingForwardedMessage(
+        long userId,
+        string senderName,
+        IReadOnlyList<OutgoingSegment> segments)
+        : this(userId, senderName, segments, null)
+    {
+    }
+}

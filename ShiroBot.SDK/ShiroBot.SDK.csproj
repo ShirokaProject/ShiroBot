@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <PackageId>ShiroBot.SDK</PackageId>
-        <Version>0.5.0</Version>
+        <Version>0.6.0-rc1</Version>
         <IsPackable>true</IsPackable>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <Authors>ShiroBot</Authors>
