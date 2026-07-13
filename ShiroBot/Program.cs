@@ -210,15 +210,6 @@ public static class Program
                 groupRoutePolicy,
                 commandHandler.HandleFriendMessageAsync);
 
-            // ─── 加载所有插件 ───
-            CH.Info("开始加载插件...");
-            await pluginManager.LoadPluginsAsync(
-                PluginManager.EnumeratePluginEntryAssemblies(pluginRootPath).ToList(),
-                hostEventDispatcher,
-                groupRoutePolicy,
-                isInitialBoot: true);
-            CH.Success("已加载插件: " + string.Join(", ", pluginManager.GetLoadedPluginNames()));
-
             // ─── 控制台交互 ───
             var configuredConsoleOption = parserResult.GetValue(noConsoleOption);
             var hasConsole = Environment.UserInteractive && !Console.IsInputRedirected && !Console.IsOutputRedirected;
@@ -227,7 +218,16 @@ public static class Program
             if (enableConsoleInput)
             {
                 var exitRequested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                _ = Task.Run(() => commandHandler.RunConsoleLoop(exitRequested));
+                var consoleReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _ = Task.Run(() => commandHandler.RunConsoleLoop(exitRequested, consoleReady));
+                await consoleReady.Task;
+
+                CH.Info("控制台已就绪，开始在后台加载插件...");
+                _ = pluginManager.ScheduleInitialPluginLoad(
+                    PluginManager.EnumeratePluginEntryAssemblies(pluginRootPath).ToList(),
+                    hostEventDispatcher,
+                    groupRoutePolicy);
+
                 await exitRequested.Task;
                 return;
             }
@@ -237,6 +237,12 @@ public static class Program
             if (configuredConsoleOption) reasons.Add("命令行参数 --no-console 已启用");
             if (coreConfig.DisableConsoleInput) reasons.Add("配置项 disable_console_input = true");
             CH.Info($"已禁用控制台命令输入: {string.Join("，", reasons)}");
+
+            CH.Info("开始在后台加载插件...");
+            _ = pluginManager.ScheduleInitialPluginLoad(
+                PluginManager.EnumeratePluginEntryAssemblies(pluginRootPath).ToList(),
+                hostEventDispatcher,
+                groupRoutePolicy);
 
             await Task.Delay(Timeout.Infinite);
         }

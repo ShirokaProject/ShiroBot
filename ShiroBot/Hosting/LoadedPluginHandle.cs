@@ -8,7 +8,11 @@ namespace ShiroBot.Hosting;
 
 internal sealed class LoadedPluginHandle
 {
-    private int _state;
+    private readonly Lock _dispatchLock = new();
+    private int _activeDispatches;
+    private bool _isUnloading;
+    private TaskCompletionSource? _dispatchesDrained;
+    private Task<PluginUnloadResult>? _unloadTask;
     private IBotPlugin? _plugin;
     private PluginContext? _context;
     private DllLoader<IBotPlugin>? _loader;
@@ -78,7 +82,11 @@ internal sealed class LoadedPluginHandle
         return _groupRouteFilter(groupId.Value);
     }
 
-    public long GetLoadedAssemblyBytes()
+    /// <summary>
+    /// Gets the combined on-disk size of assembly files loaded into this plugin's load context.
+    /// This is not the plugin's runtime memory usage.
+    /// </summary>
+    public long GetLoadedAssemblyFileBytes()
     {
         var loader = _loader;
         if (loader?.Alc is null)
@@ -116,45 +124,98 @@ internal sealed class LoadedPluginHandle
     public bool Supports<THandler>()
         where THandler : class
     {
-        var plugin = _plugin;
-        return plugin is THandler;
+        lock (_dispatchLock)
+        {
+            return !_isUnloading && _plugin is THandler;
+        }
     }
 
     public async Task<bool> DispatchAsync<THandler>(Func<THandler, Task> dispatch)
         where THandler : class
     {
-        var plugin = _plugin;
-        if (plugin is not THandler handler)
+        THandler handler;
+        IConsoleLogger logger;
+        lock (_dispatchLock)
         {
-            return false;
+            if (_isUnloading || _plugin is not THandler candidate || _context?.Logger is not { } contextLogger)
+            {
+                return false;
+            }
+
+            handler = candidate;
+            logger = contextLogger;
+            _activeDispatches++;
         }
 
-        var logger = _context?.Logger;
-        if (logger is null)
+        try
         {
-            return false;
+            await BotLog.RunScoped(logger, () => dispatch(handler));
+            return true;
         }
-
-        await BotLog.RunScoped(logger, () => dispatch(handler));
-        return true;
+        finally
+        {
+            CompleteDispatch();
+        }
     }
 
     public Task<PluginUnloadResult> UnloadAsync()
     {
-        if (Interlocked.Exchange(ref _state, 1) == 1)
+        lock (_dispatchLock)
         {
-            return Task.FromResult(new PluginUnloadResult(Name, _assemblyPath, true, null, null, null, null));
+            if (_unloadTask is not null)
+            {
+                return _unloadTask;
+            }
+
+            _isUnloading = true;
+            var dispatchesDrained = _activeDispatches == 0
+                ? Task.CompletedTask
+                : (_dispatchesDrained ??= new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+
+            _unloadTask = UnloadWhenDispatchesDrainedAsync(dispatchesDrained);
+            return _unloadTask;
+        }
+    }
+
+    private void CompleteDispatch()
+    {
+        TaskCompletionSource? dispatchesDrained = null;
+        lock (_dispatchLock)
+        {
+            _activeDispatches--;
+            if (_activeDispatches == 0)
+            {
+                dispatchesDrained = _dispatchesDrained;
+            }
         }
 
-        var plugin = _plugin;
-        var context = _context;
-        var loader = _loader;
+        dispatchesDrained?.TrySetResult();
+    }
 
-        _plugin = null;
-        _context = null;
-        _loader = null;
+    private async Task<PluginUnloadResult> UnloadWhenDispatchesDrainedAsync(Task dispatchesDrained)
+    {
+        // UnloadAsync creates this task while holding _dispatchLock. Always yield once so plugin
+        // cleanup code can never run under the lifecycle lock, even when no dispatch is active.
+        await Task.Yield();
+        await dispatchesDrained.ConfigureAwait(false);
 
-        return BeginUnloadCore(Name, _assemblyPath, plugin, context, loader, _logHub);
+        IBotPlugin? plugin;
+        PluginContext? context;
+        DllLoader<IBotPlugin>? loader;
+        lock (_dispatchLock)
+        {
+            plugin = _plugin;
+            context = _context;
+            loader = _loader;
+
+            _plugin = null;
+            _context = null;
+            _loader = null;
+        }
+
+        return await BeginUnloadCore(Name, _assemblyPath, plugin, context, loader, _logHub)
+            .ConfigureAwait(false);
     }
 
     private static Task<PluginUnloadResult> BeginUnloadCore(
@@ -177,6 +238,7 @@ internal sealed class LoadedPluginHandle
             }
 
             scope = BotLog.BeginScope(new ConsoleLogger($"[Plugin:{name}]", logHub));
+            context?.DetachExternalCallbacks();
             ReleaseAvaloniaPluginResources(plugin.GetType().Assembly.GetName().Name);
             var unloadTask = plugin.OnUnload();
 

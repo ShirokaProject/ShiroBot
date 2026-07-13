@@ -205,7 +205,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     frame.Render(renderRoot);
 
                     using var ms = new MemoryStream();
-                    frame.Save(ms);
+                    frame.Save(ms, PngBitmapEncoderOptions.Default);
                     return ms.ToArray();
                 }
                 finally

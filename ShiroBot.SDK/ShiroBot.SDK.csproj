@@ -17,6 +17,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.45"
+                        PrivateAssets="all"
+                        GeneratePathProperty="true" />
     </ItemGroup>
 
     <ItemGroup>
@@ -29,6 +32,16 @@
 
     <ItemGroup>
       <None Include="README.md" Pack="true" PackagePath="\" />
+      <None Include="buildTransitive\ShiroBot.SDK.props"
+            Pack="true"
+            PackagePath="buildTransitive\ShiroBot.SDK.props" />
+      <None Include="buildTransitive\ShiroBot.SDK.targets"
+            Pack="true"
+            PackagePath="buildTransitive\ShiroBot.SDK.targets" />
+      <None Include="$(PkgILRepack_Lib_MSBuild_Task)\build\ILRepack.Lib.MSBuild.Task.dll"
+            Pack="true"
+            PackagePath="tools\ILRepack.Lib.MSBuild.Task.dll"
+            Visible="false" />
     </ItemGroup>
 
 </Project>

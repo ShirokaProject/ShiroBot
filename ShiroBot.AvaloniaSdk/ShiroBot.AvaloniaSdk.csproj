@@ -32,9 +32,9 @@
         Avalonia assemblies when the host provides them from ShiroBot.AvaloniaIntegration.
     -->
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="12.0.4" />
-        <PackageReference Include="Avalonia.HarfBuzz" Version="12.0.4" />
-        <PackageReference Include="Avalonia.Skia" Version="12.0.4" />
+        <PackageReference Include="Avalonia" Version="12.1.0" />
+        <PackageReference Include="Avalonia.HarfBuzz" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Skia" Version="12.1.0" />
     </ItemGroup>
 
 </Project>

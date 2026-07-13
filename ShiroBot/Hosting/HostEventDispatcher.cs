@@ -20,6 +20,8 @@ internal sealed class HostEventDispatcher(
     private readonly List<LoadedPluginHandle> _friendMessageBroadcastHandlers = [];
     private readonly List<(string Prefix, LoadedPluginHandle Plugin)> _friendMessagePrefixHandlers = [];
     private readonly Dictionary<Type, List<LoadedPluginHandle>> _eventHandlers = [];
+    private readonly TaskCompletionSource _initialPluginsReady = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
 
     public void RegisterPlugin(LoadedPluginHandle pluginHandle)
     {
@@ -63,13 +65,18 @@ internal sealed class HostEventDispatcher(
         }
     }
 
-    public Task PublishAsync(Event message) =>
-        message switch
+    public async Task PublishAsync(Event message)
+    {
+        await _initialPluginsReady.Task.ConfigureAwait(false);
+        await (message switch
         {
             GroupIncomingMessage groupMessage => PublishMessageAsync("群消息", groupMessage, MatchGroupMessageHandlers(groupMessage), handler => handler.OnEventAsync(groupMessage)),
             FriendIncomingMessage friendMessage => PublishMessageAsync("好友消息", friendMessage, MatchFriendMessageHandlers(friendMessage), handler => handler.OnEventAsync(friendMessage)),
             _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()), handler => handler.OnEventAsync(message))
-        };
+        }).ConfigureAwait(false);
+    }
+
+    internal void MarkInitialPluginsReady() => _initialPluginsReady.TrySetResult();
 
     private async Task PublishMessageAsync<TMessage>(
         string eventName,

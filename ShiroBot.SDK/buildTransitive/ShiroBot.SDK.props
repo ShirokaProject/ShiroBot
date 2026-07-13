@@ -1,0 +1,10 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <!-- Set to false when a non-plugin library references ShiroBot.SDK. Plugin assemblies are also
+         detected from BotPluginAttribute before any output is rewritten. -->
+    <ShiroBotPluginPackagingEnabled Condition="'$(ShiroBotPluginPackagingEnabled)' == ''">true</ShiroBotPluginPackagingEnabled>
+    <ShiroBotNativePackageSource Condition="'$(ShiroBotNativePackageSource)' == ''">https://api.nuget.org/v3-flatcontainer</ShiroBotNativePackageSource>
+    <ShiroBotSharedAssemblyPrefixes Condition="'$(ShiroBotSharedAssemblyPrefixes)' == ''">ShiroBot.SDK;ShiroBot.Model;ShiroBot.AvaloniaSdk;Avalonia;SkiaSharp;HarfBuzzSharp;MicroCom;System.;Microsoft.</ShiroBotSharedAssemblyPrefixes>
+    <ShiroBotSharedNativePackagePrefixes Condition="'$(ShiroBotSharedNativePackagePrefixes)' == ''">Avalonia;SkiaSharp.NativeAssets;HarfBuzzSharp.NativeAssets</ShiroBotSharedNativePackagePrefixes>
+  </PropertyGroup>
+</Project>

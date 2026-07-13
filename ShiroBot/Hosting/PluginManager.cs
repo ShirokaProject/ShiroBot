@@ -30,6 +30,7 @@ internal sealed class PluginManager(
     HostLogHub logHub)
 {
     private readonly List<LoadedPluginHandle> _loadedPlugins = [];
+    private readonly HashSet<string> _loadingPluginIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<Task> _pluginBackgroundTasks = [];
     private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
@@ -42,7 +43,7 @@ internal sealed class PluginManager(
 
     private Lock PluginLifecycleLock { get; } = new();
 
-    private SemaphoreSlim PluginUnloadSemaphore { get; } = new(1, 1);
+    private SemaphoreSlim PluginLifecycleSemaphore { get; } = new(1, 1);
 
     private SharedAssemblyResolver SharedAssemblies { get; } = sharedAssemblies;
 
@@ -431,12 +432,11 @@ internal sealed class PluginManager(
     private async Task ProcessPluginUnloadAsync(
         LoadedPluginHandle pluginHandle)
     {
-        PluginUnloadResult? unloadResult;
-        await PluginUnloadSemaphore.WaitAsync();
+        await PluginLifecycleSemaphore.WaitAsync();
         try
         {
             CH.Info($"开始热卸载插件: {pluginHandle.Name}");
-            unloadResult = await pluginHandle.UnloadAsync();
+            var unloadResult = await pluginHandle.UnloadAsync();
 
             if (unloadResult.Error is not null)
             {
@@ -445,39 +445,34 @@ internal sealed class PluginManager(
             }
 
             CH.Info($"插件逻辑已卸载，正在后台验证程序集释放: {unloadResult.Name}");
+
+            // Let the unload call stack unwind before forcing collections, otherwise the async state machine
+            // that awaited OnUnload may temporarily keep the plugin instance alive.
+            await Task.Delay(300);
+
+            var assemblyUnloaded =
+                DllLoader<IBotPlugin>.WaitForUnload(unloadResult.AssemblyLoadContextWeakReference);
+            if (!assemblyUnloaded)
+            {
+                var aliveObjects = new List<string>();
+                if (unloadResult.PluginWeakReference?.IsAlive == true) aliveObjects.Add("plugin");
+
+                if (unloadResult.ContextWeakReference?.IsAlive == true) aliveObjects.Add("plugin-context");
+
+                if (aliveObjects.Count > 0)
+                    CH.Warning($"热卸载诊断: {unloadResult.Name} 存活对象: {string.Join(", ", aliveObjects)}");
+
+                CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})");
+                return;
+            }
+
+            CH.Success($"插件热卸载成功: {unloadResult.Name}");
+            runtimeState.RecordEvent($"{unloadResult.Name} 插件已卸载");
         }
         finally
         {
-            PluginUnloadSemaphore.Release();
+            PluginLifecycleSemaphore.Release();
         }
-
-        if (unloadResult.Error is not null)
-        {
-            return;
-        }
-
-        // Let the unload call stack unwind before forcing collections, otherwise the async state machine
-        // that awaited OnUnload may temporarily keep the plugin instance alive.
-        await Task.Delay(300);
-
-        var assemblyUnloaded =
-            DllLoader<IBotPlugin>.WaitForUnload(unloadResult.AssemblyLoadContextWeakReference);
-        if (!assemblyUnloaded)
-        {
-            var aliveObjects = new List<string>();
-            if (unloadResult.PluginWeakReference?.IsAlive == true) aliveObjects.Add("plugin");
-
-            if (unloadResult.ContextWeakReference?.IsAlive == true) aliveObjects.Add("plugin-context");
-
-            if (aliveObjects.Count > 0)
-                CH.Warning($"热卸载诊断: {unloadResult.Name} 存活对象: {string.Join(", ", aliveObjects)}");
-
-            CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})");
-            return;
-        }
-
-        CH.Success($"插件热卸载成功: {unloadResult.Name}");
-        runtimeState.RecordEvent($"{unloadResult.Name} 插件已卸载");
     }
 
     public Task ScheduleLoadPluginByName(
@@ -520,7 +515,7 @@ internal sealed class PluginManager(
         HostEventDispatcher hostEventDispatcher,
         PluginRouteConfig routePolicy)
     {
-        await PluginUnloadSemaphore.WaitAsync();
+        await PluginLifecycleSemaphore.WaitAsync();
         try
         {
             await LoadPluginsAsync(
@@ -530,8 +525,43 @@ internal sealed class PluginManager(
         }
         finally
         {
-            PluginUnloadSemaphore.Release();
+            PluginLifecycleSemaphore.Release();
         }
+    }
+
+    public Task ScheduleInitialPluginLoad(
+        IReadOnlyList<string> pluginDlls,
+        HostEventDispatcher hostEventDispatcher,
+        PluginRouteConfig routePolicy)
+    {
+        var task = TryQueuePluginBackgroundTask(async () =>
+        {
+            try
+            {
+                await ProcessPluginLoadAsync(
+                    pluginDlls,
+                    hostEventDispatcher,
+                    routePolicy).ConfigureAwait(false);
+                CH.Success("已加载插件: " + string.Join(", ", GetLoadedPluginNames()));
+            }
+            catch (Exception ex)
+            {
+                CH.Error("后台插件加载任务失败: " + ex.Message);
+                runtimeState.RecordEvent("后台插件加载任务失败: " + ex.Message, "error");
+            }
+            finally
+            {
+                hostEventDispatcher.MarkInitialPluginsReady();
+            }
+        });
+
+        if (task is not null)
+        {
+            return task;
+        }
+
+        hostEventDispatcher.MarkInitialPluginsReady();
+        return Task.CompletedTask;
     }
 
     public async Task LoadPluginsAsync(
@@ -541,10 +571,14 @@ internal sealed class PluginManager(
         bool isInitialBoot = false)
     {
         _ = isInitialBoot; // 保留参数以兼容外部调用约定，已不再使用两阶段加载。
-        foreach (var dll in pluginDlls)
-        {
-            await LoadPluginAsync(dll, hostEventDispatcher, routePolicy);
-        }
+        await Parallel.ForEachAsync(
+            pluginDlls,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 2, 8)
+            },
+            async (dll, _) =>
+                await LoadPluginAsync(dll, hostEventDispatcher, routePolicy).ConfigureAwait(false));
     }
 
     private async Task LoadPluginAsync(
@@ -553,6 +587,9 @@ internal sealed class PluginManager(
         PluginRouteConfig routePolicy)
     {
         DllLoader<IBotPlugin>? loader = null;
+        IBotPlugin? plugin = null;
+        PluginContext? pluginContext = null;
+        string? loadingPluginId = null;
         try
         {
             var actualDllPath = Path.GetFullPath(dll);
@@ -560,11 +597,13 @@ internal sealed class PluginManager(
 
             lock (PluginLifecycleLock)
             {
-                if (IsPluginLoaded(pluginInfo.Id))
+                if (IsPluginLoaded(pluginInfo.Id) || !_loadingPluginIds.Add(pluginInfo.Id))
                 {
-                    CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
+                    CH.Warning($"插件已加载或正在加载，已跳过：{pluginInfo.Id} ({actualDllPath})");
                     return;
                 }
+
+                loadingPluginId = pluginInfo.Id;
             }
 
             var isRootLevelPluginAssembly = string.Equals(
@@ -578,12 +617,16 @@ internal sealed class PluginManager(
                 {
                     if (pluginInfo.IsPluginSingleFile)
                     {
-                        loader = CreateLoader();
-                        var plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
+                        var pluginDirectory = GetStablePluginDirectory(pluginInfo.Id);
+                        var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
+                            actualDllPath,
+                            pluginDirectory).ConfigureAwait(false);
+                        loader = CreateLoader(dependencies);
+                        plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
 
-                        var pluginContext = CreatePluginContext(
+                        pluginContext = CreatePluginContext(
                             pluginInfo.Id,
-                            GetStablePluginDirectory(pluginInfo.Id),
+                            pluginDirectory,
                             routePolicy);
 
                         CH.Info($"开始加载插件: {pluginInfo.Name} v{pluginInfo.Version} ");
@@ -606,23 +649,13 @@ internal sealed class PluginManager(
                             logHub,
                             CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
 
-                        lock (PluginLifecycleLock)
-                        {
-                            if (IsPluginLoaded(pluginInfo.Id))
-                            {
-                                CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
-                                loader.Unload();
-                                return;
-                            }
+                        RegisterLoadedPlugin(pluginHandle, hostEventDispatcher);
 
-                            _loadedPlugins.Add(pluginHandle);
-                            hostEventDispatcher.RegisterPlugin(pluginHandle);
-                            runtimeState.SetPluginsCount(_loadedPlugins.Count);
-                        }
-
+                        plugin = null;
+                        pluginContext = null;
+                        loader = null;
                         CH.Success($"插件加载成功: {pluginInfo.Id} ({actualDllPath})");
                         runtimeState.RecordEvent($"{pluginInfo.Name} 插件已加载");
-                        loader = null;
                         return;
                     }
                     else
@@ -653,25 +686,18 @@ internal sealed class PluginManager(
                 {
                     BotLog.Error(e.Message);
                     runtimeState.RecordEvent(e.Message, "error");
+                    await RollbackFailedPluginLoadAsync(
+                        pluginInfo.Id,
+                        plugin,
+                        pluginContext,
+                        loader,
+                        logHub).ConfigureAwait(false);
                     return;
                 }
             }
 
             if (loader is null)
             {
-                loader = CreateLoader();
-                var plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
-
-                lock (PluginLifecycleLock)
-                {
-                    if (IsPluginLoaded(pluginInfo.Id))
-                    {
-                        CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
-                        loader.Unload();
-                        return;
-                    }
-                }
-
                 // 配置目录使用 dll 实际所在目录；若 dll 直接放在 plugins 根目录，则使用稳定的 plugins/{id} 目录。
                 var dllDirectory = Path.GetFullPath(Path.GetDirectoryName(actualDllPath) ?? PluginRootPath)
                     .TrimEnd(Path.DirectorySeparatorChar);
@@ -679,7 +705,13 @@ internal sealed class PluginManager(
                 var pluginDirectory = string.Equals(dllDirectory, normalizedPluginRoot, StringComparison.OrdinalIgnoreCase)
                     ? GetStablePluginDirectory(pluginInfo.Id)
                     : dllDirectory;
-                var pluginContext = CreatePluginContext(
+                var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
+                    actualDllPath,
+                    pluginDirectory).ConfigureAwait(false);
+                loader = CreateLoader(dependencies);
+                plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
+
+                pluginContext = CreatePluginContext(
                     pluginInfo.Id,
                     pluginDirectory,
                     routePolicy);
@@ -704,38 +736,108 @@ internal sealed class PluginManager(
                     logHub,
                     CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
 
-                lock (PluginLifecycleLock)
-                {
-                    if (IsPluginLoaded(pluginInfo.Id))
-                    {
-                        CH.Warning($"插件重复，已跳过：{pluginInfo.Id} ({actualDllPath})");
-                        loader.Unload();
-                        return;
-                    }
+                RegisterLoadedPlugin(pluginHandle, hostEventDispatcher);
 
-                    _loadedPlugins.Add(pluginHandle);
-                    hostEventDispatcher.RegisterPlugin(pluginHandle);
-                    runtimeState.SetPluginsCount(_loadedPlugins.Count);
-                }
-
+                plugin = null;
+                pluginContext = null;
+                loader = null;
                 CH.Success($"插件加载成功: {pluginInfo.Id} ({actualDllPath})");
                 runtimeState.RecordEvent($"{pluginInfo.Name} 插件已加载");
-                loader = null;
             }
         }
         catch (Exception ex)
         {
             CH.Error($"插件加载失败: {dll} - {ex.Message}");
             runtimeState.RecordEvent($"插件加载失败: {Path.GetFileNameWithoutExtension(dll)} - {ex.Message}", "error");
-            loader?.Unload();
+            await RollbackFailedPluginLoadAsync(
+                loadingPluginId ?? Path.GetFileNameWithoutExtension(dll),
+                plugin,
+                pluginContext,
+                loader,
+                logHub).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (loadingPluginId is not null)
+            {
+                lock (PluginLifecycleLock)
+                {
+                    _loadingPluginIds.Remove(loadingPluginId);
+                }
+            }
         }
     }
 
     private bool IsPluginLoaded(string pluginId) =>
         _loadedPlugins.Any(item => string.Equals(item.Name, pluginId, StringComparison.OrdinalIgnoreCase));
 
-    private DllLoader<IBotPlugin> CreateLoader() =>
-        new(collectible: true, shared: SharedAssemblies);
+    private void RegisterLoadedPlugin(
+        LoadedPluginHandle pluginHandle,
+        HostEventDispatcher hostEventDispatcher)
+    {
+        lock (PluginLifecycleLock)
+        {
+            _loadedPlugins.Add(pluginHandle);
+            try
+            {
+                hostEventDispatcher.RegisterPlugin(pluginHandle);
+                runtimeState.SetPluginsCount(_loadedPlugins.Count);
+            }
+            catch
+            {
+                _loadedPlugins.Remove(pluginHandle);
+                hostEventDispatcher.UnregisterPlugin(pluginHandle);
+                runtimeState.SetPluginsCount(_loadedPlugins.Count);
+                throw;
+            }
+        }
+    }
+
+    private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null) =>
+        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies);
+
+    private static async Task RollbackFailedPluginLoadAsync(
+        string pluginName,
+        IBotPlugin? plugin,
+        PluginContext? context,
+        DllLoader<IBotPlugin>? loader,
+        HostLogHub logHub)
+    {
+        context?.DetachExternalCallbacks();
+
+        if (plugin is not null)
+        {
+            try
+            {
+                using (BotLog.BeginScope(new ConsoleLogger($"[Plugin:{pluginName}]", logHub)))
+                {
+                    await plugin.OnUnload().ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                CH.Warning($"回滚插件初始化时清理失败: {pluginName} - {ex.Message}");
+            }
+        }
+
+        try
+        {
+            context?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            CH.Warning($"回滚插件上下文时清理失败: {pluginName} - {ex.Message}");
+        }
+
+        try
+        {
+            loader?.Unload();
+        }
+        catch (Exception ex)
+        {
+            CH.Warning($"回滚插件程序集时清理失败: {pluginName} - {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// 仅捕获 plugin 名（string）和 routePolicy 引用，不要让闭包捕获 <see cref="IBotPlugin"/>

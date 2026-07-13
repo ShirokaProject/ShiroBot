@@ -36,6 +36,23 @@ dotnet build .\ShiroBot.slnx -p:EnableAvalonia=false
 
 禁用后宿主不会引用 Avalonia/Skia/HarfBuzz。
 
+## 文档
+
+安装使用、插件开发和适配器开发文档位于 [`docs`](./docs)。本地启动 VitePress：
+
+```bash
+cd docs
+npm install
+npm run dev
+```
+
+构建静态文档：
+
+```bash
+cd docs
+npm run build
+```
+
 ## 插件模板
 
 插件模板请使用独立示例仓库作为起点：

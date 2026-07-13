@@ -42,11 +42,9 @@
 
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
-        <PackageReference Include="HotAvalonia" Version="3.1.1" PrivateAssets="All" Publish="True"
-                          Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'" />
-        <PackageReference Include="Spectre.Console" Version="0.57.0" />
+        <PackageReference Include="Spectre.Console" Version="0.57.2" />
         <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
-        <PackageReference Include="Tomlyn" Version="2.6.0" />
+        <PackageReference Include="Tomlyn" Version="2.10.1" />
     </ItemGroup>
 
     <ItemGroup>

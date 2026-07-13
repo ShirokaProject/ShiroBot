@@ -6,6 +6,7 @@ namespace ShiroBot.Hosting.Context;
 internal sealed class PluginContext : IBotContext, IDisposable
 {
     private readonly string _pluginName;
+    private int _externalCallbacksDetached;
 
     public IFileContext File => BotContext.File;
     public IFriendContext Friend => BotContext.Friend;
@@ -41,7 +42,18 @@ internal sealed class PluginContext : IBotContext, IDisposable
 
     public void Dispose()
     {
-        BotContext.ReplySubscriptions.UnregisterOwner(_pluginName);
+        DetachExternalCallbacks();
         Config = null!;
+    }
+
+    internal void DetachExternalCallbacks()
+    {
+        if (Interlocked.Exchange(ref _externalCallbacksDetached, 1) != 0)
+        {
+            return;
+        }
+
+        BotContext.ReplySubscriptions.UnregisterOwner(_pluginName);
+        BotContext.WebHost.UnregisterOwner(_pluginName);
     }
 }

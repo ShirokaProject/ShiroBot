@@ -1,0 +1,323 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <_ShiroBotILRepackTaskAssembly>$(MSBuildThisFileDirectory)..\tools\ILRepack.Lib.MSBuild.Task.dll</_ShiroBotILRepackTaskAssembly>
+    <_ShiroBotNativeManifestFile>$(IntermediateOutputPath)ShiroBot.PluginRuntimeManifest.json</_ShiroBotNativeManifestFile>
+    <_ShiroBotPrimaryAssembly>$(IntermediateOutputPath)$(TargetFileName)</_ShiroBotPrimaryAssembly>
+  </PropertyGroup>
+
+  <UsingTask TaskName="ShiroBotGenerateNativeManifest"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <NativeAssets ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutputFile ParameterType="System.String" Required="true" />
+      <NuGetPackageRoot ParameterType="System.String" Required="true" />
+      <PackageSource ParameterType="System.String" Required="true" />
+      <DefaultRuntimeIdentifier ParameterType="System.String" />
+      <ExcludedPackagePrefixes ParameterType="System.String" />
+      <HasNativeAssets ParameterType="System.Boolean" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var excludedPrefixes = (ExcludedPackagePrefixes ?? string.Empty)
+            .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(prefix => prefix.Trim())
+            .Where(prefix => prefix.Length > 0)
+            .ToArray();
+
+        var assets = (NativeAssets ?? Array.Empty<Microsoft.Build.Framework.ITaskItem>())
+            .Select(item => new
+            {
+                Item = item,
+                PackageId = item.GetMetadata("NuGetPackageId"),
+                Version = item.GetMetadata("NuGetPackageVersion"),
+                Rid = string.IsNullOrWhiteSpace(item.GetMetadata("RuntimeIdentifier"))
+                    ? (string.IsNullOrWhiteSpace(DefaultRuntimeIdentifier) ? "any" : DefaultRuntimeIdentifier)
+                    : item.GetMetadata("RuntimeIdentifier"),
+                Path = item.GetMetadata("PathInPackage")
+            })
+            .Where(asset =>
+                !string.IsNullOrWhiteSpace(asset.PackageId) &&
+                !string.IsNullOrWhiteSpace(asset.Version) &&
+                !string.IsNullOrWhiteSpace(asset.Path) &&
+                !excludedPrefixes.Any(prefix => asset.PackageId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            .GroupBy(asset => $"{asset.PackageId}|{asset.Version}|{asset.Rid}|{asset.Path}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(asset => asset.PackageId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(asset => asset.Version, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(asset => asset.Rid, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(asset => asset.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        HasNativeAssets = assets.Length > 0;
+        if (!HasNativeAssets)
+        {
+            if (File.Exists(OutputFile)) File.Delete(OutputFile);
+            return true;
+        }
+
+        var packages = assets
+            .GroupBy(asset => new { asset.PackageId, asset.Version })
+            .Select(group =>
+            {
+                var packageIdLower = group.Key.PackageId.ToLowerInvariant();
+                var versionLower = group.Key.Version.ToLowerInvariant();
+                var hashPath = Path.Combine(
+                    NuGetPackageRoot,
+                    packageIdLower,
+                    versionLower,
+                    $"{packageIdLower}.{versionLower}.nupkg.sha512");
+                var sha512 = File.Exists(hashPath) ? File.ReadAllText(hashPath).Trim() : null;
+
+                return new
+                {
+                    id = group.Key.PackageId,
+                    version = group.Key.Version,
+                    sha512,
+                    assets = group.Select(asset => new { rid = asset.Rid, path = asset.Path }).ToArray()
+                };
+            })
+            .ToArray();
+
+        string JsonString(string value)
+        {
+            if (value is null) return "null";
+            var builder = new StringBuilder(value.Length + 2).Append('"');
+            foreach (var ch in value)
+            {
+                switch (ch)
+                {
+                    case '"': builder.Append("\\\""); break;
+                    case '\\': builder.Append("\\\\"); break;
+                    case '\b': builder.Append("\\b"); break;
+                    case '\f': builder.Append("\\f"); break;
+                    case '\n': builder.Append("\\n"); break;
+                    case '\r': builder.Append("\\r"); break;
+                    case '\t': builder.Append("\\t"); break;
+                    default:
+                        if (ch < ' ') builder.Append("\\u").Append(((int)ch).ToString("x4"));
+                        else builder.Append(ch);
+                        break;
+                }
+            }
+            return builder.Append('"').ToString();
+        }
+
+        var json = new StringBuilder()
+            .Append("{\"schemaVersion\":1,\"source\":")
+            .Append(JsonString(PackageSource.TrimEnd('/')))
+            .Append(",\"packages\":[");
+
+        for (var packageIndex = 0; packageIndex < packages.Length; packageIndex++)
+        {
+            if (packageIndex > 0) json.Append(',');
+            var package = packages[packageIndex];
+            json.Append("{\"id\":").Append(JsonString(package.id))
+                .Append(",\"version\":").Append(JsonString(package.version))
+                .Append(",\"sha512\":").Append(JsonString(package.sha512))
+                .Append(",\"assets\":[");
+
+            for (var assetIndex = 0; assetIndex < package.assets.Length; assetIndex++)
+            {
+                if (assetIndex > 0) json.Append(',');
+                var asset = package.assets[assetIndex];
+                json.Append("{\"rid\":").Append(JsonString(asset.rid))
+                    .Append(",\"path\":").Append(JsonString(asset.path)).Append('}');
+            }
+
+            json.Append("]}");
+        }
+
+        json.Append("]}");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(OutputFile)!);
+        File.WriteAllText(OutputFile, json.ToString());
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="ShiroBotProbePluginAssembly"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <AssemblyPath ParameterType="System.String" Required="true" />
+      <IsPlugin ParameterType="System.Boolean" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        IsPlugin = false;
+        var assemblyBytes = File.ReadAllBytes(AssemblyPath);
+        var marker = Encoding.UTF8.GetBytes("BotPluginAttribute");
+        for (var offset = 0; offset <= assemblyBytes.Length - marker.Length; offset++)
+        {
+            var matches = true;
+            for (var index = 0; index < marker.Length; index++)
+            {
+                if (assemblyBytes[offset + index] == marker[index]) continue;
+                matches = false;
+                break;
+            }
+
+            if (matches)
+            {
+                IsPlugin = true;
+                break;
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="ShiroBotFilterMergeAssemblies"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Candidates ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <PrimaryAssembly ParameterType="System.String" Required="true" />
+      <ExcludedAssemblyPrefixes ParameterType="System.String" />
+      <Assemblies ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="Microsoft.Build.Framework" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var primary = Path.GetFullPath(PrimaryAssembly);
+        var excludedPrefixes = (ExcludedAssemblyPrefixes ?? string.Empty)
+            .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(prefix => prefix.Trim())
+            .Where(prefix => prefix.Length > 0)
+            .ToArray();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        Assemblies = (Candidates ?? Array.Empty<ITaskItem>())
+            .Where(item => string.Equals(Path.GetExtension(item.ItemSpec), ".dll", StringComparison.OrdinalIgnoreCase))
+            .Where(item => !string.Equals(Path.GetFullPath(item.ItemSpec), primary, StringComparison.OrdinalIgnoreCase))
+            .Where(item => !Path.GetFileNameWithoutExtension(item.ItemSpec).EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
+            .Where(item => !excludedPrefixes.Any(prefix =>
+                Path.GetFileNameWithoutExtension(item.ItemSpec).Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
+                Path.GetFileNameWithoutExtension(item.ItemSpec).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            .Where(item => seen.Add(Path.GetFullPath(item.ItemSpec)))
+            .OrderBy(item => item.ItemSpec, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="ILRepack"
+             AssemblyFile="$(_ShiroBotILRepackTaskAssembly)"
+             Condition="Exists('$(_ShiroBotILRepackTaskAssembly)')" />
+
+  <Target Name="GenerateShiroBotNativeManifest"
+          BeforeTargets="AssignTargetPaths"
+          DependsOnTargets="ResolvePackageAssets"
+          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true'">
+    <ItemGroup>
+      <_ShiroBotNativeAsset Include="@(RuntimeTargetsCopyLocalItems)"
+                            Condition="'%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native'" />
+      <_ShiroBotNativeAsset Include="@(NativeCopyLocalItems)" />
+    </ItemGroup>
+
+    <ShiroBotGenerateNativeManifest
+        NativeAssets="@(_ShiroBotNativeAsset)"
+        OutputFile="$(_ShiroBotNativeManifestFile)"
+        NuGetPackageRoot="$(NuGetPackageRoot)"
+        PackageSource="$(ShiroBotNativePackageSource)"
+        DefaultRuntimeIdentifier="$(RuntimeIdentifier)"
+        ExcludedPackagePrefixes="$(ShiroBotSharedNativePackagePrefixes)">
+      <Output TaskParameter="HasNativeAssets" PropertyName="_ShiroBotHasNativeAssets" />
+    </ShiroBotGenerateNativeManifest>
+
+    <ItemGroup Condition="'$(_ShiroBotHasNativeAssets)' == 'true'">
+      <EmbeddedResource Include="$(_ShiroBotNativeManifestFile)"
+                        LogicalName="ShiroBot.PluginRuntimeManifest.json"
+                        Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="BundleShiroBotPluginManagedDependencies"
+          AfterTargets="CoreCompile"
+          BeforeTargets="CopyFilesToOutputDirectory"
+          DependsOnTargets="ResolveReferences;ResolvePackageAssets"
+          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and Exists('$(_ShiroBotILRepackTaskAssembly)')">
+    <ShiroBotProbePluginAssembly AssemblyPath="$(_ShiroBotPrimaryAssembly)">
+      <Output TaskParameter="IsPlugin" PropertyName="_ShiroBotIsPluginAssembly" />
+    </ShiroBotProbePluginAssembly>
+
+    <ItemGroup Condition="'$(_ShiroBotIsPluginAssembly)' == 'true'">
+      <_ShiroBotManagedCandidate Include="@(ReferenceCopyLocalPaths);@(RuntimeCopyLocalItems)" />
+      <_ShiroBotSearchDirectoryCandidate Include="@(_ShiroBotManagedCandidate->'%(RootDir)%(Directory)')" />
+    </ItemGroup>
+
+    <RemoveDuplicates Inputs="@(_ShiroBotSearchDirectoryCandidate)"
+                      Condition="'$(_ShiroBotIsPluginAssembly)' == 'true'">
+      <Output TaskParameter="Filtered" ItemName="_ShiroBotSearchDirectory" />
+    </RemoveDuplicates>
+
+    <ShiroBotFilterMergeAssemblies
+        Condition="'$(_ShiroBotIsPluginAssembly)' == 'true'"
+        Candidates="@(_ShiroBotManagedCandidate)"
+        PrimaryAssembly="$(_ShiroBotPrimaryAssembly)"
+        ExcludedAssemblyPrefixes="$(ShiroBotSharedAssemblyPrefixes)">
+      <Output TaskParameter="Assemblies" ItemName="_ShiroBotMergeAssembly" />
+    </ShiroBotFilterMergeAssemblies>
+
+    <PropertyGroup Condition="'$(_ShiroBotIsPluginAssembly)' == 'true' and '@(_ShiroBotMergeAssembly)' != ''">
+      <_ShiroBotMergedAssembly>$(IntermediateOutputPath)shirobot-bundle\$(TargetFileName)</_ShiroBotMergedAssembly>
+    </PropertyGroup>
+
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_ShiroBotMergedAssembly)'))"
+             Condition="'$(_ShiroBotMergedAssembly)' != ''" />
+
+    <ItemGroup Condition="'$(_ShiroBotMergedAssembly)' != ''">
+      <_ShiroBotILRepackInput Include="$(_ShiroBotPrimaryAssembly)" />
+      <_ShiroBotILRepackInput Include="@(_ShiroBotMergeAssembly)" />
+    </ItemGroup>
+
+    <ILRepack Condition="'$(_ShiroBotMergedAssembly)' != ''"
+              InputAssemblies="@(_ShiroBotILRepackInput)"
+              OutputFile="$(_ShiroBotMergedAssembly)"
+              TargetKind="SameAsPrimaryAssembly"
+              LibraryPath="@(_ShiroBotSearchDirectory)"
+              Internalize="true"
+              Parallel="true"
+              DebugInfo="false"
+              AllowDuplicateResources="true" />
+
+    <Copy Condition="'$(_ShiroBotMergedAssembly)' != ''"
+          SourceFiles="$(_ShiroBotMergedAssembly)"
+          DestinationFiles="$(_ShiroBotPrimaryAssembly)"
+          OverwriteReadOnlyFiles="true" />
+
+    <!-- The merged managed assemblies and deferred native assets must not be copied beside the plugin. -->
+    <ItemGroup Condition="'$(_ShiroBotIsPluginAssembly)' == 'true'">
+      <ReferenceCopyLocalPaths Remove="@(_ShiroBotMergeAssembly)" />
+      <RuntimeCopyLocalItems Remove="@(_ShiroBotMergeAssembly)" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
+                                    Condition="'%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native'" />
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RemoveShiroBotPluginDependencyFile"
+          AfterTargets="CopyFilesToOutputDirectory"
+          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
+    <Delete Files="$(ProjectDepsFilePath)" />
+  </Target>
+
+  <Target Name="RemovePublishedShiroBotPluginDependencyFile"
+          AfterTargets="Publish"
+          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
+    <Delete Files="$(PublishDepsFilePath)" Condition="'$(PublishDepsFilePath)' != ''" />
+  </Target>
+</Project>

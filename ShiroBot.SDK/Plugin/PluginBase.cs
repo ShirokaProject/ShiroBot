@@ -34,10 +34,11 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
         AllCommands = new AllMapCommands(GroupCommands, FriendCommands);
     }
 
-    public async Task OnLoad(IBotContext context)
+    public Task OnLoad(IBotContext context)
     {
         Context = context;
-        await LoadAsync();
+        ConfigureRoutes();
+        return LoadAsync();
     }
 
     public async Task OnUnload()
@@ -48,6 +49,11 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
         Events.Clear();
         Context = null!;
     }
+
+    /// <summary>
+    /// Registers command and event routes synchronously before asynchronous initialization.
+    /// </summary>
+    protected virtual void ConfigureRoutes() { }
 
     protected virtual Task LoadAsync() => Task.CompletedTask;
     protected virtual Task OnUnloadAsync() => Task.CompletedTask;

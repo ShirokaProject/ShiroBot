@@ -23,7 +23,7 @@ public sealed class HelloPlugin : PluginBase
 {
     public override string Name => "HelloPlugin";
 
-    protected override async Task LoadAsync()
+    protected override void ConfigureRoutes()
     {
         GroupCommands.MapPrefix("#hello", async message =>
         {
@@ -37,23 +37,65 @@ public sealed class HelloPlugin : PluginBase
 
 ## Lifecycle
 
-Override `LoadAsync()` and `OnUnloadAsync()` for plugin setup and cleanup.
+Override `ConfigureRoutes()` for synchronous command/event route registration. Override
+`LoadAsync()` only when the plugin has real asynchronous initialization, and override
+`OnUnloadAsync()` for cleanup.
 
 ```csharp
-protected override Task LoadAsync()
+protected override void ConfigureRoutes()
 {
     GroupCommands.MapExact("#ping", HandlePingAsync);
     GroupCommands.MapPrefix("#echo", HandleEchoAsync);
-    return Task.CompletedTask;
 }
 
-protected override Task OnUnloadAsync()
+protected override async Task LoadAsync()
 {
-    return Task.CompletedTask;
+    await InitializeDatabaseAsync();
 }
 ```
 
-`PluginBase` automatically clears command routes, event routes and `Context` after unload.
+`ConfigureRoutes()` runs after `Context` is assigned and before `LoadAsync()`. Existing plugins
+that register routes in `LoadAsync()` remain compatible. `PluginBase` automatically clears
+command routes, event routes and `Context` after unload.
+
+## Automatic plugin packaging
+
+When a plugin references the published `ShiroBot.SDK` NuGet package, its `buildTransitive`
+targets automatically prepare a single-DLL plugin:
+
+- assemblies carrying `BotPluginAttribute` are detected automatically;
+- managed NuGet/project dependencies are merged into the plugin DLL with ILRepack;
+- host-shared contracts and rendering assemblies are not merged;
+- native NuGet package ID, exact version, SHA512, RID and asset paths are embedded as
+  `ShiroBot.PluginRuntimeManifest.json`;
+- native files and merged managed dependency DLLs are removed from the plugin output;
+- the generated `.deps.json` is removed after the plugin has been bundled.
+
+At runtime ShiroBot reads the embedded manifest without executing plugin code, downloads the
+required NuGet package, verifies SHA512, extracts only the best matching RID assets and deletes
+the temporary `.nupkg`. Extracted native files are cached under the plugin's `.shirobot/native`
+directory.
+
+No ILRepack target or native manifest needs to be added to each plugin project. The defaults can
+be customized when required:
+
+```xml
+<PropertyGroup>
+  <!-- Disable all automatic packaging, for example in an adapter project. -->
+  <ShiroBotPluginPackagingEnabled>false</ShiroBotPluginPackagingEnabled>
+
+  <!-- Defaults to the NuGet.org v3 flat-container endpoint. -->
+  <ShiroBotNativePackageSource>https://packages.example.com/v3-flatcontainer</ShiroBotNativePackageSource>
+
+  <!-- Semicolon-separated assembly/package prefixes supplied by the host. -->
+  <ShiroBotSharedAssemblyPrefixes>$(ShiroBotSharedAssemblyPrefixes);Example.Shared</ShiroBotSharedAssemblyPrefixes>
+  <ShiroBotSharedNativePackagePrefixes>$(ShiroBotSharedNativePackagePrefixes);Example.Native.Host</ShiroBotSharedNativePackagePrefixes>
+</PropertyGroup>
+```
+
+Automatic targets are a NuGet `buildTransitive` feature. A source-level `ProjectReference` to
+`ShiroBot.SDK.csproj` does not import the packed targets; use the SDK package when validating the
+final distributable plugin.
 
 ## Command Routes
 
@@ -84,14 +126,13 @@ private Task HandlePingAsync(GroupIncomingMessage message) =>
 
 ## Event Routes
 
-You can either override built-in event methods or map events in `LoadAsync()`.
+You can either override built-in event methods or map events in `ConfigureRoutes()`.
 
 ```csharp
-protected override Task LoadAsync()
+protected override void ConfigureRoutes()
 {
     Events.Map<GroupMemberIncreaseEvent>(HandleMemberIncreaseAsync);
     Events.MapWhen<GroupMessageReactionEvent>(e => e.IsAdd, HandleReactionAddAsync);
-    return Task.CompletedTask;
 }
 ```
 

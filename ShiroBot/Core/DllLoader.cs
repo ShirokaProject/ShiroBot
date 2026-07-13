@@ -15,18 +15,28 @@ public class DllLoader<T>
 {
     private readonly bool _collectible;
     private readonly SharedAssemblyResolver? _shared;
+    private readonly PluginDependencyLayout _dependencyLayout;
     private PluginAssemblyLoadContext? _alc;
     private WeakReference? _alcWeakReference;
 
     public DllLoader()
-        : this(collectible: true, shared: null)
+        : this(collectible: true, shared: null, dependencies: null)
     {
     }
 
     public DllLoader(bool collectible, SharedAssemblyResolver? shared)
+        : this(collectible, shared, dependencies: null)
+    {
+    }
+
+    internal DllLoader(
+        bool collectible,
+        SharedAssemblyResolver? shared,
+        PluginDependencyLayout? dependencies)
     {
         _collectible = collectible;
         _shared = shared;
+        _dependencyLayout = dependencies ?? PluginDependencyLayout.Empty;
     }
 
     /// <summary>
@@ -36,7 +46,7 @@ public class DllLoader<T>
 
     public T Load(string dllPath, string? typeFullName = null)
     {
-        _alc = new PluginAssemblyLoadContext(dllPath, _collectible, _shared);
+        _alc = new PluginAssemblyLoadContext(dllPath, _collectible, _shared, _dependencyLayout);
         _alcWeakReference = new WeakReference(_alc);
 
         var assembly = _alc.LoadFromAssemblyPath(dllPath);
@@ -135,11 +145,17 @@ internal sealed class PluginAssemblyLoadContext : AssemblyLoadContext
 {
     private readonly SharedAssemblyResolver? _shared;
     private readonly AssemblyDependencyResolver _depsResolver;
+    private readonly PluginDependencyLayout _dependencyLayout;
 
-    public PluginAssemblyLoadContext(string dllPath, bool isCollectible, SharedAssemblyResolver? shared)
+    public PluginAssemblyLoadContext(
+        string dllPath,
+        bool isCollectible,
+        SharedAssemblyResolver? shared,
+        PluginDependencyLayout dependencyLayout)
         : base(dllPath, isCollectible)
     {
         _shared = shared;
+        _dependencyLayout = dependencyLayout;
         _depsResolver = new AssemblyDependencyResolver(dllPath);
     }
 
@@ -165,6 +181,11 @@ internal sealed class PluginAssemblyLoadContext : AssemblyLoadContext
         if (!string.IsNullOrEmpty(resolvedPath))
         {
             return LoadUnmanagedDllFromPath(resolvedPath);
+        }
+
+        if (_dependencyLayout.ResolveNativeAsset(unmanagedDllName) is { } downloadedPath)
+        {
+            return LoadUnmanagedDllFromPath(downloadedPath);
         }
 
         return IntPtr.Zero;

@@ -36,8 +36,12 @@ internal sealed class HostCommandHandler(
         new("quit", "退出程序")
     ];
 
-    public void RunConsoleLoop(TaskCompletionSource<bool> exitRequested)
+    public void RunConsoleLoop(
+        TaskCompletionSource<bool> exitRequested,
+        TaskCompletionSource<bool> consoleReady)
     {
+        consoleReady.TrySetResult(true);
+
         while (true)
         {
             var input = CH.ReadPrompt(
@@ -508,12 +512,12 @@ internal sealed class HostCommandHandler(
             .ToList();
         var builder = new StringBuilder()
             .AppendLine("已加载插件")
-            .AppendLine("名称 | 版本 | 程序集占用");
+            .AppendLine("名称 | 版本 | 程序集文件大小");
         long totalBytes = 0;
 
         foreach (var plugin in orderedPlugins)
         {
-            var bytes = plugin.GetLoadedAssemblyBytes();
+            var bytes = plugin.GetLoadedAssemblyFileBytes();
             totalBytes += bytes;
             builder.Append(plugin.Name)
                 .Append(" | v")
@@ -525,7 +529,12 @@ internal sealed class HostCommandHandler(
         builder.Append("合计 | ")
             .Append(orderedPlugins.Count)
             .Append(" 个 | ")
-            .Append(FormatBytes(totalBytes));
+            .AppendLine(FormatBytes(totalBytes));
+
+        using var process = Process.GetCurrentProcess();
+        builder.AppendLine()
+            .Append("进程工作集（宿主 + 适配器 + 全部插件）: ")
+            .Append(FormatBytes(process.WorkingSet64));
 
         return builder.ToString();
     }
