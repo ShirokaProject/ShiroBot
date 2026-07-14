@@ -54,6 +54,7 @@ jobs:
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
           dotnet pack ShiroBot.Model/ShiroBot.Model.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack ShiroBot.SDK/ShiroBot.SDK.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj -c Release -o artifacts/nuget --no-build
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
@@ -63,7 +64,7 @@ jobs:
               <Nullable>enable</Nullable>
             </PropertyGroup>
             <ItemGroup>
-              <PackageReference Include="ShiroBot.SDK" Version="0.7.0-rc3" />
+              <PackageReference Include="ShiroBot.SDK" Version="0.7.0" />
             </ItemGroup>
           </Project>
           EOF

@@ -11,6 +11,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj"/>
+        <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj"/>
     </ItemGroup>
 
     <!-- 让 partial class 在 IDE 中折叠到 .axaml 之下，仅影响 Solution Explorer 显示 -->
@@ -21,7 +22,7 @@
     </ItemGroup>
 
     <!--
-        ShiroBot.SDK 已传递 Avalonia 编译能力；运行时由宿主 Default ALC 提供同一份程序集。
+        ShiroBot.AvaloniaSdk 提供 Avalonia 编译能力；运行时由宿主 Default ALC 提供同一份程序集。
     -->
     <ItemGroup>
         <AvaloniaResource Include="Assets\**" />
@@ -40,7 +41,7 @@
 
         <ItemGroup>
             <PluginDebugOutput Include="$(TargetDir)**\*"
-                               Exclude="$(TargetDir)ShiroBot.SDK.dll;$(TargetDir)ShiroBot.SDK.pdb;$(TargetDir)ShiroBot.Model.dll;$(TargetDir)ShiroBot.Model.pdb;$(TargetDir)Avalonia*.dll;$(TargetDir)Avalonia*.pdb;$(TargetDir)SkiaSharp.dll;$(TargetDir)HarfBuzzSharp.dll;$(TargetDir)MicroCom*.dll" />
+                               Exclude="$(TargetDir)ShiroBot.SDK.dll;$(TargetDir)ShiroBot.SDK.pdb;$(TargetDir)ShiroBot.Model.dll;$(TargetDir)ShiroBot.Model.pdb;$(TargetDir)ShiroBot.AvaloniaSdk.dll;$(TargetDir)ShiroBot.AvaloniaSdk.pdb;$(TargetDir)Avalonia*.dll;$(TargetDir)Avalonia*.pdb;$(TargetDir)SkiaSharp.dll;$(TargetDir)HarfBuzzSharp.dll;$(TargetDir)MicroCom*.dll" />
         </ItemGroup>
 
         <Copy SourceFiles="@(PluginDebugOutput)"

@@ -2,8 +2,9 @@
 
 `ShiroBot.SDK` provides the core contracts and helper APIs for ShiroBot plugins and adapters.
 
-Starting with 0.7.0 it also contains the Avalonia contracts previously shipped as
-`ShiroBot.AvaloniaSdk`. Remove that package and use `ShiroBot.SDK.Avalonia`.
+Plugins that use Avalonia controls should additionally reference `ShiroBot.AvaloniaSdk`. Keeping
+the rendering contracts in that package prevents ordinary plugins and adapters from taking an
+unnecessary Avalonia compile-time dependency.
 
 ## Plugin Usage
 

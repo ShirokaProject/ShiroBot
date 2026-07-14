@@ -13,7 +13,7 @@
 ```bash
 dotnet new classlib -n HelloPlugin -f net10.0
 cd HelloPlugin
-dotnet add package ShiroBot.SDK --version 0.7.0-rc3
+dotnet add package ShiroBot.SDK --version 0.7.0
 ```
 
 项目文件可以保持精简：
@@ -27,7 +27,7 @@ dotnet add package ShiroBot.SDK --version 0.7.0-rc3
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ShiroBot.SDK" Version="0.7.0-rc3" />
+    <PackageReference Include="ShiroBot.SDK" Version="0.7.0" />
   </ItemGroup>
 </Project>
 ```

@@ -19,7 +19,7 @@ public sealed record AxamlRenderOptions(
 
 /// <summary>
 /// 渲染服务的最小接口，只用 BCL 类型，feature plugin 不需要直接引用渲染框架（例如 Avalonia）。
-/// 真正的实现由宿主集成模块（例如 ShiroBot.AvaloniaIntegration）提供并通过 IBotContext.Render 暴露。
+/// 真正的实现由 ShiroBot 宿主提供并通过 IBotContext.Render 暴露。
 /// </summary>
 public interface IRenderContext
 {

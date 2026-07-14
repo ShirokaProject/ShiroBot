@@ -340,9 +340,9 @@
 
   <Target Name="RemoveShiroBotPluginDependencyFile"
            AfterTargets="CopyFilesToOutputDirectory"
-           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
+           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true' and '$(_IsPublishing)' != 'true'">
     <ItemGroup>
-      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Model.dll;$(OutDir)ShiroBot.Model.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Model.dll;$(OutDir)ShiroBot.Model.pdb;$(OutDir)ShiroBot.AvaloniaSdk.dll;$(OutDir)ShiroBot.AvaloniaSdk.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)Avalonia.dll;$(OutDir)Avalonia.pdb;$(OutDir)Avalonia.*.dll;$(OutDir)Avalonia.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)SkiaSharp.dll;$(OutDir)SkiaSharp.pdb;$(OutDir)SkiaSharp.*.dll;$(OutDir)SkiaSharp.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)HarfBuzzSharp.dll;$(OutDir)HarfBuzzSharp.pdb;$(OutDir)HarfBuzzSharp.*.dll;$(OutDir)HarfBuzzSharp.*.pdb" />
@@ -378,7 +378,7 @@
            AfterTargets="Publish"
            Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
     <ItemGroup>
-      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Model.dll;$(OutDir)ShiroBot.Model.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Model.dll;$(OutDir)ShiroBot.Model.pdb;$(OutDir)ShiroBot.AvaloniaSdk.dll;$(OutDir)ShiroBot.AvaloniaSdk.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)Avalonia.dll;$(OutDir)Avalonia.pdb;$(OutDir)Avalonia.*.dll;$(OutDir)Avalonia.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)SkiaSharp.dll;$(OutDir)SkiaSharp.pdb;$(OutDir)SkiaSharp.*.dll;$(OutDir)SkiaSharp.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)HarfBuzzSharp.dll;$(OutDir)HarfBuzzSharp.pdb;$(OutDir)HarfBuzzSharp.*.dll;$(OutDir)HarfBuzzSharp.*.pdb" />
@@ -387,7 +387,7 @@
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\SkiaSharp.dll;$(OutDir)runtimes\**\SkiaSharp.*;$(OutDir)runtimes\**\*SkiaSharp*" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\HarfBuzzSharp.dll;$(OutDir)runtimes\**\HarfBuzzSharp.*;$(OutDir)runtimes\**\*HarfBuzzSharp*" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\MicroCom.Runtime.dll;$(OutDir)runtimes\**\MicroCom.*" />
-      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)ShiroBot.SDK.dll;$(PublishDir)ShiroBot.SDK.pdb;$(PublishDir)ShiroBot.Model.dll;$(PublishDir)ShiroBot.Model.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)ShiroBot.SDK.dll;$(PublishDir)ShiroBot.SDK.pdb;$(PublishDir)ShiroBot.Model.dll;$(PublishDir)ShiroBot.Model.pdb;$(PublishDir)ShiroBot.AvaloniaSdk.dll;$(PublishDir)ShiroBot.AvaloniaSdk.pdb" />
       <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)Avalonia.dll;$(PublishDir)Avalonia.pdb;$(PublishDir)Avalonia.*.dll;$(PublishDir)Avalonia.*.pdb" />
       <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)SkiaSharp.dll;$(PublishDir)SkiaSharp.pdb;$(PublishDir)SkiaSharp.*.dll;$(PublishDir)SkiaSharp.*.pdb" />
       <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)HarfBuzzSharp.dll;$(PublishDir)HarfBuzzSharp.pdb;$(PublishDir)HarfBuzzSharp.*.dll;$(PublishDir)HarfBuzzSharp.*.pdb" />

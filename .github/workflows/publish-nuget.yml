@@ -44,6 +44,7 @@ jobs:
         run: |
           dotnet pack .\ShiroBot.Model\ShiroBot.Model.csproj -c Release -o artifacts\nuget --no-restore
           dotnet pack .\ShiroBot.SDK\ShiroBot.SDK.csproj -c Release -o artifacts\nuget -p:PackageVersion=${{ steps.version.outputs.value }} --no-restore
+          dotnet pack .\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj -c Release -o artifacts\nuget -p:PackageVersion=${{ steps.version.outputs.value }} --no-restore
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4

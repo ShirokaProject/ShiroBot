@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
-using ShiroBot.SDK.Avalonia;
+using ShiroBot.AvaloniaSdk;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.AvaloniaIntegration;

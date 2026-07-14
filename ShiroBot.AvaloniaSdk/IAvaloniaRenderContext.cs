@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using ShiroBot.SDK.Plugin;
 
-namespace ShiroBot.SDK.Avalonia;
+namespace ShiroBot.AvaloniaSdk;
 
 /// <summary>
 /// Options for rendering an Avalonia control in the host headless renderer.
@@ -31,7 +31,7 @@ public interface IAvaloniaRenderContext : IRenderContext
         where TControl : Control, new();
 }
 
-public static class AvaloniaRenderContextExtensions
+public static class RenderContextExtensions
 {
     private static IAvaloniaRenderContext AsAvalonia(this IRenderContext? renderer) =>
         renderer as IAvaloniaRenderContext

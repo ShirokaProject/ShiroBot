@@ -52,7 +52,8 @@ internal sealed class PluginManager(
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "ShiroBot.SDK.dll",
-            "ShiroBot.Model.dll"
+            "ShiroBot.Model.dll",
+            "ShiroBot.AvaloniaSdk.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -312,7 +313,7 @@ internal sealed class PluginManager(
         {
             "ShiroBot.SDK.dll",
             "ShiroBot.Model.dll",
-            "ShiroBot.AvaloniaIntegration.dll"
+            "ShiroBot.AvaloniaSdk.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

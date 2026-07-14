@@ -55,6 +55,12 @@ jobs:
             --output artifacts/nuget \
             /p:ContinuousIntegrationBuild=true
 
+          dotnet pack ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --no-restore \
+            --output artifacts/nuget \
+            /p:ContinuousIntegrationBuild=true
+
           dotnet run --project ShiroBot.Verification/ShiroBot.Verification.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore

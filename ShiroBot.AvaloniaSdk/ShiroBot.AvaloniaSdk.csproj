@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <PackageId>ShiroBot.AvaloniaSdk</PackageId>
+        <Version>0.7.0</Version>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>true</IsPackable>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Authors>ShiroBot</Authors>
+        <Description>Avalonia rendering SDK for ShiroBot plugins.</Description>
+        <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+        <PackageTags>ShiroBot;bot;sdk;plugin;Avalonia;rendering</PackageTags>
+        <RepositoryUrl>https://github.com/greepar/ShiroBot</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="12.1.0" />
+        <PackageReference Include="Avalonia.HarfBuzz" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Skia" Version="12.1.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+        <None Include="buildTransitive\ShiroBot.AvaloniaSdk.props"
+              Pack="true"
+              PackagePath="buildTransitive\ShiroBot.AvaloniaSdk.props" />
+    </ItemGroup>
+
+</Project>
