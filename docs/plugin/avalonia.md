@@ -1,20 +1,18 @@
 # Avalonia 图片渲染
 
-完整版 ShiroBot 在宿主默认加载上下文中提供 Avalonia 12.1、SkiaSharp 和 HarfBuzzSharp。插件通过 `ShiroBot.AvaloniaSdk` 请求 Headless 渲染，不应携带另一套运行时副本。
+ShiroBot 0.7.0 在宿主默认加载上下文中统一提供 Avalonia 12.1、SkiaSharp 和 HarfBuzzSharp。Avalonia 公共契约已并入 `ShiroBot.SDK`，插件不应携带另一套运行时副本。
 
 ## 引用包
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="0.6.0-rc1" />
-  <PackageReference Include="ShiroBot.AvaloniaSdk" Version="0.6.0-rc1" />
-  <PackageReference Include="Avalonia" Version="12.1.0">
-    <ExcludeAssets>runtime</ExcludeAssets>
-  </PackageReference>
+  <PackageReference Include="ShiroBot.SDK" Version="0.7.0-rc3" />
 </ItemGroup>
 ```
 
-直接引用 Avalonia 用于编译控件和 AXAML；运行时程序集由宿主共享。SDK 自动打包也会排除 `Avalonia*`、`SkiaSharp*` 和 `HarfBuzzSharp*`。
+SDK 依赖会传递 Avalonia 编译类型和 AXAML build targets；运行时程序集由宿主共享。SDK 自动打包会移除 `Avalonia*`、`SkiaSharp*`、`HarfBuzzSharp*`、`MicroCom*` 及相关 runtime/native 资产。
+
+从旧版本迁移时，删除 `ShiroBot.AvaloniaSdk` 包引用，并把命名空间改为 `ShiroBot.SDK.Avalonia`。
 
 ## 创建控件
 
@@ -62,7 +60,7 @@ public partial class HelloCard : UserControl
 
 ```csharp
 using HelloPlugin.Views;
-using ShiroBot.AvaloniaSdk;
+using ShiroBot.SDK.Avalonia;
 using ShiroBot.Model.Common;
 
 private async Task HandleCardAsync(GroupIncomingMessage message)
@@ -71,7 +69,7 @@ private async Task HandleCardAsync(GroupIncomingMessage message)
     {
         await Context.Message.ReplyAsync(
             message,
-            "当前宿主未启用 Avalonia 渲染，请使用 full 版本。");
+            "宿主 Avalonia 渲染初始化失败。");
         return;
     }
 
@@ -105,7 +103,7 @@ avalonia_theme = "Dark"
 
 ### `Context.Render` 是 `null`
 
-宿主使用了 `lite` 构建，或者 Avalonia 初始化失败。插件必须提供降级提示，不能假设渲染服务一定存在。
+Avalonia 初始化失败。插件必须提供降级提示，不能假设渲染服务一定可用。
 
 ### 出现类型无法转换
 

@@ -1,51 +1,398 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Globalization;
+using System.Security.Cryptography;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 var options = GeneratorOptions.Parse(args);
+if (options.SelfTest)
+{
+    RunCompatibilitySelfTest();
+    return;
+}
 
-Directory.CreateDirectory(options.OutputDirectory);
-CleanGeneratedDirectory(options.OutputDirectory);
+var compatibility = LoadCompatibilityCatalog(options.OutputDirectory);
 
 using var http = new HttpClient();
 var json = await http.GetStringAsync(options.IrUrl);
+var irSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json))).ToLowerInvariant();
+if (!string.IsNullOrWhiteSpace(options.ExpectedSha256) &&
+    !string.Equals(options.ExpectedSha256, irSha256, StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException(
+        $"Milky IR SHA-256 mismatch. Expected {options.ExpectedSha256}, received {irSha256}. " +
+        "Review the upstream ABI change and update the lock explicitly.");
+}
+
 var ir = JsonNode.Parse(json)?.AsObject() ?? throw new InvalidOperationException("Failed to parse ir.json.");
+var sourceInfo = new IrSourceInfo(
+    options.IrSourceName,
+    options.IrUrl,
+    irSha256,
+    ir["milkyVersion"]?.GetValue<string>() ?? string.Empty,
+    ir["milkyPackageVersion"]?.GetValue<string>() ?? string.Empty);
 
-GenerateHeader(options.OutputDirectory, options);
+var stagingDirectory = options.OutputDirectory + ".staging-" + Guid.NewGuid().ToString("N");
+Directory.CreateDirectory(stagingDirectory);
 
-var commonStructs = ir["commonStructs"]?.AsArray() ?? [];
-var generationContext = BuildGenerationContext(commonStructs);
-var eventMetadataDefinitions = CollectEventMetadataDefinitions(commonStructs, generationContext);
+try
+{
+    GenerateHeader(stagingDirectory, options, sourceInfo);
 
-GenerateCommonStructs(options.OutputDirectory, commonStructs, generationContext, options);
-GenerateEventMetadataRegistry(options.OutputDirectory, eventMetadataDefinitions, options);
-GenerateApiTypes(options.OutputDirectory, ir["apiCategories"]?.AsArray() ?? [], options);
+    var commonStructs = ir["commonStructs"]?.AsArray() ?? [];
+    var generationContext = BuildGenerationContext(commonStructs);
+    var eventMetadataDefinitions = CollectEventMetadataDefinitions(commonStructs, generationContext);
+
+    GenerateCommonStructs(stagingDirectory, commonStructs, generationContext, options, compatibility);
+    GenerateEventMetadataRegistry(stagingDirectory, eventMetadataDefinitions, options);
+    GenerateApiTypes(stagingDirectory, ir["apiCategories"]?.AsArray() ?? [], options, compatibility);
+    ValidateCompatibilityCatalog(compatibility, stagingDirectory);
+    CommitGeneratedDirectory(stagingDirectory, options.OutputDirectory);
+}
+finally
+{
+    if (Directory.Exists(stagingDirectory)) Directory.Delete(stagingDirectory, recursive: true);
+}
 
 Console.WriteLine($"Generated model files into: {options.OutputDirectory}");
 
-static void CleanGeneratedDirectory(string generatedDir)
+static void CommitGeneratedDirectory(string stagingDirectory, string outputDirectory)
 {
-    if (!Directory.Exists(generatedDir))
+    var backupDirectory = outputDirectory + ".backup-" + Guid.NewGuid().ToString("N");
+    var hadExistingOutput = Directory.Exists(outputDirectory);
+    try
     {
-        return;
+        if (hadExistingOutput) Directory.Move(outputDirectory, backupDirectory);
+        Directory.Move(stagingDirectory, outputDirectory);
+        if (hadExistingOutput) Directory.Delete(backupDirectory, recursive: true);
     }
-
-    foreach (var file in Directory.EnumerateFiles(generatedDir, "*.cs", SearchOption.AllDirectories))
+    catch
     {
-        File.Delete(file);
-    }
-
-    foreach (var directory in Directory.EnumerateDirectories(generatedDir, "*", SearchOption.AllDirectories)
-                 .OrderByDescending(x => x.Length))
-    {
-        if (!Directory.EnumerateFileSystemEntries(directory).Any())
+        if (!Directory.Exists(outputDirectory) && Directory.Exists(backupDirectory))
         {
-            Directory.Delete(directory);
+            Directory.Move(backupDirectory, outputDirectory);
         }
+
+        throw;
     }
 }
 
-static void GenerateHeader(string generatedDir, GeneratorOptions options)
+static ModelCompatibilityCatalog LoadCompatibilityCatalog(string generatedDir)
+{
+    var records = new Dictionary<string, ExistingRecordAbi>(StringComparer.Ordinal);
+    if (!Directory.Exists(generatedDir)) return new ModelCompatibilityCatalog(records, new HashSet<string>(StringComparer.Ordinal));
+    var publicTypes = LoadPublicTypeNames(generatedDir);
+
+    foreach (var path in Directory.EnumerateFiles(generatedDir, "*.cs", SearchOption.AllDirectories))
+    {
+        if (Path.GetFileName(path).Equals("EventMetadataRegistry.cs", StringComparison.OrdinalIgnoreCase)) continue;
+
+        var root = CSharpSyntaxTree.ParseText(File.ReadAllText(path)).GetRoot();
+        foreach (var declaration in root.DescendantNodes().OfType<RecordDeclarationSyntax>())
+        {
+            if (declaration.ParameterList is null) continue;
+
+            var namespaceName = string.Join('.', declaration.Ancestors()
+                .OfType<BaseNamespaceDeclarationSyntax>()
+                .Reverse()
+                .Select(item => item.Name.ToString()));
+            var fullName = string.IsNullOrWhiteSpace(namespaceName)
+                ? declaration.Identifier.ValueText
+                : $"{namespaceName}.{declaration.Identifier.ValueText}";
+            var primary = ReadParameters(declaration.ParameterList.Parameters);
+            var constructors = new List<ExistingAbiMember> { new(primary) };
+            constructors.AddRange(declaration.Members
+                .OfType<ConstructorDeclarationSyntax>()
+                .Where(constructor => constructor.Modifiers.Any(SyntaxKind.PublicKeyword))
+                .Select(constructor => new ExistingAbiMember(ReadParameters(constructor.ParameterList.Parameters))));
+
+            var deconstructors = new List<ExistingAbiMember> { new(primary) };
+            deconstructors.AddRange(declaration.Members
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method => method.Identifier.ValueText == "Deconstruct" &&
+                                 method.Modifiers.Any(SyntaxKind.PublicKeyword))
+                .Select(method => new ExistingAbiMember(ReadParameters(method.ParameterList.Parameters))));
+
+            if (!records.TryAdd(fullName, new ExistingRecordAbi(
+                    primary,
+                    DistinctAbiMembers(constructors),
+                    DistinctAbiMembers(deconstructors))))
+            {
+                throw new InvalidOperationException($"Multiple positional records named {fullName} were found in Generated.");
+            }
+        }
+    }
+
+    return new ModelCompatibilityCatalog(records, publicTypes);
+}
+
+static HashSet<string> LoadPublicTypeNames(string generatedDir)
+{
+    var result = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var path in Directory.EnumerateFiles(generatedDir, "*.cs", SearchOption.AllDirectories))
+    {
+        var root = CSharpSyntaxTree.ParseText(File.ReadAllText(path)).GetRoot();
+        foreach (var declaration in root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
+                     .Where(declaration => declaration.Modifiers.Any(SyntaxKind.PublicKeyword)))
+        {
+            var namespaceName = string.Join('.', declaration.Ancestors()
+                .OfType<BaseNamespaceDeclarationSyntax>()
+                .Reverse()
+                .Select(item => item.Name.ToString()));
+            var fullName = string.IsNullOrWhiteSpace(namespaceName)
+                ? declaration.Identifier.ValueText
+                : $"{namespaceName}.{declaration.Identifier.ValueText}";
+            result.Add(fullName);
+        }
+    }
+
+    return result;
+}
+
+static void ValidateCompatibilityCatalog(ModelCompatibilityCatalog catalog, string generatedDir)
+{
+    var generatedTypes = LoadPublicTypeNames(generatedDir);
+    var missingTypes = catalog.PublicTypes
+        .Where(typeName => !generatedTypes.Contains(typeName))
+        .OrderBy(typeName => typeName, StringComparer.Ordinal)
+        .ToArray();
+    if (missingTypes.Length > 0)
+    {
+        throw new InvalidOperationException(
+            "Model ABI break: previously generated public types were removed or renamed: " +
+            string.Join(", ", missingTypes) + ". A major breaking change is required.");
+    }
+}
+
+static IReadOnlyList<ExistingModelParameter> ReadParameters(SeparatedSyntaxList<ParameterSyntax> parameters) =>
+    parameters.Select(parameter => new ExistingModelParameter(
+            parameter.Identifier.ValueText,
+            NormalizeTypeName(parameter.Type?.ToString() ??
+                              throw new InvalidOperationException("Generated record parameter has no type."))))
+        .ToArray();
+
+static IReadOnlyList<ExistingAbiMember> DistinctAbiMembers(IEnumerable<ExistingAbiMember> members)
+{
+    var result = new List<ExistingAbiMember>();
+    var signatures = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var member in members)
+    {
+        if (signatures.Add(GetRuntimeSignature(member.Parameters))) result.Add(member);
+    }
+
+    return result;
+}
+
+static CompatibilityPlan BuildCompatibilityPlan(
+    string recordFullName,
+    IReadOnlyList<GeneratedModelParameter> currentParameters,
+    ModelCompatibilityCatalog catalog)
+{
+    if (!catalog.Records.TryGetValue(recordFullName, out var existing))
+    {
+        return CompatibilityPlan.Empty;
+    }
+
+    var currentByName = currentParameters.ToDictionary(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase);
+    foreach (var oldParameter in existing.PrimaryParameters)
+    {
+        if (!currentByName.TryGetValue(oldParameter.Name, out var current))
+        {
+            throw new InvalidOperationException(
+                $"Model ABI break in {recordFullName}: positional field {oldParameter.Name} was removed or renamed. " +
+                "A major breaking change is required.");
+        }
+
+        if (!string.Equals(oldParameter.Type, current.Type, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Model ABI break in {recordFullName}.{oldParameter.Name}: type changed from " +
+                $"{oldParameter.Type} to {current.Type}. A major breaking change is required.");
+        }
+    }
+
+    var retainedOrder = currentParameters
+        .Where(parameter => existing.PrimaryParameters.Any(old =>
+            string.Equals(old.Name, parameter.Name, StringComparison.OrdinalIgnoreCase)))
+        .Select(parameter => parameter.Name)
+        .ToArray();
+    if (!retainedOrder.SequenceEqual(
+            existing.PrimaryParameters.Select(parameter => parameter.Name),
+            StringComparer.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            $"Model ABI break in {recordFullName}: existing positional fields were reordered. " +
+            "A major breaking change is required.");
+    }
+
+    var generatedConstructors = new List<IReadOnlyList<GeneratedModelParameter>> { currentParameters };
+    var optionalStart = currentParameters
+        .Select((parameter, index) => new { parameter, index })
+        .FirstOrDefault(item => IsCtorOptional(item.parameter.Field))?.index ?? -1;
+    if (optionalStart >= 0)
+    {
+        for (var count = optionalStart; count < currentParameters.Count; count++)
+        {
+            generatedConstructors.Add(currentParameters.Take(count).ToArray());
+        }
+    }
+
+    var constructors = BuildMissingAbiMembers(
+        recordFullName,
+        "constructor",
+        existing.Constructors,
+        generatedConstructors,
+        currentByName);
+    var deconstructors = BuildMissingAbiMembers(
+        recordFullName,
+        "Deconstruct",
+        existing.Deconstructors,
+        [currentParameters],
+        currentByName);
+    return new CompatibilityPlan(constructors, deconstructors);
+}
+
+static IReadOnlyList<CompatibilityAbiMember> BuildMissingAbiMembers(
+    string recordFullName,
+    string memberKind,
+    IReadOnlyList<ExistingAbiMember> existingMembers,
+    IReadOnlyList<IReadOnlyList<GeneratedModelParameter>> generatedMembers,
+    IReadOnlyDictionary<string, GeneratedModelParameter> currentByName)
+{
+    var result = new List<CompatibilityAbiMember>();
+    foreach (var oldMember in existingMembers)
+    {
+        var propertyNames = new List<string>(oldMember.Parameters.Count);
+        foreach (var oldParameter in oldMember.Parameters)
+        {
+            if (!currentByName.TryGetValue(oldParameter.Name, out var current))
+            {
+                throw new InvalidOperationException(
+                    $"Model ABI break in {recordFullName}: {memberKind} parameter {oldParameter.Name} " +
+                    "was removed or renamed. A major breaking change is required.");
+            }
+
+            if (!string.Equals(oldParameter.Type, current.Type, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Model ABI break in {recordFullName}.{oldParameter.Name}: {memberKind} parameter type changed " +
+                    $"from {oldParameter.Type} to {current.Type}. A major breaking change is required.");
+            }
+
+            propertyNames.Add(current.Name);
+        }
+
+        var oldSignature = GetRuntimeSignature(oldMember.Parameters);
+        var generatedMatch = generatedMembers.FirstOrDefault(member =>
+            string.Equals(GetGeneratedRuntimeSignature(member), oldSignature, StringComparison.Ordinal));
+        if (generatedMatch is not null)
+        {
+            if (!generatedMatch.Select(parameter => parameter.Name)
+                    .SequenceEqual(propertyNames, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Model ABI break in {recordFullName}: the generated {memberKind} signature collides with " +
+                    "an older overload but maps parameters to different fields. A major breaking change is required.");
+            }
+
+            continue;
+        }
+
+        var plannedMatch = result.FirstOrDefault(member =>
+            string.Equals(GetRuntimeSignature(member.Parameters), oldSignature, StringComparison.Ordinal));
+        if (plannedMatch is not null)
+        {
+            if (!plannedMatch.PropertyNames.SequenceEqual(propertyNames, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Model ABI break in {recordFullName}: older {memberKind} overloads have colliding signatures.");
+            }
+
+            continue;
+        }
+
+        result.Add(new CompatibilityAbiMember(oldMember.Parameters, propertyNames));
+    }
+
+    return result;
+}
+
+static string GetRuntimeSignature(IEnumerable<ExistingModelParameter> parameters) =>
+    string.Join('|', parameters.Select(parameter => GetRuntimeTypeSignature(parameter.Type)));
+
+static string GetGeneratedRuntimeSignature(IEnumerable<GeneratedModelParameter> parameters) =>
+    string.Join('|', parameters.Select(parameter => GetRuntimeTypeSignature(parameter.Type)));
+
+static string GetRuntimeTypeSignature(string typeName) => typeName.Replace("?", string.Empty, StringComparison.Ordinal);
+
+static string NormalizeTypeName(string typeName) =>
+    SyntaxFactory.ParseTypeName(typeName).NormalizeWhitespace().ToFullString();
+
+static void RunCompatibilitySelfTest()
+{
+    var root = Path.Combine(Path.GetTempPath(), "MilkyModelGenerator.Net", Guid.NewGuid().ToString("N"));
+    var generated = Path.Combine(root, "Generated");
+    var common = Path.Combine(generated, "Common");
+    Directory.CreateDirectory(common);
+
+    try
+    {
+        File.WriteAllText(Path.Combine(common, "Fixture.cs"), """
+            // <auto-generated />
+            #nullable enable
+            namespace Fixture.Models.Common;
+
+            public sealed partial record Fixture(string Name);
+            """);
+
+        var catalog = LoadCompatibilityCatalog(generated);
+        var fields = JsonNode.Parse("""
+            [
+              { "fieldType": "scalar", "name": "name", "isArray": false, "isOptional": false, "scalarType": "string" },
+              { "fieldType": "scalar", "name": "count", "isArray": false, "isOptional": false, "scalarType": "int32" }
+            ]
+            """)!.AsArray();
+        var options = new GeneratorOptions(
+            "https://example.invalid/ir.json",
+            "fixture",
+            generated,
+            "Fixture.Models",
+            null,
+            false);
+        GenerateSimpleStruct(generated, "Common", "Fixture", fields, [], options, catalog);
+
+        var output = File.ReadAllText(Path.Combine(common, "Fixture.cs"));
+        if (!output.Contains(": this(Name, default!)", StringComparison.Ordinal) ||
+            !output.Contains("public void Deconstruct(", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Compatibility fixture did not emit the old constructor and Deconstruct overload.");
+        }
+
+        var breakingFields = JsonNode.Parse("""
+            [
+              { "fieldType": "scalar", "name": "count", "isArray": false, "isOptional": false, "scalarType": "int32" }
+            ]
+            """)!.AsArray();
+        try
+        {
+            GenerateSimpleStruct(generated, "Common", "Fixture", breakingFields, [], options, catalog);
+            throw new InvalidOperationException("Compatibility fixture accepted a removed positional field.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("removed or renamed", StringComparison.Ordinal))
+        {
+        }
+
+        Console.WriteLine("Generator compatibility self-test passed.");
+    }
+    finally
+    {
+        if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+    }
+}
+
+static void GenerateHeader(string generatedDir, GeneratorOptions options, IrSourceInfo source)
 {
     var path = Path.Combine(generatedDir, "_GeneratedInfo.cs");
     WriteFile(path, $$"""
@@ -55,7 +402,11 @@ namespace {{options.GeneratedRootNamespace}};
 
 internal static class GeneratedInfo
 {
-    public const string Source = "{{options.IrSourceName}}";
+    public const string Source = {{ToCSharpStringLiteral(source.Name)}};
+    public const string Url = {{ToCSharpStringLiteral(source.Url)}};
+    public const string Sha256 = {{ToCSharpStringLiteral(source.Sha256)}};
+    public const string MilkyVersion = {{ToCSharpStringLiteral(source.MilkyVersion)}};
+    public const string MilkyPackageVersion = {{ToCSharpStringLiteral(source.MilkyPackageVersion)}};
 }
 """);
 }
@@ -159,7 +510,8 @@ static void GenerateCommonStructs(
     string generatedDir,
     JsonArray commonStructs,
     GenerationContext context,
-    GeneratorOptions options)
+    GeneratorOptions options,
+    ModelCompatibilityCatalog compatibility)
 {
     foreach (var item in commonStructs.OfType<JsonObject>())
     {
@@ -168,13 +520,13 @@ static void GenerateCommonStructs(
 
         if (structType == "simple")
         {
-            GenerateSimpleStruct(generatedDir, "Common", name, item["fields"]?.AsArray() ?? [], [], options);
+            GenerateSimpleStruct(generatedDir, "Common", name, item["fields"]?.AsArray() ?? [], [], options, compatibility);
             continue;
         }
 
         if (structType == "union")
         {
-            GenerateUnionStruct(generatedDir, name, item, context, options);
+            GenerateUnionStruct(generatedDir, name, item, context, options, compatibility);
         }
     }
 }
@@ -330,7 +682,11 @@ static void GenerateEventMetadataRegistry(
     WriteFile(Path.Combine(targetDir, "EventMetadataRegistry.cs"), sb.ToString());
 }
 
-static void GenerateApiTypes(string generatedDir, JsonArray categories, GeneratorOptions options)
+static void GenerateApiTypes(
+    string generatedDir,
+    JsonArray categories,
+    GeneratorOptions options,
+    ModelCompatibilityCatalog compatibility)
 {
     foreach (var category in categories.OfType<JsonObject>())
     {
@@ -346,12 +702,26 @@ static void GenerateApiTypes(string generatedDir, JsonArray categories, Generato
             var baseName = SnakeToPascal(endpoint);
             if (api["requestFields"] is JsonArray requestFields)
             {
-                GenerateSimpleStruct(generatedDir, $"{categoryArea}.Requests", $"{baseName}Request", requestFields, [], options);
+                GenerateSimpleStruct(
+                    generatedDir,
+                    $"{categoryArea}.Requests",
+                    $"{baseName}Request",
+                    requestFields,
+                    [],
+                    options,
+                    compatibility);
             }
 
             if (api["responseFields"] is JsonArray responseFields)
             {
-                GenerateSimpleStruct(generatedDir, $"{categoryArea}.Responses", $"{baseName}Response", responseFields, [], options);
+                GenerateSimpleStruct(
+                    generatedDir,
+                    $"{categoryArea}.Responses",
+                    $"{baseName}Response",
+                    responseFields,
+                    [],
+                    options,
+                    compatibility);
             }
         }
     }
@@ -362,7 +732,8 @@ static void GenerateUnionStruct(
     string name,
     JsonObject obj,
     GenerationContext context,
-    GeneratorOptions options)
+    GeneratorOptions options,
+    ModelCompatibilityCatalog compatibility)
 {
     const string area = "Common";
     var ns = GetNamespace(area, options);
@@ -385,7 +756,14 @@ static void GenerateUnionStruct(
 
             var derivedName = $"{SnakeToPascal(tagValue)}{name}";
             var interfaces = GetInterfaces(context, derivedName, name);
-            GenerateSimpleStruct(generatedDir, area, derivedName, derived["fields"]?.AsArray() ?? [], interfaces, options);
+            GenerateSimpleStruct(
+                generatedDir,
+                area,
+                derivedName,
+                derived["fields"]?.AsArray() ?? [],
+                interfaces,
+                options,
+                compatibility);
         }
 
         return;
@@ -419,7 +797,7 @@ static void GenerateUnionStruct(
         }
 
         var interfaces = GetInterfaces(context, derivedName, name);
-        GenerateSimpleStruct(generatedDir, area, derivedName, fields, interfaces, options);
+        GenerateSimpleStruct(generatedDir, area, derivedName, fields, interfaces, options, compatibility);
     }
 }
 
@@ -443,7 +821,8 @@ static void GenerateSimpleStruct(
     string name,
     JsonArray fields,
     IReadOnlyCollection<string> implementedInterfaces,
-    GeneratorOptions options)
+    GeneratorOptions options,
+    ModelCompatibilityCatalog compatibility)
 {
     var ns = GetNamespace(area, options);
     var targetDir = GetOutputDirectory(generatedDir, area);
@@ -456,6 +835,16 @@ static void GenerateSimpleStruct(
     }
 
     var orderedFields = OrderFieldsForCtor(fields);
+    var currentParameters = orderedFields
+        .Select(field => new GeneratedModelParameter(
+            SnakeToPascal(field["name"]?.GetValue<string>() ?? "Unknown"),
+            NormalizeTypeName(ResolveFieldType(name, field)),
+            field))
+        .ToArray();
+    var compatibilityPlan = BuildCompatibilityPlan(
+        $"{ns}.{name}",
+        currentParameters,
+        compatibility);
     var members = orderedFields
         .Select(field => RenderCtorParameter(name, field))
         .ToList();
@@ -488,7 +877,10 @@ static void GenerateSimpleStruct(
     }
     else
     {
-        var needsBody = baseClause.Length > 0 || orderedFields.Any(IsCtorOptional);
+        var needsBody = baseClause.Length > 0 ||
+                        orderedFields.Any(IsCtorOptional) ||
+                        compatibilityPlan.Constructors.Count > 0 ||
+                        compatibilityPlan.Deconstructors.Count > 0;
         sb.AppendLine($"public sealed partial record {name}(");
         for (var i = 0; i < members.Count; i++)
         {
@@ -507,6 +899,7 @@ static void GenerateSimpleStruct(
 
             sb.AppendLine("{");
             RenderOptionalConstructorOverloads(sb, name, orderedFields, indent: "    ");
+            RenderCompatibilityMembers(sb, name, currentParameters, compatibilityPlan, indent: "    ");
             sb.AppendLine("}");
         }
     }
@@ -552,6 +945,69 @@ static void RenderOptionalConstructorOverloads(StringBuilder sb, string ownerNam
 
         sb.AppendLine($"{indent}    : this({string.Join(", ", fullArguments.Select((argument, index) => index < count ? LowerFirst(argument) : RenderDefaultValue(ownerName, orderedFields[index]) ?? "default"))})");
         sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}}}");
+    }
+}
+
+static void RenderCompatibilityMembers(
+    StringBuilder sb,
+    string ownerName,
+    IReadOnlyList<GeneratedModelParameter> currentParameters,
+    CompatibilityPlan compatibility,
+    string indent)
+{
+    foreach (var constructor in compatibility.Constructors)
+    {
+        sb.AppendLine();
+        sb.AppendLine($"{indent}public {ownerName}(");
+        for (var i = 0; i < constructor.Parameters.Count; i++)
+        {
+            var parameter = constructor.Parameters[i];
+            var suffix = i == constructor.Parameters.Count - 1 ? ")" : ",";
+            sb.AppendLine($"{indent}    {parameter.Type} {parameter.Name}{suffix}");
+        }
+
+        if (constructor.Parameters.Count == 0)
+        {
+            sb.AppendLine($"{indent}    )");
+        }
+
+        var arguments = currentParameters.Select(current =>
+        {
+            var oldIndex = constructor.PropertyNames
+                .Select((propertyName, index) => new { propertyName, index })
+                .FirstOrDefault(item => string.Equals(item.propertyName, current.Name, StringComparison.OrdinalIgnoreCase))
+                ?.index ?? -1;
+            return oldIndex >= 0
+                ? constructor.Parameters[oldIndex].Name
+                : RenderDefaultValue(ownerName, current.Field) ?? "default!";
+        });
+        sb.AppendLine($"{indent}    : this({string.Join(", ", arguments)})");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    foreach (var deconstructor in compatibility.Deconstructors)
+    {
+        sb.AppendLine();
+        sb.AppendLine($"{indent}public void Deconstruct(");
+        for (var i = 0; i < deconstructor.Parameters.Count; i++)
+        {
+            var parameter = deconstructor.Parameters[i];
+            var suffix = i == deconstructor.Parameters.Count - 1 ? ")" : ",";
+            sb.AppendLine($"{indent}    out {parameter.Type} {parameter.Name}{suffix}");
+        }
+
+        if (deconstructor.Parameters.Count == 0)
+        {
+            sb.AppendLine($"{indent}    )");
+        }
+
+        sb.AppendLine($"{indent}{{");
+        for (var i = 0; i < deconstructor.Parameters.Count; i++)
+        {
+            sb.AppendLine($"{indent}    {deconstructor.Parameters[i].Name} = this.{deconstructor.PropertyNames[i]};");
+        }
         sb.AppendLine($"{indent}}}");
     }
 }
@@ -863,13 +1319,43 @@ internal sealed record GenerationContext(
 internal sealed record EnumDefinition(string Name, IReadOnlyList<string> Values);
 internal sealed record EventFieldMetadataDefinition(string PropertyName, string Description);
 internal sealed record EventMetadataDefinition(string TypeName, string Description, IReadOnlyList<EventFieldMetadataDefinition> Fields);
+internal sealed record IrSourceInfo(
+    string Name,
+    string Url,
+    string Sha256,
+    string MilkyVersion,
+    string MilkyPackageVersion);
+internal sealed record ExistingModelParameter(string Name, string Type);
+internal sealed record ExistingAbiMember(IReadOnlyList<ExistingModelParameter> Parameters);
+internal sealed record ExistingRecordAbi(
+    IReadOnlyList<ExistingModelParameter> PrimaryParameters,
+    IReadOnlyList<ExistingAbiMember> Constructors,
+    IReadOnlyList<ExistingAbiMember> Deconstructors);
+internal sealed record ModelCompatibilityCatalog(
+    IReadOnlyDictionary<string, ExistingRecordAbi> Records,
+    HashSet<string> PublicTypes);
+internal sealed record GeneratedModelParameter(string Name, string Type, JsonObject Field);
+internal sealed record CompatibilityAbiMember(
+    IReadOnlyList<ExistingModelParameter> Parameters,
+    IReadOnlyList<string> PropertyNames);
+internal sealed record CompatibilityPlan(
+    IReadOnlyList<CompatibilityAbiMember> Constructors,
+    IReadOnlyList<CompatibilityAbiMember> Deconstructors)
+{
+    public static CompatibilityPlan Empty { get; } = new([], []);
+}
 
 internal sealed record GeneratorOptions(
     string IrUrl,
     string IrSourceName,
     string OutputDirectory,
-    string RootNamespace)
+    string RootNamespace,
+    string? ExpectedSha256,
+    bool SelfTest)
 {
+    private const string DefaultIrUrl = "https://unpkg.com/@saltify/milky-protocol@1.3.0-rc.1/dist/protocol.json";
+    private const string DefaultIrSha256 = "17a4f1da0ce44640ab73840015756227b8180ca5a503433ba4d41a3a82a13ea0";
+
     public string GeneratedRootNamespace => $"{RootNamespace}.Generated";
 
     public static GeneratorOptions Parse(string[] args)
@@ -892,10 +1378,13 @@ internal sealed record GeneratorOptions(
 
         var projectRoot = FindProjectRoot();
         var defaultOutput = Path.Combine(projectRoot, "output", "Generated");
-        var irUrl = values.GetValueOrDefault("--ir-url") ?? "https://milky.ntqqrev.org/raw/milky-ir/ir.json";
-        var irSourceName = values.GetValueOrDefault("--ir-source") ?? "milky-ir/ir.json";
+        var irUrl = values.GetValueOrDefault("--ir-url") ?? DefaultIrUrl;
+        var irSourceName = values.GetValueOrDefault("--ir-source") ?? "@saltify/milky-protocol@1.3.0-rc.1/dist/protocol.json";
         var outputDirectory = values.GetValueOrDefault("--output");
         var rootNamespace = values.GetValueOrDefault("--namespace") ?? "Milky.Models";
+        var expectedSha256 = values.GetValueOrDefault("--expected-sha256") ??
+                             (values.ContainsKey("--ir-url") ? null : DefaultIrSha256);
+        var selfTest = values.ContainsKey("--self-test");
 
         var resolvedOutputDirectory = string.IsNullOrWhiteSpace(outputDirectory)
             ? defaultOutput
@@ -905,7 +1394,9 @@ internal sealed record GeneratorOptions(
             irUrl,
             irSourceName,
             resolvedOutputDirectory,
-            rootNamespace);
+            rootNamespace,
+            expectedSha256,
+            selfTest);
     }
 
     private static string FindProjectRoot()

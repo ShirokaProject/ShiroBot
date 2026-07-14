@@ -151,26 +151,32 @@
     <Task>
       <Using Namespace="System" />
       <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
       <Using Namespace="System.Text" />
       <Code Type="Fragment" Language="cs"><![CDATA[
         IsPlugin = false;
         var assemblyBytes = File.ReadAllBytes(AssemblyPath);
-        var marker = Encoding.UTF8.GetBytes("BotPluginAttribute");
-        for (var offset = 0; offset <= assemblyBytes.Length - marker.Length; offset++)
+        var markers = new[] { "BotPluginAttribute", "BotAdapterAttribute" }
+            .Select(Encoding.UTF8.GetBytes)
+            .ToArray();
+        foreach (var marker in markers)
         {
-            var matches = true;
-            for (var index = 0; index < marker.Length; index++)
+            for (var offset = 0; offset <= assemblyBytes.Length - marker.Length; offset++)
             {
-                if (assemblyBytes[offset + index] == marker[index]) continue;
-                matches = false;
-                break;
-            }
+                var matches = true;
+                for (var index = 0; index < marker.Length; index++)
+                {
+                    if (assemblyBytes[offset + index] == marker[index]) continue;
+                    matches = false;
+                    break;
+                }
 
-            if (matches)
-            {
+                if (!matches) continue;
                 IsPlugin = true;
                 break;
             }
+
+            if (IsPlugin) break;
         }
       ]]></Code>
     </Task>
@@ -190,6 +196,7 @@
       <Using Namespace="System.Collections.Generic" />
       <Using Namespace="System.IO" />
       <Using Namespace="System.Linq" />
+      <Using Namespace="System.Reflection" />
       <Using Namespace="Microsoft.Build.Framework" />
       <Code Type="Fragment" Language="cs"><![CDATA[
         var primary = Path.GetFullPath(PrimaryAssembly);
@@ -200,8 +207,30 @@
             .ToArray();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        bool IsManagedAssembly(ITaskItem item)
+        {
+            try
+            {
+                _ = AssemblyName.GetAssemblyName(item.ItemSpec);
+                return true;
+            }
+            catch (BadImageFormatException)
+            {
+                return false;
+            }
+            catch (FileLoadException)
+            {
+                return false;
+            }
+            catch (FileNotFoundException)
+            {
+                return false;
+            }
+        }
+
         Assemblies = (Candidates ?? Array.Empty<ITaskItem>())
             .Where(item => string.Equals(Path.GetExtension(item.ItemSpec), ".dll", StringComparison.OrdinalIgnoreCase))
+            .Where(IsManagedAssembly)
             .Where(item => !string.Equals(Path.GetFullPath(item.ItemSpec), primary, StringComparison.OrdinalIgnoreCase))
             .Where(item => !Path.GetFileNameWithoutExtension(item.ItemSpec).EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
             .Where(item => !excludedPrefixes.Any(prefix =>
@@ -310,14 +339,77 @@
   </Target>
 
   <Target Name="RemoveShiroBotPluginDependencyFile"
-          AfterTargets="CopyFilesToOutputDirectory"
+           AfterTargets="CopyFilesToOutputDirectory"
+           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
+    <ItemGroup>
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Model.dll;$(OutDir)ShiroBot.Model.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)Avalonia.dll;$(OutDir)Avalonia.pdb;$(OutDir)Avalonia.*.dll;$(OutDir)Avalonia.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)SkiaSharp.dll;$(OutDir)SkiaSharp.pdb;$(OutDir)SkiaSharp.*.dll;$(OutDir)SkiaSharp.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)HarfBuzzSharp.dll;$(OutDir)HarfBuzzSharp.pdb;$(OutDir)HarfBuzzSharp.*.dll;$(OutDir)HarfBuzzSharp.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)MicroCom.Runtime.dll;$(OutDir)MicroCom.Runtime.pdb;$(OutDir)MicroCom.*.dll;$(OutDir)MicroCom.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\Avalonia.dll;$(OutDir)runtimes\**\Avalonia.*;$(OutDir)runtimes\**\*AvaloniaNative*" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\SkiaSharp.dll;$(OutDir)runtimes\**\SkiaSharp.*;$(OutDir)runtimes\**\*SkiaSharp*" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\HarfBuzzSharp.dll;$(OutDir)runtimes\**\HarfBuzzSharp.*;$(OutDir)runtimes\**\*HarfBuzzSharp*" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\MicroCom.Runtime.dll;$(OutDir)runtimes\**\MicroCom.*" />
+    </ItemGroup>
+    <Delete Files="$(ProjectDepsFilePath);@(_ShiroBotHostSharedOutputAsset)" />
+  </Target>
+
+  <Target Name="RemoveShiroBotHostSharedPublishItems"
+          AfterTargets="ComputeFilesToPublish"
+          BeforeTargets="CopyFilesToPublishDirectory"
           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
-    <Delete Files="$(ProjectDepsFilePath)" />
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="$(ProjectDepsFilePath);@(_ShiroBotHostSharedOutputAsset)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RemoveEmptyShiroBotBuildRuntimeDirectory"
+          AfterTargets="RemoveShiroBotPluginDependencyFile"
+          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
+    <ItemGroup>
+      <_ShiroBotRemainingBuildRuntimeAsset Include="$(OutDir)runtimes/**/*" />
+    </ItemGroup>
+    <RemoveDir Directories="$(OutDir)runtimes"
+               Condition="Exists('$(OutDir)runtimes') and '@(_ShiroBotRemainingBuildRuntimeAsset)' == ''" />
   </Target>
 
   <Target Name="RemovePublishedShiroBotPluginDependencyFile"
-          AfterTargets="Publish"
+           AfterTargets="Publish"
+           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
+    <ItemGroup>
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Model.dll;$(OutDir)ShiroBot.Model.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)Avalonia.dll;$(OutDir)Avalonia.pdb;$(OutDir)Avalonia.*.dll;$(OutDir)Avalonia.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)SkiaSharp.dll;$(OutDir)SkiaSharp.pdb;$(OutDir)SkiaSharp.*.dll;$(OutDir)SkiaSharp.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)HarfBuzzSharp.dll;$(OutDir)HarfBuzzSharp.pdb;$(OutDir)HarfBuzzSharp.*.dll;$(OutDir)HarfBuzzSharp.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)MicroCom.Runtime.dll;$(OutDir)MicroCom.Runtime.pdb;$(OutDir)MicroCom.*.dll;$(OutDir)MicroCom.*.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\Avalonia.dll;$(OutDir)runtimes\**\Avalonia.*;$(OutDir)runtimes\**\*AvaloniaNative*" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\SkiaSharp.dll;$(OutDir)runtimes\**\SkiaSharp.*;$(OutDir)runtimes\**\*SkiaSharp*" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\HarfBuzzSharp.dll;$(OutDir)runtimes\**\HarfBuzzSharp.*;$(OutDir)runtimes\**\*HarfBuzzSharp*" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\MicroCom.Runtime.dll;$(OutDir)runtimes\**\MicroCom.*" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)ShiroBot.SDK.dll;$(PublishDir)ShiroBot.SDK.pdb;$(PublishDir)ShiroBot.Model.dll;$(PublishDir)ShiroBot.Model.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)Avalonia.dll;$(PublishDir)Avalonia.pdb;$(PublishDir)Avalonia.*.dll;$(PublishDir)Avalonia.*.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)SkiaSharp.dll;$(PublishDir)SkiaSharp.pdb;$(PublishDir)SkiaSharp.*.dll;$(PublishDir)SkiaSharp.*.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)HarfBuzzSharp.dll;$(PublishDir)HarfBuzzSharp.pdb;$(PublishDir)HarfBuzzSharp.*.dll;$(PublishDir)HarfBuzzSharp.*.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)MicroCom.Runtime.dll;$(PublishDir)MicroCom.Runtime.pdb;$(PublishDir)MicroCom.*.dll;$(PublishDir)MicroCom.*.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)runtimes\**\Avalonia.dll;$(PublishDir)runtimes\**\Avalonia.*;$(PublishDir)runtimes\**\*AvaloniaNative*" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)runtimes\**\SkiaSharp.dll;$(PublishDir)runtimes\**\SkiaSharp.*;$(PublishDir)runtimes\**\*SkiaSharp*" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)runtimes\**\HarfBuzzSharp.dll;$(PublishDir)runtimes\**\HarfBuzzSharp.*;$(PublishDir)runtimes\**\*HarfBuzzSharp*" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)runtimes\**\MicroCom.Runtime.dll;$(PublishDir)runtimes\**\MicroCom.*" />
+    </ItemGroup>
+    <Delete Files="$(ProjectDepsFilePath);$(PublishDepsFilePath);@(_ShiroBotHostSharedOutputAsset);@(_ShiroBotHostSharedPublishAsset)" />
+  </Target>
+
+  <Target Name="RemoveEmptyShiroBotPublishRuntimeDirectories"
+          AfterTargets="RemovePublishedShiroBotPluginDependencyFile"
           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
-    <Delete Files="$(PublishDepsFilePath)" Condition="'$(PublishDepsFilePath)' != ''" />
+    <ItemGroup>
+      <_ShiroBotRemainingOutputRuntimeAsset Include="$(OutDir)runtimes/**/*" />
+      <_ShiroBotRemainingPublishRuntimeAsset Include="$(PublishDir)runtimes/**/*" />
+    </ItemGroup>
+    <RemoveDir Directories="$(OutDir)runtimes"
+               Condition="Exists('$(OutDir)runtimes') and '@(_ShiroBotRemainingOutputRuntimeAsset)' == ''" />
+    <RemoveDir Directories="$(PublishDir)runtimes"
+               Condition="Exists('$(PublishDir)runtimes') and '@(_ShiroBotRemainingPublishRuntimeAsset)' == ''" />
   </Target>
 </Project>

@@ -312,7 +312,6 @@ internal sealed class PluginManager(
         {
             "ShiroBot.SDK.dll",
             "ShiroBot.Model.dll",
-            "ShiroBot.AvaloniaSdk.dll",
             "ShiroBot.AvaloniaIntegration.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

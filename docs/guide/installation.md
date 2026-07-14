@@ -2,16 +2,15 @@
 
 ## 选择发布包
 
-前往 ShiroBot 的 [GitHub Releases](https://github.com/ShirokaProject/ShiroBot/releases)，按照三个维度选择压缩包：
+前往 ShiroBot 的 [GitHub Releases](https://github.com/ShirokaProject/ShiroBot/releases)，按照两个维度选择压缩包：
 
 1. 操作系统与架构：`win-x64`、`win-arm64`、`linux-x64`、`linux-arm64`、`osx-x64` 或 `osx-arm64`。
-2. 功能版本：需要 Avalonia 渲染选 `full`，否则选 `lite`。
-3. 运行时类型：
+2. 运行时类型：
    - `self-contained`：自带 .NET 运行时，推荐普通用户使用。
    - `framework-dependent`：体积更小，但系统需要预装 .NET 10 Runtime。
 
 ::: tip 不确定怎么选？
-大多数 Windows 电脑选择 `win-x64-full-self-contained`；Apple Silicon Mac 选择 `osx-arm64-full-self-contained`；常见 x64 Linux 服务器选择 `linux-x64-lite-self-contained`。
+大多数 Windows 电脑选择 `win-x64-self-contained`；Apple Silicon Mac 选择 `osx-arm64-self-contained`；常见 x64 Linux 服务器选择 `linux-x64-self-contained`。
 :::
 
 ## 准备目录

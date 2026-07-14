@@ -107,8 +107,8 @@ Logger.Error("鉴权失败");
 
 ## 发布检查清单
 
-- `Name`、`Metadata.Name` 和程序集命名清晰稳定。
-- `Metadata.Version` 与发布版本一致。
+- `Name`、`BotAdapterAttribute.Id`、显示名称和程序集命名清晰稳定。
+- `BotAdapterAttribute.Version` 与发布版本一致。
 - 默认配置不包含真实凭据。
 - 至少完成登录信息与消息发送的端到端测试。
 - 每种声称支持的事件都有协议样本测试。

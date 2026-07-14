@@ -4,5 +4,9 @@ namespace ShiroBot.Model.Generated;
 
 internal static class GeneratedInfo
 {
-    public const string Source = "milky-ir/ir.json";
+    public const string Source = "@saltify/milky-protocol@1.3.0-rc.1/dist/protocol.json";
+    public const string Url = "https://unpkg.com/@saltify/milky-protocol@1.3.0-rc.1/dist/protocol.json";
+    public const string Sha256 = "17a4f1da0ce44640ab73840015756227b8180ca5a503433ba4d41a3a82a13ea0";
+    public const string MilkyVersion = "1.3";
+    public const string MilkyPackageVersion = "1.3.0-rc.1";
 }

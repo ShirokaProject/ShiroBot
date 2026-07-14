@@ -17,10 +17,9 @@
 ## 项目结构
 
 - `ShiroBot`: 主程序
-- `ShiroBot.SDK`: 插件与适配器开发 SDK
+- `ShiroBot.SDK`: 插件、适配器与 Avalonia 编译契约 SDK
 - `ShiroBot.Model`: 共享模型
-- `ShiroBot.AvaloniaIntegration`: 可选 Avalonia Headless 渲染集成模块
-- `ShiroBot.AvaloniaSdk`: 插件侧使用的 Avalonia 渲染 SDK
+- `ShiroBot.AvaloniaIntegration`: 宿主内置 Avalonia Headless 渲染集成模块
 
 ## 构建
 
@@ -28,13 +27,18 @@
 dotnet build .\ShiroBot.slnx
 ```
 
-默认构建会启用 Avalonia 渲染集成，如需构建不包含 Avalonia 的轻量版本：
+Avalonia、Skia 和 HarfBuzz 从 0.7.0 起属于统一宿主，不再提供 `lite` 构建。宿主明确保持 `PublishTrimmed=false`，因为插件发现、配置 schema 和程序集加载依赖反射与 metadata，当前不具备安全裁剪条件。
 
-```powershell
-dotnet build .\ShiroBot.slnx -p:EnableAvalonia=false
-```
+## 0.7.0 Breaking Migration
 
-禁用后宿主不会引用 Avalonia/Skia/HarfBuzz。
+- 插件只引用 `ShiroBot.SDK` 0.7.0-rc3，不再引用 `ShiroBot.AvaloniaSdk`。
+- Avalonia 扩展命名空间从 `ShiroBot.AvaloniaSdk` 改为 `ShiroBot.SDK.Avalonia`。
+- Host 统一内置 Avalonia，不再支持 `EnableAvalonia` 与 `full`/`lite` 发布矩阵。
+- SDK 自动从插件输出移除宿主共享的 Avalonia、SkiaSharp、HarfBuzzSharp、MicroCom managed/native/runtime 资产和 `.deps.json`。
+- Dashboard API 新增插件 actions 与插件市场；插件配置 PATCH 现在返回与 GET 相同的 `schema`。
+- 新适配器应使用 `BotAdapterAttribute`，旧 `Metadata` 实现仍可加载。
+
+未使用 Avalonia 类型的插件不会产生 Avalonia `AssemblyRef`，因此仍会自然保持较小的插件程序集。
 
 ## 文档
 

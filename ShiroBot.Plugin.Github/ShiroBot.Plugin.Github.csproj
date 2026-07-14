@@ -11,11 +11,6 @@
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj"/>
-        <!--
-            AvaloniaSdk 由宿主注册到 SharedAssemblyResolver。引用它能拿到 IAvaloniaRenderContext，
-            运行时类型从宿主 Default ALC 转发，避免重复加载。
-        -->
-        <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
     </ItemGroup>
 
     <!-- 让 partial class 在 IDE 中折叠到 .axaml 之下，仅影响 Solution Explorer 显示 -->
@@ -26,24 +21,18 @@
     </ItemGroup>
 
     <!--
-        Avalonia 包用于编译期：拿到 UserControl / AvaloniaXamlLoader 的类型 + AXAML build task。
-        runtime 资产排除，运行时由宿主 Default ALC（来自 ShiroBot.AvaloniaIntegration）提供同一份程序集。
+        ShiroBot.SDK 已传递 Avalonia 编译能力；运行时由宿主 Default ALC 提供同一份程序集。
     -->
     <ItemGroup>
         <AvaloniaResource Include="Assets\**" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="12.1.0">
-            <ExcludeAssets>runtime</ExcludeAssets>
-            <PrivateAssets>none</PrivateAssets>
-        </PackageReference>
  </ItemGroup>
 
     <!--
         拷贝到宿主 plugins/ 目录的 target。不挂 AfterTargets，避免 slnx 全量构建时无条件触发；
-        只能由 ShiroBot.csproj 在 EnableAvalonia=true 时通过 MSBuild Projects=... Targets="CopyPluginToHost" 显式调用。
-        这样 EnableAvalonia=false 时此插件虽然仍被 slnx 编译（保证 IDE 可调试 .axaml），但不会出现在宿主输出。
+        只能由宿主项目显式调用，避免 slnx 全量构建时无条件复制。
     -->
     <Target Name="CopyPluginToHost"
             Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAll'">
@@ -51,7 +40,7 @@
 
         <ItemGroup>
             <PluginDebugOutput Include="$(TargetDir)**\*"
-                               Exclude="$(TargetDir)ShiroBot.SDK.dll;$(TargetDir)ShiroBot.SDK.pdb;$(TargetDir)ShiroBot.Model.dll;$(TargetDir)ShiroBot.Model.pdb;$(TargetDir)ShiroBot.AvaloniaSdk.dll;$(TargetDir)ShiroBot.AvaloniaSdk.pdb;$(TargetDir)Avalonia*.dll;$(TargetDir)Avalonia*.pdb;$(TargetDir)SkiaSharp.dll;$(TargetDir)HarfBuzzSharp.dll" />
+                               Exclude="$(TargetDir)ShiroBot.SDK.dll;$(TargetDir)ShiroBot.SDK.pdb;$(TargetDir)ShiroBot.Model.dll;$(TargetDir)ShiroBot.Model.pdb;$(TargetDir)Avalonia*.dll;$(TargetDir)Avalonia*.pdb;$(TargetDir)SkiaSharp.dll;$(TargetDir)HarfBuzzSharp.dll;$(TargetDir)MicroCom*.dll" />
         </ItemGroup>
 
         <Copy SourceFiles="@(PluginDebugOutput)"

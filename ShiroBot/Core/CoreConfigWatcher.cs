@@ -56,12 +56,8 @@ internal sealed class CoreConfigWatcher : IDisposable
         if (!string.Equals(active.AvaloniaTheme, updated.AvaloniaTheme, StringComparison.OrdinalIgnoreCase))
         {
             active.AvaloniaTheme = updated.AvaloniaTheme;
-#if AVALONIA
             AvaloniaIntegration.AvaloniaIntegration.SetThemeMode(updated.AvaloniaTheme);
             changes.Add($"avalonia_theme={updated.AvaloniaTheme}");
-#else
-            changes.Add("avalonia_theme(未启用 Avalonia)");
-#endif
         }
 
         if (!string.Equals(active.Protocol, updated.Protocol, StringComparison.OrdinalIgnoreCase))

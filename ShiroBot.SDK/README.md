@@ -2,6 +2,9 @@
 
 `ShiroBot.SDK` provides the core contracts and helper APIs for ShiroBot plugins and adapters.
 
+Starting with 0.7.0 it also contains the Avalonia contracts previously shipped as
+`ShiroBot.AvaloniaSdk`. Remove that package and use `ShiroBot.SDK.Avalonia`.
+
 ## Plugin Usage
 
 Most plugins should inherit `PluginBase`.
@@ -60,28 +63,30 @@ command routes, event routes and `Context` after unload.
 
 ## Automatic plugin packaging
 
-When a plugin references the published `ShiroBot.SDK` NuGet package, its `buildTransitive`
-targets automatically prepare a single-DLL plugin:
+When a plugin or adapter references the published `ShiroBot.SDK` NuGet package, its
+`buildTransitive` targets automatically prepare a single-DLL component:
 
-- assemblies carrying `BotPluginAttribute` are detected automatically;
+- assemblies carrying `BotPluginAttribute` or `BotAdapterAttribute` are detected automatically;
 - managed NuGet/project dependencies are merged into the plugin DLL with ILRepack;
 - host-shared contracts and rendering assemblies are not merged;
 - native NuGet package ID, exact version, SHA512, RID and asset paths are embedded as
   `ShiroBot.PluginRuntimeManifest.json`;
 - native files and merged managed dependency DLLs are removed from the plugin output;
 - the generated `.deps.json` is removed after the plugin has been bundled.
+- Avalonia, SkiaSharp, HarfBuzzSharp and MicroCom managed/native/runtime assets are removed from
+  plugin build and publish outputs because the host supplies them.
 
 At runtime ShiroBot reads the embedded manifest without executing plugin code, downloads the
 required NuGet package, verifies SHA512, extracts only the best matching RID assets and deletes
 the temporary `.nupkg`. Extracted native files are cached under the plugin's `.shirobot/native`
 directory.
 
-No ILRepack target or native manifest needs to be added to each plugin project. The defaults can
+No ILRepack target or native manifest needs to be added to each component project. The defaults can
 be customized when required:
 
 ```xml
 <PropertyGroup>
-  <!-- Disable all automatic packaging, for example in an adapter project. -->
+  <!-- Disable all automatic packaging in a non-component library. -->
   <ShiroBotPluginPackagingEnabled>false</ShiroBotPluginPackagingEnabled>
 
   <!-- Defaults to the NuGet.org v3 flat-container endpoint. -->
@@ -96,6 +101,28 @@ be customized when required:
 Automatic targets are a NuGet `buildTransitive` feature. A source-level `ProjectReference` to
 `ShiroBot.SDK.csproj` does not import the packed targets; use the SDK package when validating the
 final distributable plugin.
+
+Avalonia compile references and AXAML build support flow from the SDK package. If plugin code does
+not use Avalonia types, the compiler emits no Avalonia assembly reference. The host intentionally
+does not enable `PublishTrimmed`; plugin discovery, configuration metadata and collectible loading
+use reflection paths that are not trimming-safe.
+
+## Dashboard Actions
+
+Implement `IPluginWebActionProvider` to expose authenticated dashboard operations without exposing
+ASP.NET `HttpContext` to plugin code:
+
+```csharp
+public IReadOnlyList<PluginWebActionDescriptor> WebActions { get; } =
+[
+    new("reload", "Reload data", Tone: "primary")
+];
+
+public Task<PluginWebActionResult> ExecuteWebActionAsync(
+    string actionId,
+    CancellationToken cancellationToken = default) =>
+    Task.FromResult(new PluginWebActionResult(true, "Reloaded", Refresh: true));
+```
 
 ## Command Routes
 
@@ -234,6 +261,10 @@ var config = Context.Config.Load<MyPluginConfig>();
 Context.Config.Save(config);
 ```
 
+Top-level properties annotated with `ConfigFieldAttribute` are written as stable `#` comments above
+their snake_case TOML keys. Labels, descriptions, options, ranges and placeholders are included when
+present, and repeated saves do not stack duplicate comments.
+
 Watch for config changes:
 
 ```csharp
@@ -305,15 +336,15 @@ using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
 
+[BotAdapter(
+    "MyAdapter",
+    Name = "MyAdapter",
+    Version = "1.0.0",
+    Protocol = "example",
+    ProtocolVersionRange = ">=1.0 <2.0")]
 public sealed class MyAdapter : IBotAdapter
 {
     public string Name => "MyAdapter";
-
-    public BotComponentMetadata Metadata { get; } = new()
-    {
-        Name = "MyAdapter",
-        Version = "1.0.0"
-    };
 
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
@@ -335,3 +366,8 @@ public sealed class MyAdapter : IBotAdapter
 ```
 
 Adapter config is loaded from the adapter directory through `Config.Load<T>()`.
+
+Legacy adapters that implement `IBotAdapter.Metadata` remain loadable. The host reads
+`BotAdapterAttribute` first and falls back to the obsolete property. Any future adapter service
+method, property or event added by the SDK must use a default interface implementation so binaries
+compiled against older SDK versions continue to load.

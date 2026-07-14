@@ -21,11 +21,11 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
     public string Adapter { get; private set; } = "unknown";
     public string AdapterStatus { get; private set; } = "disconnected";
 
-    public void SetAdapter(IBotAdapter adapter, string status)
+    public void SetAdapter(string adapterName, string status)
     {
         lock (_lock)
         {
-            Adapter = string.IsNullOrWhiteSpace(adapter.Metadata.Name) ? adapter.Name : adapter.Metadata.Name;
+            Adapter = adapterName;
             AdapterStatus = status;
         }
     }

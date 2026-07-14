@@ -17,6 +17,7 @@ using System.Text.Json;
 using ShiroBot.Core;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
+using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting;
 
@@ -212,6 +213,27 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             return Results.Ok(enabledPlugins.Concat(disabledPlugins).Concat(unloadedPlugins).ToArray());
         });
 
+        api.MapGet("/plugin-market/plugins", async (HttpContext context) =>
+        {
+            try
+            {
+                var marketplace = await MarketplaceCache.GetAsync(
+                    GetMarketplaceInstalledPlugins(pluginManager),
+                    context.RequestAborted).ConfigureAwait(false);
+                return Results.Json(marketplace);
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                return Results.StatusCode(499);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Json(
+                    new { error = "marketplace_unavailable", message = ex.Message },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
         api.MapPost("/plugins/upload", async (HttpContext context) =>
         {
             if (!context.Request.HasFormContentType)
@@ -373,23 +395,63 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                 return Results.BadRequest(new { error = "invalid_json", message = "GitHub 插件安装请求不是有效 JSON。" });
             }
 
-            if (!TryNormalizeGitHubRepository(request.Repository, out var repository))
+            var hasRepository = TryNormalizeGitHubRepository(request.Repository, out var repository);
+            var hasAssetUrl = !string.IsNullOrWhiteSpace(request.AssetUrl);
+            if (hasAssetUrl && !hasRepository)
+            {
+                return Results.BadRequest(new { error = "missing_repository", message = "使用 assetUrl 安装时必须提供对应的 GitHub repository。" });
+            }
+            if (!hasAssetUrl && !hasRepository)
             {
                 return Results.BadRequest(new { error = "invalid_repository", message = "repository 必须是 owner/repo 或 GitHub 仓库 URL。" });
             }
 
-            var packageInfo = await Updater.GetLatestPluginPackageAsync(
-                repository,
-                request.IncludePrerelease,
-                context.RequestAborted).ConfigureAwait(false);
-            if (packageInfo is null)
-            {
-                return Results.NotFound(new { error = "release_not_found", message = $"仓库 {repository} 没有可用 release。" });
-            }
+            string assetDownloadUrl;
+            string assetName;
+            string? releaseName = null;
+            string? releaseVersion = null;
+            string? releaseUrl = null;
 
-            if (string.IsNullOrWhiteSpace(packageInfo.AssetDownloadUrl) || string.IsNullOrWhiteSpace(packageInfo.AssetName))
+            if (hasAssetUrl)
             {
-                return Results.BadRequest(new { error = "asset_not_found", message = $"仓库 {repository} 的最新 release 没有 .zip 或 .dll 插件资源。" });
+                if (!TryNormalizeSha256(request.AssetSha256, out var assetSha256))
+                {
+                    return Results.BadRequest(new { error = "invalid_asset_digest", message = "assetSha256 必须是 sha256: 后跟 64 位十六进制摘要。" });
+                }
+                if (!TryNormalizeGitHubAssetUrl(
+                        request.AssetUrl,
+                        request.AssetName,
+                        hasRepository ? repository : null,
+                        out assetDownloadUrl,
+                        out assetName))
+                {
+                    return Results.BadRequest(new { error = "invalid_asset_url", message = "assetUrl 必须属于 repository 对应的 GitHub Release，且是 .zip 或 .dll HTTPS URL。" });
+                }
+
+                request = request with { AssetSha256 = assetSha256 };
+            }
+            else
+            {
+                var packageInfo = await Updater.GetLatestPluginPackageAsync(
+                    repository,
+                    request.IncludePrerelease,
+                    context.RequestAborted).ConfigureAwait(false);
+                if (packageInfo is null)
+                {
+                    return Results.NotFound(new { error = "release_not_found", message = $"仓库 {repository} 没有可用 release。" });
+                }
+
+                if (string.IsNullOrWhiteSpace(packageInfo.AssetDownloadUrl) || string.IsNullOrWhiteSpace(packageInfo.AssetName))
+                {
+                    return Results.BadRequest(new { error = "asset_not_found", message = $"仓库 {repository} 的最新 release 没有 .zip 或 .dll 插件资源。" });
+                }
+
+                assetDownloadUrl = packageInfo.AssetDownloadUrl;
+                assetName = packageInfo.AssetName;
+                repository = packageInfo.Repository;
+                releaseName = packageInfo.ReleaseName;
+                releaseVersion = packageInfo.Version;
+                releaseUrl = packageInfo.ReleaseUrl;
             }
 
             var uploadId = Guid.NewGuid().ToString("N");
@@ -398,9 +460,14 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
             try
             {
-                var safeAssetName = Path.GetFileName(packageInfo.AssetName);
+                var safeAssetName = Path.GetFileName(assetName);
                 var packagePath = Path.Combine(uploadRoot, safeAssetName);
-                await Updater.DownloadFileAsync(packageInfo.AssetDownloadUrl, packagePath, context.RequestAborted).ConfigureAwait(false);
+                await Updater.DownloadFileAsync(
+                    assetDownloadUrl,
+                    packagePath,
+                    context.RequestAborted,
+                    MaxPluginUploadBytes,
+                    hasAssetUrl ? request.AssetSha256 : null).ConfigureAwait(false);
 
                 var package = PreparePluginUploadPackage(pluginManager, uploadId, packagePath);
                 var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
@@ -413,12 +480,12 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                     source = new
                     {
                         type = "github",
-                        repository = packageInfo.Repository,
-                        release_name = packageInfo.ReleaseName,
-                        release_version = packageInfo.Version,
-                        release_url = packageInfo.ReleaseUrl,
-                        asset_name = packageInfo.AssetName,
-                        asset_type = packageInfo.AssetType
+                        repository = hasRepository ? repository : null,
+                        release_name = releaseName,
+                        release_version = releaseVersion,
+                        release_url = releaseUrl,
+                        asset_name = assetName,
+                        asset_type = Path.GetExtension(assetName).TrimStart('.').ToLowerInvariant()
                     },
                     plugin = CreatePluginInfoResponse(package.Info),
                     package = new
@@ -479,6 +546,118 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             });
         });
 
+        api.MapGet("/plugins/{id}/actions", async (string id, HttpContext context) =>
+        {
+            if (!IsBearerAuthorized(context, config))
+            {
+                return Results.Json(new ApiError("unauthorized", "A Bearer API key is required."), statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var plugin = FindLoadedPlugin(pluginManager, id);
+            if (plugin is null)
+            {
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            }
+
+            if (!plugin.Supports<IPluginWebActionProvider>())
+            {
+                return Results.Ok(new { actions = Array.Empty<object>() });
+            }
+
+            try
+            {
+                var dispatch = await plugin.DispatchAsync<IPluginWebActionProvider, IReadOnlyList<PluginWebActionDescriptor>>(
+                    provider => Task.FromResult(provider.WebActions)).ConfigureAwait(false);
+                if (!dispatch.Dispatched)
+                {
+                    return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
+                }
+
+                var actions = (dispatch.Result ?? [])
+                    .Where(action => !string.IsNullOrWhiteSpace(action.Id) && !string.IsNullOrWhiteSpace(action.Label))
+                    .GroupBy(action => action.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .Select(action => new
+                    {
+                        id = action.Id,
+                        label = action.Label,
+                        description = action.Description,
+                        tone = NormalizePluginActionTone(action.Tone),
+                        requires_confirmation = action.RequiresConfirmation,
+                        confirmation_text = action.ConfirmationText
+                    })
+                    .ToArray();
+
+                return Results.Ok(new { actions });
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                return Results.StatusCode(499);
+            }
+            catch (Exception ex)
+            {
+                BotLog.Error($"读取插件 Dashboard actions 失败: {plugin.Name} - {ex.Message}");
+                return Results.Json(
+                    new { error = "action_provider_failed", message = "插件操作列表读取失败。" },
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+        });
+
+        api.MapPost("/plugins/{id}/actions/{actionId}", async (string id, string actionId, HttpContext context) =>
+        {
+            if (!IsBearerAuthorized(context, config))
+            {
+                return Results.Json(new ApiError("unauthorized", "A Bearer API key is required."), statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var plugin = FindLoadedPlugin(pluginManager, id);
+            if (plugin is null || !plugin.Supports<IPluginWebActionProvider>())
+            {
+                return Results.NotFound(new { error = "action_not_found", message = $"插件 {id} 未提供该操作。" });
+            }
+
+            try
+            {
+                var dispatch = await plugin.DispatchAsync<IPluginWebActionProvider, PluginActionExecution>(
+                    async provider =>
+                    {
+                        var descriptor = provider.WebActions.FirstOrDefault(action =>
+                            string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
+                        if (descriptor is null)
+                        {
+                            return new PluginActionExecution(false, null);
+                        }
+
+                        var result = await provider.ExecuteWebActionAsync(actionId, context.RequestAborted)
+                            .ConfigureAwait(false);
+                        return new PluginActionExecution(true, result);
+                    }).ConfigureAwait(false);
+
+                if (!dispatch.Dispatched)
+                {
+                    return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
+                }
+
+                if (dispatch.Result is not { Found: true, Result: { } result })
+                {
+                    return Results.NotFound(new { error = "action_not_found", message = $"未找到插件操作: {actionId}" });
+                }
+
+                return Results.Ok(new { ok = result.Ok, message = result.Message, refresh = result.Refresh });
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                return Results.StatusCode(499);
+            }
+            catch (Exception ex)
+            {
+                BotLog.Error($"执行插件 Dashboard action 失败: {plugin.Name}/{actionId} - {ex.Message}");
+                return Results.Json(
+                    new { ok = false, message = "插件操作执行失败。", refresh = false },
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+        });
+
         api.MapPatch("/plugins/{id}/config", async (string id, HttpContext context) =>
         {
             JsonDocument document;
@@ -525,6 +704,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                         ok = true,
                         plugin_id = plugin.Id,
                         config = LoadTomlObject(pluginConfigPath),
+                        schema = GetPluginConfigSchema(plugin.AssemblyPath),
                         routes = CreatePluginRouteResponse(routePolicy, plugin.Id)
                     });
                 }
@@ -710,6 +890,17 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         var provided = authorization["Bearer ".Length..].Trim();
 
         return FixedTimeEquals(provided, expected);
+    }
+
+    private static bool IsBearerAuthorized(HttpContext context, ApiHostConfig config)
+    {
+        if (!config.Auth.Enable) return true;
+
+        var authorization = context.Request.Headers.Authorization.ToString();
+        if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var provided = authorization["Bearer ".Length..].Trim();
+        return !string.IsNullOrWhiteSpace(config.Auth.Key) && FixedTimeEquals(provided, config.Auth.Key);
     }
 
     private static bool FixedTimeEquals(string provided, string expected)
@@ -1217,7 +1408,8 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     private static object CreatePluginRouteResponse(PluginRouteConfig routePolicy, string pluginId)
     {
-        var configured = routePolicy.Plugins.TryGetValue(pluginId, out var rule);
+        var configured = routePolicy.Plugins.TryGetValue(pluginId, out var rule) &&
+                         !string.Equals(rule.Mode, "default", StringComparison.OrdinalIgnoreCase);
         var effective = configured ? rule! : routePolicy.Default;
         return new
         {
@@ -1235,7 +1427,15 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     {
         "whitelist" => "whitelist",
         "blacklist" => "blacklist",
-        _ => throw new InvalidOperationException("routes.mode 只能是 whitelist 或 blacklist。")
+        "default" => "default",
+        _ => throw new InvalidOperationException("routes.mode 只能是 default、whitelist 或 blacklist。")
+    };
+
+    private static string NormalizePluginActionTone(string? tone) => tone?.Trim().ToLowerInvariant() switch
+    {
+        "primary" => "primary",
+        "danger" => "danger",
+        _ => "default"
     };
 
     private static string NormalizeConfigKey(string key)
@@ -1516,8 +1716,20 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     {
         var normalizedDestination = Path.GetFullPath(destinationRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         using var archive = ZipFile.OpenRead(zipPath);
+        if (archive.Entries.Count > MaxPluginArchiveEntries)
+        {
+            throw new InvalidOperationException($"压缩包文件数量超过限制: {archive.Entries.Count} > {MaxPluginArchiveEntries}");
+        }
+
+        long totalUncompressedBytes = 0;
         foreach (var entry in archive.Entries)
         {
+            if (entry.Length > MaxPluginExtractedBytes - totalUncompressedBytes)
+            {
+                throw new InvalidOperationException($"压缩包解压后大小超过限制: {MaxPluginExtractedBytes}");
+            }
+            totalUncompressedBytes += entry.Length;
+
             var destinationPath = Path.GetFullPath(Path.Combine(normalizedDestination, entry.FullName));
             if (!destinationPath.StartsWith(normalizedDestination + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(destinationPath, normalizedDestination, StringComparison.OrdinalIgnoreCase))
@@ -1583,6 +1795,73 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
         repository = string.Join('/', parts);
         return true;
+    }
+
+    private static bool TryNormalizeGitHubAssetUrl(
+        string? assetUrl,
+        string? requestedAssetName,
+        string? repository,
+        out string normalizedUrl,
+        out string assetName)
+    {
+        normalizedUrl = string.Empty;
+        assetName = string.Empty;
+        if (!Uri.TryCreate(assetUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return false;
+        }
+
+        if (!uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.IsNullOrWhiteSpace(repository))
+        {
+            var expectedPrefix = "/" + repository.Trim('/') + "/releases/download/";
+            if (!uri.AbsolutePath.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase)) return false;
+        }
+
+        var urlAssetName = Path.GetFileName(uri.AbsolutePath);
+        if (!string.IsNullOrWhiteSpace(requestedAssetName) &&
+            !string.Equals(Path.GetFileName(requestedAssetName), urlAssetName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        assetName = urlAssetName;
+        var extension = Path.GetExtension(assetName);
+        if (!extension.Equals(".zip", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        normalizedUrl = uri.AbsoluteUri;
+        return true;
+    }
+
+    private static bool TryNormalizeSha256(string? value, out string normalized)
+    {
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var digest = value.Trim();
+        if (digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)) digest = digest[7..];
+        if (digest.Length != 64 || digest.Any(ch => !char.IsAsciiHexDigit(ch))) return false;
+
+        normalized = digest.ToLowerInvariant();
+        return true;
+    }
+
+    private static IReadOnlyCollection<MarketplaceInstalledPlugin> GetMarketplaceInstalledPlugins(PluginManager pluginManager)
+    {
+        var plugins = pluginManager.GetLoadedPluginSnapshot()
+            .Select(plugin => new MarketplaceInstalledPlugin(plugin.Name, plugin.GithubRepo, plugin.Version, true))
+            .Concat(EnumerateDisabledPlugins(pluginManager)
+                .Select(plugin => new MarketplaceInstalledPlugin(plugin.id, plugin.repo, plugin.version, false)))
+            .Concat(EnumerateUnloadedPlugins(pluginManager)
+                .Select(plugin => new MarketplaceInstalledPlugin(plugin.id, plugin.repo, plugin.version, false)));
+
+        return plugins
+            .GroupBy(plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
     }
 
     private static object CreatePluginInfoResponse(PluginProbeInfo info) => new
@@ -1680,9 +1959,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
         if (TryGetString(patch, "avalonia_theme", out var avaloniaTheme))
         {
-#if AVALONIA
             AvaloniaIntegration.AvaloniaIntegration.SetThemeMode(avaloniaTheme);
-#endif
             configManager.SetConfigValue(configPath, "avalonia_theme", avaloniaTheme);
         }
 
@@ -1823,9 +2100,12 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     private static readonly DateTimeOffset AppStartedAt = DateTimeOffset.UtcNow;
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> PluginOperationLocks = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly PluginMarketplaceCache MarketplaceCache = new();
     private const string ApiCorsPolicyName = "ShiroBotApiCors";
     private const string DisabledPluginSuffix = ".disable";
     private const long MaxPluginUploadBytes = 100L * 1024L * 1024L;
+    private const long MaxPluginExtractedBytes = 500L * 1024L * 1024L;
+    private const int MaxPluginArchiveEntries = 4096;
     private static readonly TimeSpan PluginUploadTtl = TimeSpan.FromMinutes(5);
     private const byte SerializedTypeBoolean = 0x02;
     private const byte SerializedTypeI1 = 0x04;
@@ -1856,11 +2136,18 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     private sealed record PluginUploadConfirmRequest(bool Replace = false, bool Enable = true);
 
-    private sealed record GitHubPluginInstallRequest(string Repository, bool IncludePrerelease = false);
+    private sealed record GitHubPluginInstallRequest(
+        string Repository = "",
+        bool IncludePrerelease = false,
+        string? AssetUrl = null,
+        string? AssetName = null,
+        string? AssetSha256 = null);
 
     private sealed record InstalledPluginInfo(string AssemblyPath, string Version);
 
     private sealed record PluginConfigTarget(string Id, string AssemblyPath);
+
+    private sealed record PluginActionExecution(bool Found, PluginWebActionResult? Result);
 
     private sealed record ConfigSchemaItem(
         string key,

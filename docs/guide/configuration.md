@@ -106,3 +106,11 @@ key = ""
 - 插件：`plugins/MyPlugin/config.toml` 或插件稳定数据目录下的 `config.toml`
 
 具体字段由对应组件定义。缺少配置文件时，调用 `Config.Load<T>()` 会按配置类型默认值生成文件。
+
+插件/适配器配置类型上的 `ConfigFieldAttribute` 会在首次生成和 `Config.Save<T>()` 时输出到顶层 snake_case 键上方，例如：
+
+```toml
+# 请求超时
+# Range: 1..120
+timeout_seconds = 15
+```

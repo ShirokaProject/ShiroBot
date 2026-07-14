@@ -5,7 +5,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
-using ShiroBot.AvaloniaSdk;
+using ShiroBot.SDK.Avalonia;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.AvaloniaIntegration;

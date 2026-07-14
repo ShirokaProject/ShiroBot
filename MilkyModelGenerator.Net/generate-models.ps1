@@ -5,6 +5,7 @@ param(
     [string]$Namespace,
     [string]$IrUrl,
     [string]$IrSource,
+    [string]$IrSha256,
     [switch]$Build
 )
 
@@ -17,8 +18,9 @@ if (-not (Test-Path $generatorProject)) {
     throw "Generator project not found: $generatorProject"
 }
 
-$defaultIrUrl = 'https://milky.ntqqrev.org/raw/milky-ir/ir.json'
-$defaultIrSource = 'milky-ir/ir.json'
+$defaultIrUrl = 'https://unpkg.com/@saltify/milky-protocol@1.3.0-rc.1/dist/protocol.json'
+$defaultIrSource = '@saltify/milky-protocol@1.3.0-rc.1/dist/protocol.json'
+$defaultIrSha256 = '17a4f1da0ce44640ab73840015756227b8180ca5a503433ba4d41a3a82a13ea0'
 $defaultOutput = Join-Path $projectRoot 'output\Generated'
 $defaultNamespace = 'Milky.Models'
 
@@ -66,6 +68,7 @@ switch ($Preset.ToLowerInvariant()) {
         if ([string]::IsNullOrWhiteSpace($Namespace)) { $Namespace = $defaultNamespace }
         if ([string]::IsNullOrWhiteSpace($IrUrl)) { $IrUrl = $defaultIrUrl }
         if ([string]::IsNullOrWhiteSpace($IrSource)) { $IrSource = $defaultIrSource }
+        if ([string]::IsNullOrWhiteSpace($IrSha256)) { $IrSha256 = $defaultIrSha256 }
     }
     'custom' {
         if ([string]::IsNullOrWhiteSpace($Output)) {
@@ -86,6 +89,10 @@ switch ($Preset.ToLowerInvariant()) {
         if ([string]::IsNullOrWhiteSpace($IrSource)) {
             $IrSource = Read-Host "IR source label [$defaultIrSource]"
             if ([string]::IsNullOrWhiteSpace($IrSource)) { $IrSource = $defaultIrSource }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($IrSha256)) {
+            $IrSha256 = Read-Host 'Expected IR SHA-256 (leave blank to only record the fetched hash)'
         }
     }
     default {
@@ -110,12 +117,17 @@ $arguments = @(
     '--ir-source', $IrSource
 )
 
+if (-not [string]::IsNullOrWhiteSpace($IrSha256)) {
+    $arguments += @('--expected-sha256', $IrSha256)
+}
+
 Write-Host ''
 Write-Host 'Generating models with:'
 Write-Host "  Output:    $Output"
 Write-Host "  Namespace: $Namespace"
 Write-Host "  IR URL:    $IrUrl"
 Write-Host "  IR Source: $IrSource"
+Write-Host "  IR SHA256: $IrSha256"
 Write-Host ''
 
 & dotnet @arguments

@@ -158,6 +158,36 @@ internal sealed class LoadedPluginHandle
         }
     }
 
+    public async Task<PluginDispatchResult<TResult>> DispatchAsync<THandler, TResult>(
+        Func<THandler, Task<TResult>> dispatch)
+        where THandler : class
+    {
+        THandler handler;
+        IConsoleLogger logger;
+        lock (_dispatchLock)
+        {
+            if (_isUnloading || _plugin is not THandler candidate || _context?.Logger is not { } contextLogger)
+            {
+                return new PluginDispatchResult<TResult>(false, default);
+            }
+
+            handler = candidate;
+            logger = contextLogger;
+            _activeDispatches++;
+        }
+
+        try
+        {
+            using var _ = BotLog.BeginScope(logger);
+            var result = await dispatch(handler);
+            return new PluginDispatchResult<TResult>(true, result);
+        }
+        finally
+        {
+            CompleteDispatch();
+        }
+    }
+
     public Task<PluginUnloadResult> UnloadAsync()
     {
         lock (_dispatchLock)
@@ -327,11 +357,7 @@ internal sealed class LoadedPluginHandle
 
     private static void ReleaseAvaloniaPluginResources(string? assemblyName)
     {
-#if AVALONIA
         AvaloniaIntegration.AvaloniaIntegration.ReleasePluginAssembly(assemblyName);
-#else
-        _ = assemblyName;
-#endif
     }
 }
 
@@ -343,3 +369,5 @@ internal sealed record PluginUnloadResult(
     WeakReference? PluginWeakReference,
     WeakReference? ContextWeakReference,
     Exception? Error);
+
+internal sealed record PluginDispatchResult<TResult>(bool Dispatched, TResult? Result);

@@ -13,7 +13,7 @@
 ```bash
 dotnet new classlib -n HelloPlugin -f net10.0
 cd HelloPlugin
-dotnet add package ShiroBot.SDK --version 0.6.0-rc1
+dotnet add package ShiroBot.SDK --version 0.7.0-rc3
 ```
 
 项目文件可以保持精简：
@@ -27,7 +27,7 @@ dotnet add package ShiroBot.SDK --version 0.6.0-rc1
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ShiroBot.SDK" Version="0.6.0-rc1" />
+    <PackageReference Include="ShiroBot.SDK" Version="0.7.0-rc3" />
   </ItemGroup>
 </Project>
 ```
@@ -139,3 +139,26 @@ load HelloPlugin
 | `Category` | 插件分类 |
 | `GithubRepo` | GitHub 仓库，例如 `owner/repo` |
 | `IsPluginSingleFile` | 告诉宿主该 DLL 可以直接在插件根目录加载 |
+
+## Dashboard Actions
+
+插件可以选择实现 `IPluginWebActionProvider`，向受 Bearer 鉴权保护的 Dashboard API 暴露不依赖 `HttpContext` 的管理操作：
+
+```csharp
+public sealed class Main : PluginBase, IPluginWebActionProvider
+{
+    public IReadOnlyList<PluginWebActionDescriptor> WebActions { get; } =
+    [
+        new("refresh-cache", "刷新缓存", "重新拉取远端数据", "primary"),
+        new("clear-data", "清空数据", Tone: "danger", RequiresConfirmation: true,
+            ConfirmationText: "确认清空插件数据？")
+    ];
+
+    public Task<PluginWebActionResult> ExecuteWebActionAsync(
+        string actionId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PluginWebActionResult(true, $"已执行 {actionId}", Refresh: true));
+}
+```
+
+宿主通过 `GET /api/v1/plugins/{id}/actions` 获取描述，通过 `POST /api/v1/plugins/{id}/actions/{actionId}` 执行。调用会进入插件 active-dispatch 防护，热卸载会等待操作结束，插件异常只返回该请求失败。

@@ -1,6 +1,6 @@
 using ShiroBot.AvaloniaDemoPlugin.Service;
 using ShiroBot.AvaloniaDemoPlugin.Views;
-using ShiroBot.AvaloniaSdk;
+using ShiroBot.SDK.Avalonia;
 using ShiroBot.Model.Common;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
@@ -41,7 +41,7 @@ public sealed class Main : PluginBase
             var segment = await RenderAsync(owner, repository).ConfigureAwait(false);
             if (segment is null)
             {
-                await Context.Message.QuoteReplyAsync(message, "宿主未启用 Avalonia 渲染（EnableAvalonia=false），无法渲染图片。");
+                await Context.Message.QuoteReplyAsync(message, "宿主 Avalonia 渲染初始化失败，无法渲染图片。");
                 return;
             }
 

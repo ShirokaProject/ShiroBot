@@ -1,9 +1,7 @@
 using System.CommandLine;
 using System.Security.Cryptography;
 using System.Runtime.Loader;
-#if AVALONIA
 using Avalonia;
-#endif
 using ShiroBot.Core;
 using ShiroBot.Hosting;
 using ShiroBot.Hosting.Context;
@@ -18,7 +16,6 @@ public static class Program
 {
     private static string BasePath => AppContext.BaseDirectory;
 
-#if AVALONIA
     /// <summary>
     /// 供 Avalonia 设计器（IDE Previewer）反射调用。Previewer 通过 <c>--method avalonia-remote</c>
     /// 加载本程序集并在入口类型上找此方法；它会自行替换 windowing platform，但要求 AppBuilder
@@ -28,7 +25,6 @@ public static class Program
         AppBuilder.Configure<AvaloniaIntegration.HeadlessHostApp>()
             .UseSkia()
             .UseHarfBuzz();
-#endif
 
     public static async Task Main(string[] args)
     {
@@ -53,6 +49,8 @@ public static class Program
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
         HostHttpServer? hostHttpServer = null;
+        IBotAdapter? adapter = null;
+        DllLoader<IBotAdapter>? adapterLoader = null;
         var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
 
         try
@@ -98,23 +96,29 @@ public static class Program
             }
 
             CH.Log("开始加载适配器: " + adapterPath);
-            var adapterLoader = new DllLoader<IBotAdapter>(collectible: true, shared: sharedAssemblies);
-            var adapter = adapterLoader.Load(adapterPath);
+            var adapterDependencies = await PluginRuntimeDependencyManager.PrepareAsync(
+                adapterPath,
+                Path.GetDirectoryName(adapterPath) ?? adapterRoot).ConfigureAwait(false);
+            adapterLoader = new DllLoader<IBotAdapter>(
+                collectible: true,
+                shared: sharedAssemblies,
+                dependencies: adapterDependencies);
+            adapter = adapterLoader.Load(adapterPath);
             adapter.Config = ConfigContext.ForAdapter(ResolveAdapterConfigPath(adapterRoot, adapterPath));
             adapter.Logger = new ConsoleLogger($"[Adapter:{adapter.Name}]", logHub);
 
-            var adapterMetadata = adapter.Metadata;
+            var adapterMetadata = BotAdapterMetadata.Resolve(adapter);
             CH.Log($"适配器信息: {adapterMetadata.Name} v{adapterMetadata.Version}");
 
             using (BotLog.BeginScope(adapter.Logger))
             {
                 await adapter.StartAsync();
             }
-            runtimeState.SetAdapter(adapter, "connected");
-            var adapterDisplayName = string.IsNullOrWhiteSpace(adapter.Metadata.Name) ? adapter.Name : adapter.Metadata.Name;
+            var adapterDisplayName = string.IsNullOrWhiteSpace(adapterMetadata.Name) ? adapter.Name : adapterMetadata.Name;
+            runtimeState.SetAdapter(adapterDisplayName, "connected");
             logHub.RegisterSource(
                 adapter.Name,
-                adapter.Metadata.Description ?? $"{adapterDisplayName} 适配器日志",
+                adapterMetadata.Description ?? $"{adapterDisplayName} 适配器日志",
                 adapterDisplayName);
             runtimeState.RecordEvent($"{adapterDisplayName} 连接成功");
 
@@ -154,14 +158,13 @@ public static class Program
                 }
             }
 
-#if AVALONIA
             // ─── Avalonia 渲染集成 ───
             try
             {
                 var avaloniaRenderer = AvaloniaIntegration.AvaloniaIntegration.Initialize(coreConfig.AvaloniaTheme);
                 botContext.AttachRenderer(avaloniaRenderer);
                 sharedAssemblies.Register(
-                    ["Avalonia", "SkiaSharp", "HarfBuzzSharp", "ShiroBot.AvaloniaSdk"],
+                    ["Avalonia", "SkiaSharp", "HarfBuzzSharp", "MicroCom"],
                     AssemblyLoadContext.Default);
                 CH.Success("Avalonia 渲染服务已启用。");
             }
@@ -169,7 +172,6 @@ public static class Program
             {
                 CH.Error("Avalonia 渲染服务启动失败: " + ex.Message);
             }
-#endif
 
             // ─── 配置热重载 ───
             configWatcher = new CoreConfigWatcher(coreConfigPath, coreConfig, botContext);
@@ -261,6 +263,18 @@ public static class Program
                 await hostHttpServer.DisposeAsync();
             }
 
+            if (adapter is not null)
+            {
+                try
+                {
+                    await adapter.StopAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    CH.Warning("停止适配器时出现异常: " + ex.Message);
+                }
+            }
+
             if (pluginManager is not null)
             {
                 await pluginManager.AwaitPluginBackgroundTasksAsync();
@@ -275,7 +289,6 @@ public static class Program
                 }
             }
 
-#if AVALONIA
             try
             {
                 AvaloniaIntegration.AvaloniaIntegration.Shutdown();
@@ -284,7 +297,13 @@ public static class Program
             {
                 CH.Warning("关停 Avalonia 渲染服务时出现异常: " + ex.Message);
             }
-#endif
+
+            adapter = null;
+            var adapterAlc = adapterLoader?.BeginUnload();
+            if (!DllLoader<IBotAdapter>.WaitForUnload(adapterAlc))
+            {
+                CH.Warning("适配器程序集未完全卸载，可能仍有后台引用残留。");
+            }
         }
     }
 

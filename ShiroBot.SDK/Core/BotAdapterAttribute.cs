@@ -1,9 +1,10 @@
 namespace ShiroBot.SDK.Core;
 
-public sealed class BotComponentMetadata
+[AttributeUsage(AttributeTargets.Class, Inherited = false)]
+public sealed class BotAdapterAttribute(string id) : Attribute
 {
-    public string Id { get; init; } = string.Empty;
-    public string Name { get; init; } = string.Empty;
+    public string Id { get; } = id;
+    public string Name { get; init; } = id;
     public string Version { get; init; } = "1.0.0";
     public string? Description { get; init; }
     public string? Author { get; init; }
@@ -11,7 +12,4 @@ public sealed class BotComponentMetadata
     public string? Protocol { get; init; }
     public string? ProtocolVersionRange { get; init; }
     public bool IsSingleFile { get; init; }
-
-    [Obsolete("Use IsSingleFile for adapter metadata or BotPluginAttribute.IsPluginSingleFile for plugins.")]
-    public bool? IsPluginSingleFile { get; init; } = false;
 }

@@ -7,7 +7,9 @@ namespace ShiroBot.SDK.Core;
 public interface IBotAdapter
 {
     string Name { get; }
-    BotComponentMetadata Metadata { get; }
+
+    [Obsolete("Declare BotAdapterAttribute on the adapter type. Legacy Metadata implementations remain supported.")]
+    BotComponentMetadata Metadata => BotAdapterMetadata.FromAdapterType(GetType(), Name);
     IConfigContext Config { get; set; }
     IConsoleLogger Logger { get; set; }
     public IFileService File { get; }
@@ -18,4 +20,6 @@ public interface IBotAdapter
     public IEventService Event { get; }
 
     Task StartAsync();
+
+    Task StopAsync() => Task.CompletedTask;
 }

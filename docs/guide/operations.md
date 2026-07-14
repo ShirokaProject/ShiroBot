@@ -44,6 +44,14 @@ unload HelloPlugin
 
 插件应在 `OnUnloadAsync()` 中释放自己创建的资源。
 
+Dashboard 的插件 actions 也使用同一套 active-dispatch 计数。执行中的 action 不会与热卸载并发销毁插件对象，插件抛出的异常会被限制在对应 HTTP 请求中。
+
+## 插件市场
+
+`GET /api/v1/plugin-market/plugins` 从 awesome-shirobot 的 `marketplace.v1.json` 获取列表，并为每项增加 `installed`。缓存同时保存在内存和宿主 `cache/plugin-marketplace.v1.json`，有效期约 24 小时；远端失败时使用 last-known-good，不会影响宿主启动。
+
+`POST /api/v1/plugins/install/github` 接受 `repository`，也接受市场提供的 `assetUrl` / `assetName` / `assetSha256`。市场安装会校验 URL 确实属于对应仓库的 GitHub Release、限制下载为 100 MiB、校验 SHA-256，并限制 ZIP 条目数和解压后总大小。两种方式都会先生成 upload preview，再调用原有 confirm 接口安装；`includePrerelease=true` 会从 GitHub releases 列表中包含预发布版本。
+
 ## native 依赖缓存
 
 自动下载的 native 文件位于：

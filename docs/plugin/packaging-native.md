@@ -26,7 +26,7 @@
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="0.6.0-rc1" />
+  <PackageReference Include="ShiroBot.SDK" Version="0.7.0-rc3" />
   <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
 </ItemGroup>
 ```
@@ -36,7 +36,6 @@
 ```text
 ShiroBot.SDK
 ShiroBot.Model
-ShiroBot.AvaloniaSdk
 Avalonia
 SkiaSharp
 HarfBuzzSharp
@@ -124,7 +123,7 @@ runtimes/osx-arm64/native/libexample.dylib
 
 ## 排除宿主 native 包
 
-Avalonia、SkiaSharp 和 HarfBuzzSharp native 资源默认由完整版宿主提供，不会写入插件下载清单。扩展列表：
+Avalonia、SkiaSharp、HarfBuzzSharp 和 MicroCom 的 managed/native/runtime 资源由统一宿主提供，不会写入插件下载清单，也不会留在插件发布目录。没有使用 Avalonia API 的插件程序集不会产生 Avalonia `AssemblyRef`，无需对宿主启用 `PublishTrimmed`；宿主的反射加载路径目前明确禁止 trimming。扩展列表：
 
 ```xml
 <PropertyGroup>

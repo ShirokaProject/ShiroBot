@@ -3,12 +3,10 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
-        <Version>0.6.0</Version>
+        <Version>0.7.0-rc3</Version>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Configurations>Debug;Release</Configurations>
-        <!-- 是否在宿主中集成 Avalonia 渲染模块。默认开启；关闭时不会引入 Avalonia/Skia/HarfBuzz。 -->
-        <EnableAvalonia Condition="'$(EnableAvalonia)'==''">true</EnableAvalonia>
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
     </PropertyGroup>
 
@@ -25,15 +23,12 @@
         <BuildDashboardOnPublish Condition="'$(BuildDashboardOnPublish)'==''">false</BuildDashboardOnPublish>
     </PropertyGroup>
 
-    <PropertyGroup Condition="'$(EnableAvalonia)'=='true'">
-        <DefineConstants>$(DefineConstants);AVALONIA</DefineConstants>
-    </PropertyGroup>
-
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
         <PublishReadyToRun>false</PublishReadyToRun>
         <SelfContained>false</SelfContained>
         <PublishSingleFile>true</PublishSingleFile>
         <PublishAot>false</PublishAot>
+        <PublishTrimmed>false</PublishTrimmed>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
         <DebuggerSupport>false</DebuggerSupport>
         <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
@@ -49,10 +44,6 @@
 
     <ItemGroup>
         <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-            <_Parameter1>ShiroBot.EnableAvalonia</_Parameter1>
-            <_Parameter2>$(EnableAvalonia)</_Parameter2>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
             <_Parameter1>ShiroBot.SelfContained</_Parameter1>
             <_Parameter2>$(SelfContained)</_Parameter2>
         </AssemblyAttribute>
@@ -62,15 +53,9 @@
         </AssemblyAttribute>
     </ItemGroup>
 
-    <Target Name="BuildDashboardForPublish" BeforeTargets="Publish"
-            Condition="'$(BuildDashboard)'!='true' and '$(BuildDashboardOnPublish)'=='true' and '$(NoBuild)'!='true'">
-        <Message Importance="high" Text="Publish requested; rebuilding host once with dashboard assets enabled." />
-        <MSBuild Projects="$(MSBuildProjectFullPath)"
-                 Targets="Build"
-                 Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);EnableAvalonia=$(EnableAvalonia);BuildDashboard=true;BuildDashboardOnPublish=false;RestoreIgnoreFailedSources=$(RestoreIgnoreFailedSources);NoRestore=true" />
-    </Target>
-
-    <Target Name="BuildDashboardAssets" Condition="'$(BuildDashboard)'=='true'">
+    <Target Name="BuildDashboardAssets"
+            BeforeTargets="PrepareResourceNames"
+            Condition="'$(BuildDashboard)'=='true' or '$(BuildDashboardOnPublish)'=='true'">
         <Warning Condition="!Exists('$(DashboardSourceDir)package.json')"
                  Text="Dashboard 源码未找到，跳过 Dashboard 构建: $(DashboardSourceDir)。宿主仍会继续构建，但 /dashboard 可能不可用。" />
 
@@ -114,6 +99,11 @@
         <Copy SourceFiles="@(DashboardDistFiles)"
               DestinationFiles="@(DashboardDistFiles->'$(DashboardAssetsDir)/%(RecursiveDir)%(Filename)%(Extension)')"
               Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
+        <ItemGroup Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')">
+            <EmbeddedResource Remove="Assets\dashboard\**\*" />
+            <EmbeddedResource Include="Assets\dashboard\**\*"
+                              LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
+        </ItemGroup>
     </Target>
 
     <ItemGroup>
@@ -123,12 +113,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
-    </ItemGroup>
-
-    <!-- Avalonia 集成模块（runtime 资产随宿主一起进入输出目录） -->
-    <ItemGroup Condition="'$(EnableAvalonia)'=='true'">
         <ProjectReference Include="..\ShiroBot.AvaloniaIntegration\ShiroBot.AvaloniaIntegration.csproj" />
-        <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
     </ItemGroup>
 
 </Project>

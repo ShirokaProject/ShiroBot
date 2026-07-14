@@ -34,7 +34,7 @@ features:
     linkText: 开发适配器
   - icon: 🎨
     title: Avalonia 渲染
-    details: 完整版宿主内置 Avalonia 12.1 Headless 渲染，可让插件将 AXAML 控件输出为 PNG。
+    details: 统一宿主内置 Avalonia 12.1 Headless 渲染，可让插件将 AXAML 控件输出为 PNG。
     link: /plugin/avalonia
     linkText: 渲染图片
 ---

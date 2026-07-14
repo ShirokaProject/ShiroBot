@@ -55,11 +55,13 @@ jobs:
             --output artifacts/nuget \
             /p:ContinuousIntegrationBuild=true
 
-          dotnet pack ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj \
+          dotnet run --project ShiroBot.Verification/ShiroBot.Verification.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
-            --no-restore \
-            --output artifacts/nuget \
-            /p:ContinuousIntegrationBuild=true
+            --no-restore
+
+          dotnet run --project MilkyModelGenerator.Net/MilkyModelGenerator.Net.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            -- --self-test
 
       - name: Build dashboard assets once
         run: |
@@ -69,7 +71,6 @@ jobs:
             -target:BuildDashboardAssets \
             -property:Configuration="${{ env.CONFIGURATION }}" \
             /p:ContinuousIntegrationBuild=true \
-            /p:EnableAvalonia=false \
             /p:BuildDashboard=true \
             /p:BuildDashboardOnPublish=false
 
@@ -90,14 +91,13 @@ jobs:
           if-no-files-found: error
 
   publish-host:
-    name: Publish ${{ matrix.runtime }} ${{ matrix.flavor }} ${{ matrix.publish_kind }}
+    name: Publish ${{ matrix.runtime }} ${{ matrix.publish_kind }}
     runs-on: ubuntu-latest
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
         runtime: [win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64]
-        flavor: [full, lite]
         publish_kind: [framework-dependent, self-contained]
     steps:
       - name: Checkout
@@ -123,25 +123,19 @@ jobs:
           mkdir -p artifacts/archives
 
           runtime='${{ matrix.runtime }}'
-          flavor='${{ matrix.flavor }}'
           publish_kind='${{ matrix.publish_kind }}'
-
-          enable_avalonia=true
-          if [ "$flavor" = "lite" ]; then
-            enable_avalonia=false
-          fi
 
           self_contained=false
           if [ "$publish_kind" = "self-contained" ]; then
             self_contained=true
           fi
 
-          output_dir="artifacts/host/${runtime}-${flavor}-${publish_kind}"
+          output_dir="artifacts/host/${runtime}-${publish_kind}"
           host_exe="ShiroBot"
           if [[ "$runtime" == win-* ]]; then
             host_exe="ShiroBot.exe"
           fi
-          archive_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${flavor}-${publish_kind}.zip"
+          archive_path="$GITHUB_WORKSPACE/artifacts/archives/shirobot-host-${runtime}-${publish_kind}.zip"
 
           dotnet publish "${{ env.HOST_PROJECT }}" \
             --configuration "${{ env.CONFIGURATION }}" \
@@ -149,7 +143,6 @@ jobs:
             --self-contained "$self_contained" \
             --output "$output_dir" \
             /p:ContinuousIntegrationBuild=true \
-            /p:EnableAvalonia="$enable_avalonia" \
             /p:BuildDashboard=false \
             /p:BuildDashboardOnPublish=false \
             /p:PublishSingleFile=true \
@@ -161,7 +154,7 @@ jobs:
       - name: Upload host archive
         uses: actions/upload-artifact@v4
         with:
-          name: shirobot-host-${{ matrix.runtime }}-${{ matrix.flavor }}-${{ matrix.publish_kind }}
+          name: shirobot-host-${{ matrix.runtime }}-${{ matrix.publish_kind }}
           path: artifacts/archives/*.zip
           if-no-files-found: error
 
@@ -202,10 +195,9 @@ jobs:
 
           host_link() {
             local runtime="$1"
-            local flavor="$2"
-            local publish="$3"
-            local label="$4"
-            link_asset "shirobot-host-${runtime}-${flavor}-${publish}.zip" "$label"
+            local publish="$2"
+            local label="$3"
+            link_asset "shirobot-host-${runtime}-${publish}.zip" "$label"
           }
 
           {
@@ -213,33 +205,17 @@ jobs:
             echo
             echo "## 下载地址"
             echo
-            echo "### 完整版 full（包含 Avalonia 渲染模块）"
-            echo
             echo "#### 自带运行时 self-contained（推荐，不需要预装 .NET）"
             echo
-            echo "- Windows: $(host_link win-x64 full self-contained x64) | $(host_link win-arm64 full self-contained ARM64)"
-            echo "- macOS: $(host_link osx-arm64 full self-contained Apple芯片) | $(host_link osx-x64 full self-contained Intel芯片)"
-            echo "- Linux: $(host_link linux-x64 full self-contained x64) | $(host_link linux-arm64 full self-contained ARM64)"
+            echo "- Windows: $(host_link win-x64 self-contained x64) | $(host_link win-arm64 self-contained ARM64)"
+            echo "- macOS: $(host_link osx-arm64 self-contained Apple芯片) | $(host_link osx-x64 self-contained Intel芯片)"
+            echo "- Linux: $(host_link linux-x64 self-contained x64) | $(host_link linux-arm64 self-contained ARM64)"
             echo
             echo "#### 不自带运行时 framework-dependent（需要安装 .NET 10 Runtime）"
             echo
-            echo "- Windows: $(host_link win-x64 full framework-dependent x64) | $(host_link win-arm64 full framework-dependent ARM64)"
-            echo "- macOS: $(host_link osx-arm64 full framework-dependent Apple芯片) | $(host_link osx-x64 full framework-dependent Intel芯片)"
-            echo "- Linux: $(host_link linux-x64 full framework-dependent x64) | $(host_link linux-arm64 full framework-dependent ARM64)"
-            echo
-            echo "### Lite 版（不包含 Avalonia 渲染模块）"
-            echo
-            echo "#### 自带运行时 self-contained（推荐，不需要预装 .NET）"
-            echo
-            echo "- Windows: $(host_link win-x64 lite self-contained x64) | $(host_link win-arm64 lite self-contained ARM64)"
-            echo "- macOS: $(host_link osx-arm64 lite self-contained Apple芯片) | $(host_link osx-x64 lite self-contained Intel芯片)"
-            echo "- Linux: $(host_link linux-x64 lite self-contained x64) | $(host_link linux-arm64 lite self-contained ARM64)"
-            echo
-            echo "#### 不自带运行时 framework-dependent（需要安装 .NET 10 Runtime）"
-            echo
-            echo "- Windows: $(host_link win-x64 lite framework-dependent x64) | $(host_link win-arm64 lite framework-dependent ARM64)"
-            echo "- macOS: $(host_link osx-arm64 lite framework-dependent Apple芯片) | $(host_link osx-x64 lite framework-dependent Intel芯片)"
-            echo "- Linux: $(host_link linux-x64 lite framework-dependent x64) | $(host_link linux-arm64 lite framework-dependent ARM64)"
+            echo "- Windows: $(host_link win-x64 framework-dependent x64) | $(host_link win-arm64 framework-dependent ARM64)"
+            echo "- macOS: $(host_link osx-arm64 framework-dependent Apple芯片) | $(host_link osx-x64 framework-dependent Intel芯片)"
+            echo "- Linux: $(host_link linux-x64 framework-dependent x64) | $(host_link linux-arm64 framework-dependent ARM64)"
             echo
             echo "### NuGet 包"
             echo

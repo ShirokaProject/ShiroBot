@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ShiroBot.SDK.Plugin;
@@ -47,7 +48,7 @@ public static class Updater
             throw new ArgumentException("Repository cannot be empty.", nameof(repository));
         }
 
-        var release = await GetLatestReleaseAsync(repository, cancellationToken);
+        var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
         if (release is null)
         {
             return null;
@@ -86,7 +87,7 @@ public static class Updater
             throw new ArgumentException("Asset name cannot be empty.", nameof(assetName));
         }
 
-        var release = await GetLatestReleaseAsync(repository, cancellationToken);
+        var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
         if (release is null || !IsNewerVersion(release.TagName, currentVersion))
         {
             return null;
@@ -114,7 +115,7 @@ public static class Updater
             throw new ArgumentException("Repository cannot be empty.", nameof(repository));
         }
 
-        var release = await GetLatestReleaseAsync(repository, cancellationToken);
+        var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
         if (release is null)
         {
             return null;
@@ -288,17 +289,52 @@ public static class Updater
         Environment.Exit(0);
     }
 
-    public static async Task DownloadFileAsync(string url, string destinationPath, CancellationToken cancellationToken)
+    public static async Task DownloadFileAsync(
+        string url,
+        string destinationPath,
+        CancellationToken cancellationToken,
+        long? maxBytes = null,
+        string? expectedSha256 = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, ApplyGithubProxy(url));
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
 
         using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
+        if (maxBytes is { } limit && response.Content.Headers.ContentLength is { } contentLength && contentLength > limit)
+        {
+            throw new InvalidOperationException($"下载文件超过大小限制: {contentLength} > {limit}");
+        }
 
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var output = File.Create(destinationPath);
-        await input.CopyToAsync(output, cancellationToken);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[81920];
+        long totalBytes = 0;
+        while (true)
+        {
+            var read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (read == 0) break;
+
+            totalBytes += read;
+            if (maxBytes is { } maximum && totalBytes > maximum)
+            {
+                throw new InvalidOperationException($"下载文件超过大小限制: {totalBytes} > {maximum}");
+            }
+
+            hash.AppendData(buffer, 0, read);
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+        }
+
+        if (!string.IsNullOrWhiteSpace(expectedSha256))
+        {
+            var actualSha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+            if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"下载文件 SHA-256 校验失败。Expected {expectedSha256}, actual {actualSha256}。");
+            }
+        }
     }
 
     private static string GetDownloadFileName(string downloadUrl)
@@ -607,16 +643,22 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
 
     private static async Task<GitHubRelease?> GetLatestReleaseAsync(
         string repository,
+        bool includePrerelease,
         CancellationToken cancellationToken)
     {
-        return await GetLatestReleaseFromApiAsync(repository, cancellationToken);
+        return await GetLatestReleaseFromApiAsync(repository, includePrerelease, cancellationToken);
     }
 
-    private static async Task<GitHubRelease?> GetLatestReleaseFromApiAsync(string repository, CancellationToken cancellationToken)
+    private static async Task<GitHubRelease?> GetLatestReleaseFromApiAsync(
+        string repository,
+        bool includePrerelease,
+        CancellationToken cancellationToken)
     {
-        var request = new HttpRequestMessage(
+        using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"https://api.github.com/repos/{repository}/releases/latest");
+            includePrerelease
+                ? $"https://api.github.com/repos/{repository}/releases?per_page=20"
+                : $"https://api.github.com/repos/{repository}/releases/latest");
 
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
@@ -630,8 +672,13 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        var item = document.RootElement;
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        var item = includePrerelease
+            ? document.RootElement.EnumerateArray().FirstOrDefault(release =>
+                !release.TryGetProperty("draft", out var draft) || !draft.GetBoolean())
+            : document.RootElement;
+        if (item.ValueKind != JsonValueKind.Object) return null;
+
         return new GitHubRelease(
             item.GetPropertyOrDefault("tag_name"),
             item.GetPropertyOrDefault("name"),

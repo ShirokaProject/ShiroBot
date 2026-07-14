@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Shirobot.Dashboard/package-lock.json
+
+      - name: Build and verify core
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build Shirobot.slnx -c Release
+          dotnet build ShiroBot.Plugin.Github/ShiroBot.Plugin.Github.csproj -c Release
+          dotnet run --project ShiroBot.Verification/ShiroBot.Verification.csproj -c Release --no-build
+          dotnet run --project MilkyModelGenerator.Net/MilkyModelGenerator.Net.csproj -c Release -- --self-test
+
+      - name: Verify locked Milky model regeneration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a ShiroBot.Model/Generated "$RUNNER_TEMP/Generated"
+          dotnet run --project MilkyModelGenerator.Net/MilkyModelGenerator.Net.csproj -c Release -- \
+            --output "$RUNNER_TEMP/Generated" \
+            --namespace ShiroBot.Model
+
+      - name: Pack SDK and smoke-test NuGet consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
+          dotnet pack ShiroBot.Model/ShiroBot.Model.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack ShiroBot.SDK/ShiroBot.SDK.csproj -c Release -o artifacts/nuget --no-build
+
+          cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net10.0</TargetFramework>
+              <ImplicitUsings>enable</ImplicitUsings>
+              <Nullable>enable</Nullable>
+            </PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="ShiroBot.SDK" Version="0.7.0-rc3" />
+            </ItemGroup>
+          </Project>
+          EOF
+          cat > "$RUNNER_TEMP/package-smoke/Smoke.cs" <<'EOF'
+          using ShiroBot.SDK.Core;
+          using ShiroBot.SDK.Plugin;
+
+          [BotPlugin("PackageSmoke", Name = "Package Smoke", Version = "1.0.0", IsPluginSingleFile = true)]
+          public sealed class Smoke : PluginBase
+          {
+              public override string Name => "PackageSmoke";
+          }
+          EOF
+
+          dotnet publish "$RUNNER_TEMP/package-smoke/Smoke.csproj" -c Release \
+            -o "$RUNNER_TEMP/package-smoke/publish" \
+            --source "$GITHUB_WORKSPACE/artifacts/nuget" \
+            --source https://api.nuget.org/v3/index.json
+          test -f "$RUNNER_TEMP/package-smoke/publish/Smoke.dll"
+          test ! -f "$RUNNER_TEMP/package-smoke/publish/ShiroBot.SDK.dll"
+          test ! -f "$RUNNER_TEMP/package-smoke/publish/Avalonia.dll"
+          test ! -d "$RUNNER_TEMP/package-smoke/publish/runtimes"
+
+      - name: Build dashboard
+        run: |
+          npm --prefix Shirobot.Dashboard ci
+          npm --prefix Shirobot.Dashboard run build

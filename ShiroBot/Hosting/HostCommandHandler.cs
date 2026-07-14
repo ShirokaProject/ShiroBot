@@ -382,14 +382,11 @@ internal sealed class HostCommandHandler(
             runtime = RuntimeInformation.RuntimeIdentifier;
         }
 
-        var flavor = string.Equals(GetAssemblyMetadata(assembly, "ShiroBot.EnableAvalonia"), "false", StringComparison.OrdinalIgnoreCase)
-            ? "lite"
-            : "full";
         var publishKind = string.Equals(GetAssemblyMetadata(assembly, "ShiroBot.SelfContained"), "true", StringComparison.OrdinalIgnoreCase)
             ? "self-contained"
             : "framework-dependent";
 
-        return $"shirobot-host-{runtime}-{flavor}-{publishKind}.zip";
+        return $"shirobot-host-{runtime}-{publishKind}.zip";
     }
 
     private static string? GetAssemblyMetadata(Assembly? assembly, string key)

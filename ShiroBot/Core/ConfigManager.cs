@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ShiroBot.SDK.Abstractions;
+using ShiroBot.SDK.Config;
 using Tomlyn;
 
 namespace ShiroBot.Core;
@@ -65,7 +66,10 @@ public class PluginRouteConfig
     public bool AllowsGroup(string pluginName, long groupId)
     {
         var plugins = Plugins;
-        return !plugins.TryGetValue(pluginName, out var rule) ? Default.IsMatch(groupId) : rule.IsMatch(groupId);
+        return !plugins.TryGetValue(pluginName, out var rule) ||
+               string.Equals(rule.Mode, "default", StringComparison.OrdinalIgnoreCase)
+            ? Default.IsMatch(groupId)
+            : rule.IsMatch(groupId);
     }
 
     /// <summary>
@@ -138,7 +142,7 @@ public class ConfigManager(string? coreConfigPath = null)
         {
             BotLog.Info("未找到配置文件，正在创建默认配置...");
             var defaultConfig = new CoreConfig();
-            var tomlString = FormatToml(TomlSerializer.Serialize(defaultConfig, _options));
+            var tomlString = SerializeToml(defaultConfig, _options);
             Directory.CreateDirectory(Path.GetDirectoryName(_coreConfigPath)!);
             await File.WriteAllTextAsync(_coreConfigPath, tomlString);
             return defaultConfig;
@@ -212,7 +216,7 @@ public class ConfigManager(string? coreConfigPath = null)
         updatedToml = currentToml;
         if (string.IsNullOrWhiteSpace(currentToml)) return false;
 
-        var defaultToml = FormatToml(TomlSerializer.Serialize(defaultConfig, options));
+        var defaultToml = SerializeToml(defaultConfig, options);
         var currentSections = ParseTomlSections(currentToml);
         var defaultSections = ParseTomlSections(defaultToml);
         var lines = currentToml.Replace("\r\n", "\n").Split('\n').ToList();
@@ -227,9 +231,7 @@ public class ConfigManager(string? coreConfigPath = null)
                 continue;
             }
 
-            var missingLines = defaultSection.Lines
-                .Where(line => TryGetTomlKey(line, out var key) && !currentSection.Keys.Contains(key))
-                .ToList();
+            var missingLines = GetMissingTomlEntryLines(defaultSection.Lines, currentSection.Keys);
             if (missingLines.Count == 0) continue;
 
             var insertAt = sectionName.Length == 0
@@ -363,6 +365,40 @@ public class ConfigManager(string? coreConfigPath = null)
 
     private static bool TryGetTomlKeyLine(string line) => TryGetTomlKey(line, out _);
 
+    private static List<string> GetMissingTomlEntryLines(
+        IReadOnlyList<string> defaultLines,
+        IReadOnlySet<string> currentKeys)
+    {
+        var result = new List<string>();
+        var pendingComments = new List<string>();
+
+        foreach (var line in defaultLines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith('#') || (trimmed.Length == 0 && pendingComments.Count > 0))
+            {
+                pendingComments.Add(line);
+                continue;
+            }
+
+            if (TryGetTomlKey(line, out var key))
+            {
+                if (!currentKeys.Contains(key))
+                {
+                    result.AddRange(pendingComments);
+                    result.Add(line);
+                }
+
+                pendingComments.Clear();
+                continue;
+            }
+
+            pendingComments.Clear();
+        }
+
+        return result;
+    }
+
     private sealed class TomlSectionInfo(string name)
     {
         public string Name { get; } = name;
@@ -420,8 +456,88 @@ public class ConfigManager(string? coreConfigPath = null)
     private static void SaveToml<T>(string configPath, T config, TomlSerializerOptions options) where T : class
     {
         Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
-        var tomlString = FormatToml(TomlSerializer.Serialize(config, options));
+        var tomlString = SerializeToml(config, options);
         File.WriteAllText(configPath, tomlString);
+    }
+
+    private static string SerializeToml<T>(T config, TomlSerializerOptions options) where T : class
+    {
+        var toml = FormatToml(TomlSerializer.Serialize(config, options));
+        var comments = typeof(T).GetProperties()
+            .Select(property => new
+            {
+                Key = JsonNamingPolicy.SnakeCaseLower.ConvertName(property.Name),
+                Field = property.GetCustomAttributes(typeof(ConfigFieldAttribute), inherit: true)
+                    .OfType<ConfigFieldAttribute>()
+                    .FirstOrDefault()
+            })
+            .Where(item => item.Field is not null)
+            .ToDictionary(
+                item => item.Key,
+                item => CreateConfigCommentLines(item.Field!),
+                StringComparer.OrdinalIgnoreCase);
+
+        if (comments.Count == 0) return toml;
+
+        var lines = toml.Replace("\r\n", "\n").Split('\n');
+        var result = new List<string>(lines.Length + comments.Count * 2);
+        var inTopLevel = true;
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (TryParseTomlHeader(trimmed, out _, out _))
+            {
+                inTopLevel = false;
+            }
+
+            if (inTopLevel && TryGetTomlKey(line, out var key) && comments.TryGetValue(key, out var commentLines))
+            {
+                result.AddRange(commentLines);
+            }
+
+            result.Add(line);
+        }
+
+        return string.Join(Environment.NewLine, result).TrimEnd() + Environment.NewLine;
+    }
+
+    private static IReadOnlyList<string> CreateConfigCommentLines(ConfigFieldAttribute field)
+    {
+        var comments = new List<string>();
+        AddComment(field.Label);
+        AddComment(field.Description);
+
+        if (field.Options.Length > 0)
+        {
+            AddComment("Options: " + string.Join(", ", field.Options));
+        }
+
+        if (!double.IsNaN(field.Min) || !double.IsNaN(field.Max))
+        {
+            var min = double.IsNaN(field.Min) ? "-inf" : field.Min.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var max = double.IsNaN(field.Max) ? "+inf" : field.Max.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            AddComment($"Range: {min}..{max}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(field.Placeholder))
+        {
+            AddComment("Placeholder: " + field.Placeholder);
+        }
+
+        return comments;
+
+        void AddComment(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            foreach (var line in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                var normalized = line.Trim();
+                if (normalized.Length == 0) continue;
+                var comment = "# " + normalized;
+                if (!comments.Contains(comment, StringComparer.Ordinal)) comments.Add(comment);
+            }
+        }
     }
 
     private static string FormatToml(string toml)

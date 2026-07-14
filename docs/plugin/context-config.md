@@ -80,6 +80,8 @@ protected override Task OnUnloadAsync()
 
 `Watch<T>()` 返回的订阅必须释放，否则文件监听器会阻止插件完整卸载。
 
+`Config.Save<T>()` 和首次 `Config.Load<T>()` 生成文件时，会把顶层属性的 `ConfigFieldAttribute` 写到对应 snake_case 键上方。`Label`、`Description`、`Options`、`Min`/`Max` 和 `Placeholder` 会转换为合法 `#` 注释；重复保存不会重复堆叠注释。
+
 只更新一个字段并尽量保留 TOML 注释和格式：
 
 ```csharp
