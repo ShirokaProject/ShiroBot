@@ -6,8 +6,8 @@ Avalonia control rendering contracts and development support for ShiroBot plugin
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="0.7.0" />
-  <PackageReference Include="ShiroBot.AvaloniaSdk" Version="0.7.0" />
+  <PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
+  <PackageReference Include="ShiroBot.AvaloniaSdk" Version="0.7.1" />
 </ItemGroup>
 ```
 

@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <PackageId>ShiroBot.SDK</PackageId>
-        <Version>0.7.0</Version>
+        <Version>0.7.1</Version>
         <IsPackable>true</IsPackable>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <Authors>ShirokaProject</Authors>
@@ -12,9 +12,10 @@
         <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
         <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <PackageReleaseNotes>0.7.0 introduces type-based plugin event routing, a unified adapter event stream, required BotAdapterAttribute metadata, automatic component packaging, plugin web actions and marketplace integration.</PackageReleaseNotes>
+        <PackageReleaseNotes>0.7.1 aligns the unified SDK with ShiroBot.Model 1.3.0-rc2 while retaining type-based plugin event routing, automatic component packaging, plugin web actions and marketplace integration.</PackageReleaseNotes>
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <NoWarn>$(NoWarn);NU5104</NoWarn>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>

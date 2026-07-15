@@ -5,7 +5,7 @@
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="0.7.0" />
+<PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
 ```
 
 Plugins that use Avalonia controls should additionally reference `ShiroBot.AvaloniaSdk`. Keeping

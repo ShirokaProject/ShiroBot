@@ -10,8 +10,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj"/>
-        <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj"/>
+        <PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
+        <PackageReference Include="ShiroBot.AvaloniaSdk" Version="0.7.1" />
     </ItemGroup>
 
     <!-- 让 partial class 在 IDE 中折叠到 .axaml 之下，仅影响 Solution Explorer 显示 -->

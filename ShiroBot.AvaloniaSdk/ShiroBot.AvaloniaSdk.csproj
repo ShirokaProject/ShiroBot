@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <PackageId>ShiroBot.AvaloniaSdk</PackageId>
-        <Version>0.7.0</Version>
+        <Version>0.7.1</Version>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -15,7 +15,7 @@
         <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
         <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <PackageReleaseNotes>0.7.0 restores ShiroBot.AvaloniaSdk as a standalone package while preserving the 0.6 assembly name, namespace and rendering contracts.</PackageReleaseNotes>
+        <PackageReleaseNotes>0.7.1 aligns ShiroBot.AvaloniaSdk with ShiroBot.SDK 0.7.1 while preserving the 0.6 assembly name, namespace and rendering contracts.</PackageReleaseNotes>
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>

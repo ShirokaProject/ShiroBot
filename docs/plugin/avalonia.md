@@ -6,14 +6,14 @@ ShiroBot 0.7.0 在宿主默认加载上下文中统一提供 Avalonia 12.1、Ski
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="0.7.0" />
-  <PackageReference Include="ShiroBot.AvaloniaSdk" Version="0.7.0" />
+  <PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
+  <PackageReference Include="ShiroBot.AvaloniaSdk" Version="0.7.1" />
 </ItemGroup>
 ```
 
 `ShiroBot.AvaloniaSdk` 会传递 Avalonia 编译类型和 AXAML build targets；运行时程序集由宿主共享。SDK 自动打包会移除 `ShiroBot.AvaloniaSdk`、`Avalonia*`、`SkiaSharp*`、`HarfBuzzSharp*`、`MicroCom*` 及相关 runtime/native 资产。
 
-0.6 插件使用的程序集名、`ShiroBot.AvaloniaSdk` 命名空间和公共渲染接口保持不变。重新编译时只需把两个 ShiroBot 包更新到 0.7.0。
+0.6 插件使用的程序集名、`ShiroBot.AvaloniaSdk` 命名空间和公共渲染接口保持不变。重新编译时只需把两个 ShiroBot 包更新到 0.7.1。
 
 ## 创建控件
 

@@ -8,7 +8,7 @@ Most projects receive this package transitively from `ShiroBot.SDK`. Reference i
 building model-only tooling:
 
 ```xml
-<PackageReference Include="ShiroBot.Model" Version="1.3.0" />
+<PackageReference Include="ShiroBot.Model" Version="1.3.0-rc2" />
 ```
 
 Models are grouped into these namespaces:
@@ -22,7 +22,7 @@ Models are grouped into these namespaces:
 
 ## Compatibility
 
-Version 1.3.0 is generated from the locked `@saltify/milky-protocol@1.3.0-rc.1` IR. Additive fields
+Version 1.3.0-rc2 is generated from the locked `@saltify/milky-protocol@1.3.0-rc.1` IR. Additive fields
 preserve previously emitted constructors and `Deconstruct` overloads so existing plugin binaries can
 continue loading. Removed, renamed, reordered or type-changed fields are rejected by the generator and
 require a deliberate major model release.
