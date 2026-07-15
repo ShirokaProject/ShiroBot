@@ -46,6 +46,7 @@ jobs:
           dotnet run --project MilkyModelGenerator.Net/MilkyModelGenerator.Net.csproj -c Release -- \
             --output "$RUNNER_TEMP/Generated" \
             --namespace ShiroBot.Model
+          diff -ru ShiroBot.Model/Generated "$RUNNER_TEMP/Generated"
 
       - name: Pack SDK and smoke-test NuGet consumer
         shell: bash
@@ -55,6 +56,8 @@ jobs:
           dotnet pack ShiroBot.Model/ShiroBot.Model.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack ShiroBot.SDK/ShiroBot.SDK.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj -c Release -o artifacts/nuget --no-build
+          unzip -p artifacts/nuget/ShiroBot.SDK.0.7.0.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="ShiroBot.Model" version="1.3.0"'
+          unzip -p artifacts/nuget/ShiroBot.AvaloniaSdk.0.7.0.nupkg ShiroBot.AvaloniaSdk.nuspec | grep -q '<dependency id="ShiroBot.SDK" version="0.7.0"'
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">

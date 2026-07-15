@@ -7,11 +7,18 @@ IR to C# models generator for the Milky IR schema.
 Before deleting the existing output, the generator parses positional records in `Generated` with
 Roslyn. When the new IR adds fields it keeps every previously emitted constructor overload and
 `Deconstruct` overload, supplying `default!` or the IR default for newly required arguments.
+This applies to common models and generated API request/response records.
 
 Generation fails with an explicit major-breaking-change error when an existing positional field is
 removed, renamed, reordered, or changes type, or when a new shape collides with an old signature but
 would map arguments to different properties. Existing compatibility overloads are parsed and carried
 forward on later generations.
+
+This is an ABI guarantee, not a protocol-semantic guarantee. Existing callers remain loadable when
+an API request gains a field, but an old constructor can only supply the IR default or `default!`.
+If the server requires a meaningful new value, the adapter call site must be updated. APIs that
+previously had no request record and gain their first request field also require manual adapter
+wiring.
 
 The default IR URL is locked to SHA-256
 `17a4f1da0ce44640ab73840015756227b8180ca5a503433ba4d41a3a82a13ea0`. The generated
@@ -20,7 +27,7 @@ changes before updating the lock; do not silently regenerate from a changed muta
 
 Output layout:
 
-- `Common`: shared structs and unions from `commonStructs`
+- `Common`: shared structs, unions, event metadata and generated `event_type`/`message_scene` registries
 - `System/Requests`, `System/Responses`
 - `Message/Requests`, `Message/Responses`
 - `Friend/Requests`, `Friend/Responses`

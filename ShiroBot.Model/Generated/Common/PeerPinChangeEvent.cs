@@ -7,4 +7,7 @@ public sealed partial record PeerPinChangeEvent(
     long SelfId,
     PeerPinChangeEventMessageScene MessageScene,
     long PeerId,
-    bool IsPinned) : Event;
+    bool IsPinned)
+     : Event
+{
+}

@@ -5,12 +5,16 @@
         <Version>0.7.0</Version>
         <IsPackable>true</IsPackable>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <Authors>ShiroBot</Authors>
-        <Description>SDK for developing ShiroBot plugins and adapters.</Description>
+        <Authors>ShirokaProject</Authors>
+        <Description>Core contracts, routing APIs and packaging targets for ShiroBot plugins and adapters.</Description>
         <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
         <PackageTags>ShiroBot;bot;sdk;plugin;adapter</PackageTags>
-        <RepositoryUrl>https://github.com/greepar/ShiroBot</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
+        <PackageReleaseNotes>0.7.0 introduces type-based plugin event routing, a unified adapter event stream, required BotAdapterAttribute metadata, automatic component packaging, plugin web actions and marketplace integration.</PackageReleaseNotes>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>

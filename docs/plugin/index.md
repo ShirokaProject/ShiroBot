@@ -105,6 +105,9 @@ protected override Task OnUnloadAsync()
 
 卸载完成后 `PluginBase` 会自动清空消息路由、事件路由和 `Context`。
 
+`OnUnloadAsync()` 只保证在插件热卸载或更新时调用。宿主进程退出不会逐个卸载插件；需要持久化的
+状态应在运行过程中及时保存，不要依赖进程退出时的插件回调。
+
 ## 构建和安装
 
 ```bash

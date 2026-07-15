@@ -8,4 +8,7 @@ public sealed partial record GroupMuteEvent(
     long GroupId,
     long UserId,
     long OperatorId,
-    int Duration) : Event;
+    int Duration)
+     : Event
+{
+}

@@ -9,4 +9,7 @@ public sealed partial record GroupFileUploadEvent(
     long UserId,
     string FileId,
     string FileName,
-    long FileSize) : Event;
+    long FileSize)
+     : Event
+{
+}

@@ -8,12 +8,16 @@
         <Nullable>enable</Nullable>
         <IsPackable>true</IsPackable>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <Authors>ShiroBot</Authors>
+        <Authors>ShirokaProject</Authors>
         <Description>Avalonia rendering SDK for ShiroBot plugins.</Description>
         <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
         <PackageTags>ShiroBot;bot;sdk;plugin;Avalonia;rendering</PackageTags>
-        <RepositoryUrl>https://github.com/greepar/ShiroBot</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
+        <PackageReleaseNotes>0.7.0 restores ShiroBot.AvaloniaSdk as a standalone package while preserving the 0.6 assembly name, namespace and rendering contracts.</PackageReleaseNotes>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
 
     <ItemGroup>

@@ -1,5 +1,6 @@
 using ShiroBot.Core;
 using ShiroBot.Hosting.Context;
+using ShiroBot.Model.Common;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
@@ -43,7 +44,9 @@ internal sealed class LoadedPluginHandle
         Author = metadata.Author;
         Category = metadata.Category;
         GithubRepo = metadata.GithubRepo;
-        Subscriptions = plugin is PluginBase pluginBase ? pluginBase.GetEffectiveSubscriptions() : BotEventSubscriptions.None;
+        SubscribedEventTypes = plugin is PluginBase pluginBase
+            ? pluginBase.GetEffectiveEventTypes().ToHashSet()
+            : new HashSet<Type>();
         GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         FriendMessageRoutes = plugin is PluginBase friendPluginBase ? friendPluginBase.GetFriendMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         RequiresGroupMessageBroadcast = plugin is PluginBase groupBroadcastPluginBase && groupBroadcastPluginBase.RequiresGroupMessageBroadcast();
@@ -58,7 +61,7 @@ internal sealed class LoadedPluginHandle
     public PluginCategory Category { get; }
     public string? GithubRepo { get; }
     public string AssemblyPath => _assemblyPath;
-    public BotEventSubscriptions Subscriptions { get; }
+    public IReadOnlySet<Type> SubscribedEventTypes { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
     public IReadOnlyList<MessageRouteDescriptor> FriendMessageRoutes { get; }
     public bool RequiresGroupMessageBroadcast { get; }
@@ -66,11 +69,13 @@ internal sealed class LoadedPluginHandle
 
     public bool HandlesGroupMessagesViaBroadcast =>
         RequiresGroupMessageBroadcast ||
-        ((Subscriptions & BotEventSubscriptions.GroupMessage) != 0 && GroupMessageRoutes.Count == 0);
+        (SubscribesTo(typeof(GroupIncomingMessage)) && GroupMessageRoutes.Count == 0);
 
     public bool HandlesFriendMessagesViaBroadcast =>
         RequiresFriendMessageBroadcast ||
-        ((Subscriptions & BotEventSubscriptions.FriendMessage) != 0 && FriendMessageRoutes.Count == 0);
+        (SubscribesTo(typeof(FriendIncomingMessage)) && FriendMessageRoutes.Count == 0);
+
+    public bool SubscribesTo(Type eventType) => SubscribedEventTypes.Contains(eventType);
 
     public bool AllowsGroup(long? groupId)
     {

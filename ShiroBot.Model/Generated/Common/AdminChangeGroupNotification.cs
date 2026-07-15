@@ -7,4 +7,7 @@ public sealed partial record AdminChangeGroupNotification(
     long NotificationSeq,
     long TargetUserId,
     bool IsSet,
-    long OperatorId) : GroupNotification;
+    long OperatorId)
+     : GroupNotification
+{
+}

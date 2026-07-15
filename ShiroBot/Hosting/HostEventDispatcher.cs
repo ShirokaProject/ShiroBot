@@ -10,9 +10,6 @@ internal sealed class HostEventDispatcher(
     HostRuntimeState runtimeState,
     HostLogHub logHub)
 {
-    private static readonly IReadOnlyDictionary<Type, BotEventSubscriptions> EventSubscriptions =
-        CreateEventSubscriptions();
-
     private readonly Dictionary<string, List<LoadedPluginHandle>> _groupMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<LoadedPluginHandle>> _friendMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<LoadedPluginHandle> _groupMessageBroadcastHandlers = [];
@@ -29,7 +26,7 @@ internal sealed class HostEventDispatcher(
         {
             RegisterMessageRoutes(
                 pluginHandle,
-                BotEventSubscriptions.GroupMessage,
+                pluginHandle.SubscribesTo(typeof(GroupIncomingMessage)),
                 pluginHandle.GroupMessageRoutes,
                 pluginHandle.HandlesGroupMessagesViaBroadcast,
                 _groupMessageBroadcastHandlers,
@@ -38,7 +35,7 @@ internal sealed class HostEventDispatcher(
 
             RegisterMessageRoutes(
                 pluginHandle,
-                BotEventSubscriptions.FriendMessage,
+                pluginHandle.SubscribesTo(typeof(FriendIncomingMessage)),
                 pluginHandle.FriendMessageRoutes,
                 pluginHandle.HandlesFriendMessagesViaBroadcast,
                 _friendMessageBroadcastHandlers,
@@ -72,6 +69,11 @@ internal sealed class HostEventDispatcher(
         {
             GroupIncomingMessage groupMessage => PublishMessageAsync("群消息", groupMessage, MatchGroupMessageHandlers(groupMessage), handler => handler.OnEventAsync(groupMessage)),
             FriendIncomingMessage friendMessage => PublishMessageAsync("好友消息", friendMessage, MatchFriendMessageHandlers(friendMessage), handler => handler.OnEventAsync(friendMessage)),
+            IncomingMessage incomingMessage => PublishMessageAsync(
+                GetEventDisplayName(message),
+                incomingMessage,
+                Snapshot(message.GetType()),
+                handler => handler.OnEventAsync(message)),
             _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()), handler => handler.OnEventAsync(message))
         }).ConfigureAwait(false);
     }
@@ -92,14 +94,14 @@ internal sealed class HostEventDispatcher(
 
     private void RegisterEventHandlers(LoadedPluginHandle pluginHandle)
     {
-        foreach (var (eventType, subscription) in EventSubscriptions)
+        foreach (var eventType in pluginHandle.SubscribedEventTypes)
         {
-            if (subscription is BotEventSubscriptions.GroupMessage or BotEventSubscriptions.FriendMessage)
+            if (eventType == typeof(GroupIncomingMessage) || eventType == typeof(FriendIncomingMessage))
             {
                 continue;
             }
 
-            if ((pluginHandle.Subscriptions & subscription) == 0)
+            if (!typeof(Event).IsAssignableFrom(eventType))
             {
                 continue;
             }
@@ -116,14 +118,14 @@ internal sealed class HostEventDispatcher(
 
     private static void RegisterMessageRoutes(
         LoadedPluginHandle pluginHandle,
-        BotEventSubscriptions subscription,
+        bool subscribed,
         IReadOnlyList<MessageRouteDescriptor> routes,
         bool requiresBroadcast,
         List<LoadedPluginHandle> broadcastBucket,
         Dictionary<string, List<LoadedPluginHandle>> exactBucket,
         List<(string Prefix, LoadedPluginHandle Plugin)> prefixBucket)
     {
-        if ((pluginHandle.Subscriptions & subscription) == 0)
+        if (!subscribed)
         {
             return;
         }
@@ -301,6 +303,8 @@ internal sealed class HostEventDispatcher(
             GroupWholeMuteEvent e => e.GroupId,
             GroupNudgeEvent e => e.GroupId,
             GroupFileUploadEvent e => e.GroupId,
+            GroupDisbandEvent e => e.GroupId,
+            TempIncomingMessage { Group: not null } message => message.Group.GroupId,
             MessageRecallEvent { MessageScene: MessageRecallEventMessageScene.Group } e => e.PeerId,
             _ => null
         };
@@ -312,6 +316,7 @@ internal sealed class HostEventDispatcher(
         {
             GroupIncomingMessage message => $"{message.Group.GroupName}({message.Group.GroupId}) {message.SenderId}发送: {GetMessageSegments(message.Segments)}",
             FriendIncomingMessage message => $"{message.Friend.Nickname}({message.SenderId})发送: {GetMessageSegments(message.Segments)}",
+            TempIncomingMessage message => $"临时会话({message.PeerId}) {message.SenderId}发送: {GetMessageSegments(message.Segments)}",
             GroupJoinRequestEvent e => $"用户 {e.InitiatorId} 申请加入群 {e.GroupId}: {e.Comment}",
             GroupInvitedJoinRequestEvent e => $"用户 {e.InitiatorId} 邀请 {e.TargetUserId} 加入群 {e.GroupId}",
             GroupInvitationEvent e => $"用户 {e.InitiatorId} 邀请机器人加入群 {e.GroupId}",
@@ -374,38 +379,6 @@ internal sealed class HostEventDispatcher(
             ? metadata.Description
             : evt.GetType().Name;
     }
-
-    private static IReadOnlyDictionary<Type, BotEventSubscriptions> CreateEventSubscriptions()
-    {
-        var commonEventTypes = typeof(Event).Assembly
-            .GetTypes()
-            .Where(type => type is { IsClass: true, IsAbstract: false } && typeof(Event).IsAssignableFrom(type));
-
-        var subscriptions = new Dictionary<Type, BotEventSubscriptions>();
-
-        foreach (var eventType in commonEventTypes)
-        {
-            var subscription = eventType.Name switch
-            {
-                nameof(GroupIncomingMessage) => BotEventSubscriptions.GroupMessage,
-                nameof(FriendIncomingMessage) => BotEventSubscriptions.FriendMessage,
-                _ when Enum.TryParse<BotEventSubscriptions>(TrimEventSuffix(eventType.Name), out var parsed) => parsed,
-                _ => BotEventSubscriptions.None
-            };
-
-            if (subscription != BotEventSubscriptions.None)
-            {
-                subscriptions[eventType] = subscription;
-            }
-        }
-
-        return subscriptions;
-    }
-
-    private static string TrimEventSuffix(string typeName) =>
-        typeName.EndsWith("Event", StringComparison.Ordinal)
-            ? typeName[..^"Event".Length]
-            : typeName;
 
     private static string DescribeWithMetadata(Event evt)
     {

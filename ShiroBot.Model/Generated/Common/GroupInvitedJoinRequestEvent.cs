@@ -8,4 +8,7 @@ public sealed partial record GroupInvitedJoinRequestEvent(
     long GroupId,
     long NotificationSeq,
     long InitiatorId,
-    long TargetUserId) : Event;
+    long TargetUserId)
+     : Event
+{
+}

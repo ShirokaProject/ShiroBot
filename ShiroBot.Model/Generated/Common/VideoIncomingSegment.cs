@@ -7,4 +7,7 @@ public sealed partial record VideoIncomingSegment(
     string TempUrl,
     int Width,
     int Height,
-    int Duration) : IncomingSegment;
+    int Duration)
+     : IncomingSegment
+{
+}

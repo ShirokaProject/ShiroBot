@@ -51,8 +51,6 @@ public sealed class ExampleAdapter : IBotAdapter
 {
     private readonly ExampleEventService _events = new();
 
-    public string Name => "ExampleAdapter";
-
     // 由宿主在 StartAsync 前注入。
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
@@ -78,6 +76,8 @@ public sealed class ExampleAdapter : IBotAdapter
 
         Logger.Success("协议连接成功");
     }
+
+    public Task StopAsync() => ProtocolClient.DisconnectAsync();
 }
 ```
 
@@ -86,14 +86,16 @@ public sealed class ExampleAdapter : IBotAdapter
 1. 创建适配器程序集加载上下文。
 2. 查找并实例化第一个非抽象 `IBotAdapter` 实现。
 3. 注入 `Config` 和 `Logger`。
-4. 优先读取 `BotAdapterAttribute`；没有 attribute 时回退旧 `Metadata` 实现。
-5. 等待 `StartAsync()` 完成。
-6. 创建 Bot 上下文并桥接 `Event` 中的事件。
+4. 读取必须存在的 `BotAdapterAttribute`。
+5. 创建 Bot 上下文并订阅 `Event.EventReceived`。
+6. 等待 `StartAsync()` 完成。
 7. 开始加载插件。
 
 因此 `StartAsync()` 返回前应完成必要的鉴权和基础连接验证。持续事件循环可以在后台运行，但必须把异常记录清楚并实现重连策略。
 
-`IBotAdapter.Metadata` 从 0.7.0 起具有默认实现并标记为 obsolete。旧 Milky adapter 等已经自行实现 `Metadata` 的二进制仍可加载，新适配器应只声明 `BotAdapterAttribute`。
+`BotAdapterAttribute` 是唯一 metadata 来源。缺少 attribute 的适配器会拒绝加载；旧 `Name`、`Metadata` 和 metadata fallback 已移除。
+
+`StartAsync()` 与 `StopAsync()` 都有默认 no-op 实现。只提供同步服务或无需初始化的适配器可以省略；需要连接、事件循环或资源清理时再重写。
 
 ## 配置类型
 

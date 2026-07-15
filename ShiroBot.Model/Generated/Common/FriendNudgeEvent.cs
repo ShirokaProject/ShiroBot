@@ -10,4 +10,7 @@ public sealed partial record FriendNudgeEvent(
     bool IsSelfReceive,
     string DisplayAction,
     string DisplaySuffix,
-    string DisplayActionImgUrl) : Event;
+    string DisplayActionImgUrl)
+     : Event
+{
+}

@@ -87,6 +87,7 @@ internal sealed class ReplySubscriptionManager
         {
             FriendIncomingMessage friend => friend.Segments.OfType<ReplyIncomingSegment>().FirstOrDefault(),
             GroupIncomingMessage group => group.Segments.OfType<ReplyIncomingSegment>().FirstOrDefault(),
+            TempIncomingMessage temp => temp.Segments.OfType<ReplyIncomingSegment>().FirstOrDefault(),
             _ => null
         };
 

@@ -335,28 +335,18 @@ internal sealed class PluginManager(
         }
     }
 
-    private Task[] BeginShutdownAndGetBackgroundTasks()
+    public void BeginShutdown()
     {
+        FileSystemWatcher? watcher;
         lock (PluginLifecycleLock)
         {
             _isShuttingDown = true;
-            return _pluginBackgroundTasks.ToArray();
+            watcher = _pluginRootWatcher;
+            _pluginRootWatcher = null;
+            _watchedPluginRoot = null;
         }
-    }
 
-    public async Task AwaitPluginBackgroundTasksAsync()
-    {
-        var tasks = BeginShutdownAndGetBackgroundTasks();
-        if (tasks.Length == 0) return;
-
-        try
-        {
-            await Task.WhenAll(tasks);
-        }
-        catch (Exception ex)
-        {
-            CH.Warning("等待插件后台任务收敛时出现异常: " + ex.Message);
-        }
+        watcher?.Dispose();
     }
 
     private Task? TryQueuePluginBackgroundTask(Func<Task> taskFactory)

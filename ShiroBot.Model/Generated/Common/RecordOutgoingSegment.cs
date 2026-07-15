@@ -3,4 +3,7 @@
 namespace ShiroBot.Model.Common;
 
 public sealed partial record RecordOutgoingSegment(
-    string Uri) : OutgoingSegment;
+    string Uri)
+     : OutgoingSegment
+{
+}

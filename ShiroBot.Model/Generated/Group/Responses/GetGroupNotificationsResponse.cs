@@ -2,9 +2,19 @@
 #nullable enable
 using ShiroBot.Model.Common;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace ShiroBot.Model.Group.Responses;
 
+[method: JsonConstructor]
 public sealed partial record GetGroupNotificationsResponse(
     IReadOnlyList<GroupNotification> Notifications,
-    long? NextNotificationSeq = null);
+    long? NextNotificationSeq = null)
+{
+
+    public GetGroupNotificationsResponse(
+        IReadOnlyList<GroupNotification> notifications)
+        : this(notifications, null)
+    {
+    }
+}

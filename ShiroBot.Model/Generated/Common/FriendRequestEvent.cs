@@ -8,4 +8,7 @@ public sealed partial record FriendRequestEvent(
     long InitiatorId,
     string InitiatorUid,
     string Comment,
-    string Via) : Event;
+    string Via)
+     : Event
+{
+}

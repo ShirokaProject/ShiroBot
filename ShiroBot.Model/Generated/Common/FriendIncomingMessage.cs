@@ -10,4 +10,7 @@ public sealed partial record FriendIncomingMessage(
     long SenderId,
     long Time,
     IReadOnlyList<IncomingSegment> Segments,
-    FriendEntity Friend) : Event, IncomingMessage;
+    FriendEntity Friend)
+     : Event, IncomingMessage
+{
+}

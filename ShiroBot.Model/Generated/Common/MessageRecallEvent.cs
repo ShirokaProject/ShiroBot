@@ -10,4 +10,7 @@ public sealed partial record MessageRecallEvent(
     long MessageSeq,
     long SenderId,
     long OperatorId,
-    string DisplaySuffix) : Event;
+    string DisplaySuffix)
+     : Event
+{
+}

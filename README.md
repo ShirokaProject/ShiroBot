@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://github.com/greepar/ShiroBot">
+<a href="https://github.com/ShirokaProject/ShiroBot">
   <img src="./shirobana.webp" alt="ShiroBot" width="220" />
 </a>
 
@@ -28,18 +28,6 @@ dotnet build .\ShiroBot.slnx
 ```
 
 Avalonia、Skia 和 HarfBuzz 从 0.7.0 起属于统一宿主，不再提供 `lite` 构建。宿主明确保持 `PublishTrimmed=false`，因为插件发现、配置 schema 和程序集加载依赖反射与 metadata，当前不具备安全裁剪条件。
-
-## 0.7.0 SDK 结构
-
-- 普通插件与适配器只引用 `ShiroBot.SDK` 0.7.0。
-- 使用 Avalonia 控件的插件额外引用 `ShiroBot.AvaloniaSdk` 0.7.0，命名空间保持 `ShiroBot.AvaloniaSdk`。
-- `ShiroBot.AvaloniaSdk` 保持与 0.6 插件相同的程序集名和公共渲染契约。
-- Host 统一内置 Avalonia，不再支持 `EnableAvalonia` 与 `full`/`lite` 发布矩阵。
-- SDK 自动从插件输出移除宿主共享的 Avalonia、SkiaSharp、HarfBuzzSharp、MicroCom managed/native/runtime 资产和 `.deps.json`。
-- Dashboard API 新增插件 actions 与插件市场；插件配置 PATCH 现在返回与 GET 相同的 `schema`。
-- 新适配器应使用 `BotAdapterAttribute`，旧 `Metadata` 实现仍可加载。
-
-未引用 `ShiroBot.AvaloniaSdk` 的插件不会获得 Avalonia 编译依赖，因此基础插件仍保持轻量。
 
 ## 文档
 

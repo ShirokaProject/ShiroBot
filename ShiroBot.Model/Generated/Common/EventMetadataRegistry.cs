@@ -226,6 +226,44 @@ public static class EventMetadataRegistry
         ])
     };
 
+    private static readonly IReadOnlyDictionary<string, Type> EventTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["bot_offline"] = typeof(BotOfflineEvent),
+        ["friend_file_upload"] = typeof(FriendFileUploadEvent),
+        ["friend_nudge"] = typeof(FriendNudgeEvent),
+        ["friend_request"] = typeof(FriendRequestEvent),
+        ["group_admin_change"] = typeof(GroupAdminChangeEvent),
+        ["group_disband"] = typeof(GroupDisbandEvent),
+        ["group_essence_message_change"] = typeof(GroupEssenceMessageChangeEvent),
+        ["group_file_upload"] = typeof(GroupFileUploadEvent),
+        ["group_invitation"] = typeof(GroupInvitationEvent),
+        ["group_invited_join_request"] = typeof(GroupInvitedJoinRequestEvent),
+        ["group_join_request"] = typeof(GroupJoinRequestEvent),
+        ["group_member_decrease"] = typeof(GroupMemberDecreaseEvent),
+        ["group_member_increase"] = typeof(GroupMemberIncreaseEvent),
+        ["group_message_reaction"] = typeof(GroupMessageReactionEvent),
+        ["group_mute"] = typeof(GroupMuteEvent),
+        ["group_name_change"] = typeof(GroupNameChangeEvent),
+        ["group_nudge"] = typeof(GroupNudgeEvent),
+        ["group_whole_mute"] = typeof(GroupWholeMuteEvent),
+        ["message_recall"] = typeof(MessageRecallEvent),
+        ["message_receive"] = typeof(IncomingMessage),
+        ["peer_pin_change"] = typeof(PeerPinChangeEvent)
+    };
+
+    private static readonly IReadOnlyDictionary<string, Type> IncomingMessageTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["friend"] = typeof(FriendIncomingMessage),
+        ["group"] = typeof(GroupIncomingMessage),
+        ["temp"] = typeof(TempIncomingMessage)
+    };
+
     public static bool TryGet(Type eventType, out EventMetadata metadata) =>
         Metadata.TryGetValue(eventType, out metadata!);
+
+    public static bool TryGetEventType(string discriminator, out Type eventType) =>
+        EventTypes.TryGetValue(discriminator, out eventType!);
+
+    public static bool TryGetIncomingMessageType(string scene, out Type messageType) =>
+        IncomingMessageTypes.TryGetValue(scene, out messageType!);
 }

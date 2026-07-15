@@ -2,6 +2,12 @@
 
 `ShiroBot.SDK` provides the core contracts and helper APIs for ShiroBot plugins and adapters.
 
+## Install
+
+```xml
+<PackageReference Include="ShiroBot.SDK" Version="0.7.0" />
+```
+
 Plugins that use Avalonia controls should additionally reference `ShiroBot.AvaloniaSdk`. Keeping
 the rendering contracts in that package prevents ordinary plugins and adapters from taking an
 unnecessary Avalonia compile-time dependency.
@@ -16,13 +22,13 @@ using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
 
-[BotPlugin(id: "HelloPlugin",
+[BotPlugin(
+    "HelloPlugin",
     Name = "HelloPlugin",
     Version = "1.0.0",
     Description = "Example plugin",
     GithubRepo = "example/HelloPlugin",
-    IsPluginSingleFile = false)
-]
+    IsPluginSingleFile = false)]
 public sealed class HelloPlugin : PluginBase
 {
     public override string Name => "HelloPlugin";
@@ -61,6 +67,9 @@ protected override async Task LoadAsync()
 `ConfigureRoutes()` runs after `Context` is assigned and before `LoadAsync()`. Existing plugins
 that register routes in `LoadAsync()` remain compatible. `PluginBase` automatically clears
 command routes, event routes and `Context` after unload.
+
+`OnUnloadAsync()` is called for hot unload and plugin updates. Process exit does not walk every
+plugin, so persistent state should be saved during normal operation rather than only on unload.
 
 ## Automatic plugin packaging
 
@@ -103,10 +112,9 @@ Automatic targets are a NuGet `buildTransitive` feature. A source-level `Project
 `ShiroBot.SDK.csproj` does not import the packed targets; use the SDK package when validating the
 final distributable plugin.
 
-Avalonia compile references and AXAML build support flow from the SDK package. If plugin code does
-not use Avalonia types, the compiler emits no Avalonia assembly reference. The host intentionally
-does not enable `PublishTrimmed`; plugin discovery, configuration metadata and collectible loading
-use reflection paths that are not trimming-safe.
+Avalonia compile references and AXAML build support flow from `ShiroBot.AvaloniaSdk`, not this base
+package. The host intentionally does not enable `PublishTrimmed`; plugin discovery, configuration
+metadata and collectible loading use reflection paths that are not trimming-safe.
 
 ## Dashboard Actions
 
@@ -154,7 +162,7 @@ private Task HandlePingAsync(GroupIncomingMessage message) =>
 
 ## Event Routes
 
-You can either override built-in event methods or map events in `ConfigureRoutes()`.
+Map strongly typed events in `ConfigureRoutes()`.
 
 ```csharp
 protected override void ConfigureRoutes()
@@ -164,27 +172,8 @@ protected override void ConfigureRoutes()
 }
 ```
 
-Common overridable methods include:
-
-- `OnFriendMessageAsync`
-- `OnGroupMessageAsync`
-- `OnFriendRequestAsync`
-- `OnGroupJoinRequestAsync`
-- `OnGroupInvitedJoinRequestAsync`
-- `OnGroupInvitationAsync`
-- `OnFriendNudgeAsync`
-- `OnFriendFileUploadAsync`
-- `OnGroupAdminChangeAsync`
-- `OnGroupEssenceMessageChangeAsync`
-- `OnGroupMemberIncreaseAsync`
-- `OnGroupMemberDecreaseAsync`
-- `OnGroupNameChangeAsync`
-- `OnGroupMessageReactionAsync`
-- `OnGroupMuteAsync`
-- `OnGroupWholeMuteAsync`
-- `OnGroupNudgeAsync`
-- `OnGroupFileUploadAsync`
-- `OnMessageRecallAsync`
+`OnFriendMessageAsync` and `OnGroupMessageAsync` remain available for whole-message broadcasts.
+Use `Events.Map<TEvent>()` for every other event, including newly generated Model events.
 
 ## Messages
 
@@ -345,8 +334,6 @@ using ShiroBot.SDK.Plugin;
     ProtocolVersionRange = ">=1.0 <2.0")]
 public sealed class MyAdapter : IBotAdapter
 {
-    public string Name => "MyAdapter";
-
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
 
@@ -368,7 +355,7 @@ public sealed class MyAdapter : IBotAdapter
 
 Adapter config is loaded from the adapter directory through `Config.Load<T>()`.
 
-Legacy adapters that implement `IBotAdapter.Metadata` remain loadable. The host reads
-`BotAdapterAttribute` first and falls back to the obsolete property. Any future adapter service
-method, property or event added by the SDK must use a default interface implementation so binaries
-compiled against older SDK versions continue to load.
+`BotAdapterAttribute` is required and is the only adapter metadata source. `IEventService` exposes
+one `Func<Event, Task>` event named `EventReceived`; adapters publish every concrete model event
+through that stream. `StartAsync()` and `StopAsync()` are optional no-op lifecycle hooks. Adapter ABI
+is versioned as a breaking contract, while plugin and model ABI compatibility remain preserved.

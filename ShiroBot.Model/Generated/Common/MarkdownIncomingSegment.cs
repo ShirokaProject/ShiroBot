@@ -3,4 +3,7 @@
 namespace ShiroBot.Model.Common;
 
 public sealed partial record MarkdownIncomingSegment(
-    string Content) : IncomingSegment;
+    string Content)
+     : IncomingSegment
+{
+}

@@ -17,6 +17,9 @@
 | `clear` | 清空控制台 |
 | `exit` / `quit` | 正常退出 |
 
+进程退出会停止宿主 HTTP 服务、适配器和 Avalonia dispatcher，但不会逐个热卸载插件。
+插件程序集和剩余资源由操作系统随进程直接回收。
+
 `owner_list` 中的用户也可以通过好友私聊执行 `help`、`plugins`、`load`、`unload`、`update` 和 `api` 命令。
 
 ## 热加载与热卸载
@@ -42,7 +45,8 @@ unload HelloPlugin
 - 静态字段持有插件对象或插件类型。
 - native 库或第三方框架保存了托管回调。
 
-插件应在 `OnUnloadAsync()` 中释放自己创建的资源。
+插件应在 `OnUnloadAsync()` 中释放热卸载或更新时需要立即释放的资源。进程退出不会调用每个插件的
+`OnUnloadAsync()`；需要持久化的数据应在运行过程中及时写入，不能依赖退出回调。
 
 Dashboard 的插件 actions 也使用同一套 active-dispatch 计数。执行中的 action 不会与热卸载并发销毁插件对象，插件抛出的异常会被限制在对应 HTTP 请求中。
 

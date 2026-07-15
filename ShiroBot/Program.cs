@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Runtime.Loader;
 using Avalonia;
@@ -105,24 +106,17 @@ public static class Program
                 dependencies: adapterDependencies);
             adapter = adapterLoader.Load(adapterPath);
             adapter.Config = ConfigContext.ForAdapter(ResolveAdapterConfigPath(adapterRoot, adapterPath));
-            adapter.Logger = new ConsoleLogger($"[Adapter:{adapter.Name}]", logHub);
-
-            var adapterMetadata = BotAdapterMetadata.Resolve(adapter);
-            CH.Log($"适配器信息: {adapterMetadata.Name} v{adapterMetadata.Version}");
-
-            using (BotLog.BeginScope(adapter.Logger))
+            var adapterMetadata = adapter.GetType().GetCustomAttribute<BotAdapterAttribute>(inherit: false)
+                ?? throw new InvalidOperationException(
+                    $"适配器类型 {adapter.GetType().FullName} 未声明 {nameof(BotAdapterAttribute)}。");
+            if (string.IsNullOrWhiteSpace(adapterMetadata.Id) || string.IsNullOrWhiteSpace(adapterMetadata.Name))
             {
-                await adapter.StartAsync();
+                throw new InvalidOperationException(
+                    $"适配器类型 {adapter.GetType().FullName} 的 {nameof(BotAdapterAttribute)} 必须声明非空 Id 和 Name。");
             }
-            var adapterDisplayName = string.IsNullOrWhiteSpace(adapterMetadata.Name) ? adapter.Name : adapterMetadata.Name;
-            runtimeState.SetAdapter(adapterDisplayName, "connected");
-            logHub.RegisterSource(
-                adapter.Name,
-                adapterMetadata.Description ?? $"{adapterDisplayName} 适配器日志",
-                adapterDisplayName);
-            runtimeState.RecordEvent($"{adapterDisplayName} 连接成功");
 
-            CH.Success("加载适配器成功: " + adapter.Name);
+            adapter.Logger = new ConsoleLogger($"[Adapter:{adapterMetadata.Id}]", logHub);
+            CH.Log($"适配器信息: {adapterMetadata.Name} v{adapterMetadata.Version}");
 
             // ─── BotContext + 基础设施 ───
             var webPublicBaseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
@@ -137,26 +131,6 @@ public static class Program
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub);
             pluginManager = new PluginManager(botContext, sharedAssemblies, runtimeState, logHub);
-
-            hostHttpServer = await HostHttpServer.StartAsync(
-                coreConfig.Api,
-                coreConfig,
-                coreConfigManager,
-                coreConfigPath,
-                pluginManager,
-                hostEventDispatcher,
-                groupRoutePolicy,
-                webHostContext,
-                runtimeState,
-                logHub);
-            if (coreConfig.Api.Enable)
-            {
-                CH.Success("API 地址: " + webPublicBaseUrl);
-                if (coreConfig.Api.Auth.Enable)
-                {
-                    CH.Warning("API 鉴权密钥: " + coreConfig.Api.Auth.Key);
-                }
-            }
 
             // ─── Avalonia 渲染集成 ───
             try
@@ -208,9 +182,41 @@ public static class Program
             var adapterBridge = new AdapterEventBridge(hostEventDispatcher);
             adapterBridge.Bridge(
                 adapter.Event,
-                pluginRootPath,
-                groupRoutePolicy,
                 commandHandler.HandleFriendMessageAsync);
+
+            using (BotLog.BeginScope(adapter.Logger))
+            {
+                await adapter.StartAsync();
+            }
+
+            var adapterDisplayName = adapterMetadata.Name;
+            runtimeState.SetAdapter(adapterDisplayName, "connected");
+            logHub.RegisterSource(
+                adapterMetadata.Id,
+                adapterMetadata.Description ?? $"{adapterDisplayName} 适配器日志",
+                adapterDisplayName);
+            runtimeState.RecordEvent($"{adapterDisplayName} 连接成功");
+            CH.Success("加载适配器成功: " + adapterMetadata.Id);
+
+            hostHttpServer = await HostHttpServer.StartAsync(
+                coreConfig.Api,
+                coreConfig,
+                coreConfigManager,
+                coreConfigPath,
+                pluginManager,
+                hostEventDispatcher,
+                groupRoutePolicy,
+                webHostContext,
+                runtimeState,
+                logHub);
+            if (coreConfig.Api.Enable)
+            {
+                CH.Success("API 地址: " + webPublicBaseUrl);
+                if (coreConfig.Api.Auth.Enable)
+                {
+                    CH.Warning("API 鉴权密钥: " + coreConfig.Api.Auth.Key);
+                }
+            }
 
             // ─── 控制台交互 ───
             var configuredConsoleOption = parserResult.GetValue(noConsoleOption);
@@ -256,6 +262,7 @@ public static class Program
         }
         finally
         {
+            pluginManager?.BeginShutdown();
             configWatcher?.Dispose();
 
             if (hostHttpServer is not null)
@@ -275,20 +282,6 @@ public static class Program
                 }
             }
 
-            if (pluginManager is not null)
-            {
-                await pluginManager.AwaitPluginBackgroundTasksAsync();
-
-                foreach (var pluginHandle in Enumerable.Reverse(pluginManager.GetLoadedPluginSnapshot()))
-                {
-                    var result = await pluginHandle.UnloadAsync();
-                    if (result.Error is not null) CH.Error($"插件卸载失败: {result.Name} - {result.Error.Message}");
-
-                    var assemblyUnloaded = DllLoader<IBotPlugin>.WaitForUnload(result.AssemblyLoadContextWeakReference);
-                    if (!assemblyUnloaded) CH.Warning($"插件程序集未完全卸载，可能仍有引用残留: {result.Name} ({result.AssemblyPath})");
-                }
-            }
-
             try
             {
                 AvaloniaIntegration.AvaloniaIntegration.Shutdown();
@@ -298,12 +291,8 @@ public static class Program
                 CH.Warning("关停 Avalonia 渲染服务时出现异常: " + ex.Message);
             }
 
-            adapter = null;
-            var adapterAlc = adapterLoader?.BeginUnload();
-            if (!DllLoader<IBotAdapter>.WaitForUnload(adapterAlc))
-            {
-                CH.Warning("适配器程序集未完全卸载，可能仍有后台引用残留。");
-            }
+            // Hot unload performs plugin cleanup and collectible ALC checks. Process teardown
+            // releases the remaining plugin and adapter contexts directly.
         }
     }
 

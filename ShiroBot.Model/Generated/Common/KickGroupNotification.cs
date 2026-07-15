@@ -6,4 +6,7 @@ public sealed partial record KickGroupNotification(
     long GroupId,
     long NotificationSeq,
     long TargetUserId,
-    long OperatorId) : GroupNotification;
+    long OperatorId)
+     : GroupNotification
+{
+}

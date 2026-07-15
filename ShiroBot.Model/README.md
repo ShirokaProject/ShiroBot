@@ -1,38 +1,44 @@
 # ShiroBot.Model
 
-`Generated/` contains code generated from Milky IR and may be overwritten.
+Shared Milky protocol models used by ShiroBot plugins, adapters and the host.
 
-The generator reads the current positional-record ABI before overwriting this directory. Added IR
-fields preserve old constructor and `Deconstruct` overloads; removed, renamed, reordered or changed
-fields fail generation and require a deliberate major model release. `_GeneratedInfo.cs` records the
-locked IR URL, SHA-256 and Milky versions.
+## Install
 
-`Manual/` contains hand-written models and extensions and will not be touched by the generator.
+Most projects receive this package transitively from `ShiroBot.SDK`. Reference it directly only when
+building model-only tooling:
 
-`Manual/` mirrors the generated layout:
-
-- `Manual/Common`
-- `Manual/System/Requests`, `Manual/System/Responses`
-- `Manual/Message/Requests`, `Manual/Message/Responses`
-- `Manual/Friend/Requests`, `Manual/Friend/Responses`
-- `Manual/Group/Requests`, `Manual/Group/Responses`
-- `Manual/File/Requests`, `Manual/File/Responses`
-
-To regenerate:
-
-```powershell
-dotnet run --project .\MilkyModelGenerator.Net\MilkyModelGenerator.Net.csproj -- `
-  --output .\ShiroBot.Model\Generated `
-  --namespace ShiroBot.Model `
-  --expected-sha256 45ad273eae90347596ecf6f1cd0c9ad59b70a8835779e640664b35858b1a531b
+```xml
+<PackageReference Include="ShiroBot.Model" Version="1.3.0" />
 ```
 
+Models are grouped into these namespaces:
+
+- `ShiroBot.Model.Common`
+- `ShiroBot.Model.System.Requests` and `Responses`
+- `ShiroBot.Model.Message.Requests` and `Responses`
+- `ShiroBot.Model.Friend.Requests` and `Responses`
+- `ShiroBot.Model.Group.Requests` and `Responses`
+- `ShiroBot.Model.File.Requests` and `Responses`
+
+## Compatibility
+
+Version 1.3.0 is generated from the locked `@saltify/milky-protocol@1.3.0-rc.1` IR. Additive fields
+preserve previously emitted constructors and `Deconstruct` overloads so existing plugin binaries can
+continue loading. Removed, renamed, reordered or type-changed fields are rejected by the generator and
+require a deliberate major model release.
+
+`EventMetadataRegistry` includes generated Milky `event_type` and `message_scene` discriminator maps.
+Adapters should use it instead of maintaining handwritten event type dictionaries.
+
+## Regeneration
+
+`Generated/` may be overwritten; hand-written extensions belong in `Manual/`. From the repository
+root, run:
+
 ```bash
+dotnet run --project ./MilkyModelGenerator.Net/MilkyModelGenerator.Net.csproj -- --self-test
 dotnet run --project ./MilkyModelGenerator.Net/MilkyModelGenerator.Net.csproj -- \
   --output ./ShiroBot.Model/Generated \
   --namespace ShiroBot.Model \
-  --expected-sha256 45ad273eae90347596ecf6f1cd0c9ad59b70a8835779e640664b35858b1a531b
+  --expected-sha256 17a4f1da0ce44640ab73840015756227b8180ca5a503433ba4d41a3a82a13ea0
 ```
-
-Run `dotnet run --project ./MilkyModelGenerator.Net/MilkyModelGenerator.Net.csproj -- --self-test`
-before regeneration to validate the compatibility fixture without touching `Generated`.

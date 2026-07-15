@@ -8,4 +8,7 @@ public sealed partial record ForwardIncomingSegment(
     string ForwardId,
     string Title,
     IReadOnlyList<string> Preview,
-    string Summary) : IncomingSegment;
+    string Summary)
+     : IncomingSegment
+{
+}

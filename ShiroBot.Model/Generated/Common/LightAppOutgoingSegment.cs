@@ -3,4 +3,7 @@
 namespace ShiroBot.Model.Common;
 
 public sealed partial record LightAppOutgoingSegment(
-    string JsonPayload) : OutgoingSegment;
+    string JsonPayload)
+     : OutgoingSegment
+{
+}

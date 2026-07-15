@@ -8,4 +8,7 @@ public sealed partial record GroupEssenceMessageChangeEvent(
     long GroupId,
     long MessageSeq,
     long OperatorId,
-    bool IsSet) : Event;
+    bool IsSet)
+     : Event
+{
+}

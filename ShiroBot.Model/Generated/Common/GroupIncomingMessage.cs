@@ -11,4 +11,7 @@ public sealed partial record GroupIncomingMessage(
     long Time,
     IReadOnlyList<IncomingSegment> Segments,
     GroupEntity Group,
-    GroupMemberEntity GroupMember) : Event, IncomingMessage;
+    GroupMemberEntity GroupMember)
+     : Event, IncomingMessage
+{
+}

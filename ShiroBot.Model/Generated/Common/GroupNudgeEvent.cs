@@ -10,4 +10,7 @@ public sealed partial record GroupNudgeEvent(
     long ReceiverId,
     string DisplayAction,
     string DisplaySuffix,
-    string DisplayActionImgUrl) : Event;
+    string DisplayActionImgUrl)
+     : Event
+{
+}

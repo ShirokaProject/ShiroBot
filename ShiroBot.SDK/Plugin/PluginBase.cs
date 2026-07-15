@@ -117,6 +117,22 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
         return subscriptions;
     }
 
+    public IReadOnlyCollection<Type> GetEffectiveEventTypes()
+    {
+        var eventTypes = Events.EventTypes.ToHashSet();
+        if (GroupCommands.HasRoutes || RequiresGroupMessageBroadcast())
+        {
+            eventTypes.Add(typeof(GroupIncomingMessage));
+        }
+
+        if (FriendCommands.HasRoutes || RequiresFriendMessageBroadcast())
+        {
+            eventTypes.Add(typeof(FriendIncomingMessage));
+        }
+
+        return eventTypes;
+    }
+
     private BotEventSubscriptions InferMappedEventSubscriptions()
     {
         var subscriptions = BotEventSubscriptions.None;

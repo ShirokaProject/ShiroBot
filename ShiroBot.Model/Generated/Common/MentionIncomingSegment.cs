@@ -4,4 +4,7 @@ namespace ShiroBot.Model.Common;
 
 public sealed partial record MentionIncomingSegment(
     long UserId,
-    string Name) : IncomingSegment;
+    string Name)
+     : IncomingSegment
+{
+}

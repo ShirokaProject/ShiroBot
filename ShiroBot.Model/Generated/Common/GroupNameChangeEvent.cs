@@ -7,4 +7,7 @@ public sealed partial record GroupNameChangeEvent(
     long SelfId,
     long GroupId,
     string NewGroupName,
-    long OperatorId) : Event;
+    long OperatorId)
+     : Event
+{
+}

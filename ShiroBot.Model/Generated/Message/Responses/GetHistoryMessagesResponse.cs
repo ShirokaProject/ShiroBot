@@ -2,9 +2,19 @@
 #nullable enable
 using ShiroBot.Model.Common;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace ShiroBot.Model.Message.Responses;
 
+[method: JsonConstructor]
 public sealed partial record GetHistoryMessagesResponse(
     IReadOnlyList<IncomingMessage> Messages,
-    long? NextMessageSeq = null);
+    long? NextMessageSeq = null)
+{
+
+    public GetHistoryMessagesResponse(
+        IReadOnlyList<IncomingMessage> messages)
+        : this(messages, null)
+    {
+    }
+}

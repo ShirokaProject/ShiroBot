@@ -4,4 +4,7 @@ namespace ShiroBot.Model.Common;
 
 public sealed partial record FaceIncomingSegment(
     string FaceId,
-    bool IsLarge) : IncomingSegment;
+    bool IsLarge)
+     : IncomingSegment
+{
+}

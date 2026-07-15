@@ -3,4 +3,7 @@
 namespace ShiroBot.Model.Common;
 
 public sealed partial record MentionOutgoingSegment(
-    long UserId) : OutgoingSegment;
+    long UserId)
+     : OutgoingSegment
+{
+}

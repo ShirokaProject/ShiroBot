@@ -6,4 +6,7 @@ public sealed partial record GroupDisbandEvent(
     long Time,
     long SelfId,
     long GroupId,
-    long OperatorId) : Event;
+    long OperatorId)
+     : Event
+{
+}

@@ -5,4 +5,7 @@ namespace ShiroBot.Model.Common;
 public sealed partial record RecordIncomingSegment(
     string ResourceId,
     string TempUrl,
-    int Duration) : IncomingSegment;
+    int Duration)
+     : IncomingSegment
+{
+}

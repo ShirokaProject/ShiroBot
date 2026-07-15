@@ -1,10 +1,13 @@
 name: Publish NuGet packages
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: Package version, for example 0.1.0
+        description: SDK package version, for example 0.7.0
         required: true
         type: string
 
@@ -36,22 +39,48 @@ jobs:
             $tag = '${{ github.ref_name }}'
             "value=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
           }
+          [xml]$modelProject = Get-Content .\ShiroBot.Model\ShiroBot.Model.csproj
+          $modelVersion = $modelProject.Project.PropertyGroup.Version | Select-Object -First 1
+          "model=$modelVersion" >> $env:GITHUB_OUTPUT
 
       - name: Restore
         run: dotnet restore .\Shirobot.slnx
 
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $expected = '${{ steps.version.outputs.value }}'
+          [xml]$sdkProject = Get-Content .\ShiroBot.SDK\ShiroBot.SDK.csproj
+          [xml]$avaloniaProject = Get-Content .\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj
+          $sdkVersion = $sdkProject.Project.PropertyGroup.Version | Select-Object -First 1
+          $avaloniaVersion = $avaloniaProject.Project.PropertyGroup.Version | Select-Object -First 1
+          if ($sdkVersion -ne $expected -or $avaloniaVersion -ne $expected) {
+            throw "Release version $expected does not match SDK=$sdkVersion and AvaloniaSdk=$avaloniaVersion."
+          }
+
+      - name: Build and verify
+        run: |
+          dotnet build .\Shirobot.slnx -c Release --no-restore
+          dotnet run --project .\ShiroBot.Verification\ShiroBot.Verification.csproj -c Release --no-build
+          dotnet run --project .\MilkyModelGenerator.Net\MilkyModelGenerator.Net.csproj -c Release -- --self-test
+
       - name: Pack SDK packages
         run: |
-          dotnet pack .\ShiroBot.Model\ShiroBot.Model.csproj -c Release -o artifacts\nuget --no-restore
-          dotnet pack .\ShiroBot.SDK\ShiroBot.SDK.csproj -c Release -o artifacts\nuget -p:PackageVersion=${{ steps.version.outputs.value }} --no-restore
-          dotnet pack .\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj -c Release -o artifacts\nuget -p:PackageVersion=${{ steps.version.outputs.value }} --no-restore
+          dotnet pack .\ShiroBot.Model\ShiroBot.Model.csproj -c Release -o artifacts\nuget --no-build --no-restore
+          dotnet pack .\ShiroBot.SDK\ShiroBot.SDK.csproj -c Release -o artifacts\nuget --no-build --no-restore
+          dotnet pack .\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj -c Release -o artifacts\nuget --no-build --no-restore
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nuget-packages
-          path: artifacts/nuget/*.nupkg
+          path: |
+            artifacts/nuget/*.nupkg
+            artifacts/nuget/*.snupkg
 
       - name: Push to NuGet.org
         if: ${{ env.NUGET_API_KEY != '' }}
-        run: dotnet nuget push artifacts\nuget\*.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: |
+          dotnet nuget push artifacts\nuget\ShiroBot.Model.${{ steps.version.outputs.model }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push artifacts\nuget\ShiroBot.SDK.${{ steps.version.outputs.value }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push artifacts\nuget\ShiroBot.AvaloniaSdk.${{ steps.version.outputs.value }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate

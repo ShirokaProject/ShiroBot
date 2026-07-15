@@ -103,7 +103,7 @@ protected override Task OnGroupMessageAsync(GroupIncomingMessage message)
 - `GroupDisbandEvent`
 - `BotOfflineEvent`
 
-插件的有效订阅由已注册命令路由、事件映射和重写的方法自动推断，不需要手写订阅位图。
+插件的有效订阅直接由已注册命令路由、事件映射和重写的方法对应的模型 `Type` 推断，不再经过有限的 flags 位图。Model 新增事件后，插件可以直接 `Events.Map<NewEvent>()`。
 
 ## 群路由限制
 

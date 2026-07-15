@@ -8,4 +8,7 @@ public sealed partial record GroupAdminChangeEvent(
     long GroupId,
     long UserId,
     long OperatorId,
-    bool IsSet) : Event;
+    bool IsSet)
+     : Event
+{
+}

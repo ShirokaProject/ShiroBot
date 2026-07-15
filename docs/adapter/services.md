@@ -53,8 +53,8 @@ public sealed class ExampleFileService : IFileService { }
 
 插件调用这些默认方法时会得到 `NotSupportedException`。这比返回伪造的成功结果更容易定位兼容性问题。
 
-::: warning 适配器 ABI 规则
-未来向 `IBotAdapter`、`IMessageService`、`IGroupService`、`IFriendService`、`IFileService`、`ISystemService` 或 `IEventService` 新增方法、属性或事件时，必须提供 default interface implementation。直接新增抽象成员会让旧适配器在运行时失去二进制兼容性。
+::: warning 适配器版本规则
+适配器必须针对宿主使用的 SDK 版本重新编译。`IEventService` 只保留统一的 `EventReceived(Event)` 事件，SDK 不再承诺旧适配器二进制兼容；插件 API 与 Model ABI 兼容策略不受影响。
 :::
 
 ## 系统服务最低建议

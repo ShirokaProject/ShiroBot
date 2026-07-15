@@ -8,4 +8,7 @@ public sealed partial record ImageIncomingSegment(
     int Width,
     int Height,
     string Summary,
-    ImageIncomingSegmentSubType SubType) : IncomingSegment;
+    ImageIncomingSegmentSubType SubType)
+     : IncomingSegment
+{
+}

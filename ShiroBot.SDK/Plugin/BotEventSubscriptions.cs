@@ -1,5 +1,8 @@
 namespace ShiroBot.SDK.Plugin;
 
+/// <summary>
+/// Legacy plugin ABI surface. The host uses concrete event types for subscriptions.
+/// </summary>
 [Flags]
 public enum BotEventSubscriptions
 {

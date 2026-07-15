@@ -9,4 +9,7 @@ public sealed partial record GroupJoinRequestEvent(
     long NotificationSeq,
     bool IsFiltered,
     long InitiatorId,
-    string Comment) : Event;
+    string Comment)
+     : Event
+{
+}

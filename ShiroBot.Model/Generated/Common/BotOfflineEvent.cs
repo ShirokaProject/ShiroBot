@@ -5,4 +5,7 @@ namespace ShiroBot.Model.Common;
 public sealed partial record BotOfflineEvent(
     long Time,
     long SelfId,
-    string Reason) : Event;
+    string Reason)
+     : Event
+{
+}

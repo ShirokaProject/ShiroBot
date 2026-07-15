@@ -86,7 +86,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nuget-packages
-          path: artifacts/nuget/*.nupkg
+          path: |
+            artifacts/nuget/*.nupkg
+            artifacts/nuget/*.snupkg
           if-no-files-found: error
 
       - name: Upload dashboard assets
@@ -239,6 +241,7 @@ jobs:
           path: |
             artifacts/archives/*
             artifacts/nuget/*.nupkg
+            artifacts/nuget/*.snupkg
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -248,4 +251,5 @@ jobs:
           files: |
             artifacts/archives/*
             artifacts/nuget/*.nupkg
+            artifacts/nuget/*.snupkg
           fail_on_unmatched_files: true

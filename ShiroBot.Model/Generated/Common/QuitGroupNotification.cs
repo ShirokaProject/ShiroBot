@@ -5,4 +5,7 @@ namespace ShiroBot.Model.Common;
 public sealed partial record QuitGroupNotification(
     long GroupId,
     long NotificationSeq,
-    long TargetUserId) : GroupNotification;
+    long TargetUserId)
+     : GroupNotification
+{
+}

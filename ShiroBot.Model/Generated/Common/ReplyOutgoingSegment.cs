@@ -3,4 +3,7 @@
 namespace ShiroBot.Model.Common;
 
 public sealed partial record ReplyOutgoingSegment(
-    long MessageSeq) : OutgoingSegment;
+    long MessageSeq)
+     : OutgoingSegment
+{
+}

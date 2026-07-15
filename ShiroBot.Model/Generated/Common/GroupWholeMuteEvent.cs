@@ -7,4 +7,7 @@ public sealed partial record GroupWholeMuteEvent(
     long SelfId,
     long GroupId,
     long OperatorId,
-    bool IsMute) : Event;
+    bool IsMute)
+     : Event
+{
+}

@@ -10,4 +10,7 @@ public sealed partial record FriendFileUploadEvent(
     string FileName,
     long FileSize,
     string FileHash,
-    bool IsSelf) : Event;
+    bool IsSelf)
+     : Event
+{
+}

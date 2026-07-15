@@ -7,4 +7,7 @@ public sealed partial record MarketFaceIncomingSegment(
     string EmojiId,
     string Key,
     string Summary,
-    string Url) : IncomingSegment;
+    string Url)
+     : IncomingSegment
+{
+}

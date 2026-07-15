@@ -4,4 +4,7 @@ namespace ShiroBot.Model.Common;
 
 public sealed partial record XmlIncomingSegment(
     int ServiceId,
-    string XmlPayload) : IncomingSegment;
+    string XmlPayload)
+     : IncomingSegment
+{
+}

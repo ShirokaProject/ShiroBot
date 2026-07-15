@@ -96,9 +96,11 @@ Logger.Error("鉴权失败");
 
 ## 连接生命周期
 
-当前 `IBotAdapter` 只有 `StartAsync()`，没有热卸载或 `StopAsync()` 接口。适配器通常与宿主进程同生命周期：
+`IBotAdapter` 提供默认 no-op 生命周期；需要连接或后台任务的适配器再重写：
 
 - `StartAsync()` 完成初始连接和鉴权。
+- `StopAsync()` 取消事件循环并关闭协议连接。
+- 没有初始化和清理工作的适配器可以不实现这两个方法。
 - 后台事件循环自行处理取消、断线和重连。
 - 致命错误应抛出，让宿主明确启动失败。
 - 可恢复错误应记录后退避重试。
@@ -107,7 +109,7 @@ Logger.Error("鉴权失败");
 
 ## 发布检查清单
 
-- `Name`、`BotAdapterAttribute.Id`、显示名称和程序集命名清晰稳定。
+- `BotAdapterAttribute.Id`、显示名称和程序集命名清晰稳定。
 - `BotAdapterAttribute.Version` 与发布版本一致。
 - 默认配置不包含真实凭据。
 - 至少完成登录信息与消息发送的端到端测试。
