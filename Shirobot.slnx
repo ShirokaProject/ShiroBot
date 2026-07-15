@@ -1,7 +1,9 @@
 <Solution>
   <Project Path="ShiroBot.Model/ShiroBot.Model.csproj" />
-  <Project Path="ShiroBot.SDK/ShiroBot.SDK.csproj" />
-  <Project Path="ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj" />
+  <Folder Name="/SDK/">
+    <Project Path="ShiroBot.SDK/ShiroBot.SDK.csproj" />
+    <Project Path="ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj" />
+  </Folder>
   <Project Path="ShiroBot.Verification/ShiroBot.Verification.csproj" />
   <Project Path="ShiroBot/ShiroBot.csproj" />
 </Solution>
