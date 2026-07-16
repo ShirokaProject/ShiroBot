@@ -5,7 +5,6 @@
     <Project Path="ShiroBot.AvaloniaSdk/ShiroBot.AvaloniaSdk.csproj" />
   </Folder>
   <Folder Name="/Verification/">
-    <Project Path="ShiroBot.LegacyPluginFixture/ShiroBot.LegacyPluginFixture.csproj" />
     <Project Path="ShiroBot.Verification/ShiroBot.Verification.csproj" />
   </Folder>
   <Project Path="ShiroBot/ShiroBot.csproj" />

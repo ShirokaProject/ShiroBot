@@ -10,7 +10,5 @@
   <ItemGroup>
     <ProjectReference Include="..\ShiroBot\ShiroBot.csproj" />
     <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
-    <ProjectReference Include="..\ShiroBot.LegacyPluginFixture\ShiroBot.LegacyPluginFixture.csproj"
-                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

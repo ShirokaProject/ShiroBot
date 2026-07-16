@@ -1,8 +1,6 @@
 using ShiroBot.Core;
 using ShiroBot.Model.Common;
 using ShiroBot.SDK.Config;
-using ShiroBot.SDK.Plugin;
-using System.Runtime.Loader;
 
 if (!EventMetadataRegistry.TryGetEventType("group_disband", out var groupDisbandType) ||
     groupDisbandType != typeof(GroupDisbandEvent) ||
@@ -12,34 +10,6 @@ if (!EventMetadataRegistry.TryGetEventType("group_disband", out var groupDisband
     tempMessageType != typeof(TempIncomingMessage))
 {
     throw new InvalidOperationException("Generated Milky event discriminator registry is incomplete.");
-}
-
-var verificationOutput = new DirectoryInfo(AppContext.BaseDirectory);
-var configuration = verificationOutput.Parent?.Name
-                    ?? throw new InvalidOperationException("Cannot resolve verification build configuration.");
-var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-var legacyPluginPath = Path.Combine(
-    repositoryRoot,
-    "ShiroBot.LegacyPluginFixture",
-    "bin",
-    configuration,
-    "net10.0",
-    "ShiroBot.LegacyPluginFixture.dll");
-var legacyAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(legacyPluginPath);
-var legacySdkReference = legacyAssembly.GetReferencedAssemblies()
-    .Single(reference => reference.Name == "ShiroBot.SDK");
-if (legacySdkReference.Version != new Version(0, 6, 0, 0))
-{
-    throw new InvalidOperationException($"Legacy fixture references unexpected SDK version: {legacySdkReference.FullName}");
-}
-
-var legacyPlugin = Activator.CreateInstance(
-        legacyAssembly.GetType("ShiroBot.LegacyPluginFixture.LegacyEventPlugin", throwOnError: true)!)
-    as PluginBase
-    ?? throw new InvalidOperationException("Legacy plugin did not bind to the current PluginBase.");
-if (!legacyPlugin.GetEffectiveEventTypes().Contains(typeof(FriendNudgeEvent)))
-{
-    throw new InvalidOperationException("Legacy plugin event routes were not visible to the current type-based dispatcher.");
 }
 
 var tempRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));

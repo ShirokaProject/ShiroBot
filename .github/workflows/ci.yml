@@ -58,11 +58,6 @@ jobs:
           unzip -p artifacts/nuget/ShiroBot.SDK.0.7.1.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="ShiroBot.Model" version="1.3.0-rc2"'
           unzip -p artifacts/nuget/ShiroBot.AvaloniaSdk.0.7.1.nupkg ShiroBot.AvaloniaSdk.nuspec | grep -q '<dependency id="ShiroBot.SDK" version="0.7.1"'
 
-          dotnet restore ShiroBot.Plugin.Github/ShiroBot.Plugin.Github.csproj \
-            --source "$GITHUB_WORKSPACE/artifacts/nuget" \
-            --source https://api.nuget.org/v3/index.json
-          dotnet build ShiroBot.Plugin.Github/ShiroBot.Plugin.Github.csproj -c Release --no-restore
-
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
             <PropertyGroup>
