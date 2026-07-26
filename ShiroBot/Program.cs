@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Runtime.Loader;
 using Avalonia;
@@ -53,6 +54,32 @@ public static class Program
         IBotAdapter? adapter = null;
         DllLoader<IBotAdapter>? adapterLoader = null;
         var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
+        var shutdownRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        PosixSignalRegistration? sigintRegistration = null;
+        PosixSignalRegistration? sigtermRegistration = null;
+
+        void RequestShutdown() => shutdownRequested.TrySetResult();
+
+        ConsoleCancelEventHandler cancelKeyPressHandler = (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            RequestShutdown();
+        };
+        Console.CancelKeyPress += cancelKeyPressHandler;
+
+        if (!OperatingSystem.IsWindows())
+        {
+            sigintRegistration = PosixSignalRegistration.Create(PosixSignal.SIGINT, context =>
+            {
+                context.Cancel = true;
+                RequestShutdown();
+            });
+            sigtermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+            {
+                context.Cancel = true;
+                RequestShutdown();
+            });
+        }
 
         try
         {
@@ -236,7 +263,11 @@ public static class Program
                     hostEventDispatcher,
                     groupRoutePolicy);
 
-                await exitRequested.Task;
+                var completedTask = await Task.WhenAny(exitRequested.Task, shutdownRequested.Task);
+                if (completedTask == shutdownRequested.Task)
+                {
+                    CH.Info("收到进程停止信号，正在安全退出...");
+                }
                 return;
             }
 
@@ -252,7 +283,8 @@ public static class Program
                 hostEventDispatcher,
                 groupRoutePolicy);
 
-            await Task.Delay(Timeout.Infinite);
+            await shutdownRequested.Task;
+            CH.Info("收到进程停止信号，正在安全退出...");
         }
         catch (Exception ex)
         {
@@ -262,19 +294,32 @@ public static class Program
         }
         finally
         {
+            Console.CancelKeyPress -= cancelKeyPressHandler;
+            sigintRegistration?.Dispose();
+            sigtermRegistration?.Dispose();
+
             pluginManager?.BeginShutdown();
             configWatcher?.Dispose();
 
             if (hostHttpServer is not null)
             {
-                await hostHttpServer.DisposeAsync();
+                try
+                {
+                    await hostHttpServer.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    CH.Warning("停止宿主 API 服务时出现异常: " + ex.Message);
+                }
             }
 
             if (adapter is not null)
             {
                 try
                 {
-                    await adapter.StopAsync().ConfigureAwait(false);
+                    await adapter.StopAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(5))
+                        .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {

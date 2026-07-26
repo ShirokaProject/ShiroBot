@@ -19,7 +19,9 @@ internal sealed record PluginProbeInfo(
     string? Author,
     PluginCategory Category,
     string? GithubRepo,
-    bool IsPluginSingleFile);
+    bool IsPluginSingleFile,
+    IReadOnlyList<string> SharedAssemblies,
+    IReadOnlyList<string> Dependencies);
 
 internal sealed record PluginProbeCacheEntry(long Length, DateTime LastWriteTimeUtc, PluginProbeInfo? Info);
 
@@ -35,6 +37,7 @@ internal sealed class PluginManager(
     private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTime> _suppressedWatcherPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly PluginServiceRegistry _serviceRegistry = new();
     private FileSystemWatcher? _pluginRootWatcher;
     private string? _watchedPluginRoot;
     private bool _isShuttingDown;
@@ -396,6 +399,17 @@ internal sealed class PluginManager(
 
             if (pluginHandle is not null)
             {
+                var consumers = _serviceRegistry.GetConsumers(pluginHandle.Name)
+                    .Where(IsPluginLoaded)
+                    .ToArray();
+                if (consumers.Length > 0)
+                {
+                    CH.Warning(
+                        $"无法卸载插件 {pluginHandle.Name}，以下已加载插件正在使用它提供的服务: " +
+                        string.Join(", ", consumers));
+                    return Task.CompletedTask;
+                }
+
                 _loadedPlugins.Remove(pluginHandle);
                 hostEventDispatcher.UnregisterPlugin(pluginHandle);
                 runtimeState.SetPluginsCount(_loadedPlugins.Count);
@@ -561,20 +575,20 @@ internal sealed class PluginManager(
         bool isInitialBoot = false)
     {
         _ = isInitialBoot; // 保留参数以兼容外部调用约定，已不再使用两阶段加载。
-        await Parallel.ForEachAsync(
-            pluginDlls,
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 2, 8)
-            },
-            async (dll, _) =>
-                await LoadPluginAsync(dll, hostEventDispatcher, routePolicy).ConfigureAwait(false));
+        var orderedPlugins = PrepareSharedContractAssemblies(PreparePluginLoadOrder(pluginDlls));
+
+        foreach (var plugin in orderedPlugins)
+        {
+            await LoadPluginAsync(plugin.AssemblyPath, hostEventDispatcher, routePolicy, plugin.Info)
+                .ConfigureAwait(false);
+        }
     }
 
     private async Task LoadPluginAsync(
         string dll,
         HostEventDispatcher hostEventDispatcher,
-        PluginRouteConfig routePolicy)
+        PluginRouteConfig routePolicy,
+        PluginProbeInfo? preparedPluginInfo = null)
     {
         DllLoader<IBotPlugin>? loader = null;
         IBotPlugin? plugin = null;
@@ -583,7 +597,7 @@ internal sealed class PluginManager(
         try
         {
             var actualDllPath = Path.GetFullPath(dll);
-            var pluginInfo = ProbePluginInfo(actualDllPath);
+            var pluginInfo = preparedPluginInfo ?? ProbePluginInfo(actualDllPath);
 
             lock (PluginLifecycleLock)
             {
@@ -786,6 +800,130 @@ internal sealed class PluginManager(
     private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null) =>
         new(collectible: true, shared: SharedAssemblies, dependencies: dependencies);
 
+    private IReadOnlyList<PreparedPlugin> PreparePluginLoadOrder(IReadOnlyList<string> pluginDlls)
+    {
+        var plugins = new Dictionary<string, PreparedPlugin>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in pluginDlls)
+        {
+            var fullPath = Path.GetFullPath(path);
+            var info = TryProbePluginInfoCached(fullPath);
+            if (info is null)
+            {
+                CH.Warning($"DLL 不包含有效插件入口，已跳过: {fullPath}");
+                continue;
+            }
+
+            if (!plugins.TryAdd(info.Id, new PreparedPlugin(fullPath, info)))
+            {
+                CH.Warning($"发现重复插件 ID，已跳过: {info.Id} ({fullPath})");
+            }
+        }
+
+        var ordered = new List<PreparedPlugin>(plugins.Count);
+        var states = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var plugin in plugins.Values.OrderBy(plugin => plugin.Info.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            Visit(plugin, []);
+        }
+
+        return ordered;
+
+        bool Visit(PreparedPlugin plugin, List<string> chain)
+        {
+            if (states.TryGetValue(plugin.Info.Id, out var state))
+            {
+                if (state == 2) return true;
+                if (state == 3) return false;
+                if (state == 1)
+                {
+                    CH.Error($"检测到插件依赖循环: {string.Join(" -> ", chain.Append(plugin.Info.Id))}");
+                    return false;
+                }
+            }
+
+            states[plugin.Info.Id] = 1;
+            chain.Add(plugin.Info.Id);
+            var valid = true;
+            foreach (var dependencyId in plugin.Info.Dependencies)
+            {
+                if (plugins.TryGetValue(dependencyId, out var dependency))
+                {
+                    valid &= Visit(dependency, chain);
+                    continue;
+                }
+
+                lock (PluginLifecycleLock)
+                {
+                    if (!IsPluginLoaded(dependencyId))
+                    {
+                        CH.Error($"插件 {plugin.Info.Id} 缺少依赖插件 {dependencyId}，已跳过加载。");
+                        valid = false;
+                    }
+                }
+            }
+
+            chain.RemoveAt(chain.Count - 1);
+            states[plugin.Info.Id] = valid ? 2 : 3;
+            if (valid)
+            {
+                ordered.Add(plugin);
+            }
+
+            return valid;
+        }
+    }
+
+    private IReadOnlyList<PreparedPlugin> PrepareSharedContractAssemblies(IReadOnlyList<PreparedPlugin> plugins)
+    {
+        var failedPluginIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var prepared = new List<PreparedPlugin>(plugins.Count);
+        foreach (var plugin in plugins)
+        {
+            if (plugin.Info.Dependencies.Any(failedPluginIds.Contains))
+            {
+                failedPluginIds.Add(plugin.Info.Id);
+                CH.Error($"插件 {plugin.Info.Id} 的依赖未能准备共享契约，已跳过加载。");
+                continue;
+            }
+
+            try
+            {
+                foreach (var assemblyName in plugin.Info.SharedAssemblies)
+                {
+                    var assemblyPath = ResolveSharedContractAssemblyPath(plugin.AssemblyPath, assemblyName)
+                        ?? throw new FileNotFoundException(
+                            $"Shared contract assembly {assemblyName}.dll declared by {plugin.Info.Id} was not found beside the plugin.");
+                    SharedAssemblies.RegisterDefaultAssembly(assemblyPath);
+                }
+
+                prepared.Add(plugin);
+            }
+            catch (Exception ex)
+            {
+                failedPluginIds.Add(plugin.Info.Id);
+                CH.Error($"插件 {plugin.Info.Id} 的共享契约准备失败，已跳过加载: {ex.Message}");
+            }
+        }
+
+        return prepared;
+    }
+
+    private string? ResolveSharedContractAssemblyPath(string pluginAssemblyPath, string assemblyName)
+    {
+        var fileName = assemblyName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            ? assemblyName
+            : assemblyName + ".dll";
+        var candidates = new[]
+        {
+            Path.Combine(Path.GetDirectoryName(pluginAssemblyPath)!, fileName),
+            Path.Combine(PluginRootPath, fileName),
+            Path.Combine(AppContext.BaseDirectory, fileName)
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
     private static async Task RollbackFailedPluginLoadAsync(
         string pluginName,
         IBotPlugin? plugin,
@@ -845,7 +983,8 @@ internal sealed class PluginManager(
             pluginName,
             pluginDirectory,
             groupId => routePolicy.AllowsGroup(pluginName, groupId),
-            logHub);
+            logHub,
+            _serviceRegistry);
 
     private string GetStablePluginDirectory(string pluginName) =>
         Path.Combine(PluginRootPath, pluginName);
@@ -1028,7 +1167,9 @@ internal sealed class PluginManager(
                         pluginAttribute.Author,
                         pluginAttribute.Category ?? PluginCategory.Other,
                         pluginAttribute.GithubRepo,
-                        pluginAttribute.IsPluginSingleFile ?? false);
+                        pluginAttribute.IsPluginSingleFile ?? false,
+                        SplitList(pluginAttribute.SharedAssemblies),
+                        SplitList(pluginAttribute.Dependencies));
                 }
             }
 
@@ -1069,6 +1210,8 @@ internal sealed class PluginManager(
         PluginCategory? category = null;
         string? githubRepo = null;
         bool? isPluginSingleFile = null;
+        string? sharedAssemblies = null;
+        string? dependencies = null;
 
         var namedArgumentCount = blob.ReadUInt16();
         for (var i = 0; i < namedArgumentCount; i++)
@@ -1101,15 +1244,38 @@ internal sealed class PluginManager(
                 case nameof(BotPluginAttribute.IsPluginSingleFile) when typeCode == SerializedTypeBoolean:
                     isPluginSingleFile = blob.ReadBoolean();
                     break;
+                case nameof(BotPluginAttribute.SharedAssemblies) when typeCode == SerializedTypeString:
+                    sharedAssemblies = blob.ReadSerializedString();
+                    break;
+                case nameof(BotPluginAttribute.Dependencies) when typeCode == SerializedTypeString:
+                    dependencies = blob.ReadSerializedString();
+                    break;
                 default:
                     if (!TrySkipSerializedFixedArgument(ref blob, typeCode)) return false;
                     break;
             }
         }
 
-        attribute = new RawBotPluginAttribute(id, name, version, description, author, category, githubRepo, isPluginSingleFile);
+        attribute = new RawBotPluginAttribute(
+            id,
+            name,
+            version,
+            description,
+            author,
+            category,
+            githubRepo,
+            isPluginSingleFile,
+            sharedAssemblies,
+            dependencies);
         return true;
     }
+
+    private static IReadOnlyList<string> SplitList(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
     private static bool TrySkipSerializedFixedArgument(ref BlobReader blob, byte typeCode)
     {
@@ -1212,5 +1378,9 @@ internal sealed class PluginManager(
         string? Author,
         PluginCategory? Category,
         string? GithubRepo,
-        bool? IsPluginSingleFile);
+        bool? IsPluginSingleFile,
+        string? SharedAssemblies,
+        string? Dependencies);
+
+    private sealed record PreparedPlugin(string AssemblyPath, PluginProbeInfo Info);
 }

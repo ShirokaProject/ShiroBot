@@ -15,6 +15,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
     public ISystemContext System => BotContext.System;
     public IUpdater Updater => BotContext.Updater;
     public IWebHostContext WebHost => BotContext.WebHost;
+    public IPluginServices Services { get; }
     public string PluginDirectory { get; }
     public IConfigContext Config { get; private set; }
     public IReadOnlyList<long> OwnerList => BotContext.OwnerList;
@@ -29,12 +30,14 @@ internal sealed class PluginContext : IBotContext, IDisposable
         string pluginName,
         string pluginDirectory,
         Func<long, bool> groupRouteFilter,
-        HostLogHub logHub)
+        HostLogHub logHub,
+        PluginServiceRegistry serviceRegistry)
     {
         BotContext = botContext;
         _pluginName = pluginName;
         Message = botContext.CreatePluginMessageContext(pluginName);
         Logger = new ConsoleLogger($"[Plugin:{pluginName}]", logHub);
+        Services = new PluginServiceScope(serviceRegistry, pluginName);
         PluginDirectory = Path.GetFullPath(pluginDirectory);
         Directory.CreateDirectory(PluginDirectory);
         Config = ConfigContext.ForPlugin(Path.Combine(PluginDirectory, "config.toml"));
@@ -43,6 +46,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
     public void Dispose()
     {
         DetachExternalCallbacks();
+        ((IDisposable)Services).Dispose();
         Config = null!;
     }
 

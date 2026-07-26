@@ -1,6 +1,7 @@
 using ShiroBot.Core;
 using ShiroBot.Model.Common;
 using ShiroBot.SDK.Config;
+using ShiroBot.Hosting;
 
 if (!EventMetadataRegistry.TryGetEventType("group_disband", out var groupDisbandType) ||
     groupDisbandType != typeof(GroupDisbandEvent) ||
@@ -11,6 +12,32 @@ if (!EventMetadataRegistry.TryGetEventType("group_disband", out var groupDisband
 {
     throw new InvalidOperationException("Generated Milky event discriminator registry is incomplete.");
 }
+
+var serviceRegistry = new PluginServiceRegistry();
+using var providerServices = new PluginServiceScope(serviceRegistry, "provider");
+using var consumerServices = new PluginServiceScope(serviceRegistry, "consumer");
+var verificationService = new VerificationService();
+providerServices.RegisterSingleton<IVerificationService>(verificationService);
+
+if (!ReferenceEquals(consumerServices.GetRequiredService<IVerificationService>(), verificationService) ||
+    !serviceRegistry.GetConsumers("provider").SequenceEqual(["consumer"]))
+{
+    throw new InvalidOperationException("Plugin service registration or dependency tracking failed.");
+}
+
+consumerServices.Dispose();
+if (serviceRegistry.GetConsumers("provider").Count != 0)
+{
+    throw new InvalidOperationException("Plugin service consumer cleanup failed.");
+}
+
+providerServices.Dispose();
+if (serviceRegistry.GetService("consumer", typeof(IVerificationService)) is not null)
+{
+    throw new InvalidOperationException("Plugin service provider cleanup failed.");
+}
+
+Console.WriteLine("Plugin service registry verification passed.");
 
 var tempRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
 var configPath = Path.Combine(tempRoot, "config.toml");
@@ -71,3 +98,7 @@ internal sealed class VerificationConfig
     [ConfigField("Output format", Options = ["compact", "detailed"], Placeholder = "compact")]
     public string OutputMode { get; set; } = "compact";
 }
+
+internal interface IVerificationService;
+
+internal sealed class VerificationService : IVerificationService;

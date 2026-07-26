@@ -13,12 +13,13 @@ public interface IBotContext
     public IUpdater Updater { get; }
     public IConfigContext Config { get; }
     public IWebHostContext WebHost { get; }
+    public IPluginServices Services { get; }
     public string PluginDirectory { get; }
     public IReadOnlyList<long> OwnerList { get; }
     public IReadOnlyList<long> AdminList { get; }
 
     /// <summary>
-    /// 由 library plugin 提供的渲染服务。没有任何 library plugin 注册过时为 null。
+    /// 由宿主提供的渲染服务。渲染集成未启用时为 null。
     /// </summary>
     public IRenderContext? Render { get; }
 

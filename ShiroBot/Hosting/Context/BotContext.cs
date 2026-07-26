@@ -38,7 +38,7 @@ internal sealed class BotContext
     public IReadOnlyList<long> AdminList => Volatile.Read(ref _adminList);
 
     /// <summary>
-    /// 由 library plugin 注册的渲染服务。没有 library plugin 提供时为 null。
+    /// 由宿主渲染集成提供的服务。渲染集成未启用时为 null。
     /// </summary>
     public IRenderContext? Renderer => Volatile.Read(ref _renderer);
 

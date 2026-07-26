@@ -3,6 +3,7 @@
     <_ShiroBotILRepackTaskAssembly>$(MSBuildThisFileDirectory)..\tools\ILRepack.Lib.MSBuild.Task.dll</_ShiroBotILRepackTaskAssembly>
     <_ShiroBotNativeManifestFile>$(IntermediateOutputPath)ShiroBot.PluginRuntimeManifest.json</_ShiroBotNativeManifestFile>
     <_ShiroBotPrimaryAssembly>$(IntermediateOutputPath)$(TargetFileName)</_ShiroBotPrimaryAssembly>
+    <_ShiroBotMergedAssembly>$(IntermediateOutputPath)shirobot-bundle\$(TargetFileName)</_ShiroBotMergedAssembly>
   </PropertyGroup>
 
   <UsingTask TaskName="ShiroBotGenerateNativeManifest"
@@ -301,19 +302,18 @@
       <Output TaskParameter="Assemblies" ItemName="_ShiroBotMergeAssembly" />
     </ShiroBotFilterMergeAssemblies>
 
-    <PropertyGroup Condition="'$(_ShiroBotIsPluginAssembly)' == 'true' and '@(_ShiroBotMergeAssembly)' != ''">
-      <_ShiroBotMergedAssembly>$(IntermediateOutputPath)shirobot-bundle\$(TargetFileName)</_ShiroBotMergedAssembly>
-    </PropertyGroup>
+    <Delete Files="$(_ShiroBotMergedAssembly)"
+            Condition="'$(_ShiroBotIsPluginAssembly)' != 'true' or '@(_ShiroBotMergeAssembly)' == ''" />
 
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_ShiroBotMergedAssembly)'))"
-             Condition="'$(_ShiroBotMergedAssembly)' != ''" />
+             Condition="'$(_ShiroBotIsPluginAssembly)' == 'true' and '@(_ShiroBotMergeAssembly)' != ''" />
 
-    <ItemGroup Condition="'$(_ShiroBotMergedAssembly)' != ''">
+    <ItemGroup Condition="'$(_ShiroBotIsPluginAssembly)' == 'true' and '@(_ShiroBotMergeAssembly)' != ''">
       <_ShiroBotILRepackInput Include="$(_ShiroBotPrimaryAssembly)" />
       <_ShiroBotILRepackInput Include="@(_ShiroBotMergeAssembly)" />
     </ItemGroup>
 
-    <ILRepack Condition="'$(_ShiroBotMergedAssembly)' != ''"
+    <ILRepack Condition="'$(_ShiroBotIsPluginAssembly)' == 'true' and '@(_ShiroBotMergeAssembly)' != ''"
               InputAssemblies="@(_ShiroBotILRepackInput)"
               OutputFile="$(_ShiroBotMergedAssembly)"
               TargetKind="SameAsPrimaryAssembly"
@@ -323,11 +323,6 @@
               DebugInfo="false"
               AllowDuplicateResources="true" />
 
-    <Copy Condition="'$(_ShiroBotMergedAssembly)' != ''"
-          SourceFiles="$(_ShiroBotMergedAssembly)"
-          DestinationFiles="$(_ShiroBotPrimaryAssembly)"
-          OverwriteReadOnlyFiles="true" />
-
     <!-- The merged managed assemblies and deferred native assets must not be copied beside the plugin. -->
     <ItemGroup Condition="'$(_ShiroBotIsPluginAssembly)' == 'true'">
       <ReferenceCopyLocalPaths Remove="@(_ShiroBotMergeAssembly)" />
@@ -336,6 +331,23 @@
                                     Condition="'%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native'" />
       <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" />
     </ItemGroup>
+  </Target>
+
+  <Target Name="CopyShiroBotPluginBundleToOutput"
+          AfterTargets="CopyFilesToOutputDirectory"
+          BeforeTargets="RemoveShiroBotPluginDependencyFile"
+          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true' and Exists('$(_ShiroBotMergedAssembly)')">
+    <Copy SourceFiles="$(_ShiroBotMergedAssembly)"
+          DestinationFiles="$(TargetPath)"
+          OverwriteReadOnlyFiles="true" />
+  </Target>
+
+  <Target Name="CopyShiroBotPluginBundleToPublish"
+          AfterTargets="CopyFilesToPublishDirectory"
+          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and Exists('$(_ShiroBotMergedAssembly)')">
+    <Copy SourceFiles="$(_ShiroBotMergedAssembly)"
+          DestinationFiles="$(PublishDir)$(TargetFileName)"
+          OverwriteReadOnlyFiles="true" />
   </Target>
 
   <Target Name="RemoveShiroBotPluginDependencyFile"
@@ -360,6 +372,7 @@
           BeforeTargets="CopyFilesToPublishDirectory"
           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
     <ItemGroup>
+      <ResolvedFileToPublish Remove="@(_ShiroBotMergeAssembly)" />
       <ResolvedFileToPublish Remove="$(ProjectDepsFilePath);@(_ShiroBotHostSharedOutputAsset)" />
     </ItemGroup>
   </Target>

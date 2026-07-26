@@ -3,13 +3,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO.Compression;
-using System.Net.WebSockets;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
@@ -2190,7 +2188,13 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await app.StopAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
-        await app.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            await app.StopAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+        }
+        finally
+        {
+            await app.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

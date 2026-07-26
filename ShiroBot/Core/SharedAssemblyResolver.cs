@@ -4,14 +4,14 @@ using System.Runtime.Loader;
 namespace ShiroBot.Core;
 
 /// <summary>
-/// 共享程序集解析表。Library plugin 加载完成后把它的 ALC + 想共享的程序集前缀注册进来；
-/// feature plugin 的 ALC 在解析时第一步就查这里，命中就直接复用 library 的程序集，
-/// 这样 feature plugin import 的 Avalonia 类型和 library plugin 内部用的是同一份 Type。
+/// 共享程序集解析表。宿主程序集前缀和动态插件契约都在这里注册；
+/// 插件 ALC 在解析时优先查询该表，确保所有插件看到同一个共享 Type。
 /// </summary>
 public sealed class SharedAssemblyResolver
 {
     private readonly Lock _lock = new();
     private readonly List<Entry> _entries = new();
+    private readonly Dictionary<string, Assembly> _assemblies = new(StringComparer.OrdinalIgnoreCase);
 
     public void Register(string[] prefixes, AssemblyLoadContext alc)
     {
@@ -39,6 +39,12 @@ public sealed class SharedAssemblyResolver
         Entry[] snapshot;
         lock (_lock)
         {
+            if (_assemblies.TryGetValue(name.Name, out var exactAssembly))
+            {
+                EnsureCompatible(name, exactAssembly.GetName(), exactAssembly.Location);
+                return exactAssembly;
+            }
+
             snapshot = _entries.ToArray();
         }
 
@@ -70,6 +76,50 @@ public sealed class SharedAssemblyResolver
         }
 
         return null;
+    }
+
+    public Assembly RegisterDefaultAssembly(string assemblyPath)
+    {
+        var fullPath = Path.GetFullPath(assemblyPath);
+        var requestedName = AssemblyName.GetAssemblyName(fullPath);
+        if (string.IsNullOrWhiteSpace(requestedName.Name))
+        {
+            throw new InvalidOperationException($"Assembly has no simple name: {fullPath}");
+        }
+
+        lock (_lock)
+        {
+            if (_assemblies.TryGetValue(requestedName.Name, out var registered))
+            {
+                EnsureCompatible(requestedName, registered.GetName(), fullPath);
+                return registered;
+            }
+
+            var loaded = AssemblyLoadContext.Default.Assemblies.FirstOrDefault(assembly =>
+                string.Equals(assembly.GetName().Name, requestedName.Name, StringComparison.OrdinalIgnoreCase));
+            if (loaded is not null)
+            {
+                EnsureCompatible(requestedName, loaded.GetName(), fullPath);
+                _assemblies.Add(requestedName.Name, loaded);
+                return loaded;
+            }
+
+            var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(fullPath);
+            _assemblies.Add(requestedName.Name, assembly);
+            return assembly;
+        }
+    }
+
+    private static void EnsureCompatible(AssemblyName requested, AssemblyName loaded, string requestedPath)
+    {
+        if (AssemblyName.ReferenceMatchesDefinition(requested, loaded) && requested.Version == loaded.Version)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Shared assembly conflict for {requested.Name}: {loaded.FullName} is already loaded, " +
+            $"but {requested.FullName} was requested from {requestedPath}.");
     }
 
     private static Assembly? TryGetLoadedAssembly(AssemblyLoadContext alc, AssemblyName name)
