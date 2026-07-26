@@ -123,6 +123,24 @@ public static class Program
             }
 
             CH.Log("开始加载适配器: " + adapterPath);
+
+            // 适配器声明的平台契约程序集(BotAdapterAttribute.SharedAssemblies)
+            // 必须先进 Default ALC,插件与适配器才能共享同一份类型。
+            foreach (var contractName in AdapterContractProbe.ReadSharedAssemblies(adapterPath))
+            {
+                var contractPath = Path.Combine(
+                    Path.GetDirectoryName(adapterPath) ?? adapterRoot,
+                    contractName + ".dll");
+                if (!File.Exists(contractPath))
+                {
+                    throw new FileNotFoundException(
+                        $"适配器声明的共享契约程序集 {contractName}.dll 未随适配器一起分发。", contractPath);
+                }
+
+                sharedAssemblies.RegisterDefaultAssembly(contractPath);
+                CH.Log($"已注册适配器共享契约: {contractName}");
+            }
+
             var adapterDependencies = await PluginRuntimeDependencyManager.PrepareAsync(
                 adapterPath,
                 Path.GetDirectoryName(adapterPath) ?? adapterRoot).ConfigureAwait(false);

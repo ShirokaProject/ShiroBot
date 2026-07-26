@@ -12,4 +12,12 @@ public sealed class BotAdapterAttribute(string id) : Attribute
     public string? Protocol { get; init; }
     public string? ProtocolVersionRange { get; init; }
     public bool IsSingleFile { get; init; }
+
+    /// <summary>
+    /// Semicolon-separated assembly names containing platform contracts shared with plugins
+    /// (e.g. "ShiroBot.Discord.Contracts"). The contract DLLs must be shipped beside the
+    /// adapter and are loaded into the Default ALC before the adapter itself, so plugins and
+    /// the adapter observe identical types when probing extensions or casting Raw payloads.
+    /// </summary>
+    public string? SharedAssemblies { get; init; }
 }
