@@ -117,6 +117,7 @@ public sealed record QqGroupFolder
     public string ParentFolderId { get; init; } = "/";
     public required string FolderName { get; init; }
     public DateTimeOffset? CreatedTime { get; init; }
+    public DateTimeOffset? LastModifiedTime { get; init; }
     public long CreatorId { get; init; }
     public int FileCount { get; init; }
 }
