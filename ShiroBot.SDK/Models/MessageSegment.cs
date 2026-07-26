@@ -58,7 +58,11 @@ public sealed record AudioSegment(string Uri) : ResourceSegment(Uri)
 }
 
 /// <summary>视频。</summary>
-public sealed record VideoSegment(string Uri) : ResourceSegment(Uri);
+public sealed record VideoSegment(string Uri) : ResourceSegment(Uri)
+{
+    /// <summary>封面缩略图 URI,发送时平台支持则使用。</summary>
+    public string? ThumbnailUri { get; init; }
+}
 
 /// <summary>文件。</summary>
 public sealed record FileSegment(string Uri) : ResourceSegment(Uri)
