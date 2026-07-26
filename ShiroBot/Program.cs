@@ -234,7 +234,8 @@ public static class Program
                 groupRoutePolicy,
                 webHostContext,
                 runtimeState,
-                logHub);
+                logHub,
+                botContext);
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
