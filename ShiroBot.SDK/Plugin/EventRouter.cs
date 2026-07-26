@@ -1,4 +1,4 @@
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.SDK.Plugin;
 
@@ -10,13 +10,13 @@ public sealed class EventRouter
     public IReadOnlyCollection<Type> EventTypes => _routes.Select(route => route.EventType).Distinct().ToArray();
 
     public void Map<TEvent>(Func<TEvent, Task> handler)
-        where TEvent : Event
+        where TEvent : BotEvent
     {
         MapWhen<TEvent>(_ => true, handler);
     }
 
     public void MapWhen<TEvent>(Func<TEvent, bool> predicate, Func<TEvent, Task> handler)
-        where TEvent : Event
+        where TEvent : BotEvent
     {
         ArgumentNullException.ThrowIfNull(predicate);
         ArgumentNullException.ThrowIfNull(handler);
@@ -27,14 +27,21 @@ public sealed class EventRouter
             evt => handler((TEvent)evt)));
     }
 
+    /// <summary>按 Kind 订阅平台特有事件。</summary>
+    public void MapPlatform(string kind, Func<PlatformEvent, Task> handler)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        MapWhen<PlatformEvent>(evt => string.Equals(evt.Kind, kind, StringComparison.OrdinalIgnoreCase), handler);
+    }
+
     public bool HasRoute<TEvent>()
-        where TEvent : Event
+        where TEvent : BotEvent
     {
         var eventType = typeof(TEvent);
         return _routes.Any(route => route.EventType == eventType);
     }
 
-    public async Task<bool> DispatchAsync(Event evt)
+    public async Task<bool> DispatchAsync(BotEvent evt)
     {
         var matched = false;
 
@@ -54,6 +61,6 @@ public sealed class EventRouter
 
     private sealed record RouteEntry(
         Type EventType,
-        Func<Event, bool> Predicate,
-        Func<Event, Task> Handler);
+        Func<BotEvent, bool> Predicate,
+        Func<BotEvent, Task> Handler);
 }

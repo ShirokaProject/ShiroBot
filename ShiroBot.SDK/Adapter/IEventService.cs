@@ -1,8 +1,8 @@
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.SDK.Adapter;
 
 public interface IEventService
 {
-    event Func<Event, Task> EventReceived;
+    event Func<BotEvent, Task> EventReceived;
 }

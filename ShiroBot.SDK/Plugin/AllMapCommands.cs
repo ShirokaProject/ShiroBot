@@ -1,36 +1,39 @@
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.SDK.Plugin;
 
+/// <summary>
+/// 同时注册到群聊与私聊两个命令路由器的便捷入口。
+/// </summary>
 public sealed class AllMapCommands(
-    CommandRouter<GroupIncomingMessage> groupCommands,
-    CommandRouter<FriendIncomingMessage> friendCommands)
+    CommandRouter<MessageEvent> groupCommands,
+    CommandRouter<MessageEvent> directCommands)
 {
-    public void Map(string prefix, Func<IncomingMessage, Task> handler) =>
+    public void Map(string prefix, Func<MessageEvent, Task> handler) =>
         MapPrefix(prefix, handler);
 
-    public void MapExact(string command, Func<IncomingMessage, Task> handler)
+    public void MapExact(string command, Func<MessageEvent, Task> handler)
     {
-        groupCommands.MapExact(command, message => handler(message));
-        friendCommands.MapExact(command, message => handler(message));
+        groupCommands.MapExact(command, handler);
+        directCommands.MapExact(command, handler);
     }
 
-    public void MapPrefix(string prefix, Func<IncomingMessage, Task> handler)
+    public void MapPrefix(string prefix, Func<MessageEvent, Task> handler)
     {
-        groupCommands.MapPrefix(prefix, message => handler(message));
-        friendCommands.MapPrefix(prefix, message => handler(message));
+        groupCommands.MapPrefix(prefix, handler);
+        directCommands.MapPrefix(prefix, handler);
     }
 
-    public void MapAll(Func<IncomingMessage, Task> handler)
+    public void MapAll(Func<MessageEvent, Task> handler)
     {
-        groupCommands.MapAll(message => handler(message));
-        friendCommands.MapAll(message => handler(message));
+        groupCommands.MapAll(handler);
+        directCommands.MapAll(handler);
     }
 
-    public void MapWhen(Func<IncomingMessage, bool> predicate, Func<IncomingMessage, Task> handler)
+    public void MapWhen(Func<MessageEvent, bool> predicate, Func<MessageEvent, Task> handler)
     {
         ArgumentNullException.ThrowIfNull(predicate);
-        groupCommands.MapWhen(message => predicate(message), message => handler(message));
-        friendCommands.MapWhen(message => predicate(message), message => handler(message));
+        groupCommands.MapWhen(predicate, handler);
+        directCommands.MapWhen(predicate, handler);
     }
 }

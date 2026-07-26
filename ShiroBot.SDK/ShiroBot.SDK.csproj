@@ -32,10 +32,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\ShiroBot.Model\ShiroBot.Model.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
       <None Include="README.md" Pack="true" PackagePath="\" />
       <None Include="buildTransitive\ShiroBot.SDK.props"
             Pack="true"

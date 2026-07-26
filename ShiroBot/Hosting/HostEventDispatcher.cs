@@ -1,5 +1,5 @@
 using ShiroBot.Core;
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting;
@@ -11,11 +11,11 @@ internal sealed class HostEventDispatcher(
     HostLogHub logHub)
 {
     private readonly Dictionary<string, List<LoadedPluginHandle>> _groupMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, List<LoadedPluginHandle>> _friendMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<LoadedPluginHandle>> _directMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<LoadedPluginHandle> _groupMessageBroadcastHandlers = [];
     private readonly List<(string Prefix, LoadedPluginHandle Plugin)> _groupMessagePrefixHandlers = [];
-    private readonly List<LoadedPluginHandle> _friendMessageBroadcastHandlers = [];
-    private readonly List<(string Prefix, LoadedPluginHandle Plugin)> _friendMessagePrefixHandlers = [];
+    private readonly List<LoadedPluginHandle> _directMessageBroadcastHandlers = [];
+    private readonly List<(string Prefix, LoadedPluginHandle Plugin)> _directMessagePrefixHandlers = [];
     private readonly Dictionary<Type, List<LoadedPluginHandle>> _eventHandlers = [];
     private readonly TaskCompletionSource _initialPluginsReady = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
@@ -24,9 +24,11 @@ internal sealed class HostEventDispatcher(
     {
         lock (pluginLifecycleLock)
         {
+            var subscribed = pluginHandle.SubscribesTo(typeof(MessageEvent));
+
             RegisterMessageRoutes(
                 pluginHandle,
-                pluginHandle.SubscribesTo(typeof(GroupIncomingMessage)),
+                subscribed,
                 pluginHandle.GroupMessageRoutes,
                 pluginHandle.HandlesGroupMessagesViaBroadcast,
                 _groupMessageBroadcastHandlers,
@@ -35,12 +37,12 @@ internal sealed class HostEventDispatcher(
 
             RegisterMessageRoutes(
                 pluginHandle,
-                pluginHandle.SubscribesTo(typeof(FriendIncomingMessage)),
-                pluginHandle.FriendMessageRoutes,
-                pluginHandle.HandlesFriendMessagesViaBroadcast,
-                _friendMessageBroadcastHandlers,
-                _friendMessageExactHandlers,
-                _friendMessagePrefixHandlers);
+                subscribed,
+                pluginHandle.DirectMessageRoutes,
+                pluginHandle.HandlesDirectMessagesViaBroadcast,
+                _directMessageBroadcastHandlers,
+                _directMessageExactHandlers,
+                _directMessagePrefixHandlers);
 
             RegisterEventHandlers(pluginHandle);
         }
@@ -51,9 +53,9 @@ internal sealed class HostEventDispatcher(
         lock (pluginLifecycleLock)
         {
             _groupMessageBroadcastHandlers.Remove(pluginHandle);
-            _friendMessageBroadcastHandlers.Remove(pluginHandle);
+            _directMessageBroadcastHandlers.Remove(pluginHandle);
             RemoveRoutes(_groupMessageExactHandlers, _groupMessagePrefixHandlers, pluginHandle);
-            RemoveRoutes(_friendMessageExactHandlers, _friendMessagePrefixHandlers, pluginHandle);
+            RemoveRoutes(_directMessageExactHandlers, _directMessagePrefixHandlers, pluginHandle);
 
             foreach (var handlers in _eventHandlers.Values)
             {
@@ -62,30 +64,24 @@ internal sealed class HostEventDispatcher(
         }
     }
 
-    public async Task PublishAsync(Event message)
+    public async Task PublishAsync(BotEvent message)
     {
         await _initialPluginsReady.Task.ConfigureAwait(false);
         await (message switch
         {
-            GroupIncomingMessage groupMessage => PublishMessageAsync("群消息", groupMessage, MatchGroupMessageHandlers(groupMessage), handler => handler.OnEventAsync(groupMessage)),
-            FriendIncomingMessage friendMessage => PublishMessageAsync("好友消息", friendMessage, MatchFriendMessageHandlers(friendMessage), handler => handler.OnEventAsync(friendMessage)),
-            IncomingMessage incomingMessage => PublishMessageAsync(
-                GetEventDisplayName(message),
-                incomingMessage,
-                Snapshot(message.GetType()),
-                handler => handler.OnEventAsync(message)),
+            MessageEvent { IsDirect: false } groupMessage => PublishMessageAsync("群消息", groupMessage, MatchMessageHandlers(groupMessage, direct: false), handler => handler.OnEventAsync(groupMessage)),
+            MessageEvent directMessage => PublishMessageAsync("私聊消息", directMessage, MatchMessageHandlers(directMessage, direct: true), handler => handler.OnEventAsync(directMessage)),
             _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()), handler => handler.OnEventAsync(message))
         }).ConfigureAwait(false);
     }
 
     internal void MarkInitialPluginsReady() => _initialPluginsReady.TrySetResult();
 
-    private async Task PublishMessageAsync<TMessage>(
+    private async Task PublishMessageAsync(
         string eventName,
-        TMessage message,
+        MessageEvent message,
         IReadOnlyList<LoadedPluginHandle> handlers,
         Func<IBotEventSubscriber, Task> dispatch)
-        where TMessage : IncomingMessage
     {
         runtimeState.RecordIncomingMessage();
         await replySubscriptions.PublishAsync(message).ConfigureAwait(false);
@@ -96,12 +92,12 @@ internal sealed class HostEventDispatcher(
     {
         foreach (var eventType in pluginHandle.SubscribedEventTypes)
         {
-            if (eventType == typeof(GroupIncomingMessage) || eventType == typeof(FriendIncomingMessage))
+            if (eventType == typeof(MessageEvent))
             {
                 continue;
             }
 
-            if (!typeof(Event).IsAssignableFrom(eventType))
+            if (!typeof(BotEvent).IsAssignableFrom(eventType))
             {
                 continue;
             }
@@ -198,27 +194,21 @@ internal sealed class HostEventDispatcher(
         }
     }
 
-    private LoadedPluginHandle[] MatchGroupMessageHandlers(GroupIncomingMessage message)
+    private LoadedPluginHandle[] MatchMessageHandlers(MessageEvent message, bool direct)
     {
         lock (pluginLifecycleLock)
         {
-            return MatchMessageHandlers(
-                message.GetPlainText().Trim(),
-                _groupMessageBroadcastHandlers,
-                _groupMessageExactHandlers,
-                _groupMessagePrefixHandlers);
-        }
-    }
-
-    private LoadedPluginHandle[] MatchFriendMessageHandlers(FriendIncomingMessage message)
-    {
-        lock (pluginLifecycleLock)
-        {
-            return MatchMessageHandlers(
-                message.GetPlainText().Trim(),
-                _friendMessageBroadcastHandlers,
-                _friendMessageExactHandlers,
-                _friendMessagePrefixHandlers);
+            return direct
+                ? MatchMessageHandlers(
+                    message.GetPlainText().Trim(),
+                    _directMessageBroadcastHandlers,
+                    _directMessageExactHandlers,
+                    _directMessagePrefixHandlers)
+                : MatchMessageHandlers(
+                    message.GetPlainText().Trim(),
+                    _groupMessageBroadcastHandlers,
+                    _groupMessageExactHandlers,
+                    _groupMessagePrefixHandlers);
         }
     }
 
@@ -249,9 +239,9 @@ internal sealed class HostEventDispatcher(
         return matches.ToArray();
     }
 
-    private async Task DispatchAsync<TEvent>(
+    private async Task DispatchAsync(
         string eventName,
-        TEvent message,
+        BotEvent message,
         IReadOnlyList<LoadedPluginHandle> handlers,
         Func<IBotEventSubscriber, Task> dispatch)
     {
@@ -285,131 +275,70 @@ internal sealed class HostEventDispatcher(
         await Task.WhenAll(tasks);
     }
 
-    private static long? ExtractGroupId<TEvent>(TEvent evt)
+    private static string? ExtractGroupId(BotEvent evt)
     {
         return evt switch
         {
-            GroupIncomingMessage message => message.Group.GroupId,
-            GroupJoinRequestEvent e => e.GroupId,
-            GroupInvitedJoinRequestEvent e => e.GroupId,
-            GroupInvitationEvent e => e.GroupId,
-            GroupAdminChangeEvent e => e.GroupId,
-            GroupEssenceMessageChangeEvent e => e.GroupId,
-            GroupMemberIncreaseEvent e => e.GroupId,
-            GroupMemberDecreaseEvent e => e.GroupId,
-            GroupNameChangeEvent e => e.GroupId,
-            GroupMessageReactionEvent e => e.GroupId,
-            GroupMuteEvent e => e.GroupId,
-            GroupWholeMuteEvent e => e.GroupId,
-            GroupNudgeEvent e => e.GroupId,
-            GroupFileUploadEvent e => e.GroupId,
-            GroupDisbandEvent e => e.GroupId,
-            TempIncomingMessage { Group: not null } message => message.Group.GroupId,
-            MessageRecallEvent { MessageScene: MessageRecallEventMessageScene.Group } e => e.PeerId,
+            MessageEvent { IsDirect: false } message => message.Channel.Id,
+            MemberJoinedEvent e => e.Channel.Id,
+            MemberLeftEvent e => e.Channel.Id,
+            MessageDeletedEvent { Channel.Type: not ChannelType.Direct } e => e.Channel.Id,
+            PlatformEvent { Channel: { Type: not ChannelType.Direct } channel } => channel.Id,
             _ => null
         };
     }
 
-    private static string Describe<TEvent>(TEvent evt)
+    private static string Describe(BotEvent evt)
     {
         return evt switch
         {
-            GroupIncomingMessage message => $"{message.Group.GroupName}({message.Group.GroupId}) {message.SenderId}发送: {GetMessageSegments(message.Segments)}",
-            FriendIncomingMessage message => $"{message.Friend.Nickname}({message.SenderId})发送: {GetMessageSegments(message.Segments)}",
-            TempIncomingMessage message => $"临时会话({message.PeerId}) {message.SenderId}发送: {GetMessageSegments(message.Segments)}",
-            GroupJoinRequestEvent e => $"用户 {e.InitiatorId} 申请加入群 {e.GroupId}: {e.Comment}",
-            GroupInvitedJoinRequestEvent e => $"用户 {e.InitiatorId} 邀请 {e.TargetUserId} 加入群 {e.GroupId}",
-            GroupInvitationEvent e => $"用户 {e.InitiatorId} 邀请机器人加入群 {e.GroupId}",
-            FriendRequestEvent e => $"用户 {e.InitiatorId} 发来好友请求: {e.Comment}",
-            FriendNudgeEvent e => $"好友 {e.UserId} 发来戳一戳",
-            FriendFileUploadEvent e => $"好友 {e.UserId} 上传文件: {e.FileName} ({e.FileSize} bytes)",
-            GroupAdminChangeEvent e => $"{e.GroupId} 群内用户 {e.UserId}" + (e.IsSet ? " 被设为管理员" : " 被取消管理员"),
-            GroupEssenceMessageChangeEvent e => $"{e.GroupId} 群消息 {e.MessageSeq}" + (e.IsSet ? " 被设为精华" : " 被取消精华"),
-            GroupMemberIncreaseEvent e => $"用户 {e.UserId} 加入群 {e.GroupId}",
-            GroupMemberDecreaseEvent e => $"用户 {e.UserId} 离开群 {e.GroupId}",
-            GroupNameChangeEvent e => $"群 {e.GroupId} 改名为: {e.NewGroupName}",
-            GroupMessageReactionEvent e => $"用户 {e.UserId} 对群 {e.GroupId} 的消息 {e.MessageSeq}" + (e.IsAdd ? $" 添加表情 {e.FaceId}" : $" 取消表情 {e.FaceId}"),
-            GroupMuteEvent e => e.Duration == 0 ? $"群 {e.GroupId} 中用户 {e.UserId} 被解除禁言" : $"群 {e.GroupId} 中用户 {e.UserId} 被禁言 {e.Duration} 秒",
-            GroupWholeMuteEvent e => e.IsMute ? $"群 {e.GroupId} 开启全体禁言" : $"群 {e.GroupId} 关闭全体禁言",
-            GroupNudgeEvent e => $"群 {e.GroupId} 中 {e.SenderId} 戳了 {e.ReceiverId} 一下",
-            GroupFileUploadEvent e => $"群 {e.GroupId} 中用户 {e.UserId} 上传文件: {e.FileName} ({e.FileSize} bytes)",
-            MessageRecallEvent e => $"{GetMessageSceneName(e.MessageScene)} {e.PeerId} 中 {e.SenderId} 的消息被撤回",
-            Event e => DescribeWithMetadata(e),
-            _ => string.Empty
+            MessageEvent { IsDirect: false } message =>
+                $"{message.Channel.Name}({message.Channel.Id}) {message.Sender.Id}发送: {GetMessageSegments(message.Segments)}",
+            MessageEvent message =>
+                $"{message.Sender.Name}({message.Sender.Id})发送: {GetMessageSegments(message.Segments)}",
+            MessageDeletedEvent e => $"{e.Channel.Id} 中消息 {e.MessageId} 被撤回",
+            MemberJoinedEvent e => $"用户 {e.UserId} 加入 {e.Channel.Id}",
+            MemberLeftEvent e => $"用户 {e.UserId} 离开 {e.Channel.Id}",
+            FriendRequestEvent e => $"用户 {e.UserId} 发来好友请求: {e.Comment}",
+            GuildInviteEvent e => $"用户 {e.InviterId} 邀请机器人加入 {e.GuildId}",
+            BotOfflineEvent e => $"机器人离线: {e.Reason}",
+            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{e.Channel.Id}"),
+            _ => evt.GetType().Name
         };
     }
 
-    private static string GetMessageSegments(IReadOnlyList<IncomingSegment> segments)
+    private static string GetMessageSegments(IReadOnlyList<MessageSegment> segments)
     {
         var parts = segments.Select(segment => segment switch
         {
-            TextIncomingSegment text => text.Text,
-            ImageIncomingSegment image => $"[图片: {image.TempUrl}]",
-            VideoIncomingSegment video => $"[视频: {video.TempUrl}]",
-            RecordIncomingSegment record => $"[语音: {record.TempUrl}]",
-            FileIncomingSegment file => $"[文件: {file.FileName}]",
-            MentionIncomingSegment mention => $"[@{mention.UserId}]",
-            MentionAllIncomingSegment => "[@全体成员]",
-            FaceIncomingSegment face => $"[表情: {face.FaceId}]",
-            MarketFaceIncomingSegment face => $"[商城表情: {face.Summary} {face.Url}]",
-            ReplyIncomingSegment reply => $"[回复: {reply.MessageSeq}]",
-            ForwardIncomingSegment forward => $"[转发: {forward.Title}]",
-            LightAppIncomingSegment app => $"[轻应用: {app.AppName}]",
-            XmlIncomingSegment xml => $"[XML: {xml.ServiceId}]",
+            TextSegment text => text.Text,
+            ImageSegment image => $"[图片: {image.Uri}]",
+            VideoSegment video => $"[视频: {video.Uri}]",
+            AudioSegment audio => $"[语音: {audio.Uri}]",
+            FileSegment file => $"[文件: {file.FileName ?? file.Uri}]",
+            MentionSegment mention => $"[@{mention.DisplayName ?? mention.UserId}]",
+            MentionAllSegment => "[@全体成员]",
+            EmojiSegment emoji => $"[表情: {emoji.Name ?? emoji.Id}]",
+            QuoteSegment quote => $"[回复: {quote.MessageId}]",
+            RawSegment raw => $"[{raw.Platform}:{raw.Kind}]",
             _ => $"<{segment.GetType().Name}>"
         });
 
         return string.Concat(parts).Replace("\r", "\\r").Replace("\n", "\\n");
     }
 
-    private static string GetMessageSceneName(MessageRecallEventMessageScene scene)
+    private static string GetEventDisplayName(BotEvent evt)
     {
-        return scene switch
+        return evt switch
         {
-            MessageRecallEventMessageScene.Friend => "好友会话",
-            MessageRecallEventMessageScene.Group => "群",
-            MessageRecallEventMessageScene.Temp => "临时会话",
-            _ => scene.ToString()
-        };
-    }
-
-    private static string GetEventDisplayName(Event evt)
-    {
-        return EventMetadataRegistry.TryGet(evt.GetType(), out var metadata)
-            ? metadata.Description
-            : evt.GetType().Name;
-    }
-
-    private static string DescribeWithMetadata(Event evt)
-    {
-        if (!EventMetadataRegistry.TryGet(evt.GetType(), out var metadata))
-        {
-            return evt.GetType().Name;
-        }
-
-        var parts = metadata.Fields
-            .Where(field => field.PropertyName is not nameof(BotOfflineEvent.Time) and not nameof(BotOfflineEvent.SelfId))
-            .Select(field =>
-            {
-                var property = evt.GetType().GetProperty(field.PropertyName);
-                var value = property?.GetValue(evt);
-                return $"{field.Description}: {FormatMetadataValue(value)}";
-            })
-            .ToArray();
-
-        return parts.Length == 0 ? metadata.Description : string.Join("；", parts);
-    }
-
-    private static string FormatMetadataValue(object? value)
-    {
-        return value switch
-        {
-            null => "null",
-            string text => text.Replace("\r", "\\r").Replace("\n", "\\n"),
-            IReadOnlyList<IncomingSegment> segments => GetMessageSegments(segments),
-            System.Collections.IEnumerable enumerable when value is not string =>
-                $"[{string.Join(", ", enumerable.Cast<object?>().Select(FormatMetadataValue))}]",
-            _ => value.ToString() ?? string.Empty
+            MessageDeletedEvent => "消息撤回",
+            MemberJoinedEvent => "成员加入",
+            MemberLeftEvent => "成员离开",
+            FriendRequestEvent => "好友请求",
+            GuildInviteEvent => "群邀请",
+            BotOfflineEvent => "机器人离线",
+            PlatformEvent e => $"平台事件({e.Kind})",
+            _ => evt.GetType().Name
         };
     }
 }

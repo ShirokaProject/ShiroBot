@@ -55,7 +55,6 @@ internal sealed class PluginManager(
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "ShiroBot.SDK.dll",
-            "ShiroBot.Model.dll",
             "ShiroBot.AvaloniaSdk.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -315,7 +314,6 @@ internal sealed class PluginManager(
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "ShiroBot.SDK.dll",
-            "ShiroBot.Model.dll",
             "ShiroBot.AvaloniaSdk.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -971,7 +969,7 @@ internal sealed class PluginManager(
     /// 仅捕获 plugin 名（string）和 routePolicy 引用，不要让闭包捕获 <see cref="IBotPlugin"/>
     /// 实例本身——否则 LoadedPluginHandle 永远握着 plugin 引用，可回收 ALC 卸不掉。
     /// </summary>
-    private static Func<long, bool> CreateGroupRouteFilter(string pluginName, PluginRouteConfig routePolicy) =>
+    private static Func<string, bool> CreateGroupRouteFilter(string pluginName, PluginRouteConfig routePolicy) =>
         groupId => routePolicy.AllowsGroup(pluginName, groupId);
 
     private PluginContext CreatePluginContext(

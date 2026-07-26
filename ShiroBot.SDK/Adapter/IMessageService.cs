@@ -1,35 +1,25 @@
-using ShiroBot.Model.Common;
-using ShiroBot.Model.Message.Requests;
-using ShiroBot.Model.Message.Responses;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.SDK.Adapter;
 
+/// <summary>
+/// 平台无关的消息服务。适配器负责把通用消息段映射为平台原生格式。
+/// </summary>
 public interface IMessageService
 {
-    Task<SendPrivateMessageResponse> SendPrivateMessageAsync(SendPrivateMessageRequest request)
-        => throw new NotSupportedException($"Current adapter does not support '{nameof(SendPrivateMessageAsync)}'.");
+    Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)
+        => throw new NotSupportedException($"Current adapter does not support '{nameof(SendMessageAsync)}'.");
 
-    Task<SendGroupMessageResponse> SendGroupMessageAsync(SendGroupMessageRequest request)
-        => throw new NotSupportedException($"Current adapter does not support '{nameof(SendGroupMessageAsync)}'.");
+    Task DeleteMessageAsync(Channel channel, string messageId)
+        => throw new NotSupportedException($"Current adapter does not support '{nameof(DeleteMessageAsync)}'.");
 
-    Task RecallPrivateMessageAsync(RecallPrivateMessageRequest request)
-        => throw new NotSupportedException($"Current adapter does not support '{nameof(RecallPrivateMessageAsync)}'.");
-
-    Task RecallGroupMessageAsync(RecallGroupMessageRequest request)
-        => throw new NotSupportedException($"Current adapter does not support '{nameof(RecallGroupMessageAsync)}'.");
-
-    Task<GetMessageResponse> GetMessageAsync(GetMessageRequest request)
+    Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetMessageAsync)}'.");
 
-    Task<GetHistoryMessagesResponse> GetHistoryMessagesAsync(GetHistoryMessagesRequest request)
+    Task<IReadOnlyList<MessageEvent>> GetHistoryMessagesAsync(Channel channel, string? beforeMessageId = null, int limit = 20)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetHistoryMessagesAsync)}'.");
 
-    Task<GetResourceTempUrlResponse> GetResourceTempUrlAsync(GetResourceTempUrlRequest request)
-        => throw new NotSupportedException($"Current adapter does not support '{nameof(GetResourceTempUrlAsync)}'.");
-
-    Task<GetForwardedMessagesResponse> GetForwardedMessagesAsync(GetForwardedMessagesRequest request)
-        => throw new NotSupportedException($"Current adapter does not support '{nameof(GetForwardedMessagesAsync)}'.");
-
-    Task MarkMessageAsReadAsync(MarkMessageAsReadRequest request)
-        => throw new NotSupportedException($"Current adapter does not support '{nameof(MarkMessageAsReadAsync)}'.");
+    /// <summary>把接收到的资源段解析为可下载的临时 URL。</summary>
+    Task<string> GetResourceUrlAsync(string resourceId)
+        => throw new NotSupportedException($"Current adapter does not support '{nameof(GetResourceUrlAsync)}'.");
 }

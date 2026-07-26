@@ -1,17 +1,6 @@
 using ShiroBot.Core;
-using ShiroBot.Model.Common;
 using ShiroBot.SDK.Config;
 using ShiroBot.Hosting;
-
-if (!EventMetadataRegistry.TryGetEventType("group_disband", out var groupDisbandType) ||
-    groupDisbandType != typeof(GroupDisbandEvent) ||
-    !EventMetadataRegistry.TryGetEventType("message_receive", out var messageReceiveType) ||
-    messageReceiveType != typeof(IncomingMessage) ||
-    !EventMetadataRegistry.TryGetIncomingMessageType("temp", out var tempMessageType) ||
-    tempMessageType != typeof(TempIncomingMessage))
-{
-    throw new InvalidOperationException("Generated Milky event discriminator registry is incomplete.");
-}
 
 var serviceRegistry = new PluginServiceRegistry();
 using var providerServices = new PluginServiceScope(serviceRegistry, "provider");

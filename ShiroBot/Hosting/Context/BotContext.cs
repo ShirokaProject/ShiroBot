@@ -1,41 +1,38 @@
+using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
-using ShiroBot.SDK.Adapter;
 
 namespace ShiroBot.Hosting.Context;
 
 internal sealed class BotContext
 {
-    private IReadOnlyList<long> _ownerList;
-    private IReadOnlyList<long> _adminList;
+    private IReadOnlyList<string> _ownerList;
+    private IReadOnlyList<string> _adminList;
     private IRenderContext? _renderer;
-    private readonly IMessageService _messageService;
+    private readonly IBotAdapter _adapter;
 
-    public BotContext(IBotAdapter adapter, IReadOnlyList<long> ownerList, IReadOnlyList<long> adminList, IWebHostContext webHost)
+    public BotContext(IBotAdapter adapter, IReadOnlyList<string> ownerList, IReadOnlyList<string> adminList, IWebHostContext webHost)
     {
-        File = new FileContext(adapter.File);
-        Friend = new FriendContext(adapter.Friend);
-        Group = new GroupContext(adapter.Group);
-        _messageService = adapter.Message;
+        _adapter = adapter;
+        Channel = adapter.Channel;
+        User = adapter.User;
         ReplySubscriptions = new ReplySubscriptionManager();
-        Message = new MessageContext(_messageService, ReplySubscriptions, "__host");
-        System = new SystemContext(adapter.System);
+        Message = new MessageContext(adapter.Message, ReplySubscriptions, "__host");
         Updater = new UpdaterContext();
         WebHost = webHost;
         _ownerList = ownerList;
         _adminList = adminList;
     }
 
-    public IFileContext File { get; }
-    public IFriendContext Friend { get; }
-    public IGroupContext Group { get; }
+    public string Platform => _adapter.Platform;
     public IMessageContext Message { get; }
-    public ISystemContext System { get; }
+    public IChannelService Channel { get; }
+    public IUserService User { get; }
     public IUpdater Updater { get; }
     public IWebHostContext WebHost { get; }
 
-    public IReadOnlyList<long> OwnerList => Volatile.Read(ref _ownerList);
-    public IReadOnlyList<long> AdminList => Volatile.Read(ref _adminList);
+    public IReadOnlyList<string> OwnerList => Volatile.Read(ref _ownerList);
+    public IReadOnlyList<string> AdminList => Volatile.Read(ref _adminList);
 
     /// <summary>
     /// 由宿主渲染集成提供的服务。渲染集成未启用时为 null。
@@ -45,14 +42,17 @@ internal sealed class BotContext
     internal ReplySubscriptionManager ReplySubscriptions { get; }
 
     internal IMessageContext CreatePluginMessageContext(string pluginName) =>
-        new MessageContext(_messageService, ReplySubscriptions, pluginName);
+        new MessageContext(_adapter.Message, ReplySubscriptions, pluginName);
 
-    public void UpdateOwnerList(IReadOnlyList<long> ownerList)
+    internal TService? GetAdapterExtension<TService>() where TService : class =>
+        _adapter.GetExtension<TService>();
+
+    public void UpdateOwnerList(IReadOnlyList<string> ownerList)
     {
         Volatile.Write(ref _ownerList, ownerList);
     }
 
-    public void UpdateAdminList(IReadOnlyList<long> adminList)
+    public void UpdateAdminList(IReadOnlyList<string> adminList)
     {
         Volatile.Write(ref _adminList, adminList);
     }

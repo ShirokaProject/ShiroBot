@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using ShiroBot.Core;
 using ShiroBot.Hosting.Context;
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 using CH = ShiroBot.Core.ConsoleHelper;
 
@@ -145,16 +145,16 @@ internal sealed class HostCommandHandler(
         }
     }
 
-    public async Task HandleFriendMessageAsync(FriendIncomingMessage message)
+    public async Task HandleDirectMessageAsync(MessageEvent message)
     {
         if (await TryHandleHostPrivateCommandAsync(message))
             return;
         await eventDispatcher.PublishAsync(message);
     }
 
-    private async Task<bool> TryHandleHostPrivateCommandAsync(FriendIncomingMessage message)
+    private async Task<bool> TryHandleHostPrivateCommandAsync(MessageEvent message)
     {
-        if (!botContext.OwnerList.Contains(message.SenderId)) return false;
+        if (!botContext.OwnerList.Contains(message.Sender.Id)) return false;
 
         var input = message.GetPlainText().Trim();
         if (string.IsNullOrWhiteSpace(input)) return false;

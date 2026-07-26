@@ -1,3 +1,4 @@
+using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Plugin;
 
@@ -8,20 +9,22 @@ internal sealed class PluginContext : IBotContext, IDisposable
     private readonly string _pluginName;
     private int _externalCallbacksDetached;
 
-    public IFileContext File => BotContext.File;
-    public IFriendContext Friend => BotContext.Friend;
-    public IGroupContext Group => BotContext.Group;
+    public string Platform => BotContext.Platform;
     public IMessageContext Message { get; }
-    public ISystemContext System => BotContext.System;
+    public IChannelService Channel => BotContext.Channel;
+    public IUserService User => BotContext.User;
     public IUpdater Updater => BotContext.Updater;
     public IWebHostContext WebHost => BotContext.WebHost;
     public IPluginServices Services { get; }
     public string PluginDirectory { get; }
     public IConfigContext Config { get; private set; }
-    public IReadOnlyList<long> OwnerList => BotContext.OwnerList;
-    public IReadOnlyList<long> AdminList => BotContext.AdminList;
+    public IReadOnlyList<string> OwnerList => BotContext.OwnerList;
+    public IReadOnlyList<string> AdminList => BotContext.AdminList;
     public IRenderContext? Render => BotContext.Renderer;
     public IConsoleLogger Logger { get; }
+
+    public TService? GetAdapterExtension<TService>() where TService : class =>
+        BotContext.GetAdapterExtension<TService>();
 
     private BotContext BotContext { get; }
 
@@ -29,7 +32,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
         BotContext botContext,
         string pluginName,
         string pluginDirectory,
-        Func<long, bool> groupRouteFilter,
+        Func<string, bool> groupRouteFilter,
         HostLogHub logHub,
         PluginServiceRegistry serviceRegistry)
     {

@@ -1,5 +1,5 @@
 using System.Reflection;
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.Core;
 
@@ -7,7 +7,7 @@ internal static class BotMetaDataProvider
 {
     private static string BotVersion => GetVersion(typeof(Program).Assembly);
 
-    private static string ModelVersion => GetVersion(typeof(IncomingMessage).Assembly);
+    private static string SdkVersion => GetVersion(typeof(BotEvent).Assembly);
 
     private static string CommitShortHash
     {
@@ -26,7 +26,7 @@ internal static class BotMetaDataProvider
     }
 
     internal static string StartupVersionText =>
-        $"当前 ShiroBot 版本: {BotVersion} | Model 版本: {ModelVersion} | Commit: {CommitShortHash}";
+        $"当前 ShiroBot 版本: {BotVersion} | SDK 版本: {SdkVersion} | Commit: {CommitShortHash}";
 
     private static string GetVersion(Assembly assembly)
     {

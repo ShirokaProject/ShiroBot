@@ -1,12 +1,12 @@
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.SDK.Plugin;
 
 public interface IReplySubscription : IDisposable
 {
-    long MessageSeq { get; }
+    string MessageId { get; }
 
     DateTimeOffset? ExpiresAt { get; }
 }
 
-public delegate Task ReplyMessageHandler(IncomingMessage message);
+public delegate Task ReplyMessageHandler(MessageEvent message);

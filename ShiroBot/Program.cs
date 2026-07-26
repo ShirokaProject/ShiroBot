@@ -7,7 +7,6 @@ using Avalonia;
 using ShiroBot.Core;
 using ShiroBot.Hosting;
 using ShiroBot.Hosting.Context;
-using ShiroBot.Model.Common;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using CH = ShiroBot.Core.ConsoleHelper;
@@ -45,8 +44,7 @@ public static class Program
         CH.Info(BotMetaDataProvider.StartupVersionText);
 
         var sharedAssemblies = new SharedAssemblyResolver();
-        _ = typeof(IncomingMessage).Assembly;
-        sharedAssemblies.Register(["ShiroBot.SDK", "ShiroBot.Model"], AssemblyLoadContext.Default);
+        sharedAssemblies.Register(["ShiroBot.SDK"], AssemblyLoadContext.Default);
         BotContext? botContext;
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
@@ -153,7 +151,7 @@ public static class Program
             botContext = new BotContext(adapter, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
             Updater.Initialize(
                 () => botContext.OwnerList,
-                (ownerId, content) => botContext.Message.SendPrivateMessageAsync(ownerId, content),
+                (ownerId, content) => botContext.Message.SendDirectMessageAsync(ownerId, content),
                 coreConfig.GithubProxy);
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub);
@@ -209,7 +207,7 @@ public static class Program
             var adapterBridge = new AdapterEventBridge(hostEventDispatcher);
             adapterBridge.Bridge(
                 adapter.Event,
-                commandHandler.HandleFriendMessageAsync);
+                commandHandler.HandleDirectMessageAsync);
 
             using (BotLog.BeginScope(adapter.Logger))
             {

@@ -1,6 +1,5 @@
-using ShiroBot.Core;
-using ShiroBot.Model.Common;
 using ShiroBot.SDK.Adapter;
+using ShiroBot.SDK.Models;
 using CH = ShiroBot.Core.ConsoleHelper;
 
 namespace ShiroBot.Hosting;
@@ -9,19 +8,14 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
 {
     public void Bridge(
         IEventService eventService,
-        Func<FriendIncomingMessage, Task> friendMessageHandler)
+        Func<MessageEvent, Task> directMessageHandler)
     {
         eventService.EventReceived += message => DispatchAdapterEventInBackground(
-            () => message is FriendIncomingMessage friendMessage
-                ? friendMessageHandler(friendMessage)
+            () => message is MessageEvent { IsDirect: true } directMessage
+                ? directMessageHandler(directMessage)
                 : eventDispatcher.PublishAsync(message),
-            GetAdapterEventDisplayName(message));
+            message.GetType().Name);
     }
-
-    private static string GetAdapterEventDisplayName(Event message) =>
-        EventMetadataRegistry.TryGet(message.GetType(), out var metadata)
-            ? metadata.Description
-            : message.GetType().Name;
 
     private static Task DispatchAdapterEventInBackground(Func<Task> handler, string eventName)
     {

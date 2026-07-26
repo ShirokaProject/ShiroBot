@@ -1,8 +1,8 @@
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.SDK.Plugin;
 
 public interface IBotEventSubscriber
 {
-    Task OnEventAsync(Event e);
+    Task OnEventAsync(BotEvent e);
 }

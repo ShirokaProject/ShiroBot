@@ -21,9 +21,9 @@ public class CoreConfig
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
     public string AvaloniaTheme { get; set; } = "Light";
 
-    public long[] OwnerList { get; set; } = [];
+    public string[] OwnerList { get; set; } = [];
 
-    public long[] AdminList { get; set; } = [];
+    public string[] AdminList { get; set; } = [];
 
     public PluginRouteConfig PluginRoutes { get; set; } = new()
     {
@@ -63,7 +63,7 @@ public class PluginRouteConfig
 
     public Dictionary<string, PluginRouteRuleConfig> Plugins { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool AllowsGroup(string pluginName, long groupId)
+    public bool AllowsGroup(string pluginName, string groupId)
     {
         var plugins = Plugins;
         return !plugins.TryGetValue(pluginName, out var rule) ||
@@ -89,9 +89,9 @@ public class PluginRouteRuleConfig
 {
     public string Mode { get; init; } = "whitelist";
 
-    public long[] Groups { get; init; } = [];
+    public string[] Groups { get; init; } = [];
 
-    public bool IsMatch(long groupId)
+    public bool IsMatch(string groupId)
     {
         var contains = Groups.Contains(groupId);
         return NormalizeMode(Mode) switch

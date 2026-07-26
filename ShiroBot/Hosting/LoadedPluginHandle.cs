@@ -1,8 +1,8 @@
 using ShiroBot.Core;
 using ShiroBot.Hosting.Context;
-using ShiroBot.Model.Common;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
+using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting;
@@ -17,7 +17,7 @@ internal sealed class LoadedPluginHandle
     private IBotPlugin? _plugin;
     private PluginContext? _context;
     private DllLoader<IBotPlugin>? _loader;
-    private readonly Func<long, bool>? _groupRouteFilter;
+    private readonly Func<string, bool>? _groupRouteFilter;
     private readonly string _assemblyPath;
     private readonly HostLogHub _logHub;
 
@@ -28,7 +28,7 @@ internal sealed class LoadedPluginHandle
         string assemblyPath,
         PluginProbeInfo metadata,
         HostLogHub logHub,
-        Func<long, bool>? groupRouteFilter = null)
+        Func<string, bool>? groupRouteFilter = null)
     {
         _plugin = plugin;
         _context = context;
@@ -48,9 +48,9 @@ internal sealed class LoadedPluginHandle
             ? pluginBase.GetEffectiveEventTypes().ToHashSet()
             : new HashSet<Type>();
         GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
-        FriendMessageRoutes = plugin is PluginBase friendPluginBase ? friendPluginBase.GetFriendMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
+        DirectMessageRoutes = plugin is PluginBase directPluginBase ? directPluginBase.GetDirectMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         RequiresGroupMessageBroadcast = plugin is PluginBase groupBroadcastPluginBase && groupBroadcastPluginBase.RequiresGroupMessageBroadcast();
-        RequiresFriendMessageBroadcast = plugin is PluginBase friendBroadcastPluginBase && friendBroadcastPluginBase.RequiresFriendMessageBroadcast();
+        RequiresDirectMessageBroadcast = plugin is PluginBase directBroadcastPluginBase && directBroadcastPluginBase.RequiresDirectMessageBroadcast();
     }
 
     public string Name { get; }
@@ -63,28 +63,28 @@ internal sealed class LoadedPluginHandle
     public string AssemblyPath => _assemblyPath;
     public IReadOnlySet<Type> SubscribedEventTypes { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
-    public IReadOnlyList<MessageRouteDescriptor> FriendMessageRoutes { get; }
+    public IReadOnlyList<MessageRouteDescriptor> DirectMessageRoutes { get; }
     public bool RequiresGroupMessageBroadcast { get; }
-    public bool RequiresFriendMessageBroadcast { get; }
+    public bool RequiresDirectMessageBroadcast { get; }
 
     public bool HandlesGroupMessagesViaBroadcast =>
         RequiresGroupMessageBroadcast ||
-        (SubscribesTo(typeof(GroupIncomingMessage)) && GroupMessageRoutes.Count == 0);
+        (SubscribesTo(typeof(MessageEvent)) && GroupMessageRoutes.Count == 0);
 
-    public bool HandlesFriendMessagesViaBroadcast =>
-        RequiresFriendMessageBroadcast ||
-        (SubscribesTo(typeof(FriendIncomingMessage)) && FriendMessageRoutes.Count == 0);
+    public bool HandlesDirectMessagesViaBroadcast =>
+        RequiresDirectMessageBroadcast ||
+        (SubscribesTo(typeof(MessageEvent)) && DirectMessageRoutes.Count == 0);
 
     public bool SubscribesTo(Type eventType) => SubscribedEventTypes.Contains(eventType);
 
-    public bool AllowsGroup(long? groupId)
+    public bool AllowsGroup(string? groupId)
     {
-        if (!groupId.HasValue || _groupRouteFilter is null)
+        if (groupId is null || _groupRouteFilter is null)
         {
             return true;
         }
 
-        return _groupRouteFilter(groupId.Value);
+        return _groupRouteFilter(groupId);
     }
 
     /// <summary>

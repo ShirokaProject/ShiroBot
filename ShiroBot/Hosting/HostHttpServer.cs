@@ -1393,7 +1393,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             mode = NormalizePluginRouteMode(patchedMode);
         }
 
-        if (TryGetLongArray(patch, "groups", out var patchedGroups))
+        if (TryGetIdArray(patch, "groups", out var patchedGroups))
         {
             groups = patchedGroups;
         }
@@ -1961,12 +1961,12 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             configManager.SetConfigValue(configPath, "avalonia_theme", avaloniaTheme);
         }
 
-        if (TryGetLongArray(patch, "owner_list", out var ownerList))
+        if (TryGetIdArray(patch, "owner_list", out var ownerList))
         {
             configManager.SetConfigValue(configPath, "owner_list", ownerList);
         }
 
-        if (TryGetLongArray(patch, "admin_list", out var adminList))
+        if (TryGetIdArray(patch, "admin_list", out var adminList))
         {
             configManager.SetConfigValue(configPath, "admin_list", adminList);
         }
@@ -2054,23 +2054,21 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         return true;
     }
 
-    private static bool TryGetLongArray(JsonElement element, string propertyName, out long[] value)
+    /// <summary>解析平台 ID 数组：同时接受字符串和数字元素（数字会转为字符串）。</summary>
+    private static bool TryGetIdArray(JsonElement element, string propertyName, out string[] value)
     {
         value = [];
         if (!element.TryGetProperty(propertyName, out var property)) return false;
         if (property.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException($"{propertyName} 必须是数字数组");
+            throw new InvalidOperationException($"{propertyName} 必须是字符串或数字数组");
         }
 
-        value = property.EnumerateArray().Select(item =>
+        value = property.EnumerateArray().Select(item => item.ValueKind switch
         {
-            if (item.ValueKind != JsonValueKind.Number || !item.TryGetInt64(out var number))
-            {
-                throw new InvalidOperationException($"{propertyName} 必须是数字数组");
-            }
-
-            return number;
+            JsonValueKind.String => item.GetString() ?? string.Empty,
+            JsonValueKind.Number => item.GetRawText(),
+            _ => throw new InvalidOperationException($"{propertyName} 必须是字符串或数字数组")
         }).ToArray();
         return true;
     }

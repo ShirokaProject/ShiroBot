@@ -79,7 +79,7 @@ internal sealed class CoreConfigWatcher : IDisposable
         }
     }
 
-    private static bool ArrayEquals(long[]? left, long[]? right)
+    private static bool ArrayEquals(string[]? left, string[]? right)
     {
         if (ReferenceEquals(left, right)) return true;
         if (left is null || right is null) return false;

@@ -23,13 +23,13 @@ public static class Updater
 {
     private static readonly HttpClient HttpClient = new();
     private static readonly ConcurrentDictionary<string, PendingUpdateEntry> PendingUpdates = new(StringComparer.OrdinalIgnoreCase);
-    private static Func<IReadOnlyList<long>> _getOwnerIds = () => [];
-    private static Func<long, string, Task> _sendPrivateMessageAsync = (_, _) => Task.CompletedTask;
+    private static Func<IReadOnlyList<string>> _getOwnerIds = () => [];
+    private static Func<string, string, Task> _sendPrivateMessageAsync = (_, _) => Task.CompletedTask;
     private static string? _githubProxy;
 
     public static void Initialize(
-        Func<IReadOnlyList<long>> getOwnerIds,
-        Func<long, string, Task> sendPrivateMessageAsync,
+        Func<IReadOnlyList<string>> getOwnerIds,
+        Func<string, string, Task> sendPrivateMessageAsync,
         string? githubProxy = null)
     {
         _getOwnerIds = getOwnerIds;

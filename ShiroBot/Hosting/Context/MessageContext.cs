@@ -1,6 +1,5 @@
-using ShiroBot.Model.Message.Requests;
-using ShiroBot.Model.Message.Responses;
 using ShiroBot.SDK.Adapter;
+using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Context;
@@ -8,36 +7,24 @@ namespace ShiroBot.Hosting.Context;
 internal sealed class MessageContext(IMessageService message, ReplySubscriptionManager replySubscriptions, string ownerId) : IMessageContext
 {
     public IReplySubscription SubscribeReply(
-        long messageSeq,
+        string messageId,
         TimeSpan duration,
         ReplyMessageHandler handler,
         bool disposeOnReply = true) =>
-        replySubscriptions.Subscribe(ownerId, messageSeq, duration, handler, disposeOnReply);
+        replySubscriptions.Subscribe(ownerId, messageId, duration, handler, disposeOnReply);
 
-    public Task<SendPrivateMessageResponse> SendPrivateMessageAsync(SendPrivateMessageRequest request) =>
-        message.SendPrivateMessageAsync(request);
+    public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments) =>
+        message.SendMessageAsync(channel, segments);
 
-    public Task<SendGroupMessageResponse> SendGroupMessageAsync(SendGroupMessageRequest request) =>
-        message.SendGroupMessageAsync(request);
+    public Task DeleteMessageAsync(Channel channel, string messageId) =>
+        message.DeleteMessageAsync(channel, messageId);
 
-    public Task RecallPrivateMessageAsync(RecallPrivateMessageRequest request) =>
-        message.RecallPrivateMessageAsync(request);
+    public Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId) =>
+        message.GetMessageAsync(channel, messageId);
 
-    public Task RecallGroupMessageAsync(RecallGroupMessageRequest request) =>
-        message.RecallGroupMessageAsync(request);
+    public Task<IReadOnlyList<MessageEvent>> GetHistoryMessagesAsync(Channel channel, string? beforeMessageId = null, int limit = 20) =>
+        message.GetHistoryMessagesAsync(channel, beforeMessageId, limit);
 
-    public Task<GetMessageResponse> GetMessageAsync(GetMessageRequest request) =>
-        message.GetMessageAsync(request);
-
-    public Task<GetHistoryMessagesResponse> GetHistoryMessagesAsync(GetHistoryMessagesRequest request) =>
-        message.GetHistoryMessagesAsync(request);
-
-    public Task<GetResourceTempUrlResponse> GetResourceTempUrlAsync(GetResourceTempUrlRequest request) =>
-        message.GetResourceTempUrlAsync(request);
-
-    public Task<GetForwardedMessagesResponse> GetForwardedMessagesAsync(GetForwardedMessagesRequest request) =>
-        message.GetForwardedMessagesAsync(request);
-
-    public Task MarkMessageAsReadAsync(MarkMessageAsReadRequest request) =>
-        message.MarkMessageAsReadAsync(request);
+    public Task<string> GetResourceUrlAsync(string resourceId) =>
+        message.GetResourceUrlAsync(resourceId);
 }
