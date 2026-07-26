@@ -101,8 +101,15 @@ public sealed record QqVideoOutgoing(string Uri) : QqOutgoingSegment
     public string? ThumbUri { get; init; }
 }
 
+/// <summary>小程序 / 卡片消息(出站)。</summary>
+public sealed record QqLightAppOutgoing(string JsonPayload) : QqOutgoingSegment;
+
 /// <summary>合并转发的一条消息。</summary>
-public sealed record QqForwardedMessage(long UserId, string SenderName, IReadOnlyList<QqOutgoingSegment> Segments);
+public sealed record QqForwardedMessage(long UserId, string SenderName, IReadOnlyList<QqOutgoingSegment> Segments)
+{
+    /// <summary>消息展示时间,null 使用当前时间。</summary>
+    public DateTimeOffset? Time { get; init; }
+}
 
 /// <summary>合并转发。</summary>
 public sealed record QqForwardOutgoing(IReadOnlyList<QqForwardedMessage> Messages) : QqOutgoingSegment

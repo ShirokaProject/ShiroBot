@@ -40,7 +40,7 @@ public sealed record QqTempMessage : QqIncomingMessage
 /// <summary>合并转发内的一条消息。</summary>
 public sealed record QqForwardedIncomingMessage
 {
-    public long SenderId { get; init; }
+    public long MessageSeq { get; init; }
     public string? SenderName { get; init; }
     public string? AvatarUrl { get; init; }
     public DateTimeOffset Time { get; init; }

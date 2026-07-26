@@ -13,6 +13,17 @@ public interface IQqFriendApi
 
     Task DeleteFriendAsync(long userId)
         => throw new NotSupportedException();
+
+    /// <summary>获取好友请求列表。</summary>
+    Task<IReadOnlyList<QqFriendRequest>> GetFriendRequestsAsync(int limit = 20, bool isFiltered = false)
+        => throw new NotSupportedException();
+
+    /// <summary>接受好友请求。initiatorUid 来自 QqFriendRequest.InitiatorUid 或好友请求事件的 Token。</summary>
+    Task AcceptFriendRequestAsync(string initiatorUid, bool isFiltered = false)
+        => throw new NotSupportedException();
+
+    Task RejectFriendRequestAsync(string initiatorUid, bool isFiltered = false, string? reason = null)
+        => throw new NotSupportedException();
 }
 
 /// <summary>QQ 群管理扩展服务。</summary>
@@ -51,6 +62,10 @@ public interface IQqGroupApi
     Task SendMessageReactionAsync(long groupId, long messageSeq, string faceId, bool isAdd = true)
         => throw new NotSupportedException();
 
+    /// <summary>发送消息表情回应(指定 Face/Emoji 类型)。</summary>
+    Task SendMessageReactionAsync(long groupId, long messageSeq, string reactionId, QqReactionType reactionType, bool isAdd = true)
+        => throw new NotSupportedException();
+
     Task<IReadOnlyList<QqGroupAnnouncement>> GetAnnouncementsAsync(long groupId)
         => throw new NotSupportedException();
 
@@ -70,6 +85,25 @@ public interface IQqGroupApi
         => throw new NotSupportedException();
 
     Task RejectJoinRequestAsync(QqGroupJoinRequest request, string? reason = null)
+        => throw new NotSupportedException();
+
+    /// <summary>按通知序号接受入群申请/邀请入群申请。</summary>
+    Task AcceptJoinRequestAsync(long groupId, long notificationSeq, bool isInvited = false, bool isFiltered = false)
+        => throw new NotSupportedException();
+
+    Task RejectJoinRequestAsync(long groupId, long notificationSeq, bool isInvited = false, bool isFiltered = false, string? reason = null)
+        => throw new NotSupportedException();
+
+    /// <summary>获取群通知列表(入群申请/邀请/管理员变更/踢人/退群)。返回通知与下一页起始序号。</summary>
+    Task<(IReadOnlyList<QqGroupNotification> Notifications, long? NextNotificationSeq)> GetNotificationsAsync(
+        long? startNotificationSeq = null, bool isFiltered = false, int limit = 20)
+        => throw new NotSupportedException();
+
+    /// <summary>接受他人邀请机器人入群。invitationSeq 来自群邀请事件的 Token。</summary>
+    Task AcceptInvitationAsync(long groupId, long invitationSeq)
+        => throw new NotSupportedException();
+
+    Task RejectInvitationAsync(long groupId, long invitationSeq)
         => throw new NotSupportedException();
 }
 
@@ -108,6 +142,10 @@ public interface IQqFileApi
         => throw new NotSupportedException();
 
     Task DeleteGroupFolderAsync(long groupId, string folderId)
+        => throw new NotSupportedException();
+
+    /// <summary>把群文件转存为永久文件(阻止过期)。</summary>
+    Task PersistGroupFileAsync(long groupId, string fileId)
         => throw new NotSupportedException();
 }
 
@@ -149,6 +187,22 @@ public interface IQqSystemApi
 
     Task<string> GetCsrfTokenAsync()
         => throw new NotSupportedException();
+
+    /// <summary>获取登录账号信息。</summary>
+    Task<QqLoginInfo> GetLoginInfoAsync()
+        => throw new NotSupportedException();
+
+    /// <summary>获取协议实现端信息(实现名/版本/QQ协议类型)。</summary>
+    Task<QqImplInfo> GetImplInfoAsync()
+        => throw new NotSupportedException();
+
+    /// <summary>获取收藏表情 URL 列表。</summary>
+    Task<IReadOnlyList<string>> GetCustomFaceUrlListAsync()
+        => throw new NotSupportedException();
+
+    /// <summary>设置会话置顶。</summary>
+    Task SetPeerPinAsync(QqMessageScene scene, long peerId, bool isPinned = true)
+        => throw new NotSupportedException();
 }
 
 /// <summary>QQ 消息扩展服务(合并转发、原生段收发)。</summary>
@@ -156,6 +210,23 @@ public interface IQqMessageApi
 {
     /// <summary>用 QQ 原生段发送消息(LightApp、合并转发等核心模型未覆盖的内容)。</summary>
     Task<long> SendMessageAsync(QqMessageScene scene, long peerId, IReadOnlyList<QqOutgoingSegment> segments)
+        => throw new NotSupportedException();
+
+    /// <summary>获取单条消息(QQ 原生形态)。</summary>
+    Task<QqIncomingMessage?> GetMessageAsync(QqMessageScene scene, long peerId, long messageSeq)
+        => throw new NotSupportedException();
+
+    /// <summary>获取历史消息(QQ 原生形态)。返回消息与下一页起始序号。</summary>
+    Task<(IReadOnlyList<QqIncomingMessage> Messages, long? NextMessageSeq)> GetHistoryMessagesAsync(
+        QqMessageScene scene, long peerId, long? startMessageSeq = null, int limit = 20)
+        => throw new NotSupportedException();
+
+    /// <summary>撤回消息。</summary>
+    Task RecallMessageAsync(QqMessageScene scene, long peerId, long messageSeq)
+        => throw new NotSupportedException();
+
+    /// <summary>把接收到的资源 ID 解析为临时下载 URL。</summary>
+    Task<string> GetResourceTempUrlAsync(string resourceId)
         => throw new NotSupportedException();
 
     Task<IReadOnlyList<QqForwardedIncomingMessage>> GetForwardedMessagesAsync(string forwardId)
