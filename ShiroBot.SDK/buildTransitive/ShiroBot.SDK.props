@@ -4,7 +4,7 @@
          assemblies are detected from their metadata attributes before any output is rewritten. -->
     <ShiroBotPluginPackagingEnabled Condition="'$(ShiroBotPluginPackagingEnabled)' == ''">true</ShiroBotPluginPackagingEnabled>
     <ShiroBotNativePackageSource Condition="'$(ShiroBotNativePackageSource)' == ''">https://api.nuget.org/v3-flatcontainer</ShiroBotNativePackageSource>
-    <ShiroBotSharedAssemblyPrefixes Condition="'$(ShiroBotSharedAssemblyPrefixes)' == ''">ShiroBot.SDK;ShiroBot.AvaloniaSdk;Avalonia;SkiaSharp;HarfBuzzSharp;MicroCom;System.;Microsoft.</ShiroBotSharedAssemblyPrefixes>
+    <ShiroBotSharedAssemblyPrefixes Condition="'$(ShiroBotSharedAssemblyPrefixes)' == ''">ShiroBot.SDK;ShiroBot.Qq.Model;ShiroBot.AvaloniaSdk;Avalonia;SkiaSharp;HarfBuzzSharp;MicroCom;System.;Microsoft.</ShiroBotSharedAssemblyPrefixes>
     <ShiroBotSharedAssemblyPrefixes Condition="'$(ShiroBotPluginSharedAssemblies)' != ''">$(ShiroBotSharedAssemblyPrefixes);$(ShiroBotPluginSharedAssemblies)</ShiroBotSharedAssemblyPrefixes>
     <ShiroBotSharedNativePackagePrefixes Condition="'$(ShiroBotSharedNativePackagePrefixes)' == ''">Avalonia;SkiaSharp.NativeAssets;HarfBuzzSharp.NativeAssets</ShiroBotSharedNativePackagePrefixes>
   </PropertyGroup>

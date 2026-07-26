@@ -44,7 +44,8 @@ public static class Program
         CH.Info(BotMetaDataProvider.StartupVersionText);
 
         var sharedAssemblies = new SharedAssemblyResolver();
-        sharedAssemblies.Register(["ShiroBot.SDK"], AssemblyLoadContext.Default);
+        _ = typeof(Qq.Model.QqIncomingMessage).Assembly;
+        sharedAssemblies.Register(["ShiroBot.SDK", "ShiroBot.Qq.Model"], AssemblyLoadContext.Default);
         BotContext? botContext;
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;

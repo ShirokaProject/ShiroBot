@@ -118,6 +118,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
+        <ProjectReference Include="..\ShiroBot.Qq.Model\ShiroBot.Qq.Model.csproj" />
         <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
     </ItemGroup>
 
