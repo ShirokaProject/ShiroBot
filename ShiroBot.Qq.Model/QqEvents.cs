@@ -124,7 +124,7 @@ public sealed record QqGroupFileUpload : QqEventPayload
     public long FileSize { get; init; }
 }
 
-/// <summary>入群申请。Token 用于 Accept/Reject。</summary>
+/// <summary>入群申请。</summary>
 public sealed record QqGroupJoinRequest : QqEventPayload
 {
     public required long GroupId { get; init; }
@@ -132,6 +132,9 @@ public sealed record QqGroupJoinRequest : QqEventPayload
     public required long InitiatorId { get; init; }
     public string? Comment { get; init; }
     public bool IsFiltered { get; init; }
+
+    /// <summary>协议处理令牌(OneBot 为 flag;Milky 不使用)。</summary>
+    public string? Token { get; init; }
 }
 
 /// <summary>群成员邀请他人入群申请。</summary>
@@ -141,6 +144,9 @@ public sealed record QqGroupInvitedJoinRequest : QqEventPayload
     public required long NotificationSeq { get; init; }
     public required long InitiatorId { get; init; }
     public required long TargetUserId { get; init; }
+
+    /// <summary>协议处理令牌(OneBot 为 flag;Milky 不使用)。</summary>
+    public string? Token { get; init; }
 }
 
 /// <summary>群解散。</summary>
