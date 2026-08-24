@@ -11,6 +11,7 @@ internal sealed class ReplySubscriptionManager
 
     public IReplySubscription Subscribe(
         string ownerId,
+        string platform,
         string messageId,
         TimeSpan duration,
         ReplyMessageHandler handler,
@@ -24,7 +25,7 @@ internal sealed class ReplySubscriptionManager
         var expiresAt = duration == Timeout.InfiniteTimeSpan
             ? (DateTimeOffset?)null
             : DateTimeOffset.UtcNow.Add(duration);
-        var subscription = new ReplySubscription(id, ownerId, messageId, expiresAt, handler, disposeOnReply, Remove);
+        var subscription = new ReplySubscription(id, ownerId, platform, messageId, expiresAt, handler, disposeOnReply, Remove);
         _subscriptions[id] = subscription;
         return subscription;
     }
@@ -57,7 +58,8 @@ internal sealed class ReplySubscriptionManager
                 continue;
             }
 
-            if (subscription.MessageId == quote.MessageId)
+            if (subscription.MessageId == quote.MessageId &&
+                string.Equals(subscription.Platform, message.Platform, StringComparison.OrdinalIgnoreCase))
             {
                 matches.Add(subscription);
             }
@@ -86,6 +88,7 @@ internal sealed class ReplySubscriptionManager
     private sealed class ReplySubscription(
         Guid id,
         string ownerId,
+        string platform,
         string messageId,
         DateTimeOffset? expiresAt,
         ReplyMessageHandler handler,
@@ -95,6 +98,7 @@ internal sealed class ReplySubscriptionManager
         private int _disposed;
 
         public string OwnerId { get; } = ownerId;
+        public string Platform { get; } = platform;
         public string MessageId { get; } = messageId;
         public DateTimeOffset? ExpiresAt { get; } = expiresAt;
         public ReplyMessageHandler Handler { get; } = handler;

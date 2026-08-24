@@ -20,4 +20,5 @@ public sealed class BotAdapterAttribute(string id) : Attribute
     /// the adapter observe identical types when probing extensions or casting Raw payloads.
     /// </summary>
     public string? SharedAssemblies { get; init; }
+
 }

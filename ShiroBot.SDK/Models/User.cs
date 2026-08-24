@@ -20,9 +20,9 @@ public sealed record User(string Id)
 /// </summary>
 public enum MemberRole
 {
-    Member,
-    Admin,
-    Owner
+    Member = 0,
+    Admin = 1,
+    Owner = 2
 }
 
 /// <summary>

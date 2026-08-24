@@ -1,5 +1,4 @@
 using ShiroBot.Core;
-using ShiroBot.Hosting;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Context;

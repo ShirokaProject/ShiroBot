@@ -6,16 +6,16 @@ namespace ShiroBot.SDK.Models;
 public enum ChannelType
 {
     /// <summary>私聊 / DM。</summary>
-    Direct,
+    Direct = 0,
 
     /// <summary>群聊（QQ 群、Telegram group、Discord text channel）。</summary>
-    Group,
+    Group = 1,
 
     /// <summary>子话题 / Thread（Discord thread、Telegram topic）。</summary>
-    Thread,
+    Thread = 2,
 
     /// <summary>其他平台特有会话（如 QQ 临时会话）。</summary>
-    Other
+    Other = 3
 }
 
 /// <summary>

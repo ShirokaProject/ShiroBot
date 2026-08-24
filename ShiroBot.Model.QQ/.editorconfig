@@ -1,0 +1,12 @@
+[*.cs]
+# Every non-private symbol in this assembly is a public contract consumed by
+# separately built adapters and plugins. Keep local/private inspections enabled.
+resharper_auto_property_can_be_made_get_only_global_highlighting = none
+resharper_class_never_instantiated_global_highlighting = none
+resharper_member_can_be_private_global_highlighting = none
+resharper_not_accessed_positional_property_global_highlighting = none
+resharper_parameter_only_used_for_precondition_check_global_highlighting = none
+resharper_unused_auto_property_accessor_global_highlighting = none
+resharper_unused_member_global_highlighting = none
+resharper_unused_parameter_global_highlighting = none
+resharper_unused_type_global_highlighting = none

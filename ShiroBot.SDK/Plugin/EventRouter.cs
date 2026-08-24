@@ -12,7 +12,7 @@ public sealed class EventRouter
     public void Map<TEvent>(Func<TEvent, Task> handler)
         where TEvent : BotEvent
     {
-        MapWhen<TEvent>(_ => true, handler);
+        MapWhen(_ => true, handler);
     }
 
     public void MapWhen<TEvent>(Func<TEvent, bool> predicate, Func<TEvent, Task> handler)
@@ -31,21 +31,21 @@ public sealed class EventRouter
     public void MapPlatform(string kind, Func<PlatformEvent, Task> handler)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
-        MapWhen<PlatformEvent>(evt => string.Equals(evt.Kind, kind, StringComparison.OrdinalIgnoreCase), handler);
+        MapWhen(evt => string.Equals(evt.Kind, kind, StringComparison.OrdinalIgnoreCase), handler);
     }
 
     public bool HasRoute<TEvent>()
         where TEvent : BotEvent
     {
         var eventType = typeof(TEvent);
-        return _routes.Any(route => route.EventType == eventType);
+        return _routes.Any(route => route.EventType.IsAssignableFrom(eventType));
     }
 
     public async Task<bool> DispatchAsync(BotEvent evt)
     {
         var matched = false;
 
-        foreach (var route in _routes.Where(route => route.EventType == evt.GetType() && route.Predicate(evt)))
+        foreach (var route in _routes.Where(route => route.EventType.IsInstanceOfType(evt) && route.Predicate(evt)))
         {
             matched = true;
             await route.Handler(evt);

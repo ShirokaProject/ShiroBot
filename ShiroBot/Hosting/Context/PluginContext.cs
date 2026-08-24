@@ -7,7 +7,11 @@ namespace ShiroBot.Hosting.Context;
 internal sealed class PluginContext : IBotContext, IDisposable
 {
     private readonly string _pluginName;
+    private readonly object _configWatchLock = new();
+    private readonly HashSet<ConfigWatchSubscription> _configWatches = [];
     private int _externalCallbacksDetached;
+    private int _disposed;
+    private bool _configWatchesDisposed;
 
     public string Platform => BotContext.Platform;
     public IMessageContext Message { get; }
@@ -26,13 +30,14 @@ internal sealed class PluginContext : IBotContext, IDisposable
     public TService? GetAdapterExtension<TService>() where TService : class =>
         BotContext.GetAdapterExtension<TService>();
 
+    public IDisposable UsePlatform(string platform) => BotContext.UsePlatform(platform);
+
     private BotContext BotContext { get; }
 
     public PluginContext(
         BotContext botContext,
         string pluginName,
         string pluginDirectory,
-        Func<string, bool> groupRouteFilter,
         HostLogHub logHub,
         PluginServiceRegistry serviceRegistry)
     {
@@ -43,11 +48,16 @@ internal sealed class PluginContext : IBotContext, IDisposable
         Services = new PluginServiceScope(serviceRegistry, pluginName);
         PluginDirectory = Path.GetFullPath(pluginDirectory);
         Directory.CreateDirectory(PluginDirectory);
-        Config = ConfigContext.ForPlugin(Path.Combine(PluginDirectory, "config.toml"));
+        Config = ConfigContext.ForPlugin(Path.Combine(PluginDirectory, "config.toml"), this);
     }
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         DetachExternalCallbacks();
         ((IDisposable)Services).Dispose();
         Config = null!;
@@ -60,7 +70,63 @@ internal sealed class PluginContext : IBotContext, IDisposable
             return;
         }
 
+        DisposeConfigWatches();
         BotContext.ReplySubscriptions.UnregisterOwner(_pluginName);
         BotContext.WebHost.UnregisterOwner(_pluginName);
+    }
+
+    internal void RegisterConfigWatch(ConfigWatchSubscription subscription)
+    {
+        lock (_configWatchLock)
+        {
+            if (!_configWatchesDisposed)
+            {
+                _configWatches.Add(subscription);
+                try
+                {
+                    subscription.Start();
+                    return;
+                }
+                catch
+                {
+                    _configWatches.Remove(subscription);
+                    subscription.Dispose();
+                    throw;
+                }
+            }
+        }
+
+        subscription.Dispose();
+    }
+
+    internal void UnregisterConfigWatch(ConfigWatchSubscription subscription)
+    {
+        lock (_configWatchLock)
+        {
+            _configWatches.Remove(subscription);
+        }
+    }
+
+    private void DisposeConfigWatches()
+    {
+        ConfigWatchSubscription[] subscriptions;
+        lock (_configWatchLock)
+        {
+            _configWatchesDisposed = true;
+            subscriptions = [.. _configWatches];
+            _configWatches.Clear();
+        }
+
+        foreach (var subscription in subscriptions)
+        {
+            try
+            {
+                subscription.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to dispose config watcher: {ex.Message}");
+            }
+        }
     }
 }

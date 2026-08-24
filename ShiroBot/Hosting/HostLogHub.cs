@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
 namespace ShiroBot.Hosting;
@@ -30,10 +31,10 @@ internal sealed class HostLogHub
 
         var entry = new LogEntry
         {
-            time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-            source = normalizedSource,
-            level = NormalizeLevel(level),
-            message = message
+            Time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            Source = normalizedSource,
+            Level = NormalizeLevel(level),
+            Message = message
         };
 
         lock (_lock)
@@ -59,9 +60,9 @@ internal sealed class HostLogHub
         var normalizedDisplayName = string.IsNullOrWhiteSpace(displayName) ? normalizedSource : displayName.Trim();
         _sources[normalizedSource] = new LogSourceInfo
         {
-            source = normalizedSource,
-            description = string.IsNullOrWhiteSpace(description) ? GetDefaultDescription(normalizedSource) : description,
-            plugin_name = normalizedDisplayName
+            Source = normalizedSource,
+            Description = string.IsNullOrWhiteSpace(description) ? GetDefaultDescription(normalizedSource) : description,
+            PluginName = normalizedDisplayName
         };
     }
 
@@ -69,15 +70,15 @@ internal sealed class HostLogHub
     {
         _sources.TryAdd(source, new LogSourceInfo
         {
-            source = source,
-            description = GetDefaultDescription(source),
-            plugin_name = source
+            Source = source,
+            Description = GetDefaultDescription(source),
+            PluginName = source
         });
     }
 
     public LogSourceInfo[] GetSources() => _sources.Values
-        .OrderBy(source => source.source.Equals("system", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-        .ThenBy(source => source.source, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(source => source.Source.Equals("system", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+        .ThenBy(source => source.Source, StringComparer.OrdinalIgnoreCase)
         .ToArray();
 
     public LogEntry[] GetHistory(string source, int tail)
@@ -91,7 +92,7 @@ internal sealed class HostLogHub
         var query = snapshot.AsEnumerable();
         if (!source.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
-            query = query.Where(entry => entry.source.Equals(source, StringComparison.OrdinalIgnoreCase));
+            query = query.Where(entry => entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase));
         }
 
         return query.TakeLast(Math.Clamp(tail, 0, MaxHistory)).ToArray();
@@ -119,7 +120,7 @@ internal sealed class HostLogHub
             {
                 if (webSocket.State != WebSocketState.Open) break;
                 if (!source.Equals("all", StringComparison.OrdinalIgnoreCase) &&
-                    !entry.source.Equals(source, StringComparison.OrdinalIgnoreCase))
+                    !entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -155,16 +156,28 @@ internal sealed class HostLogHub
 
     internal sealed class LogSourceInfo
     {
-        public string source { get; init; } = string.Empty;
-        public string description { get; init; } = string.Empty;
-        public string? plugin_name { get; init; }
+        [JsonPropertyName("source")]
+        public string Source { get; init; } = string.Empty;
+
+        [JsonPropertyName("description")]
+        public string Description { get; init; } = string.Empty;
+
+        [JsonPropertyName("plugin_name")]
+        public string? PluginName { get; init; }
     }
 
     internal sealed class LogEntry
     {
-        public string time { get; init; } = string.Empty;
-        public string source { get; init; } = string.Empty;
-        public string level { get; init; } = string.Empty;
-        public string message { get; init; } = string.Empty;
+        [JsonPropertyName("time")]
+        public string Time { get; init; } = string.Empty;
+
+        [JsonPropertyName("source")]
+        public string Source { get; init; } = string.Empty;
+
+        [JsonPropertyName("level")]
+        public string Level { get; init; } = string.Empty;
+
+        [JsonPropertyName("message")]
+        public string Message { get; init; } = string.Empty;
     }
 }

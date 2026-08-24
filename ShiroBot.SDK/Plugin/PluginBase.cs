@@ -7,9 +7,9 @@ namespace ShiroBot.SDK.Plugin;
 public sealed record MessageRouteDescriptor(MessageRouteMatchType MatchType, string? Pattern);
 public enum MessageRouteMatchType
 {
-    Exact,
-    Prefix,
-    All
+    Exact = 0,
+    Prefix = 1,
+    All = 2
 }
 
 public abstract class PluginBase : IBotPlugin, IBotEventSubscriber

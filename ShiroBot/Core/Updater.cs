@@ -675,7 +675,7 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
         var item = includePrerelease
             ? document.RootElement.EnumerateArray().FirstOrDefault(release =>
-                !release.TryGetProperty("draft", out var draft) || !draft.GetBoolean())
+                !release.TryGetProperty("draft", out var releaseDraft) || !releaseDraft.GetBoolean())
             : document.RootElement;
         if (item.ValueKind != JsonValueKind.Object) return null;
 
@@ -684,8 +684,6 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
             item.GetPropertyOrDefault("name"),
             item.GetPropertyOrDefault("html_url"),
             item.GetPropertyOrDefault("body"),
-            item.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean(),
-            item.TryGetProperty("draft", out var draft) && draft.GetBoolean(),
             GetReleaseAssets(item));
     }
 
@@ -715,8 +713,6 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
         string Name,
         string HtmlUrl,
         string Body,
-        bool Prerelease,
-        bool Draft,
         IReadOnlyList<GitHubReleaseAsset> Assets);
 
     private sealed record GitHubReleaseAsset(string Name, string DownloadUrl);

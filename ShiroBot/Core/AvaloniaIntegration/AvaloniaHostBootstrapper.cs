@@ -1,15 +1,16 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Threading;
+using ShiroBot.AvaloniaIntegration;
 
-namespace ShiroBot.AvaloniaIntegration;
+namespace ShiroBot.Core.AvaloniaIntegration;
 
 /// <summary>
 /// 在专属后台线程上启动 Avalonia headless dispatcher。整个进程只允许有一个实例。
 /// </summary>
 internal sealed class AvaloniaHostBootstrapper : IDisposable
 {
-    private static readonly object SingletonLock = new();
+    private static readonly Lock SingletonLock = new();
     private static AvaloniaHostBootstrapper? _current;
 
     private readonly Thread _uiThread;
@@ -19,7 +20,7 @@ internal sealed class AvaloniaHostBootstrapper : IDisposable
 
     private AvaloniaHostBootstrapper()
     {
-        _uiThread = new Thread(UIThreadEntry)
+        _uiThread = new Thread(UiThreadEntry)
         {
             IsBackground = true,
             Name = "Avalonia.UI"
@@ -44,7 +45,7 @@ internal sealed class AvaloniaHostBootstrapper : IDisposable
         }
     }
 
-    private void UIThreadEntry()
+    private void UiThreadEntry()
     {
         try
         {

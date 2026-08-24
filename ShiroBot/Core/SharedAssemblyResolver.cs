@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 
 namespace ShiroBot.Core;
@@ -41,7 +43,7 @@ public sealed class SharedAssemblyResolver
         {
             if (_assemblies.TryGetValue(name.Name, out var exactAssembly))
             {
-                EnsureCompatible(name, exactAssembly.GetName(), exactAssembly.Location);
+                EnsureCompatible(name, exactAssembly.GetName(), GetAssemblyOrigin(exactAssembly));
                 return exactAssembly;
             }
 
@@ -92,6 +94,7 @@ public sealed class SharedAssemblyResolver
             if (_assemblies.TryGetValue(requestedName.Name, out var registered))
             {
                 EnsureCompatible(requestedName, registered.GetName(), fullPath);
+                EnsureSameModuleOrRestart(registered, fullPath);
                 return registered;
             }
 
@@ -100,6 +103,7 @@ public sealed class SharedAssemblyResolver
             if (loaded is not null)
             {
                 EnsureCompatible(requestedName, loaded.GetName(), fullPath);
+                EnsureSameModuleOrRestart(loaded, fullPath);
                 _assemblies.Add(requestedName.Name, loaded);
                 return loaded;
             }
@@ -107,6 +111,40 @@ public sealed class SharedAssemblyResolver
             var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(fullPath);
             _assemblies.Add(requestedName.Name, assembly);
             return assembly;
+        }
+    }
+
+    public void RegisterAssembly(Assembly assembly)
+    {
+        var name = assembly.GetName();
+        if (string.IsNullOrWhiteSpace(name.Name))
+        {
+            throw new InvalidOperationException("Shared assembly has no simple name.");
+        }
+
+        lock (_lock)
+        {
+            if (_assemblies.TryGetValue(name.Name, out var registered))
+            {
+                EnsureCompatible(name, registered.GetName(), GetAssemblyOrigin(assembly));
+                return;
+            }
+
+            _assemblies.Add(name.Name, assembly);
+        }
+    }
+
+    public void UnregisterAssembly(Assembly assembly)
+    {
+        var name = assembly.GetName().Name;
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        lock (_lock)
+        {
+            if (_assemblies.TryGetValue(name, out var registered) && ReferenceEquals(registered, assembly))
+            {
+                _assemblies.Remove(name);
+            }
         }
     }
 
@@ -120,6 +158,38 @@ public sealed class SharedAssemblyResolver
         throw new InvalidOperationException(
             $"Shared assembly conflict for {requested.Name}: {loaded.FullName} is already loaded, " +
             $"but {requested.FullName} was requested from {requestedPath}.");
+    }
+
+    private static void EnsureSameModuleOrRestart(Assembly loaded, string requestedPath)
+    {
+        var requestedModuleVersionId = ReadModuleVersionId(requestedPath);
+        if (requestedModuleVersionId == loaded.ManifestModule.ModuleVersionId)
+        {
+            return;
+        }
+
+        throw new SharedAssemblyRestartRequiredException(
+            $"Shared assembly {loaded.GetName().Name} changed on disk, but its previous version is " +
+            "already loaded into the non-collectible Default ALC. Restart ShiroBot to apply the update.");
+    }
+
+    private static Guid ReadModuleVersionId(string assemblyPath)
+    {
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        if (!peReader.HasMetadata)
+        {
+            throw new BadImageFormatException("Shared assembly has no managed metadata.", assemblyPath);
+        }
+
+        var metadata = peReader.GetMetadataReader();
+        return metadata.GetGuid(metadata.GetModuleDefinition().Mvid);
+    }
+
+    private static string GetAssemblyOrigin(Assembly assembly)
+    {
+        // The source path is only diagnostic text and is unavailable in single-file deployments.
+        return assembly.GetName().Name + ".dll";
     }
 
     private static Assembly? TryGetLoadedAssembly(AssemblyLoadContext alc, AssemblyName name)
@@ -183,3 +253,5 @@ public sealed class SharedAssemblyResolver
 
     private sealed record Entry(string[] Prefixes, AssemblyLoadContext Alc);
 }
+
+internal sealed class SharedAssemblyRestartRequiredException(string message) : InvalidOperationException(message);

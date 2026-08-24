@@ -1,9 +1,9 @@
-namespace ShiroBot.Qq.Model;
+namespace ShiroBot.Model.QQ;
 
 /// <summary>
-/// QQ 好友扩展服务。插件通过 context.GetAdapterExtension&lt;IQqFriendApi&gt;() 探测。
+/// QQ 好友扩展服务。插件通过 context.GetAdapterExtension&lt;IQFriendApi&gt;() 探测。
 /// </summary>
-public interface IQqFriendApi
+public interface IQFriendApi
 {
     Task SendNudgeAsync(long userId, bool isSelf = false)
         => throw new NotSupportedException();
@@ -15,10 +15,10 @@ public interface IQqFriendApi
         => throw new NotSupportedException();
 
     /// <summary>获取好友请求列表。</summary>
-    Task<IReadOnlyList<QqFriendRequest>> GetFriendRequestsAsync(int limit = 20, bool isFiltered = false)
+    Task<IReadOnlyList<QFriendRequest>> GetFriendRequestsAsync(int limit = 20, bool isFiltered = false)
         => throw new NotSupportedException();
 
-    /// <summary>接受好友请求。initiatorUid 来自 QqFriendRequest.InitiatorUid 或好友请求事件的 Token。</summary>
+    /// <summary>接受好友请求。initiatorUid 来自 QFriendRequest.InitiatorUid 或好友请求事件的 Token。</summary>
     Task AcceptFriendRequestAsync(string initiatorUid, bool isFiltered = false)
         => throw new NotSupportedException();
 
@@ -27,7 +27,7 @@ public interface IQqFriendApi
 }
 
 /// <summary>QQ 群管理扩展服务。</summary>
-public interface IQqGroupApi
+public interface IQGroupApi
 {
     Task SetGroupNameAsync(long groupId, string name)
         => throw new NotSupportedException();
@@ -63,10 +63,10 @@ public interface IQqGroupApi
         => throw new NotSupportedException();
 
     /// <summary>发送消息表情回应(指定 Face/Emoji 类型)。</summary>
-    Task SendMessageReactionAsync(long groupId, long messageSeq, string reactionId, QqReactionType reactionType, bool isAdd = true)
+    Task SendMessageReactionAsync(long groupId, long messageSeq, string reactionId, QReactionType reactionType, bool isAdd = true)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QqGroupAnnouncement>> GetAnnouncementsAsync(long groupId)
+    Task<IReadOnlyList<QGroupAnnouncement>> GetAnnouncementsAsync(long groupId)
         => throw new NotSupportedException();
 
     Task SendAnnouncementAsync(long groupId, string content, string? imageUri = null)
@@ -75,16 +75,21 @@ public interface IQqGroupApi
     Task DeleteAnnouncementAsync(long groupId, string announcementId)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QqEssenceMessage>> GetEssenceMessagesAsync(long groupId, int pageIndex, int pageSize)
+    Task<IReadOnlyList<QEssenceMessage>> GetEssenceMessagesAsync(long groupId, int pageIndex, int pageSize)
+        => throw new NotSupportedException();
+
+    /// <summary>获取一页群精华消息，并返回是否已到最后一页。</summary>
+    Task<(IReadOnlyList<QEssenceMessage> Messages, bool IsEnd)> GetEssenceMessagesPageAsync(
+        long groupId, int pageIndex, int pageSize)
         => throw new NotSupportedException();
 
     Task SetEssenceMessageAsync(long groupId, long messageSeq, bool isSet = true)
         => throw new NotSupportedException();
 
-    Task AcceptJoinRequestAsync(QqGroupJoinRequest request)
+    Task AcceptJoinRequestAsync(QGroupJoinRequest request)
         => throw new NotSupportedException();
 
-    Task RejectJoinRequestAsync(QqGroupJoinRequest request, string? reason = null)
+    Task RejectJoinRequestAsync(QGroupJoinRequest request, string? reason = null)
         => throw new NotSupportedException();
 
     /// <summary>按通知序号接受入群申请/邀请入群申请。</summary>
@@ -95,7 +100,7 @@ public interface IQqGroupApi
         => throw new NotSupportedException();
 
     /// <summary>获取群通知列表(入群申请/邀请/管理员变更/踢人/退群)。返回通知与下一页起始序号。</summary>
-    Task<(IReadOnlyList<QqGroupNotification> Notifications, long? NextNotificationSeq)> GetNotificationsAsync(
+    Task<(IReadOnlyList<QGroupNotification> Notifications, long? NextNotificationSeq)> GetNotificationsAsync(
         long? startNotificationSeq = null, bool isFiltered = false, int limit = 20)
         => throw new NotSupportedException();
 
@@ -108,7 +113,7 @@ public interface IQqGroupApi
 }
 
 /// <summary>QQ 群文件扩展服务。</summary>
-public interface IQqFileApi
+public interface IQFileApi
 {
     Task<string> UploadPrivateFileAsync(long userId, string fileUri, string fileName)
         => throw new NotSupportedException();
@@ -119,10 +124,19 @@ public interface IQqFileApi
     Task<string> GetPrivateFileDownloadUrlAsync(long userId, string fileId, string fileHash)
         => throw new NotSupportedException();
 
+    /// <summary>获取私聊文件下载链接，并指定文件是否由机器人自己发送。</summary>
+    Task<string> GetPrivateFileDownloadUrlAsync(long userId, string fileId, string fileHash, bool isSelfSend)
+    {
+        if (isSelfSend)
+            throw new NotSupportedException("Current adapter does not support downloading self-sent private files.");
+
+        return GetPrivateFileDownloadUrlAsync(userId, fileId, fileHash);
+    }
+
     Task<string> GetGroupFileDownloadUrlAsync(long groupId, string fileId)
         => throw new NotSupportedException();
 
-    Task<(IReadOnlyList<QqGroupFile> Files, IReadOnlyList<QqGroupFolder> Folders)> GetGroupFilesAsync(
+    Task<(IReadOnlyList<QGroupFile> Files, IReadOnlyList<QGroupFolder> Folders)> GetGroupFilesAsync(
         long groupId, string parentFolderId = "/")
         => throw new NotSupportedException();
 
@@ -150,27 +164,31 @@ public interface IQqFileApi
 }
 
 /// <summary>QQ 账号/资料扩展服务。</summary>
-public interface IQqSystemApi
+public interface IQSystemApi
 {
-    Task<QqUserProfile> GetUserProfileAsync(long userId)
+    Task<QUserProfile> GetUserProfileAsync(long userId)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QqFriend>> GetFriendListAsync(bool noCache = false)
+    Task<IReadOnlyList<QFriend>> GetFriendListAsync(bool noCache = false)
         => throw new NotSupportedException();
 
-    Task<QqFriend> GetFriendInfoAsync(long userId, bool noCache = false)
+    Task<QFriend> GetFriendInfoAsync(long userId, bool noCache = false)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QqGroup>> GetGroupListAsync(bool noCache = false)
+    Task<IReadOnlyList<QGroup>> GetGroupListAsync(bool noCache = false)
         => throw new NotSupportedException();
 
-    Task<QqGroup> GetGroupInfoAsync(long groupId, bool noCache = false)
+    Task<QGroup> GetGroupInfoAsync(long groupId, bool noCache = false)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QqGroupMember>> GetGroupMemberListAsync(long groupId, bool noCache = false)
+    Task<IReadOnlyList<QGroupMember>> GetGroupMemberListAsync(long groupId, bool noCache = false)
         => throw new NotSupportedException();
 
-    Task<QqGroupMember> GetGroupMemberInfoAsync(long groupId, long userId, bool noCache = false)
+    Task<QGroupMember> GetGroupMemberInfoAsync(long groupId, long userId, bool noCache = false)
+        => throw new NotSupportedException();
+
+    /// <summary>获取置顶的好友和群。</summary>
+    Task<(IReadOnlyList<QFriend> Friends, IReadOnlyList<QGroup> Groups)> GetPeerPinsAsync()
         => throw new NotSupportedException();
 
     Task SetAvatarAsync(string imageUri)
@@ -189,11 +207,11 @@ public interface IQqSystemApi
         => throw new NotSupportedException();
 
     /// <summary>获取登录账号信息。</summary>
-    Task<QqLoginInfo> GetLoginInfoAsync()
+    Task<QLoginInfo> GetLoginInfoAsync()
         => throw new NotSupportedException();
 
     /// <summary>获取协议实现端信息(实现名/版本/QQ协议类型)。</summary>
-    Task<QqImplInfo> GetImplInfoAsync()
+    Task<QImplInfo> GetImplInfoAsync()
         => throw new NotSupportedException();
 
     /// <summary>获取收藏表情 URL 列表。</summary>
@@ -201,37 +219,42 @@ public interface IQqSystemApi
         => throw new NotSupportedException();
 
     /// <summary>设置会话置顶。</summary>
-    Task SetPeerPinAsync(QqMessageScene scene, long peerId, bool isPinned = true)
+    Task SetPeerPinAsync(QMessageScene scene, long peerId, bool isPinned = true)
         => throw new NotSupportedException();
 }
 
 /// <summary>QQ 消息扩展服务(合并转发、原生段收发)。</summary>
-public interface IQqMessageApi
+public interface IQMessageApi
 {
     /// <summary>用 QQ 原生段发送消息(LightApp、合并转发等核心模型未覆盖的内容)。</summary>
-    Task<long> SendMessageAsync(QqMessageScene scene, long peerId, IReadOnlyList<QqOutgoingSegment> segments)
+    Task<long> SendMessageAsync(QMessageScene scene, long peerId, IReadOnlyList<QOutgoingSegment> segments)
+        => throw new NotSupportedException();
+
+    /// <summary>发送 QQ 原生消息，并返回消息序列号和发送时间。</summary>
+    Task<QSentMessage> SendMessageDetailedAsync(
+        QMessageScene scene, long peerId, IReadOnlyList<QOutgoingSegment> segments)
         => throw new NotSupportedException();
 
     /// <summary>获取单条消息(QQ 原生形态)。</summary>
-    Task<QqIncomingMessage?> GetMessageAsync(QqMessageScene scene, long peerId, long messageSeq)
+    Task<QIncomingMessage?> GetMessageAsync(QMessageScene scene, long peerId, long messageSeq)
         => throw new NotSupportedException();
 
     /// <summary>获取历史消息(QQ 原生形态)。返回消息与下一页起始序号。</summary>
-    Task<(IReadOnlyList<QqIncomingMessage> Messages, long? NextMessageSeq)> GetHistoryMessagesAsync(
-        QqMessageScene scene, long peerId, long? startMessageSeq = null, int limit = 20)
+    Task<(IReadOnlyList<QIncomingMessage> Messages, long? NextMessageSeq)> GetHistoryMessagesAsync(
+        QMessageScene scene, long peerId, long? startMessageSeq = null, int limit = 20)
         => throw new NotSupportedException();
 
     /// <summary>撤回消息。</summary>
-    Task RecallMessageAsync(QqMessageScene scene, long peerId, long messageSeq)
+    Task RecallMessageAsync(QMessageScene scene, long peerId, long messageSeq)
         => throw new NotSupportedException();
 
     /// <summary>把接收到的资源 ID 解析为临时下载 URL。</summary>
     Task<string> GetResourceTempUrlAsync(string resourceId)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QqForwardedIncomingMessage>> GetForwardedMessagesAsync(string forwardId)
+    Task<IReadOnlyList<QForwardedIncomingMessage>> GetForwardedMessagesAsync(string forwardId)
         => throw new NotSupportedException();
 
-    Task MarkAsReadAsync(QqMessageScene scene, long peerId, long messageSeq)
+    Task MarkAsReadAsync(QMessageScene scene, long peerId, long messageSeq)
         => throw new NotSupportedException();
 }

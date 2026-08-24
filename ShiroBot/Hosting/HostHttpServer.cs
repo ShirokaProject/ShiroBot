@@ -12,10 +12,10 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ShiroBot.Core;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
-using SDK = ShiroBot.SDK;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting;
@@ -24,7 +24,6 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 {
     public static async Task<HostHttpServer?> StartAsync(
         ApiHostConfig config,
-        CoreConfig coreConfig,
         ConfigManager configManager,
         string configPath,
         PluginManager pluginManager,
@@ -33,7 +32,10 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         WebHostContext webHostContext,
         HostRuntimeState runtimeState,
         HostLogHub logHub,
-        BotContext botContext)
+        BotContext botContext,
+        ModelPackageRegistry modelPackages,
+        AdapterManager adapterManager,
+        ComponentReloadCoordinator reloadCoordinator)
     {
         if (!config.Enable) return null;
 
@@ -62,8 +64,10 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
         app.UseWebSockets();
         app.UseCors(ApiCorsPolicyName);
-        MapDashboardAssets(app, config);
-        MapApiEndpoints(app, config, coreConfig, configManager, configPath, pluginManager, eventDispatcher, routePolicy, runtimeState, logHub);
+        MapDashboardAssets(app);
+        MapApiEndpoints(
+            app, config, configManager, configPath, pluginManager, eventDispatcher,
+            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator);
         MapDebugEndpoints(app, config, botContext, eventDispatcher);
 
         app.MapFallback((HttpContext context, WebHostContext registry) => registry.HandleRequest(context));
@@ -73,7 +77,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         return new HostHttpServer(app);
     }
 
-    private static void MapDashboardAssets(WebApplication app, ApiHostConfig config)
+    private static void MapDashboardAssets(WebApplication app)
     {
         const string dashboardPath = "/dashboard";
         const string resourcePrefix = "Assets.dashboard.";
@@ -106,14 +110,16 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     private static void MapApiEndpoints(
         WebApplication app,
         ApiHostConfig config,
-        CoreConfig coreConfig,
         ConfigManager configManager,
         string configPath,
         PluginManager pluginManager,
         HostEventDispatcher eventDispatcher,
         PluginRouteConfig routePolicy,
         HostRuntimeState runtimeState,
-        HostLogHub logHub)
+        HostLogHub logHub,
+        ModelPackageRegistry modelPackages,
+        AdapterManager adapterManager,
+        ComponentReloadCoordinator reloadCoordinator)
     {
         var api = app.MapGroup("/api/v1");
         api.AddEndpointFilter(async (context, next) =>
@@ -131,6 +137,112 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         
         //概览
         api.MapGet("/overview", () => Results.Ok(runtimeState.CreateOverview()));
+
+        api.MapGet("/models/list", () => Results.Ok(modelPackages.GetPackages().Select(model => new
+        {
+            id = model.Id,
+            version = model.Version,
+            assembly = model.AssemblyName,
+            path = model.AssemblyPath
+        })));
+
+        api.MapPost("/models/reload", async () =>
+        {
+            try
+            {
+                await reloadCoordinator.ReloadModelsAsync().ConfigureAwait(false);
+                return Results.Ok(new { ok = true, models = modelPackages.GetPackages() });
+            }
+            catch (Exception ex)
+            {
+                runtimeState.RecordEvent("Model reload failed: " + ex.Message, "error");
+                return Results.Conflict(new { ok = false, error = "model_reload_failed", message = ex.Message });
+            }
+        });
+
+        api.MapPost("/models/install", async (HttpContext context) =>
+        {
+            if (!context.Request.HasFormContentType)
+            {
+                return Results.BadRequest(new { error = "invalid_request", message = "请使用 multipart/form-data 上传 Model DLL。" });
+            }
+
+            var form = await context.Request.ReadFormAsync(context.RequestAborted).ConfigureAwait(false);
+            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            if (file is null || file.Length == 0)
+            {
+                return Results.BadRequest(new { error = "missing_file", message = "未收到 Model DLL。" });
+            }
+
+            if (!Path.GetExtension(file.FileName).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new { error = "unsupported_file", message = "Model 安装只支持单个 .dll 文件。" });
+            }
+
+            var stagedPath = Path.Combine(Path.GetTempPath(), "ShiroBot", "model_uploads", Guid.NewGuid().ToString("N") + ".dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(stagedPath)!);
+            try
+            {
+                await using (var stream = File.Create(stagedPath))
+                {
+                    await file.CopyToAsync(stream, context.RequestAborted).ConfigureAwait(false);
+                }
+
+                await reloadCoordinator.InstallModelAsync(stagedPath).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, models = modelPackages.GetPackages() });
+            }
+            catch (Exception ex)
+            {
+                runtimeState.RecordEvent("Model install failed: " + ex.Message, "error");
+                return Results.Conflict(new { ok = false, error = "model_install_failed", message = ex.Message });
+            }
+            finally
+            {
+                if (File.Exists(stagedPath)) File.Delete(stagedPath);
+            }
+        });
+
+        api.MapGet("/adapter", () => Results.Ok(adapterManager.CreateStatus()));
+
+        api.MapPost("/adapter/reload", async (HttpContext context) =>
+        {
+            string? assemblyPath = null;
+            if (context.Request.ContentLength is > 0)
+            {
+                using var document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
+                    .ConfigureAwait(false);
+                if (document.RootElement.TryGetProperty("assembly_path", out var pathElement))
+                {
+                    assemblyPath = pathElement.GetString();
+                }
+            }
+
+            try
+            {
+                await reloadCoordinator.ReloadAdapterAsync(assemblyPath).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, adapter = adapterManager.CreateStatus() });
+            }
+            catch (Exception ex)
+            {
+                runtimeState.RecordEvent("Adapter reload failed: " + ex.Message, "error");
+                return Results.Conflict(new { ok = false, error = "adapter_reload_failed", message = ex.Message });
+            }
+        });
+
+        api.MapPost("/adapter/stop", async () =>
+        {
+            try
+            {
+                var plugins = await pluginManager.UnloadAllAsync(eventDispatcher).ConfigureAwait(false);
+                await adapterManager.StopAsync().ConfigureAwait(false);
+                await pluginManager.ReloadAsync(eventDispatcher, routePolicy, plugins).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, adapter = adapterManager.CreateStatus() });
+            }
+            catch (Exception ex)
+            {
+                return Results.Conflict(new { ok = false, error = "adapter_stop_failed", message = ex.Message });
+            }
+        });
 
         //配置
         api.MapGet("/config", async () => Results.Ok(CreateConfigResponse(await configManager.LoadCoreConfig().ConfigureAwait(false))));
@@ -204,12 +316,14 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                     plugin.Category.ToString()))
                 .ToArray();
 
-            var enabledIds = enabledPlugins.Select(plugin => plugin.id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var enabledIds = enabledPlugins.Select(plugin => plugin.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var disabledPlugins = EnumerateDisabledPlugins(pluginManager)
-                .Where(plugin => !enabledIds.Contains(plugin.id));
-            var listedIds = enabledIds.Concat(disabledPlugins.Select(plugin => plugin.id)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                .Where(plugin => !enabledIds.Contains(plugin.Id))
+                .ToArray();
+            var listedIds = enabledIds.Concat(disabledPlugins.Select(plugin => plugin.Id)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var unloadedPlugins = EnumerateUnloadedPlugins(pluginManager)
-                .Where(plugin => !listedIds.Contains(plugin.id));
+                .Where(plugin => !listedIds.Contains(plugin.Id))
+                .ToArray();
 
             return Results.Ok(enabledPlugins.Concat(disabledPlugins).Concat(unloadedPlugins).ToArray());
         });
@@ -274,7 +388,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                     await file.CopyToAsync(stream, context.RequestAborted).ConfigureAwait(false);
                 }
 
-                var package = PreparePluginUploadPackage(pluginManager, uploadId, packagePath);
+                var package = PreparePluginUploadPackage(pluginManager, packagePath);
                 var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
                 SchedulePluginUploadCleanup(uploadRoot);
                 return Results.Ok(new
@@ -470,7 +584,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                     MaxPluginUploadBytes,
                     hasAssetUrl ? request.AssetSha256 : null).ConfigureAwait(false);
 
-                var package = PreparePluginUploadPackage(pluginManager, uploadId, packagePath);
+                var package = PreparePluginUploadPackage(pluginManager, packagePath);
                 var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
                 SchedulePluginUploadCleanup(uploadRoot);
 
@@ -629,9 +743,9 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                             return new PluginActionExecution(false, null);
                         }
 
-                        var result = await provider.ExecuteWebActionAsync(actionId, context.RequestAborted)
+                        var actionResult = await provider.ExecuteWebActionAsync(actionId, context.RequestAborted)
                             .ConfigureAwait(false);
-                        return new PluginActionExecution(true, result);
+                        return new PluginActionExecution(true, actionResult);
                     }).ConfigureAwait(false);
 
                 if (!dispatch.Dispatched)
@@ -1215,7 +1329,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         return line;
     }
 
-    private static object? ParseSimpleTomlValue(string value)
+    private static object ParseSimpleTomlValue(string value)
     {
         if (value.StartsWith('"') && value.EndsWith('"')) return JsonSerializer.Deserialize<string>(value) ?? string.Empty;
         if (value.Equals("true", StringComparison.OrdinalIgnoreCase)) return true;
@@ -1223,7 +1337,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         if (value.StartsWith('[') && value.EndsWith(']'))
         {
             var body = value[1..^1].Trim();
-            if (body.Length == 0) return Array.Empty<object?>();
+            if (body.Length == 0) return Array.Empty<object>();
             return body.Split(',', StringSplitOptions.TrimEntries).Select(ParseSimpleTomlValue).ToArray();
         }
 
@@ -1745,14 +1859,14 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         File.Delete(fullTargetPath);
     }
 
-    private static PluginUploadPackage PreparePluginUploadPackage(PluginManager pluginManager, string uploadId, string packagePath)
+    private static PluginUploadPackage PreparePluginUploadPackage(PluginManager pluginManager, string packagePath)
     {
         var extension = Path.GetExtension(packagePath);
         if (extension.Equals(".dll", StringComparison.OrdinalIgnoreCase))
         {
             var info = pluginManager.TryProbePluginInfoFile(packagePath)
                        ?? throw new InvalidOperationException("未找到 BotPluginAttribute，文件不是有效插件。");
-            return new PluginUploadPackage(uploadId, Path.GetDirectoryName(packagePath)!, packagePath, packagePath, "dll", info);
+            return new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, packagePath, "dll", info);
         }
 
         if (!extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
@@ -1773,7 +1887,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         {
             0 => throw new InvalidOperationException("压缩包中未找到有效插件 DLL。"),
             > 1 => throw new InvalidOperationException("压缩包中包含多个插件入口 DLL，请一次只上传一个插件。"),
-            _ => new PluginUploadPackage(uploadId, Path.GetDirectoryName(packagePath)!, packagePath, pluginDlls[0].Path, "zip", pluginDlls[0].Info!)
+            _ => new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, pluginDlls[0].Path, "zip", pluginDlls[0].Info!)
         };
     }
 
@@ -1788,7 +1902,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             throw new InvalidOperationException("上传文件不存在。上传可能已过期，请重新上传。");
         }
 
-        return PreparePluginUploadPackage(pluginManager, uploadId, packagePath);
+        return PreparePluginUploadPackage(pluginManager, packagePath);
     }
 
     private static void InstallUploadedPlugin(string pluginRootPath, PluginUploadPackage package)
@@ -1966,9 +2080,9 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         var plugins = pluginManager.GetLoadedPluginSnapshot()
             .Select(plugin => new MarketplaceInstalledPlugin(plugin.Name, plugin.GithubRepo, plugin.Version, true))
             .Concat(EnumerateDisabledPlugins(pluginManager)
-                .Select(plugin => new MarketplaceInstalledPlugin(plugin.id, plugin.repo, plugin.version, false)))
+                .Select(plugin => new MarketplaceInstalledPlugin(plugin.Id, plugin.Repo, plugin.Version, false)))
             .Concat(EnumerateUnloadedPlugins(pluginManager)
-                .Select(plugin => new MarketplaceInstalledPlugin(plugin.id, plugin.repo, plugin.version, false)));
+                .Select(plugin => new MarketplaceInstalledPlugin(plugin.Id, plugin.Repo, plugin.Version, false)));
 
         return plugins
             .GroupBy(plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
@@ -2019,6 +2133,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     private static object CreateConfigResponse(CoreConfig config) => new
     {
         protocol = config.Protocol,
+        protocols = config.Protocols,
         enable_log = config.EnableLog,
         disable_console_input = config.DisableConsoleInput,
         github_proxy = config.GithubProxy,
@@ -2071,7 +2186,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
         if (TryGetString(patch, "avalonia_theme", out var avaloniaTheme))
         {
-            AvaloniaIntegration.AvaloniaIntegration.SetThemeMode(avaloniaTheme);
+            Core.AvaloniaIntegration.AvaloniaIntegration.SetThemeMode(avaloniaTheme);
             configManager.SetConfigValue(configPath, "avalonia_theme", avaloniaTheme);
         }
 
@@ -2242,7 +2357,10 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     private const byte ElementTypeR4 = 0x0C;
     private const byte ElementTypeR8 = 0x0D;
 
-    private sealed record ApiError(string Code, string Message);
+    // ReSharper disable NotAccessedPositionalProperty.Local
+    private sealed record ApiError(
+        [property: JsonPropertyName("code")] string Code,
+        [property: JsonPropertyName("message")] string Message);
 
     private sealed record PluginUploadConfirmRequest(bool Replace = false, bool Enable = true);
 
@@ -2260,14 +2378,14 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     private sealed record PluginActionExecution(bool Found, PluginWebActionResult? Result);
 
     private sealed record ConfigSchemaItem(
-        string key,
-        string label,
-        string type,
-        string description,
-        string? placeholder,
-        string[] options,
-        double? min,
-        double? max);
+        [property: JsonPropertyName("key")] string Key,
+        [property: JsonPropertyName("label")] string Label,
+        [property: JsonPropertyName("type")] string Type,
+        [property: JsonPropertyName("description")] string Description,
+        [property: JsonPropertyName("placeholder")] string? Placeholder,
+        [property: JsonPropertyName("options")] string[] Options,
+        [property: JsonPropertyName("min")] double? Min,
+        [property: JsonPropertyName("max")] double? Max);
 
     private sealed class ConfigFieldMetadata
     {
@@ -2281,22 +2399,21 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     }
 
     private sealed record PluginUploadPackage(
-        string UploadId,
         string RootPath,
-        string PackagePath,
         string EntryAssemblyPath,
         string Type,
         PluginProbeInfo Info);
 
     private sealed record PluginListItem(
-        string id,
-        string name,
-        string version,
-        bool enable,
-        string author,
-        string? repo,
-        string description,
-        string category);
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("version")] string Version,
+        [property: JsonPropertyName("enable")] bool Enable,
+        [property: JsonPropertyName("author")] string Author,
+        [property: JsonPropertyName("repo")] string? Repo,
+        [property: JsonPropertyName("description")] string Description,
+        [property: JsonPropertyName("category")] string Category);
+    // ReSharper restore NotAccessedPositionalProperty.Local
 
     public async ValueTask DisposeAsync()
     {

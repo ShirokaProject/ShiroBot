@@ -2,9 +2,9 @@ namespace ShiroBot.SDK.Plugin;
 
 public enum RenderTheme
 {
-    Light,
-    Dark,
-    Auto
+    Light = 0,
+    Dark = 1,
+    Auto = 2
 }
 
 /// <summary>

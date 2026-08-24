@@ -188,9 +188,11 @@ internal sealed class HostEventDispatcher(
     {
         lock (pluginLifecycleLock)
         {
-            return _eventHandlers.TryGetValue(eventType, out var handlers)
-                ? handlers.ToArray()
-                : [];
+            return _eventHandlers
+                .Where(entry => entry.Key.IsAssignableFrom(eventType))
+                .SelectMany(entry => entry.Value)
+                .Distinct()
+                .ToArray();
         }
     }
 

@@ -1,5 +1,5 @@
 using System.Reflection;
-using ShiroBot.SDK.Core;
+using System.Text.Json.Serialization;
 
 namespace ShiroBot.Hosting;
 
@@ -15,11 +15,12 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
     private long _messageCount;
     private RuntimeEvent? _latestError;
 
-    public DateTimeOffset StartedAt { get; } = startedAt;
-    public string BotVersion { get; } = GetBotVersion();
-    public int PluginsCount { get; private set; }
-    public string Adapter { get; private set; } = "unknown";
-    public string AdapterStatus { get; private set; } = "disconnected";
+    private DateTimeOffset StartedAt { get; } = startedAt;
+    private string BotVersion { get; } = GetBotVersion();
+    private int PluginsCount { get; set; }
+    private int ModelsCount { get; set; }
+    private string Adapter { get; set; } = "unknown";
+    private string AdapterStatus { get; set; } = "disconnected";
 
     public void SetAdapter(string adapterName, string status)
     {
@@ -35,6 +36,14 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         lock (_lock)
         {
             PluginsCount = count;
+        }
+    }
+
+    public void SetModelsCount(int count)
+    {
+        lock (_lock)
+        {
+            ModelsCount = count;
         }
     }
 
@@ -54,9 +63,9 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
     {
         var runtimeEvent = new RuntimeEvent
         {
-            message = message,
-            time = (at ?? DateTimeOffset.Now).ToString("HH:mm"),
-            level = level
+            Message = message,
+            Time = (at ?? DateTimeOffset.Now).ToString("HH:mm"),
+            Level = level
         };
 
         lock (_lock)
@@ -84,6 +93,7 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
                 bot_version = BotVersion,
                 uptime_seconds = (long)(DateTimeOffset.UtcNow - StartedAt).TotalSeconds,
                 plugins_count = PluginsCount,
+                models_count = ModelsCount,
                 adapter = Adapter,
                 adapter_status = AdapterStatus,
                 message_count = _messageCount,
@@ -122,13 +132,21 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
             return informationalVersion.Split('+', 2)[0];
         }
 
-        return assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        return assembly.GetName().Version?.ToString(3) ?? "0.8.0";
     }
 
     private sealed class RuntimeEvent
     {
-        public string message { get; init; } = string.Empty;
-        public string time { get; init; } = string.Empty;
-        public string level { get; init; } = string.Empty;
+        [JsonPropertyName("message")]
+        // ReSharper disable once UnusedAutoPropertyAccessor.Local
+        public string Message { get; init; } = string.Empty;
+
+        [JsonPropertyName("time")]
+        // ReSharper disable once UnusedAutoPropertyAccessor.Local
+        public string Time { get; init; } = string.Empty;
+
+        [JsonPropertyName("level")]
+        // ReSharper disable once UnusedAutoPropertyAccessor.Local
+        public string Level { get; init; } = string.Empty;
     }
 }

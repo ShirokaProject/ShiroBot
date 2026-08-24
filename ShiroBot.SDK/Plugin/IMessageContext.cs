@@ -19,9 +19,10 @@ public interface IMessageContext : IMessageService
         bool disposeOnReply = true)
     {
         IReplySubscription? subscription = null;
+        // ReSharper disable once AccessToModifiedClosure
         subscription = SubscribeReply(messageId, duration, async message =>
         {
-            if (!message.Segments.OfType<TextSegment>().Any(segment => segment.Text == text))
+            if (message.Segments.OfType<TextSegment>().All(segment => segment.Text != text))
             {
                 return;
             }

@@ -1,19 +1,18 @@
 # Avalonia 图片渲染
 
-ShiroBot 0.7.0 在宿主默认加载上下文中统一提供 Avalonia 12.1、SkiaSharp 和 HarfBuzzSharp。插件通过独立的 `ShiroBot.AvaloniaSdk` 获取控件渲染契约，不应携带另一套运行时副本。
+ShiroBot 在宿主默认加载上下文中统一提供 Avalonia 12.1、SkiaSharp 和 HarfBuzzSharp。Avalonia 控件渲染契约和编译支持已并入 `ShiroBot.SDK`，插件不应携带另一套运行时副本。
 
 ## 引用包
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
-  <PackageReference Include="ShiroBot.AvaloniaSdk" Version="0.7.1" />
+  <PackageReference Include="ShiroBot.SDK" Version="0.8.0" />
 </ItemGroup>
 ```
 
-`ShiroBot.AvaloniaSdk` 会传递 Avalonia 编译类型和 AXAML build targets；运行时程序集由宿主共享。SDK 自动打包会移除 `ShiroBot.AvaloniaSdk`、`Avalonia*`、`SkiaSharp*`、`HarfBuzzSharp*`、`MicroCom*` 及相关 runtime/native 资产。
+`ShiroBot.SDK` 会传递 Avalonia 编译类型和 AXAML build targets；运行时程序集由宿主共享。SDK 自动打包会移除 `Avalonia*`、`SkiaSharp*`、`HarfBuzzSharp*`、`MicroCom*` 及相关 runtime/native 资产。
 
-0.6 插件使用的程序集名、`ShiroBot.AvaloniaSdk` 命名空间和公共渲染接口保持不变。重新编译时只需把两个 ShiroBot 包更新到 0.7.1。
+公共渲染 API 暂时保留 `ShiroBot.AvaloniaSdk` 命名空间以减少源码迁移；该命名空间中的类型现在由 `ShiroBot.SDK.dll` 提供。插件项目只需引用一个 `ShiroBot.SDK` 包。
 
 ## 创建控件
 
@@ -112,7 +111,7 @@ Avalonia 初始化失败。插件必须提供降级提示，不能假设渲染�
 
 ### AXAML 没有编译
 
-确保项目引用 `ShiroBot.AvaloniaSdk`，并且文件 Build Action 是 `AvaloniaResource`。可以在项目中显式添加：
+确保项目引用 `ShiroBot.SDK`，并且文件 Build Action 是 `AvaloniaResource`。可以在项目中显式添加：
 
 ```xml
 <ItemGroup>

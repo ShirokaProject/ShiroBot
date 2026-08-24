@@ -80,7 +80,7 @@ public sealed record BotOfflineEvent : BotEvent
 
 /// <summary>
 /// 平台特有事件（戳一戳、精华消息、Reaction 等通用模型未覆盖的事件）。
-/// 插件按 <see cref="Kind"/> 识别并读取 <see cref="Raw"/>。
+/// 插件按 <see cref="Kind"/> 识别并读取 <see cref="BotEvent.Raw"/>。
 /// </summary>
 public sealed record PlatformEvent : BotEvent
 {

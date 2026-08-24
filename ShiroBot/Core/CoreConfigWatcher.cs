@@ -65,6 +65,11 @@ internal sealed class CoreConfigWatcher : IDisposable
             active.Protocol = updated.Protocol;
             changes.Add("protocol(下次启动生效)");
         }
+        if (!active.Protocols.SequenceEqual(updated.Protocols, StringComparer.OrdinalIgnoreCase))
+        {
+            active.Protocols = updated.Protocols;
+            changes.Add("protocols(下次启动生效)");
+        }
 
         active.PluginRoutes.CopyFrom(updated.PluginRoutes);
         changes.Add("plugin_routes");

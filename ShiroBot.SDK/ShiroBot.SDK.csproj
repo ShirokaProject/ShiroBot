@@ -2,17 +2,21 @@
 
     <PropertyGroup>
         <PackageId>ShiroBot.SDK</PackageId>
-        <Version>0.7.1</Version>
+        <Version>0.8.0</Version>
+        <AssemblyVersion>0.8.0.0</AssemblyVersion>
+        <FileVersion>0.8.0.0</FileVersion>
+        <EnablePackageValidation>true</EnablePackageValidation>
+        <PackageValidationBaselineVersion Condition="'$(PackageValidationBaselineVersion)' == '' and '$(Version)' != '0.8.0'">0.8.0</PackageValidationBaselineVersion>
         <IsPackable>true</IsPackable>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <Authors>ShirokaProject</Authors>
-        <Description>Core contracts, routing APIs and packaging targets for ShiroBot plugins and adapters.</Description>
+        <Description>Core contracts, Avalonia rendering APIs and packaging targets for ShiroBot plugins and adapters.</Description>
         <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
-        <PackageTags>ShiroBot;bot;sdk;plugin;adapter</PackageTags>
+        <PackageTags>ShiroBot;bot;sdk;plugin;adapter;Avalonia;rendering</PackageTags>
         <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
         <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
-        <PackageReleaseNotes>0.7.1 introduces the platform-agnostic core model (ShiroBot.SDK.Models) with unified MessageEvent routing, adapter capability probing, automatic component packaging, plugin web actions and marketplace integration.</PackageReleaseNotes>
+        <PackageReleaseNotes>0.8 establishes the versioned plugin and adapter API baseline, unified platform models, multi-adapter routing, unload-safe lifecycle handling, opt-in component packaging, and integrated Avalonia rendering contracts.</PackageReleaseNotes>
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <NoWarn>$(NoWarn);NU5104</NoWarn>
@@ -22,6 +26,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Avalonia" Version="12.1.0" />
+      <PackageReference Include="Avalonia.HarfBuzz" Version="12.1.0" />
+      <PackageReference Include="Avalonia.Skia" Version="12.1.0" />
       <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.45"
                         PrivateAssets="all"
                         GeneratePathProperty="true" />

@@ -4,11 +4,11 @@
 
 ## 自动处理流程
 
-当项目满足以下条件时自动启用：
+当项目满足以下条件时启用：
 
 1. 通过 `PackageReference` 引入发布后的 `ShiroBot.SDK`。
 2. 输出程序集包含 `BotPluginAttribute`。
-3. `ShiroBotPluginPackagingEnabled` 没有被设置为 `false`。
+3. 项目显式设置 `<ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>`。
 
 构建过程会：
 
@@ -26,7 +26,7 @@
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
+  <PackageReference Include="ShiroBot.SDK" Version="0.8.0" />
   <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
 </ItemGroup>
 ```

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 
+// ReSharper disable once CheckNamespace
 namespace ShiroBot.AvaloniaIntegration;
 
 /// <summary>

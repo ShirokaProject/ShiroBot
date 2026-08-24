@@ -10,6 +10,9 @@ public class CoreConfig
 {
     public string Protocol { get; set; } = string.Empty;
 
+    /// <summary>并行加载的 Adapter 名称或 DLL 路径。为空时回退到旧的 protocol。</summary>
+    public string[] Protocols { get; set; } = [];
+
     public bool EnableLog { get; set; } = true;
 
     public bool DisableConsoleInput { get; set; } = false;
@@ -401,7 +404,6 @@ public class ConfigManager(string? coreConfigPath = null)
 
     private sealed class TomlSectionInfo(string name)
     {
-        public string Name { get; } = name;
         public int HeaderLineIndex { get; set; } = name.Length == 0 ? -1 : 0;
         public List<string> Lines { get; } = [];
         public HashSet<string> Keys { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -455,10 +457,93 @@ public class ConfigManager(string? coreConfigPath = null)
 
     private static void SaveToml<T>(string configPath, T config, TomlSerializerOptions options) where T : class
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        var normalizedConfigPath = Path.GetFullPath(configPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(normalizedConfigPath)!);
         var tomlString = SerializeToml(config, options);
-        File.WriteAllText(configPath, tomlString);
+        if (!File.Exists(normalizedConfigPath) || new FileInfo(normalizedConfigPath).Length == 0)
+        {
+            File.WriteAllText(normalizedConfigPath, tomlString);
+            return;
+        }
+
+        var lines = File.ReadAllText(normalizedConfigPath).Replace("\r\n", "\n").Split('\n').ToList();
+        if (lines is [{ Length: 0 }]) lines.Clear();
+
+        foreach (var entry in GetTomlEntries(tomlString))
+        {
+            var (sectionStart, sectionEnd) = FindOrAppendSection(lines, entry.SectionName);
+            var existingLineIndex = -1;
+            for (var i = sectionStart; i < sectionEnd; i++)
+            {
+                if (TryGetTomlKey(lines[i], out var existingKey)
+                    && string.Equals(existingKey, entry.Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    existingLineIndex = i;
+                    break;
+                }
+            }
+
+            if (existingLineIndex >= 0)
+            {
+                lines[existingLineIndex] = ReplaceTomlValue(lines[existingLineIndex], entry.ValueLiteral);
+                continue;
+            }
+
+            lines.InsertRange(sectionEnd, entry.LeadingComments.Append(entry.Line));
+        }
+
+        WritePatchedToml(normalizedConfigPath, lines);
     }
+
+    private static IEnumerable<TomlEntry> GetTomlEntries(string toml)
+    {
+        var sectionName = string.Empty;
+        var pendingComments = new List<string>();
+
+        foreach (var line in toml.Replace("\r\n", "\n").Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (TryParseTomlHeader(trimmed, out var parsedSectionName, out _))
+            {
+                sectionName = parsedSectionName;
+                pendingComments.Clear();
+                continue;
+            }
+
+            if (trimmed.StartsWith('#') || (trimmed.Length == 0 && pendingComments.Count > 0))
+            {
+                pendingComments.Add(line);
+                continue;
+            }
+
+            if (TryGetTomlKey(line, out var key))
+            {
+                yield return new TomlEntry(
+                    sectionName,
+                    key,
+                    line,
+                    GetTomlValueLiteral(line),
+                    pendingComments.ToArray());
+            }
+
+            pendingComments.Clear();
+        }
+    }
+
+    private static string GetTomlValueLiteral(string line)
+    {
+        var equalsIndex = line.IndexOf('=');
+        var commentIndex = FindInlineCommentIndex(line, equalsIndex + 1);
+        var valueEnd = commentIndex >= 0 ? commentIndex : line.Length;
+        return line[(equalsIndex + 1)..valueEnd].Trim();
+    }
+
+    private sealed record TomlEntry(
+        string SectionName,
+        string Key,
+        string Line,
+        string ValueLiteral,
+        IReadOnlyList<string> LeadingComments);
 
     private static string SerializeToml<T>(T config, TomlSerializerOptions options) where T : class
     {

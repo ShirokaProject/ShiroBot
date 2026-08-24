@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Runtime.Loader;
@@ -8,7 +7,6 @@ using ShiroBot.Core;
 using ShiroBot.Hosting;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Core;
 using CH = ShiroBot.Core.ConsoleHelper;
 
 namespace ShiroBot;
@@ -44,14 +42,14 @@ public static class Program
         CH.Info(BotMetaDataProvider.StartupVersionText);
 
         var sharedAssemblies = new SharedAssemblyResolver();
-        _ = typeof(Qq.Model.QqIncomingMessage).Assembly;
-        sharedAssemblies.Register(["ShiroBot.SDK", "ShiroBot.Qq.Model"], AssemblyLoadContext.Default);
+        sharedAssemblies.Register(["ShiroBot.SDK"], AssemblyLoadContext.Default);
+        var modelPackages = new ModelPackageRegistry(sharedAssemblies);
         BotContext? botContext;
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
         HostHttpServer? hostHttpServer = null;
-        IBotAdapter? adapter = null;
-        DllLoader<IBotAdapter>? adapterLoader = null;
+        AdapterManager? adapterManager = null;
+        ComponentFileWatcher? componentWatcher = null;
         var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
         var shutdownRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         PosixSignalRegistration? sigintRegistration = null;
@@ -106,6 +104,11 @@ public static class Program
             CH.IsEnabled = coreConfig.EnableLog;
             var groupRoutePolicy = coreConfig.PluginRoutes;
 
+            // ─── 平台 Model 加载 ───
+            var modelRoot = Path.Combine(BasePath, "models");
+            modelPackages.LoadFromDirectory(modelRoot);
+            runtimeState.SetModelsCount(modelPackages.GetPackages().Count);
+
             // ─── 适配器加载 ───
             var adapterRoot = Path.Combine(BasePath, "adapters");
             if (!Directory.Exists(adapterRoot))
@@ -114,72 +117,26 @@ public static class Program
                 Directory.CreateDirectory(adapterRoot);
             }
 
-            var adapterPath = ResolveAdapterPath(coreConfig, parserResult.GetValue(adapterOption));
-            if (adapterPath is null)
-            {
-                CH.Warning("请确认 adapters 目录下存在对应的适配器文件，或在 config.toml 中配置 protocol...");
-                if (CanReadInteractiveKey()) Console.ReadKey();
-                return;
-            }
-
-            CH.Log("开始加载适配器: " + adapterPath);
-
-            // 适配器声明的平台契约程序集(BotAdapterAttribute.SharedAssemblies)
-            // 必须先进 Default ALC,插件与适配器才能共享同一份类型。
-            foreach (var contractName in AdapterContractProbe.ReadSharedAssemblies(adapterPath))
-            {
-                var contractPath = Path.Combine(
-                    Path.GetDirectoryName(adapterPath) ?? adapterRoot,
-                    contractName + ".dll");
-                if (!File.Exists(contractPath))
-                {
-                    throw new FileNotFoundException(
-                        $"适配器声明的共享契约程序集 {contractName}.dll 未随适配器一起分发。", contractPath);
-                }
-
-                sharedAssemblies.RegisterDefaultAssembly(contractPath);
-                CH.Log($"已注册适配器共享契约: {contractName}");
-            }
-
-            var adapterDependencies = await PluginRuntimeDependencyManager.PrepareAsync(
-                adapterPath,
-                Path.GetDirectoryName(adapterPath) ?? adapterRoot).ConfigureAwait(false);
-            adapterLoader = new DllLoader<IBotAdapter>(
-                collectible: true,
-                shared: sharedAssemblies,
-                dependencies: adapterDependencies);
-            adapter = adapterLoader.Load(adapterPath);
-            adapter.Config = ConfigContext.ForAdapter(ResolveAdapterConfigPath(adapterRoot, adapterPath));
-            var adapterMetadata = adapter.GetType().GetCustomAttribute<BotAdapterAttribute>(inherit: false)
-                ?? throw new InvalidOperationException(
-                    $"适配器类型 {adapter.GetType().FullName} 未声明 {nameof(BotAdapterAttribute)}。");
-            if (string.IsNullOrWhiteSpace(adapterMetadata.Id) || string.IsNullOrWhiteSpace(adapterMetadata.Name))
-            {
-                throw new InvalidOperationException(
-                    $"适配器类型 {adapter.GetType().FullName} 的 {nameof(BotAdapterAttribute)} 必须声明非空 Id 和 Name。");
-            }
-
-            adapter.Logger = new ConsoleLogger($"[Adapter:{adapterMetadata.Id}]", logHub);
-            CH.Log($"适配器信息: {adapterMetadata.Name} v{adapterMetadata.Version}");
+            var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption));
 
             // ─── BotContext + 基础设施 ───
             var webPublicBaseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
                 ? (coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? coreConfig.Api.ListenUrl)
                 : coreConfig.Api.PublicBaseUrl;
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
-            botContext = new BotContext(adapter, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
+            botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
             Updater.Initialize(
                 () => botContext.OwnerList,
                 (ownerId, content) => botContext.Message.SendDirectMessageAsync(ownerId, content),
                 coreConfig.GithubProxy);
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub);
-            pluginManager = new PluginManager(botContext, sharedAssemblies, runtimeState, logHub);
+            pluginManager = new PluginManager(botContext, sharedAssemblies, modelPackages, runtimeState, logHub);
 
             // ─── Avalonia 渲染集成 ───
             try
             {
-                var avaloniaRenderer = AvaloniaIntegration.AvaloniaIntegration.Initialize(coreConfig.AvaloniaTheme);
+                var avaloniaRenderer = Core.AvaloniaIntegration.AvaloniaIntegration.Initialize(coreConfig.AvaloniaTheme);
                 botContext.AttachRenderer(avaloniaRenderer);
                 sharedAssemblies.Register(
                     ["Avalonia", "SkiaSharp", "HarfBuzzSharp", "MicroCom"],
@@ -213,6 +170,7 @@ public static class Program
             }
 
             pluginManager.PluginRootPath = pluginRootPath;
+            pluginManager.EnableFileHotReload(hostEventDispatcher, groupRoutePolicy);
 
             // ─── 适配器事件桥接 ───
             var commandHandler = new HostCommandHandler(
@@ -224,27 +182,36 @@ public static class Program
                 coreConfigManager,
                 coreConfigPath);
             var adapterBridge = new AdapterEventBridge(hostEventDispatcher);
-            adapterBridge.Bridge(
-                adapter.Event,
+            adapterManager = new AdapterManager(
+                adapterRoot,
+                sharedAssemblies,
+                modelPackages,
+                botContext,
+                adapterBridge,
+                runtimeState,
+                logHub,
                 commandHandler.HandleDirectMessageAsync);
-
-            using (BotLog.BeginScope(adapter.Logger))
+            if (adapterPaths.Count > 0)
             {
-                await adapter.StartAsync();
+                await adapterManager.LoadAsync(adapterPaths).ConfigureAwait(false);
+                CH.Success($"已加载 {adapterPaths.Count} 个 Adapter。 ");
+            }
+            else
+            {
+                runtimeState.SetAdapter("none", "not_loaded");
+                runtimeState.RecordEvent("以无 adapter 模式启动");
             }
 
-            var adapterDisplayName = adapterMetadata.Name;
-            runtimeState.SetAdapter(adapterDisplayName, "connected");
-            logHub.RegisterSource(
-                adapterMetadata.Id,
-                adapterMetadata.Description ?? $"{adapterDisplayName} 适配器日志",
-                adapterDisplayName);
-            runtimeState.RecordEvent($"{adapterDisplayName} 连接成功");
-            CH.Success("加载适配器成功: " + adapterMetadata.Id);
-
+            var reloadCoordinator = new ComponentReloadCoordinator(
+                modelPackages,
+                adapterManager,
+                pluginManager,
+                hostEventDispatcher,
+                groupRoutePolicy,
+                runtimeState);
+            componentWatcher = new ComponentFileWatcher(modelRoot, adapterPaths, reloadCoordinator);
             hostHttpServer = await HostHttpServer.StartAsync(
                 coreConfig.Api,
-                coreConfig,
                 coreConfigManager,
                 coreConfigPath,
                 pluginManager,
@@ -253,7 +220,10 @@ public static class Program
                 webHostContext,
                 runtimeState,
                 logHub,
-                botContext);
+                botContext,
+                modelPackages,
+                adapterManager,
+                reloadCoordinator);
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
@@ -317,6 +287,7 @@ public static class Program
             sigtermRegistration?.Dispose();
 
             pluginManager?.BeginShutdown();
+            componentWatcher?.Dispose();
             configWatcher?.Dispose();
 
             if (hostHttpServer is not null)
@@ -331,13 +302,11 @@ public static class Program
                 }
             }
 
-            if (adapter is not null)
+            if (adapterManager is not null)
             {
                 try
                 {
-                    await adapter.StopAsync()
-                        .WaitAsync(TimeSpan.FromSeconds(5))
-                        .ConfigureAwait(false);
+                    await adapterManager.StopAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -347,7 +316,7 @@ public static class Program
 
             try
             {
-                AvaloniaIntegration.AvaloniaIntegration.Shutdown();
+                Core.AvaloniaIntegration.AvaloniaIntegration.Shutdown();
             }
             catch (Exception ex)
             {
@@ -372,56 +341,40 @@ public static class Program
         manager.SaveConfig(configPath, coreConfig);
     }
 
-    private static string? ResolveAdapterPath(CoreConfig coreConfig, string? commandAdapterPath)
+    private static IReadOnlyList<string> ResolveAdapterPaths(CoreConfig coreConfig, string? commandAdapterPath)
     {
-        var adapterName = coreConfig.Protocol.EndsWith("dll", StringComparison.OrdinalIgnoreCase)
-            ? coreConfig.Protocol[..^4]
-            : coreConfig.Protocol;
-        var adapterPath = Path.Combine(BasePath, "adapters", $"{adapterName}.dll");
-
-        if (!File.Exists(adapterPath) &&
-            File.Exists(Path.Combine(BasePath, "adapters", adapterName, $"{adapterName}.dll")))
-            adapterPath = Path.Combine(BasePath, "adapters", adapterName, $"{adapterName}.dll");
-
         if (!string.IsNullOrWhiteSpace(commandAdapterPath))
         {
             BotLog.Info("检测到命令行适配器路径，使用指定的适配器文件: " + commandAdapterPath);
-            adapterPath = commandAdapterPath;
+            return File.Exists(commandAdapterPath) ? [Path.GetFullPath(commandAdapterPath)] : [];
         }
 
-        if (!File.Exists(adapterPath))
+        var configured = coreConfig.Protocols.Length > 0
+            ? coreConfig.Protocols
+            : string.IsNullOrWhiteSpace(coreConfig.Protocol) ? [] : [coreConfig.Protocol];
+        var paths = new List<string>();
+        foreach (var value in configured.Where(value => !string.IsNullOrWhiteSpace(value)))
         {
-            var fallbackDll = Directory.EnumerateFiles(Path.Combine(BasePath, "adapters"),
-                "*.dll", SearchOption.AllDirectories).FirstOrDefault();
-            if (fallbackDll is not null)
-                adapterPath = fallbackDll;
-            else
-                fallbackDll = Directory
-                    .EnumerateDirectories(Path.Combine(BasePath, "adapters"))
-                    .SelectMany(folder => Directory.EnumerateFiles(folder, "*.dll", SearchOption.TopDirectoryOnly))
-                    .FirstOrDefault();
-            BotLog.Warning(fallbackDll is not null
-                ? $"未配置适配器，自动选择适配器: {fallbackDll}"
-                : "未找到任何适配器文件，请确认 adapters 目录下存在适配器 DLL 文件。");
+            var path = ResolveAdapterPath(value);
+            if (path is null)
+                throw new FileNotFoundException($"未找到配置的 Adapter: {value}");
+            paths.Add(path);
         }
 
-        return File.Exists(adapterPath) ? adapterPath : null;
+        return paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    private static string ResolveAdapterConfigPath(string adapterRoot, string adapterPath)
+    private static string? ResolveAdapterPath(string configured)
     {
-        var normalizedAdapterRoot = Path.GetFullPath(adapterRoot).TrimEnd(Path.DirectorySeparatorChar);
-        var parentDirectory = Path.GetDirectoryName(adapterPath) ?? adapterRoot;
-        var normalizedParent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar);
-        var folderName = new DirectoryInfo(parentDirectory).Name;
-        var fileName = Path.GetFileNameWithoutExtension(adapterPath);
-        var isFolderBasedAdapter =
-            !string.Equals(normalizedParent, normalizedAdapterRoot, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(folderName, fileName, StringComparison.OrdinalIgnoreCase);
-
-        return !isFolderBasedAdapter
-            ? Path.ChangeExtension(adapterPath, ".toml")
-            : Path.Combine(normalizedParent, "config.toml");
+        if (File.Exists(configured)) return Path.GetFullPath(configured);
+        var name = configured.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            ? configured[..^4]
+            : configured;
+        var root = Path.Combine(BasePath, "adapters");
+        var flat = Path.Combine(root, name + ".dll");
+        if (File.Exists(flat)) return flat;
+        var folder = Path.Combine(root, name, name + ".dll");
+        return File.Exists(folder) ? folder : null;
     }
 
 }

@@ -12,19 +12,24 @@ namespace ShiroBot.Core;
 internal static class AdapterContractProbe
 {
     private const byte SerializedTypeBoolean = 0x02;
+    private const byte SerializedTypeI4 = 0x08;
     private const byte SerializedTypeString = 0x0e;
     private const byte SerializedTypeEnum = 0x55;
 
     /// <summary>读取适配器声明的共享契约程序集名列表;无声明或读取失败返回空。</summary>
     public static IReadOnlyList<string> ReadSharedAssemblies(string adapterAssemblyPath)
+        => ReadMetadata(adapterAssemblyPath)?.SharedAssemblies ?? [];
+
+    public static AdapterProbeInfo? ReadMetadata(string adapterAssemblyPath)
     {
         try
         {
             using var stream = File.OpenRead(adapterAssemblyPath);
             using var peReader = new PEReader(stream);
-            if (!peReader.HasMetadata) return [];
+            if (!peReader.HasMetadata) return null;
 
             var reader = peReader.GetMetadataReader();
+            var compatibility = ReadApiCompatibility(reader);
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var type = reader.GetTypeDefinition(typeHandle);
@@ -34,16 +39,21 @@ internal static class AdapterContractProbe
                     continue;
                 }
 
+                RawAdapterAttribute? adapterAttribute = null;
                 foreach (var attributeHandle in type.GetCustomAttributes())
                 {
-                    var value = TryReadSharedAssemblies(reader, attributeHandle);
-                    if (value is not null)
+                    if (TryReadBotAdapterAttribute(reader, attributeHandle, out var value))
                     {
-                        return value
-                            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                            .ToArray();
+                        adapterAttribute = value;
                     }
                 }
+
+                if (adapterAttribute is { } adapter)
+                    return new AdapterProbeInfo(
+                        adapter.Id,
+                        adapter.SharedAssemblies,
+                        compatibility.MinimumVersion,
+                        compatibility.MaximumVersion);
             }
         }
         catch
@@ -51,25 +61,31 @@ internal static class AdapterContractProbe
             // 探测失败按无契约处理,加载阶段自然报错
         }
 
-        return [];
+        return null;
     }
 
-    /// <summary>命中 BotAdapterAttribute 时返回其 SharedAssemblies 值(可能为空串);否则 null。</summary>
-    private static string? TryReadSharedAssemblies(MetadataReader reader, CustomAttributeHandle attributeHandle)
+    private static bool TryReadBotAdapterAttribute(
+        MetadataReader reader,
+        CustomAttributeHandle attributeHandle,
+        out RawAdapterAttribute attribute)
     {
+        attribute = default;
         var customAttribute = reader.GetCustomAttribute(attributeHandle);
         if (!string.Equals(
                 GetAttributeTypeFullName(reader, customAttribute),
                 typeof(BotAdapterAttribute).FullName,
                 StringComparison.Ordinal))
         {
-            return null;
+            return false;
         }
 
         var blob = reader.GetBlobReader(customAttribute.Value);
-        if (blob.ReadUInt16() != 1) return string.Empty; // prolog
+        if (blob.ReadUInt16() != 1) return false; // prolog
 
-        _ = blob.ReadSerializedString(); // fixed arg: id
+        var id = blob.ReadSerializedString(); // fixed arg: id
+        if (string.IsNullOrWhiteSpace(id)) return false;
+
+        string? sharedAssemblies = null;
 
         var namedArgumentCount = blob.ReadUInt16();
         for (var i = 0; i < namedArgumentCount; i++)
@@ -86,7 +102,8 @@ internal static class AdapterContractProbe
             if (string.Equals(memberName, nameof(BotAdapterAttribute.SharedAssemblies), StringComparison.Ordinal) &&
                 typeCode == SerializedTypeString)
             {
-                return blob.ReadSerializedString() ?? string.Empty;
+                sharedAssemblies = blob.ReadSerializedString();
+                continue;
             }
 
             // 跳过其他命名参数(BotAdapterAttribute 只有 string / bool 属性)
@@ -98,15 +115,61 @@ internal static class AdapterContractProbe
                 case SerializedTypeBoolean:
                     _ = blob.ReadBoolean();
                     break;
+                case SerializedTypeI4:
+                    _ = blob.ReadInt32();
+                    break;
                 case SerializedTypeEnum:
                     _ = blob.ReadInt32();
                     break;
                 default:
-                    return string.Empty; // 未知类型,放弃解析
+                    return false; // 未知类型,放弃解析
             }
         }
 
-        return string.Empty;
+        var contracts = string.IsNullOrWhiteSpace(sharedAssemblies)
+            ? []
+            : sharedAssemblies.Split(
+                ';',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        attribute = new RawAdapterAttribute(id, contracts);
+        return true;
+    }
+
+    private static bool TryReadApiCompatibilityAttribute(
+        MetadataReader reader,
+        CustomAttributeHandle attributeHandle,
+        out RawApiCompatibilityAttribute attribute)
+    {
+        attribute = default;
+        var customAttribute = reader.GetCustomAttribute(attributeHandle);
+        if (!string.Equals(
+                GetAttributeTypeFullName(reader, customAttribute),
+                typeof(ShiroBotApiCompatibilityAttribute).FullName,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var blob = reader.GetBlobReader(customAttribute.Value);
+        if (blob.ReadUInt16() != 1) return false;
+        var minimumVersion = blob.ReadSerializedString();
+        var maximumVersion = blob.ReadSerializedString();
+        if (minimumVersion is null || maximumVersion is null) return false;
+        attribute = new RawApiCompatibilityAttribute(minimumVersion, maximumVersion);
+        return true;
+    }
+
+    private static RawApiCompatibilityAttribute ReadApiCompatibility(MetadataReader reader)
+    {
+        foreach (var attributeHandle in reader.GetAssemblyDefinition().GetCustomAttributes())
+        {
+            if (TryReadApiCompatibilityAttribute(reader, attributeHandle, out var compatibility))
+            {
+                return compatibility;
+            }
+        }
+
+        return new RawApiCompatibilityAttribute("0.8", "0.8");
     }
 
     private static string? GetAttributeTypeFullName(MetadataReader reader, CustomAttribute attribute)
@@ -130,4 +193,14 @@ internal static class AdapterContractProbe
                 return null;
         }
     }
+
+    internal sealed record AdapterProbeInfo(
+        string Id,
+        IReadOnlyList<string> SharedAssemblies,
+        string MinimumApiVersion,
+        string MaximumApiVersion);
+
+    private readonly record struct RawAdapterAttribute(string Id, IReadOnlyList<string> SharedAssemblies);
+
+    private readonly record struct RawApiCompatibilityAttribute(string MinimumVersion, string MaximumVersion);
 }

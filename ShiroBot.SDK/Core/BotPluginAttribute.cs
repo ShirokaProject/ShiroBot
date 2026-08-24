@@ -24,4 +24,5 @@ public sealed class BotPluginAttribute(string id) : Attribute
     /// Semicolon-separated plugin IDs that must be loaded before this plugin.
     /// </summary>
     public string? Dependencies { get; init; }
+
 }

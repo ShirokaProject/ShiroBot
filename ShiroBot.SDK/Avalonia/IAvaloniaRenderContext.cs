@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using ShiroBot.SDK.Plugin;
 
+// ReSharper disable once CheckNamespace
 namespace ShiroBot.AvaloniaSdk;
 
 /// <summary>

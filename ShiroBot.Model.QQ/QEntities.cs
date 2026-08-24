@@ -1,35 +1,44 @@
-namespace ShiroBot.Qq.Model;
+namespace ShiroBot.Model.QQ;
 
-public enum QqSex
+// ─── 兼容性约定 ───
+// 实体 / 事件信息类型全部使用「属性式 record」(required + init)。
+// 后续为某个 info 新增字段时必须满足:
+//   1. 使用可选 init 属性(string? 或带默认值),不要修改已有构造函数参数;
+//   2. 不要新增 required 属性(会让已编译插件的对象初始化代码失去源码兼容)。
+// 这样新字段对插件既是二进制兼容(类型面不变)也是源码兼容(已有构造代码不动)。
+// 位置式 record(如 QFriendCategory、QLoginInfo)是稳定的值对象,若要扩展,
+// 应在其基础上追加可选 init 属性而不是修改位置参数。
+
+public enum QSex
 {
-    Unknown,
-    Male,
-    Female
+    Unknown = 0,
+    Male = 1,
+    Female = 2
 }
 
-public enum QqGroupRole
+public enum QGroupRole
 {
-    Member,
-    Admin,
-    Owner
+    Member = 0,
+    Admin = 1,
+    Owner = 2
 }
 
 /// <summary>好友分组。</summary>
-public sealed record QqFriendCategory(int CategoryId, string CategoryName);
+public sealed record QFriendCategory(int CategoryId, string CategoryName);
 
 /// <summary>好友。</summary>
-public sealed record QqFriend
+public sealed record QFriend
 {
     public required long UserId { get; init; }
     public required string Nickname { get; init; }
-    public QqSex Sex { get; init; }
+    public QSex Sex { get; init; }
     public string? Qid { get; init; }
     public string? Remark { get; init; }
-    public QqFriendCategory? Category { get; init; }
+    public QFriendCategory? Category { get; init; }
 }
 
 /// <summary>群。</summary>
-public sealed record QqGroup
+public sealed record QGroup
 {
     public required long GroupId { get; init; }
     public required string GroupName { get; init; }
@@ -39,15 +48,18 @@ public sealed record QqGroup
     public DateTimeOffset? CreatedTime { get; init; }
     public string? Description { get; init; }
     public string? Announcement { get; init; }
+
+    /// <summary>入群验证问题(群主设置的问题,用于验证加入请求)。</summary>
+    public string? Question { get; init; }
 }
 
 /// <summary>群成员。</summary>
-public sealed record QqGroupMember
+public sealed record QGroupMember
 {
     public required long UserId { get; init; }
     public required string Nickname { get; init; }
     public required long GroupId { get; init; }
-    public QqSex Sex { get; init; }
+    public QSex Sex { get; init; }
 
     /// <summary>群名片。</summary>
     public string? Card { get; init; }
@@ -58,7 +70,7 @@ public sealed record QqGroupMember
     /// <summary>群等级。</summary>
     public int Level { get; init; }
 
-    public QqGroupRole Role { get; init; }
+    public QGroupRole Role { get; init; }
     public DateTimeOffset? JoinTime { get; init; }
     public DateTimeOffset? LastSentTime { get; init; }
 
@@ -69,13 +81,13 @@ public sealed record QqGroupMember
 }
 
 /// <summary>用户资料(陌生人查询)。</summary>
-public sealed record QqUserProfile
+public sealed record QUserProfile
 {
     public required long UserId { get; init; }
     public required string Nickname { get; init; }
     public string? Qid { get; init; }
     public int Age { get; init; }
-    public QqSex Sex { get; init; }
+    public QSex Sex { get; init; }
     public string? Remark { get; init; }
     public string? Bio { get; init; }
     public int Level { get; init; }
@@ -85,7 +97,7 @@ public sealed record QqUserProfile
 }
 
 /// <summary>群公告。</summary>
-public sealed record QqGroupAnnouncement
+public sealed record QGroupAnnouncement
 {
     public required long GroupId { get; init; }
     public required string AnnouncementId { get; init; }
@@ -96,7 +108,7 @@ public sealed record QqGroupAnnouncement
 }
 
 /// <summary>群文件。</summary>
-public sealed record QqGroupFile
+public sealed record QGroupFile
 {
     public required long GroupId { get; init; }
     public required string FileId { get; init; }
@@ -110,7 +122,7 @@ public sealed record QqGroupFile
 }
 
 /// <summary>群文件夹。</summary>
-public sealed record QqGroupFolder
+public sealed record QGroupFolder
 {
     public required long GroupId { get; init; }
     public required string FolderId { get; init; }
@@ -123,7 +135,7 @@ public sealed record QqGroupFolder
 }
 
 /// <summary>群精华消息。</summary>
-public sealed record QqEssenceMessage
+public sealed record QEssenceMessage
 {
     public required long GroupId { get; init; }
     public required long MessageSeq { get; init; }
@@ -133,28 +145,28 @@ public sealed record QqEssenceMessage
     public long OperatorId { get; init; }
     public string? OperatorName { get; init; }
     public DateTimeOffset OperationTime { get; init; }
-    public IReadOnlyList<QqIncomingSegment> Segments { get; init; } = [];
+    public IReadOnlyList<QIncomingSegment> Segments { get; init; } = [];
 }
 
 /// <summary>QQ 消息场景。</summary>
-public enum QqMessageScene
+public enum QMessageScene
 {
-    Friend,
-    Group,
-    Temp
+    Friend = 0,
+    Group = 1,
+    Temp = 2
 }
 
 /// <summary>请求/通知处理状态。</summary>
-public enum QqRequestState
+public enum QRequestState
 {
-    Pending,
-    Accepted,
-    Rejected,
-    Ignored
+    Pending = 0,
+    Accepted = 1,
+    Rejected = 2,
+    Ignored = 3
 }
 
 /// <summary>好友请求(列表查询)。</summary>
-public sealed record QqFriendRequest
+public sealed record QFriendRequest
 {
     public DateTimeOffset Time { get; init; }
     public required long InitiatorId { get; init; }
@@ -164,7 +176,7 @@ public sealed record QqFriendRequest
 
     public long TargetUserId { get; init; }
     public string? TargetUserUid { get; init; }
-    public QqRequestState State { get; init; }
+    public QRequestState State { get; init; }
     public string? Comment { get; init; }
 
     /// <summary>请求来源(如 群聊/搜索)。</summary>
@@ -174,33 +186,33 @@ public sealed record QqFriendRequest
 }
 
 /// <summary>群通知基类(入群申请/邀请入群/管理员变更/踢人/退群)。</summary>
-public abstract record QqGroupNotification
+public abstract record QGroupNotification
 {
     public required long GroupId { get; init; }
     public required long NotificationSeq { get; init; }
 }
 
 /// <summary>用户入群申请通知。</summary>
-public sealed record QqJoinRequestNotification : QqGroupNotification
+public sealed record QJoinRequestNotification : QGroupNotification
 {
     public required long InitiatorId { get; init; }
-    public QqRequestState State { get; init; }
+    public QRequestState State { get; init; }
     public string? Comment { get; init; }
     public bool IsFiltered { get; init; }
     public long? OperatorId { get; init; }
 }
 
 /// <summary>群成员邀请他人入群通知。</summary>
-public sealed record QqInvitedJoinRequestNotification : QqGroupNotification
+public sealed record QInvitedJoinRequestNotification : QGroupNotification
 {
     public required long InitiatorId { get; init; }
     public required long TargetUserId { get; init; }
-    public QqRequestState State { get; init; }
+    public QRequestState State { get; init; }
     public long? OperatorId { get; init; }
 }
 
 /// <summary>管理员变更通知。</summary>
-public sealed record QqAdminChangeNotification : QqGroupNotification
+public sealed record QAdminChangeNotification : QGroupNotification
 {
     public required long TargetUserId { get; init; }
     public bool IsSet { get; init; }
@@ -208,39 +220,39 @@ public sealed record QqAdminChangeNotification : QqGroupNotification
 }
 
 /// <summary>成员被踢通知。</summary>
-public sealed record QqKickNotification : QqGroupNotification
+public sealed record QKickNotification : QGroupNotification
 {
     public required long TargetUserId { get; init; }
     public long OperatorId { get; init; }
 }
 
 /// <summary>成员退群通知。</summary>
-public sealed record QqQuitNotification : QqGroupNotification
+public sealed record QQuitNotification : QGroupNotification
 {
     public required long TargetUserId { get; init; }
 }
 
 /// <summary>消息表情回应类型。</summary>
-public enum QqReactionType
+public enum QReactionType
 {
     /// <summary>QQ 表情(face id)。</summary>
-    Face,
+    Face = 0,
 
     /// <summary>Emoji 字符。</summary>
-    Emoji
+    Emoji = 1
 }
 
 /// <summary>登录账号信息。</summary>
-public sealed record QqLoginInfo(long Uin, string Nickname);
+public sealed record QLoginInfo(long Uin, string Nickname);
 
 /// <summary>协议实现端信息。</summary>
-public sealed record QqImplInfo
+public sealed record QImplInfo
 {
     public required string ImplName { get; init; }
     public required string ImplVersion { get; init; }
     public string? QqProtocolVersion { get; init; }
 
-    /// <summary>协议类型(windows/linux/macos/android_pad/android_phone/ipad/iphone/harmony/watch)。</summary>
+    /// <summary>协议类型(windows/linux/macOS/android_pad/android_phone/ipad/iphone/harmony/watch)。</summary>
     public string? QqProtocolType { get; init; }
 
     /// <summary>承载协议版本(如 Milky 版本)。</summary>

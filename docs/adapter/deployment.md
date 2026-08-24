@@ -71,7 +71,7 @@ dotnet publish -c Release -o ./publish
 ShiroBot/adapters/ExampleAdapter/
 ```
 
-宿主已经提供 `ShiroBot.SDK.dll` 和 `ShiroBot.Model.dll`，部署时应避免在适配器目录携带不同版本的这两个共享程序集。
+宿主已经提供 `ShiroBot.SDK.dll`；依赖 QQ 平台契约的适配器还使用宿主 `models/` 目录中的 `ShiroBot.Model.QQ.dll`。部署时不要在适配器目录携带不同版本的共享程序集。
 
 ## 适配器单 DLL
 

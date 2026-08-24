@@ -2,8 +2,8 @@ namespace ShiroBot.SDK.Plugin;
 
 public enum UpdateTarget
 {
-    Host,
-    Plugin
+    Host = 0,
+    Plugin = 1
 }
 
 public sealed record GitHubReleaseUpdate(

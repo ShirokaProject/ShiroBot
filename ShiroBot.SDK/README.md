@@ -5,12 +5,11 @@
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
+<PackageReference Include="ShiroBot.SDK" Version="0.8.0" />
 ```
 
-Plugins that use Avalonia controls should additionally reference `ShiroBot.AvaloniaSdk`. Keeping
-the rendering contracts in that package prevents ordinary plugins and adapters from taking an
-unnecessary Avalonia compile-time dependency.
+`ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build
+support. Plugins only need this single package, including plugins that render Avalonia controls.
 
 ## Plugin Usage
 
@@ -128,10 +127,16 @@ Multiple names are separated with semicolons. The same format is used by `Shared
 services; unload consumers first. Plugins should resolve services when needed rather than retaining
 instances beyond their own lifetime.
 
-## Automatic plugin packaging
+## Opt-in plugin packaging
 
 When a plugin or adapter references the published `ShiroBot.SDK` NuGet package, its
-`buildTransitive` targets automatically prepare a single-DLL component:
+`buildTransitive` targets can prepare a single-DLL component when the project explicitly opts in:
+
+```xml
+<PropertyGroup>
+  <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
+</PropertyGroup>
+```
 
 - assemblies carrying `BotPluginAttribute` or `BotAdapterAttribute` are detected automatically;
 - managed NuGet/project dependencies are merged into the plugin DLL with ILRepack;
@@ -148,13 +153,16 @@ required NuGet package, verifies SHA512, extracts only the best matching RID ass
 the temporary `.nupkg`. Extracted native files are cached under the plugin's `.shirobot/native`
 directory.
 
-No ILRepack target or native manifest needs to be added to each component project. The defaults can
-be customized when required:
+No ILRepack target or native manifest needs to be copied into each component project. Packaging is
+disabled by default so ordinary libraries can reference the runtime SDK without changing their output.
+The enabled packaging flow can be customized when required:
 
 ```xml
 <PropertyGroup>
-  <!-- Disable all automatic packaging in a non-component library. -->
-  <ShiroBotPluginPackagingEnabled>false</ShiroBotPluginPackagingEnabled>
+  <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
+
+  <!-- Previewer support changes OutputType/StartupObject and is separately opt-in. -->
+  <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
 
   <!-- Defaults to the NuGet.org v3 flat-container endpoint. -->
   <ShiroBotNativePackageSource>https://packages.example.com/v3-flatcontainer</ShiroBotNativePackageSource>
@@ -169,8 +177,8 @@ Automatic targets are a NuGet `buildTransitive` feature. A source-level `Project
 `ShiroBot.SDK.csproj` does not import the packed targets; use the SDK package when validating the
 final distributable plugin.
 
-Avalonia compile references and AXAML build support flow from `ShiroBot.AvaloniaSdk`, not this base
-package. The host intentionally does not enable `PublishTrimmed`; plugin discovery, configuration
+Avalonia compile references and AXAML build support flow from `ShiroBot.SDK`. The host intentionally
+does not enable `PublishTrimmed`; plugin discovery, configuration
 metadata and collectible loading use reflection paths that are not trimming-safe.
 
 ## Dashboard Actions

@@ -3,7 +3,7 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
-        <Version>0.7.1</Version>
+        <Version>0.8.0</Version>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Configurations>Debug;Release</Configurations>
@@ -104,22 +104,21 @@
         <Copy SourceFiles="@(DashboardDistFiles)"
               DestinationFiles="@(DashboardDistFiles->'$(DashboardAssetsDir)/%(RecursiveDir)%(Filename)%(Extension)')"
               Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
-        <ItemGroup Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')">
-            <EmbeddedResource Remove="Assets\dashboard\**\*" />
+    </Target>
+
+    <Target Name="RefreshDashboardEmbeddedResources"
+            BeforeTargets="PrepareResourceNames"
+            DependsOnTargets="BuildDashboardAssets">
+        <ItemGroup>
+            <EmbeddedResource Remove="@(EmbeddedResource)"
+                              Condition="$([System.String]::Copy('%(EmbeddedResource.Identity)').Contains('Assets/dashboard/')) or $([System.String]::Copy('%(EmbeddedResource.Identity)').Contains('Assets\dashboard\'))" />
             <EmbeddedResource Include="Assets\dashboard\**\*"
                               LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
         </ItemGroup>
     </Target>
 
     <ItemGroup>
-        <EmbeddedResource Remove="Assets\dashboard\**\*" />
-        <EmbeddedResource Include="Assets\dashboard\**\*" LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
-    </ItemGroup>
-
-    <ItemGroup>
         <ProjectReference Include="..\ShiroBot.SDK\ShiroBot.SDK.csproj" />
-        <ProjectReference Include="..\ShiroBot.Qq.Model\ShiroBot.Qq.Model.csproj" />
-        <ProjectReference Include="..\ShiroBot.AvaloniaSdk\ShiroBot.AvaloniaSdk.csproj" />
     </ItemGroup>
 
 </Project>

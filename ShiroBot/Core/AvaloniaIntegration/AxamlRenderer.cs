@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using ShiroBot.AvaloniaSdk;
 using ShiroBot.SDK.Plugin;
 
+// ReSharper disable once CheckNamespace
 namespace ShiroBot.AvaloniaIntegration;
 
 /// <summary>
@@ -127,7 +128,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             () =>
             {
                 ct.ThrowIfCancellationRequested();
-                AvaloniaIntegration.ApplyRenderTheme(theme);
+                Core.AvaloniaIntegration.AvaloniaIntegration.ApplyRenderTheme(theme);
 
                 var content = controlFactory()
                     ?? throw new InvalidOperationException("控件工厂返回了 null。");
@@ -222,16 +223,15 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
 
     private static Size ResolveMeasureConstraint(Control control)
     {
-        var width = ResolveWidthMeasureConstraint(control.Width, control.MinWidth, control.MaxWidth);
+        var width = ResolveWidthMeasureConstraint(control.Width, control.MaxWidth);
         var height = ResolveHeightMeasureConstraint(control.Height, control.MaxHeight);
         return new Size(width, height);
     }
 
-    private static double ResolveWidthMeasureConstraint(double value, double min, double max)
+    private static double ResolveWidthMeasureConstraint(double value, double max)
     {
         if (IsFinitePositive(value)) return value;
-        if (IsFinitePositive(max)) return max;
-        return double.PositiveInfinity;
+        return IsFinitePositive(max) ? max : double.PositiveInfinity;
     }
 
     private static double ResolveHeightMeasureConstraint(double value, double max)

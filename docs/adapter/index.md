@@ -7,7 +7,7 @@
 ```bash
 dotnet new classlib -n ExampleAdapter -f net10.0
 cd ExampleAdapter
-dotnet add package ShiroBot.SDK --version 0.7.1
+dotnet add package ShiroBot.SDK --version 0.8.0
 ```
 
 SDK 会通过 `BotAdapterAttribute` 自动识别适配器，并生成与插件一致的单 DLL 产物。宿主会读取嵌入的 native 依赖清单、校验 NuGet 包并按当前 RID 准备 native 文件，因此不需要手写 ILRepack：
@@ -22,7 +22,7 @@ SDK 会通过 `BotAdapterAttribute` 自动识别适配器，并生成与插件�
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ShiroBot.SDK" Version="0.7.1" />
+    <PackageReference Include="ShiroBot.SDK" Version="0.8.0" />
   </ItemGroup>
 </Project>
 ```

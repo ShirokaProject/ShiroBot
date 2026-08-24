@@ -1,9 +1,8 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <_ShiroBotILRepackTaskAssembly>$(MSBuildThisFileDirectory)..\tools\ILRepack.Lib.MSBuild.Task.dll</_ShiroBotILRepackTaskAssembly>
+    <_ShiroBotILRepackTaskAssembly Condition="!Exists('$(_ShiroBotILRepackTaskAssembly)')">$(NuGetPackageRoot)ilrepack.lib.msbuild.task\2.0.45\build\ILRepack.Lib.MSBuild.Task.dll</_ShiroBotILRepackTaskAssembly>
     <_ShiroBotNativeManifestFile>$(IntermediateOutputPath)ShiroBot.PluginRuntimeManifest.json</_ShiroBotNativeManifestFile>
-    <_ShiroBotPrimaryAssembly>$(IntermediateOutputPath)$(TargetFileName)</_ShiroBotPrimaryAssembly>
-    <_ShiroBotMergedAssembly>$(IntermediateOutputPath)shirobot-bundle\$(TargetFileName)</_ShiroBotMergedAssembly>
   </PropertyGroup>
 
   <UsingTask TaskName="ShiroBotGenerateNativeManifest"
@@ -278,8 +277,13 @@
   <Target Name="BundleShiroBotPluginManagedDependencies"
           AfterTargets="CoreCompile"
           BeforeTargets="CopyFilesToOutputDirectory"
-          DependsOnTargets="ResolveReferences;ResolvePackageAssets"
-          Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and Exists('$(_ShiroBotILRepackTaskAssembly)')">
+           DependsOnTargets="ResolveReferences;ResolvePackageAssets"
+           Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and Exists('$(_ShiroBotILRepackTaskAssembly)')">
+    <PropertyGroup>
+      <!-- TargetFileName is initialized after buildTransitive imports for ProjectReference consumers. -->
+      <_ShiroBotPrimaryAssembly>$(IntermediateOutputPath)$(TargetFileName)</_ShiroBotPrimaryAssembly>
+      <_ShiroBotMergedAssembly>$(IntermediateOutputPath)shirobot-bundle\$(TargetFileName)</_ShiroBotMergedAssembly>
+    </PropertyGroup>
     <ShiroBotProbePluginAssembly AssemblyPath="$(_ShiroBotPrimaryAssembly)">
       <Output TaskParameter="IsPlugin" PropertyName="_ShiroBotIsPluginAssembly" />
     </ShiroBotProbePluginAssembly>
@@ -287,6 +291,8 @@
     <ItemGroup Condition="'$(_ShiroBotIsPluginAssembly)' == 'true'">
       <_ShiroBotManagedCandidate Include="@(ReferenceCopyLocalPaths);@(RuntimeCopyLocalItems)" />
       <_ShiroBotSearchDirectoryCandidate Include="@(_ShiroBotManagedCandidate->'%(RootDir)%(Directory)')" />
+      <!-- Shared references use Private=false and are therefore not CopyLocal candidates. -->
+      <_ShiroBotSearchDirectoryCandidate Include="@(ReferencePath->'%(RootDir)%(Directory)')" />
     </ItemGroup>
 
     <RemoveDuplicates Inputs="@(_ShiroBotSearchDirectoryCandidate)"
@@ -298,7 +304,7 @@
         Condition="'$(_ShiroBotIsPluginAssembly)' == 'true'"
         Candidates="@(_ShiroBotManagedCandidate)"
         PrimaryAssembly="$(_ShiroBotPrimaryAssembly)"
-        ExcludedAssemblyPrefixes="$(ShiroBotSharedAssemblyPrefixes)">
+        ExcludedAssemblyPrefixes="$(ShiroBotSharedAssemblyPrefixes);ShiroBot.SDK;Avalonia;SkiaSharp;HarfBuzzSharp;MicroCom;System.;Microsoft.;$(ShiroBotPluginSharedAssemblies)">
       <Output TaskParameter="Assemblies" ItemName="_ShiroBotMergeAssembly" />
     </ShiroBotFilterMergeAssemblies>
 
@@ -354,7 +360,9 @@
            AfterTargets="CopyFilesToOutputDirectory"
            Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true' and '$(_IsPublishing)' != 'true'">
     <ItemGroup>
-      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Qq.Model.dll;$(OutDir)ShiroBot.Qq.Model.pdb;$(OutDir)ShiroBot.AvaloniaSdk.dll;$(OutDir)ShiroBot.AvaloniaSdk.pdb" />
+      <_ShiroBotDeclaredSharedAssembly Include="$(ShiroBotPluginSharedAssemblies)" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="@(_ShiroBotDeclaredSharedAssembly->'$(OutDir)%(Identity).dll');@(_ShiroBotDeclaredSharedAssembly->'$(OutDir)%(Identity).pdb')" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)Avalonia.dll;$(OutDir)Avalonia.pdb;$(OutDir)Avalonia.*.dll;$(OutDir)Avalonia.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)SkiaSharp.dll;$(OutDir)SkiaSharp.pdb;$(OutDir)SkiaSharp.*.dll;$(OutDir)SkiaSharp.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)HarfBuzzSharp.dll;$(OutDir)HarfBuzzSharp.pdb;$(OutDir)HarfBuzzSharp.*.dll;$(OutDir)HarfBuzzSharp.*.pdb" />
@@ -391,7 +399,9 @@
            AfterTargets="Publish"
            Condition="'$(ShiroBotPluginPackagingEnabled)' == 'true' and '$(_ShiroBotIsPluginAssembly)' == 'true'">
     <ItemGroup>
-      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb;$(OutDir)ShiroBot.Qq.Model.dll;$(OutDir)ShiroBot.Qq.Model.pdb;$(OutDir)ShiroBot.AvaloniaSdk.dll;$(OutDir)ShiroBot.AvaloniaSdk.pdb" />
+      <_ShiroBotDeclaredSharedAssembly Include="$(ShiroBotPluginSharedAssemblies)" />
+      <_ShiroBotHostSharedOutputAsset Include="$(OutDir)ShiroBot.SDK.dll;$(OutDir)ShiroBot.SDK.pdb" />
+      <_ShiroBotHostSharedOutputAsset Include="@(_ShiroBotDeclaredSharedAssembly->'$(OutDir)%(Identity).dll');@(_ShiroBotDeclaredSharedAssembly->'$(OutDir)%(Identity).pdb')" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)Avalonia.dll;$(OutDir)Avalonia.pdb;$(OutDir)Avalonia.*.dll;$(OutDir)Avalonia.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)SkiaSharp.dll;$(OutDir)SkiaSharp.pdb;$(OutDir)SkiaSharp.*.dll;$(OutDir)SkiaSharp.*.pdb" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)HarfBuzzSharp.dll;$(OutDir)HarfBuzzSharp.pdb;$(OutDir)HarfBuzzSharp.*.dll;$(OutDir)HarfBuzzSharp.*.pdb" />
@@ -400,7 +410,8 @@
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\SkiaSharp.dll;$(OutDir)runtimes\**\SkiaSharp.*;$(OutDir)runtimes\**\*SkiaSharp*" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\HarfBuzzSharp.dll;$(OutDir)runtimes\**\HarfBuzzSharp.*;$(OutDir)runtimes\**\*HarfBuzzSharp*" />
       <_ShiroBotHostSharedOutputAsset Include="$(OutDir)runtimes\**\MicroCom.Runtime.dll;$(OutDir)runtimes\**\MicroCom.*" />
-      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)ShiroBot.SDK.dll;$(PublishDir)ShiroBot.SDK.pdb;$(PublishDir)ShiroBot.Qq.Model.dll;$(PublishDir)ShiroBot.Qq.Model.pdb;$(PublishDir)ShiroBot.AvaloniaSdk.dll;$(PublishDir)ShiroBot.AvaloniaSdk.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)ShiroBot.SDK.dll;$(PublishDir)ShiroBot.SDK.pdb" />
+      <_ShiroBotHostSharedPublishAsset Include="@(_ShiroBotDeclaredSharedAssembly->'$(PublishDir)%(Identity).dll');@(_ShiroBotDeclaredSharedAssembly->'$(PublishDir)%(Identity).pdb')" />
       <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)Avalonia.dll;$(PublishDir)Avalonia.pdb;$(PublishDir)Avalonia.*.dll;$(PublishDir)Avalonia.*.pdb" />
       <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)SkiaSharp.dll;$(PublishDir)SkiaSharp.pdb;$(PublishDir)SkiaSharp.*.dll;$(PublishDir)SkiaSharp.*.pdb" />
       <_ShiroBotHostSharedPublishAsset Include="$(PublishDir)HarfBuzzSharp.dll;$(PublishDir)HarfBuzzSharp.pdb;$(PublishDir)HarfBuzzSharp.*.dll;$(PublishDir)HarfBuzzSharp.*.pdb" />

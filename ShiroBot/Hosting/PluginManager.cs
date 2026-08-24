@@ -21,28 +21,39 @@ internal sealed record PluginProbeInfo(
     string? GithubRepo,
     bool IsPluginSingleFile,
     IReadOnlyList<string> SharedAssemblies,
-    IReadOnlyList<string> Dependencies);
+    IReadOnlyList<string> Dependencies,
+    string MinimumApiVersion = "0.8",
+    string MaximumApiVersion = "0.8");
 
 internal sealed record PluginProbeCacheEntry(long Length, DateTime LastWriteTimeUtc, PluginProbeInfo? Info);
 
 internal sealed class PluginManager(
     BotContext botContext,
     SharedAssemblyResolver sharedAssemblies,
+    ModelPackageRegistry modelPackages,
     HostRuntimeState runtimeState,
     HostLogHub logHub)
 {
     private readonly List<LoadedPluginHandle> _loadedPlugins = [];
     private readonly HashSet<string> _loadingPluginIds = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<Task> _pluginBackgroundTasks = [];
     private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTime> _suppressedWatcherPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _watcherReloads = new(StringComparer.OrdinalIgnoreCase);
     private readonly PluginServiceRegistry _serviceRegistry = new();
     private FileSystemWatcher? _pluginRootWatcher;
     private string? _watchedPluginRoot;
     private bool _isShuttingDown;
+    private HostEventDispatcher? _hotReloadEventDispatcher;
+    private PluginRouteConfig? _hotReloadRoutePolicy;
 
     public string PluginRootPath { get; set; } = string.Empty;
+
+    public void EnableFileHotReload(HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy)
+    {
+        _hotReloadEventDispatcher = eventDispatcher;
+        _hotReloadRoutePolicy = routePolicy;
+    }
 
     private Lock PluginLifecycleLock { get; } = new();
 
@@ -50,13 +61,13 @@ internal sealed class PluginManager(
 
     private SharedAssemblyResolver SharedAssemblies { get; } = sharedAssemblies;
 
+    private ModelPackageRegistry ModelPackages { get; } = modelPackages;
+
     public static IEnumerable<string> EnumeratePluginEntryAssemblies(string pluginRoot)
     {
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "ShiroBot.SDK.dll",
-            "ShiroBot.Qq.Model.dll",
-            "ShiroBot.AvaloniaSdk.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -91,6 +102,31 @@ internal sealed class PluginManager(
                 .Select(plugin => plugin.Name)
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+    }
+
+    public async Task<IReadOnlyList<string>> UnloadAllAsync(HostEventDispatcher hostEventDispatcher)
+    {
+        var names = GetLoadedPluginSnapshot()
+            .Select(plugin => plugin.Name)
+            .Reverse()
+            .ToArray();
+        foreach (var name in names)
+        {
+            await ScheduleUnloadPluginByName(hostEventDispatcher, name).ConfigureAwait(false);
+        }
+
+        return names;
+    }
+
+    public async Task ReloadAsync(
+        HostEventDispatcher hostEventDispatcher,
+        PluginRouteConfig routePolicy,
+        IReadOnlyList<string> pluginNames)
+    {
+        foreach (var name in pluginNames.Reverse())
+        {
+            await ScheduleLoadPluginByName(hostEventDispatcher, routePolicy, name).ConfigureAwait(false);
         }
     }
 
@@ -158,9 +194,9 @@ internal sealed class PluginManager(
             EnableRaisingEvents = true
         };
 
-        _pluginRootWatcher.Changed += (_, e) => MarkProbeDirty(e.FullPath);
+        _pluginRootWatcher.Changed += (_, e) => SchedulePluginFileReload(e.FullPath);
         _pluginRootWatcher.Created += (_, e) => HandleCreatedPluginPath(e.FullPath);
-        _pluginRootWatcher.Deleted += (_, e) => RemoveProbeCache(e.FullPath);
+        _pluginRootWatcher.Deleted += (_, e) => HandleDeletedPluginPath(e.FullPath);
         _pluginRootWatcher.Renamed += (_, e) =>
         {
             RemoveProbeCache(e.OldFullPath);
@@ -173,6 +209,80 @@ internal sealed class PluginManager(
         if (Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase))
         {
             _dirtyProbePaths[Path.GetFullPath(path)] = 1;
+        }
+    }
+
+    private void SchedulePluginFileReload(string path)
+    {
+        MarkProbeDirty(path);
+        if (!Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase) ||
+            IsWatcherPathSuppressed(path) ||
+            _hotReloadEventDispatcher is null ||
+            _hotReloadRoutePolicy is null)
+        {
+            return;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        var cancellation = new CancellationTokenSource();
+        var previous = _watcherReloads.AddOrUpdate(fullPath, cancellation, (_, old) =>
+        {
+            old.Cancel();
+            old.Dispose();
+            return cancellation;
+        });
+        if (!ReferenceEquals(previous, cancellation)) previous.Dispose();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(750, cancellation.Token).ConfigureAwait(false);
+                await WaitForFileReadyAsync(fullPath).ConfigureAwait(false);
+                if (!File.Exists(fullPath) || IsWatcherPathSuppressed(fullPath)) return;
+
+                var loaded = GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
+                    string.Equals(Path.GetFullPath(plugin.AssemblyPath), fullPath, StringComparison.OrdinalIgnoreCase));
+                if (loaded is not null)
+                {
+                    await ScheduleUnloadPluginByName(_hotReloadEventDispatcher, loaded.Name).ConfigureAwait(false);
+                    await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath).ConfigureAwait(false);
+                    CH.Success($"插件文件热重载成功: {loaded.Name}");
+                    return;
+                }
+
+                var info = TryProbePluginInfoCached(fullPath);
+                if (info is not null)
+                {
+                    await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath).ConfigureAwait(false);
+                    CH.Success($"新插件已自动加载: {info.Name}");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                CH.Error($"插件文件自动热重载失败: {Path.GetFileName(fullPath)} - {ex.Message}");
+            }
+            finally
+            {
+                if (_watcherReloads.TryRemove(fullPath, out var current)) current.Dispose();
+            }
+        });
+    }
+
+    private void HandleDeletedPluginPath(string path)
+    {
+        RemoveProbeCache(path);
+        if (_hotReloadEventDispatcher is null) return;
+
+        var fullPath = Path.GetFullPath(path);
+        var loaded = GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
+            string.Equals(Path.GetFullPath(plugin.AssemblyPath), fullPath, StringComparison.OrdinalIgnoreCase));
+        if (loaded is not null)
+        {
+            _ = ScheduleUnloadPluginByName(_hotReloadEventDispatcher, loaded.Name);
         }
     }
 
@@ -225,6 +335,10 @@ internal sealed class PluginManager(
             }
 
             CH.Info($"检测到新插件: {info.Name} ({info.Id}) - {fullPath}");
+            if (_hotReloadEventDispatcher is not null && _hotReloadRoutePolicy is not null)
+            {
+                await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath).ConfigureAwait(false);
+            }
         });
     }
 
@@ -315,8 +429,6 @@ internal sealed class PluginManager(
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "ShiroBot.SDK.dll",
-            "ShiroBot.Qq.Model.dll",
-            "ShiroBot.AvaloniaSdk.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -350,6 +462,12 @@ internal sealed class PluginManager(
         }
 
         watcher?.Dispose();
+        foreach (var cancellation in _watcherReloads.Values)
+        {
+            cancellation.Cancel();
+            cancellation.Dispose();
+        }
+        _watcherReloads.Clear();
     }
 
     private Task? TryQueuePluginBackgroundTask(Func<Task> taskFactory)
@@ -360,20 +478,7 @@ internal sealed class PluginManager(
             if (_isShuttingDown) return null;
 
             task = Task.Run(taskFactory);
-            _pluginBackgroundTasks.Add(task);
         }
-
-        _ = task.ContinueWith(
-            _ =>
-            {
-                lock (PluginLifecycleLock)
-                {
-                    _pluginBackgroundTasks.Remove(task);
-                }
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
 
         return task;
     }
@@ -401,11 +506,17 @@ internal sealed class PluginManager(
             {
                 var consumers = _serviceRegistry.GetConsumers(pluginHandle.Name)
                     .Where(IsPluginLoaded)
+                    .Concat(_loadedPlugins
+                        .Where(plugin => plugin.Dependencies.Contains(
+                            pluginHandle.Name,
+                            StringComparer.OrdinalIgnoreCase))
+                        .Select(plugin => plugin.Name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
                 if (consumers.Length > 0)
                 {
                     CH.Warning(
-                        $"无法卸载插件 {pluginHandle.Name}，以下已加载插件正在使用它提供的服务: " +
+                        $"无法卸载插件 {pluginHandle.Name}，以下已加载插件依赖或正在使用它: " +
                         string.Join(", ", consumers));
                     return Task.CompletedTask;
                 }
@@ -444,7 +555,12 @@ internal sealed class PluginManager(
 
             if (unloadResult.Error is not null)
             {
-                CH.Error($"插件卸载失败: {unloadResult.Name} - {unloadResult.Error.Message}");
+                var restartRequired = unloadResult.Error is TimeoutException
+                    ? " 宿主必须重启才能保证插件完全卸载。"
+                    : string.Empty;
+                var error = $"插件卸载失败: {unloadResult.Name} - {unloadResult.Error.Message}{restartRequired}";
+                CH.Error(error);
+                runtimeState.RecordEvent(error, "error");
                 return;
             }
 
@@ -598,6 +714,11 @@ internal sealed class PluginManager(
         {
             var actualDllPath = Path.GetFullPath(dll);
             var pluginInfo = preparedPluginInfo ?? ProbePluginInfo(actualDllPath);
+            ComponentApiCompatibility.EnsureCompatible(
+                "Plugin",
+                pluginInfo.Id,
+                pluginInfo.MinimumApiVersion,
+                pluginInfo.MaximumApiVersion);
 
             lock (PluginLifecycleLock)
             {
@@ -625,13 +746,13 @@ internal sealed class PluginManager(
                         var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
                             actualDllPath,
                             pluginDirectory).ConfigureAwait(false);
+                        ModelPackages.ValidateDependencies(actualDllPath);
                         loader = CreateLoader(dependencies);
                         plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
 
                         pluginContext = CreatePluginContext(
                             pluginInfo.Id,
-                            pluginDirectory,
-                            routePolicy);
+                            pluginDirectory);
 
                         CH.Info($"开始加载插件: {pluginInfo.Name} v{pluginInfo.Version} ");
                         logHub.RegisterSource(
@@ -712,13 +833,13 @@ internal sealed class PluginManager(
                 var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
                     actualDllPath,
                     pluginDirectory).ConfigureAwait(false);
+                ModelPackages.ValidateDependencies(actualDllPath);
                 loader = CreateLoader(dependencies);
                 plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
 
                 pluginContext = CreatePluginContext(
                     pluginInfo.Id,
-                    pluginDirectory,
-                    routePolicy);
+                    pluginDirectory);
 
                 CH.Info($"开始加载插件: {pluginInfo.Name} v{pluginInfo.Version} ");
                 logHub.RegisterSource(
@@ -810,6 +931,20 @@ internal sealed class PluginManager(
             if (info is null)
             {
                 CH.Warning($"DLL 不包含有效插件入口，已跳过: {fullPath}");
+                continue;
+            }
+
+            try
+            {
+                ComponentApiCompatibility.EnsureCompatible(
+                    "Plugin",
+                    info.Id,
+                    info.MinimumApiVersion,
+                    info.MaximumApiVersion);
+            }
+            catch (InvalidOperationException ex)
+            {
+                CH.Error(ex.Message);
                 continue;
             }
 
@@ -976,13 +1111,11 @@ internal sealed class PluginManager(
 
     private PluginContext CreatePluginContext(
         string pluginName,
-        string pluginDirectory,
-        PluginRouteConfig routePolicy) =>
+        string pluginDirectory) =>
         new(
             botContext,
             pluginName,
             pluginDirectory,
-            groupId => routePolicy.AllowsGroup(pluginName, groupId),
             logHub,
             _serviceRegistry);
 
@@ -1142,6 +1275,7 @@ internal sealed class PluginManager(
             if (!peReader.HasMetadata) return null;
 
             var reader = peReader.GetMetadataReader();
+            var compatibility = ReadApiCompatibility(reader);
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var type = reader.GetTypeDefinition(typeHandle);
@@ -1151,26 +1285,33 @@ internal sealed class PluginManager(
                     continue;
                 }
 
+                RawBotPluginAttribute? pluginAttribute = null;
                 foreach (var attributeHandle in type.GetCustomAttributes())
                 {
-                    if (!TryReadBotPluginAttribute(reader, attributeHandle, out var pluginAttribute)) continue;
-
-                    var id = pluginAttribute.Id;
-                    if (string.IsNullOrWhiteSpace(id)) return null;
-
-                    return new PluginProbeInfo(
-                        GetTypeDefinitionFullName(reader, type),
-                        id,
-                        pluginAttribute.Name ?? id,
-                        pluginAttribute.Version ?? "1.0.0",
-                        pluginAttribute.Description,
-                        pluginAttribute.Author,
-                        pluginAttribute.Category ?? PluginCategory.Other,
-                        pluginAttribute.GithubRepo,
-                        pluginAttribute.IsPluginSingleFile ?? false,
-                        SplitList(pluginAttribute.SharedAssemblies),
-                        SplitList(pluginAttribute.Dependencies));
+                    if (TryReadBotPluginAttribute(reader, attributeHandle, out var value))
+                    {
+                        pluginAttribute = value;
+                    }
                 }
+
+                if (pluginAttribute is not { } plugin) continue;
+                var id = plugin.Id;
+                if (string.IsNullOrWhiteSpace(id)) return null;
+
+                return new PluginProbeInfo(
+                    GetTypeDefinitionFullName(reader, type),
+                    id,
+                    plugin.Name ?? id,
+                    plugin.Version ?? "1.0.0",
+                    plugin.Description,
+                    plugin.Author,
+                    plugin.Category ?? PluginCategory.Other,
+                    plugin.GithubRepo,
+                    plugin.IsPluginSingleFile ?? false,
+                    SplitList(plugin.SharedAssemblies),
+                    SplitList(plugin.Dependencies),
+                    compatibility.MinimumVersion,
+                    compatibility.MaximumVersion);
             }
 
             return null;
@@ -1268,6 +1409,43 @@ internal sealed class PluginManager(
             sharedAssemblies,
             dependencies);
         return true;
+    }
+
+    private static bool TryReadApiCompatibilityAttribute(
+        MetadataReader reader,
+        CustomAttributeHandle attributeHandle,
+        out RawApiCompatibilityAttribute attribute)
+    {
+        attribute = default;
+        var customAttribute = reader.GetCustomAttribute(attributeHandle);
+        if (!string.Equals(
+                GetAttributeTypeFullName(reader, customAttribute),
+                typeof(ShiroBotApiCompatibilityAttribute).FullName,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var blob = reader.GetBlobReader(customAttribute.Value);
+        if (blob.ReadUInt16() != 1) return false;
+        var minimumVersion = blob.ReadSerializedString();
+        var maximumVersion = blob.ReadSerializedString();
+        if (minimumVersion is null || maximumVersion is null) return false;
+        attribute = new RawApiCompatibilityAttribute(minimumVersion, maximumVersion);
+        return true;
+    }
+
+    private static RawApiCompatibilityAttribute ReadApiCompatibility(MetadataReader reader)
+    {
+        foreach (var attributeHandle in reader.GetAssemblyDefinition().GetCustomAttributes())
+        {
+            if (TryReadApiCompatibilityAttribute(reader, attributeHandle, out var compatibility))
+            {
+                return compatibility;
+            }
+        }
+
+        return new RawApiCompatibilityAttribute("0.8", "0.8");
     }
 
     private static IReadOnlyList<string> SplitList(string? value) =>
@@ -1381,6 +1559,8 @@ internal sealed class PluginManager(
         bool? IsPluginSingleFile,
         string? SharedAssemblies,
         string? Dependencies);
+
+    private readonly record struct RawApiCompatibilityAttribute(string MinimumVersion, string MaximumVersion);
 
     private sealed record PreparedPlugin(string AssemblyPath, PluginProbeInfo Info);
 }

@@ -17,8 +17,7 @@
 ## 项目结构
 
 - `ShiroBot`: 主程序，内置 Avalonia Headless 渲染集成
-- `ShiroBot.SDK`: 插件与适配器基础 SDK
-- `ShiroBot.AvaloniaSdk`: 可选的 Avalonia 控件渲染 SDK
+- `ShiroBot.SDK`: 插件与适配器 SDK，内置 Avalonia 控件渲染契约和编译支持
 - `ShiroBot.Model`: 共享模型
 
 ## 构建

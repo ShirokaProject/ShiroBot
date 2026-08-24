@@ -2,10 +2,11 @@ using Avalonia;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using ShiroBot.AvaloniaIntegration;
 using ShiroBot.AvaloniaSdk;
 using ShiroBot.SDK.Plugin;
 
-namespace ShiroBot.AvaloniaIntegration;
+namespace ShiroBot.Core.AvaloniaIntegration;
 
 /// <summary>
 /// Avalonia 渲染集成模块。由宿主在启动时调用 <see cref="Initialize"/>，
@@ -15,7 +16,7 @@ namespace ShiroBot.AvaloniaIntegration;
 /// </summary>
 public static class AvaloniaIntegration
 {
-    private static readonly object Lock = new();
+    private static readonly Lock Lock = new();
     private static AvaloniaHostBootstrapper? _bootstrap;
     private static AxamlRenderer? _renderer;
     private static string _themeMode = "Light";
@@ -106,7 +107,7 @@ public static class AvaloniaIntegration
             return;
         }
 
-        Application.Current!.RequestedThemeVariant = ResolveThemeVariant();
+        Application.Current.RequestedThemeVariant = ResolveThemeVariant();
     }
 
     internal static void ApplyRenderTheme(RenderTheme theme)
@@ -119,7 +120,7 @@ public static class AvaloniaIntegration
             return;
         }
 
-        Application.Current!.RequestedThemeVariant = ResolveRenderThemeVariant(theme);
+        Application.Current.RequestedThemeVariant = ResolveRenderThemeVariant(theme);
     }
 
     private static ThemeVariant ResolveRenderThemeVariant(RenderTheme theme)

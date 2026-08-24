@@ -9,7 +9,12 @@ namespace ShiroBot.Hosting;
 
 internal sealed class LoadedPluginHandle
 {
+    private static readonly TimeSpan DefaultActiveDispatchDrainTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultPluginOnUnloadTimeout = TimeSpan.FromSeconds(30);
+
     private readonly Lock _dispatchLock = new();
+    private readonly TimeSpan _activeDispatchDrainTimeout;
+    private readonly TimeSpan _pluginOnUnloadTimeout;
     private int _activeDispatches;
     private bool _isUnloading;
     private TaskCompletionSource? _dispatchesDrained;
@@ -28,7 +33,9 @@ internal sealed class LoadedPluginHandle
         string assemblyPath,
         PluginProbeInfo metadata,
         HostLogHub logHub,
-        Func<string, bool>? groupRouteFilter = null)
+        Func<string, bool>? groupRouteFilter = null,
+        TimeSpan? activeDispatchDrainTimeout = null,
+        TimeSpan? pluginOnUnloadTimeout = null)
     {
         _plugin = plugin;
         _context = context;
@@ -36,6 +43,8 @@ internal sealed class LoadedPluginHandle
         _assemblyPath = assemblyPath;
         _logHub = logHub;
         _groupRouteFilter = groupRouteFilter;
+        _activeDispatchDrainTimeout = activeDispatchDrainTimeout ?? DefaultActiveDispatchDrainTimeout;
+        _pluginOnUnloadTimeout = pluginOnUnloadTimeout ?? DefaultPluginOnUnloadTimeout;
 
         Name = metadata.Id;
         DisplayName = metadata.Name;
@@ -44,9 +53,12 @@ internal sealed class LoadedPluginHandle
         Author = metadata.Author;
         Category = metadata.Category;
         GithubRepo = metadata.GithubRepo;
+        Dependencies = metadata.Dependencies;
         SubscribedEventTypes = plugin is PluginBase pluginBase
             ? pluginBase.GetEffectiveEventTypes().ToHashSet()
-            : new HashSet<Type>();
+            : plugin is IBotEventSubscriber
+                ? [typeof(BotEvent)]
+                : [];
         GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         DirectMessageRoutes = plugin is PluginBase directPluginBase ? directPluginBase.GetDirectMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         RequiresGroupMessageBroadcast = plugin is PluginBase groupBroadcastPluginBase && groupBroadcastPluginBase.RequiresGroupMessageBroadcast();
@@ -60,6 +72,7 @@ internal sealed class LoadedPluginHandle
     public string? Author { get; }
     public PluginCategory Category { get; }
     public string? GithubRepo { get; }
+    public IReadOnlyList<string> Dependencies { get; }
     public string AssemblyPath => _assemblyPath;
     public IReadOnlySet<Type> SubscribedEventTypes { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
@@ -75,7 +88,8 @@ internal sealed class LoadedPluginHandle
         RequiresDirectMessageBroadcast ||
         (SubscribesTo(typeof(MessageEvent)) && DirectMessageRoutes.Count == 0);
 
-    public bool SubscribesTo(Type eventType) => SubscribedEventTypes.Contains(eventType);
+    public bool SubscribesTo(Type eventType) =>
+        SubscribedEventTypes.Any(subscribedType => subscribedType.IsAssignableFrom(eventType));
 
     public bool AllowsGroup(string? groupId)
     {
@@ -233,8 +247,6 @@ internal sealed class LoadedPluginHandle
         // UnloadAsync creates this task while holding _dispatchLock. Always yield once so plugin
         // cleanup code can never run under the lifecycle lock, even when no dispatch is active.
         await Task.Yield();
-        await dispatchesDrained.ConfigureAwait(false);
-
         IBotPlugin? plugin;
         PluginContext? context;
         DllLoader<IBotPlugin>? loader;
@@ -249,22 +261,88 @@ internal sealed class LoadedPluginHandle
             _loader = null;
         }
 
-        return await BeginUnloadCore(Name, _assemblyPath, plugin, context, loader, _logHub)
+        var pluginWeakReference = plugin is null ? null : new WeakReference(plugin);
+        var contextWeakReference = context is null ? null : new WeakReference(context);
+
+        try
+        {
+            context?.DetachExternalCallbacks();
+        }
+        catch (Exception ex)
+        {
+            if (!dispatchesDrained.IsCompleted)
+            {
+                _ = CompleteFailedUnloadAfterDispatchesDrainAsync(
+                    dispatchesDrained,
+                    Name,
+                    _assemblyPath,
+                    pluginWeakReference,
+                    contextWeakReference,
+                    context,
+                    loader,
+                    ex);
+                return new PluginUnloadResult(
+                    Name,
+                    _assemblyPath,
+                    false,
+                    null,
+                    pluginWeakReference,
+                    contextWeakReference,
+                    ex);
+            }
+
+            return CompleteFailedUnload(
+                Name,
+                _assemblyPath,
+                pluginWeakReference,
+                contextWeakReference,
+                context,
+                loader,
+                ex);
+        }
+
+        if (await Task.WhenAny(dispatchesDrained, Task.Delay(_activeDispatchDrainTimeout)).ConfigureAwait(false) != dispatchesDrained)
+        {
+            _ = CompleteUnloadAfterDispatchesDrainAsync(dispatchesDrained, plugin, context, loader);
+            return CreateTimeoutResult(
+                pluginWeakReference,
+                contextWeakReference,
+                $"Timed out after {_activeDispatchDrainTimeout} waiting for active plugin dispatches to finish. " +
+                "The plugin remains resident and the host must be restarted to guarantee cleanup.");
+        }
+
+        return await UnloadPluginCoreAsync(
+                plugin,
+                context,
+                loader,
+                pluginWeakReference,
+                contextWeakReference)
             .ConfigureAwait(false);
     }
 
-    private static Task<PluginUnloadResult> BeginUnloadCore(
-        string name,
-        string assemblyPath,
+    private async Task CompleteUnloadAfterDispatchesDrainAsync(
+        Task dispatchesDrained,
+        IBotPlugin? plugin,
+        PluginContext? context,
+        DllLoader<IBotPlugin>? loader)
+    {
+        await dispatchesDrained.ConfigureAwait(false);
+        await UnloadPluginCoreAsync(
+                plugin,
+                context,
+                loader,
+                plugin is null ? null : new WeakReference(plugin),
+                context is null ? null : new WeakReference(context))
+            .ConfigureAwait(false);
+    }
+
+    private async Task<PluginUnloadResult> UnloadPluginCoreAsync(
         IBotPlugin? plugin,
         PluginContext? context,
         DllLoader<IBotPlugin>? loader,
-        HostLogHub logHub)
+        WeakReference? pluginWeakReference,
+        WeakReference? contextWeakReference)
     {
-        var pluginWeakReference = plugin is null ? null : new WeakReference(plugin);
-        var contextWeakReference = context is null ? null : new WeakReference(context);
-        Exception? unloadException;
-        IDisposable? scope = null;
         try
         {
             if (plugin is null)
@@ -272,80 +350,116 @@ internal sealed class LoadedPluginHandle
                 throw new InvalidOperationException("Plugin is not available for unload.");
             }
 
-            scope = BotLog.BeginScope(new ConsoleLogger($"[Plugin:{name}]", logHub));
-            context?.DetachExternalCallbacks();
             ReleaseAvaloniaPluginResources(plugin.GetType().Assembly.GetName().Name);
-            var unloadTask = plugin.OnUnload();
+            var unloadTask = Task.Run(() =>
+                BotLog.RunScoped(
+                    new ConsoleLogger($"[Plugin:{Name}]", _logHub),
+                    plugin.OnUnload));
 
-            if (!unloadTask.IsCompletedSuccessfully)
-                return AwaitUnloadCoreAsync(
-                    name,
-                    assemblyPath,
+            if (await Task.WhenAny(unloadTask, Task.Delay(_pluginOnUnloadTimeout)).ConfigureAwait(false) != unloadTask)
+            {
+                _ = CompleteCleanupAfterOnUnloadAsync(unloadTask, context, loader);
+                return CreateTimeoutResult(
                     pluginWeakReference,
                     contextWeakReference,
-                    context,
-                    loader,
-                    unloadTask,
-                    scope);
-            scope.Dispose();
+                    $"Timed out after {_pluginOnUnloadTimeout} waiting for plugin OnUnload to finish. " +
+                    "The plugin remains resident and the host must be restarted to guarantee cleanup.");
+            }
+
+            await unloadTask.ConfigureAwait(false);
             context?.Dispose();
             var alcWeakReference = loader?.BeginUnload();
 
-            return Task.FromResult(new PluginUnloadResult(
-                name,
-                assemblyPath,
+            return new PluginUnloadResult(
+                Name,
+                _assemblyPath,
                 true,
                 alcWeakReference,
                 pluginWeakReference,
                 contextWeakReference,
-                null));
-
+                null);
         }
         catch (Exception ex)
         {
-            unloadException = ex;
+            return CompleteFailedUnload(
+                Name,
+                _assemblyPath,
+                pluginWeakReference,
+                contextWeakReference,
+                context,
+                loader,
+                ex);
         }
-        finally
+    }
+
+    private static async Task CompleteCleanupAfterOnUnloadAsync(
+        Task unloadTask,
+        PluginContext? context,
+        DllLoader<IBotPlugin>? loader)
+    {
+        try
         {
-            scope?.Dispose();
+            await unloadTask.ConfigureAwait(false);
+        }
+        catch
+        {
+            // The manager already reported the timeout. Cleanup can proceed once plugin code stops.
         }
 
         context?.Dispose();
-        var failedAlcWeakReference = loader?.BeginUnload();
-
-        return Task.FromResult(new PluginUnloadResult(
-            name,
-            assemblyPath,
-            unloadException is null,
-            failedAlcWeakReference,
-            pluginWeakReference,
-            contextWeakReference,
-            unloadException));
+        loader?.BeginUnload();
     }
 
-    private static async Task<PluginUnloadResult> AwaitUnloadCoreAsync(
+    private static async Task CompleteFailedUnloadAfterDispatchesDrainAsync(
+        Task dispatchesDrained,
         string name,
         string assemblyPath,
         WeakReference? pluginWeakReference,
         WeakReference? contextWeakReference,
         PluginContext? context,
         DllLoader<IBotPlugin>? loader,
-        Task unloadTask,
-        IDisposable scope)
+        Exception unloadException)
     {
-        Exception? unloadException = null;
+        await dispatchesDrained.ConfigureAwait(false);
+        CompleteFailedUnload(
+            name,
+            assemblyPath,
+            pluginWeakReference,
+            contextWeakReference,
+            context,
+            loader,
+            unloadException);
+    }
+
+    private PluginUnloadResult CreateTimeoutResult(
+        WeakReference? pluginWeakReference,
+        WeakReference? contextWeakReference,
+        string message) =>
+        new(
+            Name,
+            _assemblyPath,
+            false,
+            null,
+            pluginWeakReference,
+            contextWeakReference,
+            new TimeoutException(message));
+
+    private static PluginUnloadResult CompleteFailedUnload(
+        string name,
+        string assemblyPath,
+        WeakReference? pluginWeakReference,
+        WeakReference? contextWeakReference,
+        PluginContext? context,
+        DllLoader<IBotPlugin>? loader,
+        Exception unloadException)
+    {
         try
         {
-            await unloadTask;
-        }
-        catch (Exception ex)
-        {
-            unloadException = ex;
-        }
-        finally
-        {
-            scope.Dispose();
             context?.Dispose();
+        }
+        catch
+        {
+            // Preserve the original unload failure.
         }
 
         var alcWeakReference = loader?.BeginUnload();
@@ -353,7 +467,7 @@ internal sealed class LoadedPluginHandle
         return new PluginUnloadResult(
             name,
             assemblyPath,
-            unloadException is null,
+            false,
             alcWeakReference,
             pluginWeakReference,
             contextWeakReference,
@@ -362,7 +476,7 @@ internal sealed class LoadedPluginHandle
 
     private static void ReleaseAvaloniaPluginResources(string? assemblyName)
     {
-        AvaloniaIntegration.AvaloniaIntegration.ReleasePluginAssembly(assemblyName);
+        Core.AvaloniaIntegration.AvaloniaIntegration.ReleasePluginAssembly(assemblyName);
     }
 }
 
