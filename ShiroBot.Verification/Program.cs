@@ -6,6 +6,7 @@ using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.Model.QQ;
 
 [assembly: ShiroBotApiCompatibility("0.8", "0.8")]
 
@@ -43,6 +44,51 @@ AssertThrows<InvalidOperationException>(() =>
 AssertThrows<InvalidOperationException>(() =>
     ComponentApiCompatibility.EnsureCompatible("Plugin", "malformed", "preview", "0.8"));
 Console.WriteLine("Component API version verification passed.");
+
+var builtInModelRoot = Path.Combine(
+    Path.GetTempPath(),
+    "ShiroBot.Verification",
+    Guid.NewGuid().ToString("N"),
+    "models");
+try
+{
+    var modelRegistry = new ModelPackageRegistry(new SharedAssemblyResolver());
+    modelRegistry.RegisterBuiltIn(typeof(QGroup).Assembly);
+    modelRegistry.LoadFromDirectory(builtInModelRoot);
+    var builtInModel = modelRegistry.GetPackages().Single();
+    if (builtInModel is not
+        {
+            Id: "shirobot.model.qq",
+            Version: "0.8.0",
+            Source: "built_in",
+            Reloadable: false,
+            AssemblyPath: null
+        })
+    {
+        throw new InvalidOperationException("Built-in Model package metadata is incorrect.");
+    }
+
+    await modelRegistry.ReloadAsync();
+    if (modelRegistry.GetPackages().Single().Source != "built_in")
+    {
+        throw new InvalidOperationException("Reload removed the built-in Model package.");
+    }
+
+    var duplicatePath = Path.Combine(builtInModelRoot, "ShiroBot.Model.QQ.dll");
+    Directory.CreateDirectory(builtInModelRoot);
+    File.Copy(typeof(QGroup).Assembly.Location, duplicatePath);
+    AssertThrows<InvalidOperationException>(() => modelRegistry.LoadFromDirectory(builtInModelRoot));
+    await AssertThrowsAsync<SharedAssemblyRestartRequiredException>(() =>
+        modelRegistry.InstallAsync(duplicatePath));
+
+    Console.WriteLine("Built-in Model package verification passed.");
+}
+finally
+{
+    var builtInRoot = Directory.GetParent(builtInModelRoot)?.FullName;
+    if (builtInRoot is not null && Directory.Exists(builtInRoot))
+        Directory.Delete(builtInRoot, recursive: true);
+}
 
 var qqAdapter = new VerificationAdapter("qq");
 var discordAdapter = new VerificationAdapter("discord");
@@ -389,6 +435,20 @@ static void AssertThrows<TException>(Action action) where TException : Exception
     try
     {
         action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
+}
+
+static async Task AssertThrowsAsync<TException>(Func<Task> action) where TException : Exception
+{
+    try
+    {
+        await action();
     }
     catch (TException)
     {

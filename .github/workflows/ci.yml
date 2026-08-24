@@ -101,6 +101,60 @@ jobs:
           test ! -f "$RUNNER_TEMP/package-smoke/publish/Avalonia.dll"
           test ! -d "$RUNNER_TEMP/package-smoke/publish/runtimes"
 
+      - name: Smoke-test single-file built-in Model
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/shirobot-single-file"
+          config_path="$RUNNER_TEMP/shirobot-single-file.toml"
+          response_path="$RUNNER_TEMP/shirobot-models.json"
+
+          dotnet publish ShiroBot/ShiroBot.csproj -c Release -r linux-x64 \
+            --self-contained true \
+            -o "$output_dir" \
+            /p:BuildDashboard=false \
+            /p:BuildDashboardOnPublish=false \
+            /p:PublishSingleFile=true \
+            /p:IncludeNativeLibrariesForSelfExtract=true
+
+          test -f "$output_dir/ShiroBot"
+          test ! -f "$output_dir/ShiroBot.Model.QQ.dll"
+          test ! -f "$output_dir/ShiroBot.SDK.dll"
+
+          cat > "$config_path" <<'EOF'
+          protocol = ""
+          protocols = []
+          enable_log = false
+          disable_console_input = true
+
+          [api]
+          enable = true
+          listen_url = "http://127.0.0.1:17081"
+
+          [api.auth]
+          enable = false
+          key = ""
+          EOF
+
+          "$output_dir/ShiroBot" --config "$config_path" &
+          host_pid=$!
+          trap 'kill "$host_pid" 2>/dev/null || true; wait "$host_pid" 2>/dev/null || true' EXIT
+
+          curl --fail --silent --show-error \
+            --retry 40 --retry-delay 1 --retry-connrefused \
+            http://127.0.0.1:17081/api/v1/models/list \
+            -o "$response_path"
+
+          jq -e '
+            length == 1 and
+            .[0].id == "shirobot.model.qq" and
+            .[0].version == "0.8.0" and
+            .[0].assembly == "ShiroBot.Model.QQ" and
+            .[0].path == null and
+            .[0].source == "built_in" and
+            .[0].reloadable == false
+          ' "$response_path"
+
       - name: Build dashboard
         run: |
           npm --prefix Shirobot.Dashboard ci

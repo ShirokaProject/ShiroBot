@@ -143,7 +143,9 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             id = model.Id,
             version = model.Version,
             assembly = model.AssemblyName,
-            path = model.AssemblyPath
+            path = model.AssemblyPath,
+            source = model.Source,
+            reloadable = model.Reloadable
         })));
 
         api.MapPost("/models/reload", async () =>

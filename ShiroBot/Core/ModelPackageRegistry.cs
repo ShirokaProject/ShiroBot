@@ -11,6 +11,26 @@ internal sealed class ModelPackageRegistry(SharedAssemblyResolver sharedAssembli
     private readonly Dictionary<string, Package> _packages = new(StringComparer.OrdinalIgnoreCase);
     private string? _modelRoot;
 
+    public void RegisterBuiltIn(Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+        var metadata = assembly.GetCustomAttribute<ShiroBotPackageAttribute>();
+        if (metadata is null || metadata.Kind != ShiroBotPackageKind.Model)
+        {
+            throw new InvalidOperationException(
+                $"Built-in Model assembly must declare {nameof(ShiroBotPackageAttribute)} with kind Model: " +
+                assembly.GetName().Name);
+        }
+
+        if (_packages.ContainsKey(metadata.Id))
+        {
+            throw new InvalidOperationException($"Duplicate built-in Model package: {metadata.Id}");
+        }
+
+        sharedAssemblies.RegisterAssembly(assembly);
+        _packages.Add(metadata.Id, new Package(metadata, assembly, null, null, IsBuiltIn: true));
+    }
+
     public void LoadFromDirectory(string modelRoot)
     {
         _modelRoot = Path.GetFullPath(modelRoot);
@@ -37,6 +57,19 @@ internal sealed class ModelPackageRegistry(SharedAssemblyResolver sharedAssembli
                     $"models 目录中的 ShiroBot 包必须为 Model 类别: {dllPath}");
             }
 
+            if (_packages.TryGetValue(packageMetadata.Id, out var installedPackage))
+            {
+                if (installedPackage.IsBuiltIn)
+                {
+                    throw new InvalidOperationException(
+                        $"Model package {packageMetadata.Id} is built into this ShiroBot executable and cannot " +
+                        $"be replaced from the models directory. Remove {dllPath}; upgrade and restart ShiroBot " +
+                        "to update the built-in Model.");
+                }
+
+                throw new InvalidOperationException($"重复安装的 Model 包: {packageMetadata.Id}");
+            }
+
             var loadContext = new ModelAssemblyLoadContext(dllPath, sharedAssemblies);
             var assembly = loadContext.LoadFromAssemblyPath(Path.GetFullPath(dllPath));
             var metadata = assembly.GetCustomAttribute<ShiroBotPackageAttribute>();
@@ -47,7 +80,12 @@ internal sealed class ModelPackageRegistry(SharedAssemblyResolver sharedAssembli
             }
 
             sharedAssemblies.RegisterAssembly(assembly);
-            if (!_packages.TryAdd(metadata.Id, new Package(metadata, assembly, loadContext, Path.GetFullPath(dllPath))))
+            if (!_packages.TryAdd(metadata.Id, new Package(
+                    metadata,
+                    assembly,
+                    loadContext,
+                    Path.GetFullPath(dllPath),
+                    IsBuiltIn: false)))
             {
                 sharedAssemblies.UnregisterAssembly(assembly);
                 loadContext.Unload();
@@ -62,7 +100,9 @@ internal sealed class ModelPackageRegistry(SharedAssemblyResolver sharedAssembli
                 package.Metadata.Id,
                 package.Metadata.Version,
                 package.Assembly.GetName().Name ?? string.Empty,
-                package.AssemblyPath))
+                package.AssemblyPath,
+                package.IsBuiltIn ? "built_in" : "external",
+                !package.IsBuiltIn))
             .OrderBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -97,6 +137,12 @@ internal sealed class ModelPackageRegistry(SharedAssemblyResolver sharedAssembli
         if (metadata.Kind != ShiroBotPackageKind.Model)
         {
             throw new InvalidOperationException("上传的 DLL 不是 Model 包。");
+        }
+        if (_packages.TryGetValue(metadata.Id, out var existingPackage) && existingPackage.IsBuiltIn)
+        {
+            throw new SharedAssemblyRestartRequiredException(
+                $"Model package {metadata.Id} is built into this ShiroBot executable and cannot be replaced " +
+                "at runtime. Upgrade and restart ShiroBot to apply a built-in Model update.");
         }
 
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -144,14 +190,14 @@ internal sealed class ModelPackageRegistry(SharedAssemblyResolver sharedAssembli
     private IReadOnlyList<WeakReference> BeginUnloadAll()
     {
         var unloadReferences = new List<WeakReference>();
-        foreach (var package in _packages.Values)
+        foreach (var package in _packages.Values.Where(package => !package.IsBuiltIn).ToArray())
         {
             sharedAssemblies.UnregisterAssembly(package.Assembly);
-            package.LoadContext.Unload();
+            package.LoadContext!.Unload();
             unloadReferences.Add(new WeakReference(package.LoadContext));
+            _packages.Remove(package.Metadata.Id);
         }
 
-        _packages.Clear();
         return unloadReferences;
     }
 
@@ -203,13 +249,20 @@ internal sealed class ModelPackageRegistry(SharedAssemblyResolver sharedAssembli
         _packages.Values.Any(package => string.Equals(
             package.Assembly.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
 
-    internal sealed record ModelPackageInfo(string Id, string Version, string AssemblyName, string AssemblyPath);
+    internal sealed record ModelPackageInfo(
+        string Id,
+        string Version,
+        string AssemblyName,
+        string? AssemblyPath,
+        string Source,
+        bool Reloadable);
 
     private sealed record Package(
         ShiroBotPackageAttribute Metadata,
         Assembly Assembly,
-        ModelAssemblyLoadContext LoadContext,
-        string AssemblyPath);
+        ModelAssemblyLoadContext? LoadContext,
+        string? AssemblyPath,
+        bool IsBuiltIn);
 
     private sealed class ModelAssemblyLoadContext(string assemblyPath, SharedAssemblyResolver shared)
         : AssemblyLoadContext($"model:{Path.GetFileNameWithoutExtension(assemblyPath)}", isCollectible: true)

@@ -146,6 +146,10 @@ jobs:
             /p:PublishSingleFile=true \
             /p:IncludeNativeLibrariesForSelfExtract=true
 
+          test -f "$output_dir/$host_exe"
+          test ! -f "$output_dir/ShiroBot.Model.QQ.dll"
+          test ! -f "$output_dir/ShiroBot.SDK.dll"
+
           chmod +x "$output_dir/$host_exe"
           (cd "$output_dir" && zip -9 -j "$archive_path" "$host_exe")
 

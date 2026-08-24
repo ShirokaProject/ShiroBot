@@ -6,6 +6,7 @@ using Avalonia;
 using ShiroBot.Core;
 using ShiroBot.Hosting;
 using ShiroBot.Hosting.Context;
+using ShiroBot.Model.QQ;
 using ShiroBot.SDK.Abstractions;
 using CH = ShiroBot.Core.ConsoleHelper;
 
@@ -106,6 +107,7 @@ public static class Program
 
             // ─── 平台 Model 加载 ───
             var modelRoot = Path.Combine(BasePath, "models");
+            modelPackages.RegisterBuiltIn(typeof(QGroup).Assembly);
             modelPackages.LoadFromDirectory(modelRoot);
             runtimeState.SetModelsCount(modelPackages.GetPackages().Count);
 

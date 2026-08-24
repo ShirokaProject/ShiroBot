@@ -21,22 +21,4 @@
         <None Include="README.md" Pack="true" PackagePath="\" />
     </ItemGroup>
 
-    <Target Name="CopyModelToHost"
-            AfterTargets="Build"
-            Condition="'$(Configuration)'=='Debug'">
-        <PropertyGroup>
-            <HostModelDir>$(MSBuildProjectDirectory)\..\ShiroBot\bin\Debug\$(TargetFramework)\models\</HostModelDir>
-        </PropertyGroup>
-        <MakeDir Directories="$(HostModelDir)" />
-        <Delete Files="$(HostModelDir)ShiroBot.QQ.dll;$(HostModelDir)ShiroBot.QQ.pdb" />
-        <Copy SourceFiles="$(TargetPath);$(TargetDir)$(AssemblyName).pdb"
-              DestinationFiles="$(HostModelDir)$(AssemblyName).dll;$(HostModelDir)$(AssemblyName).pdb"
-              SkipUnchangedFiles="true"
-              Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
-        <Copy SourceFiles="$(TargetPath)"
-              DestinationFiles="$(HostModelDir)$(AssemblyName).dll"
-              SkipUnchangedFiles="true"
-              Condition="!Exists('$(TargetDir)$(AssemblyName).pdb')" />
-    </Target>
-
 </Project>
