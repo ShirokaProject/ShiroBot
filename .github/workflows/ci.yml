@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           output_dir="$RUNNER_TEMP/shirobot-single-file"
-          plugin_dir="$RUNNER_TEMP/shirobot-single-file-plugin/ShiroBot.AiChatPlugin"
+          plugin_dir="$RUNNER_TEMP/shirobot-single-file-plugin/ShiroBot.SharedContractPluginProbe"
           config_path="$RUNNER_TEMP/shirobot-single-file.toml"
           response_path="$RUNNER_TEMP/shirobot-models.json"
           plugin_response_path="$RUNNER_TEMP/shirobot-plugins.json"
@@ -123,9 +123,9 @@ jobs:
           test ! -f "$output_dir/ShiroBot.Model.QQ.dll"
           test ! -f "$output_dir/ShiroBot.SDK.dll"
 
-          dotnet publish ShiroBot.AiChatPlugin/ShiroBot.AiChatPlugin.csproj -c Release \
+          dotnet publish ShiroBot.SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
             -o "$plugin_dir"
-          test -f "$plugin_dir/ShiroBot.AiChatPlugin.dll"
+          test -f "$plugin_dir/ShiroBot.SharedContractPluginProbe.dll"
           test ! -f "$plugin_dir/ShiroBot.Model.QQ.dll"
           test ! -f "$plugin_dir/ShiroBot.SDK.dll"
 
@@ -169,7 +169,7 @@ jobs:
             -o "$plugin_response_path"
 
           jq -e '
-            any(.[]; .id == "AiChatPlugin" and .enable == true)
+            any(.[]; .id == "SharedContractPluginProbe" and .enable == true)
           ' "$plugin_response_path"
 
       - name: Build dashboard
