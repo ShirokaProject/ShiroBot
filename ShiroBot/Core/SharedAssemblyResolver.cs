@@ -80,6 +80,28 @@ public sealed class SharedAssemblyResolver
         return null;
     }
 
+    public Assembly? TryGetRegisteredAssembly(string assemblyName)
+    {
+        if (string.IsNullOrWhiteSpace(assemblyName))
+        {
+            return null;
+        }
+
+        var simpleName = assemblyName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            ? assemblyName[..^4]
+            : assemblyName;
+        lock (_lock)
+        {
+            if (_assemblies.TryGetValue(simpleName, out var registered))
+            {
+                return registered;
+            }
+        }
+
+        return AssemblyLoadContext.Default.Assemblies.FirstOrDefault(assembly =>
+            string.Equals(assembly.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase));
+    }
+
     public Assembly RegisterDefaultAssembly(string assemblyPath)
     {
         var fullPath = Path.GetFullPath(assemblyPath);

@@ -106,8 +106,10 @@ jobs:
         run: |
           set -euo pipefail
           output_dir="$RUNNER_TEMP/shirobot-single-file"
+          plugin_dir="$RUNNER_TEMP/shirobot-single-file-plugin/ShiroBot.AiChatPlugin"
           config_path="$RUNNER_TEMP/shirobot-single-file.toml"
           response_path="$RUNNER_TEMP/shirobot-models.json"
+          plugin_response_path="$RUNNER_TEMP/shirobot-plugins.json"
 
           dotnet publish ShiroBot/ShiroBot.csproj -c Release -r linux-x64 \
             --self-contained true \
@@ -120,6 +122,12 @@ jobs:
           test -f "$output_dir/ShiroBot"
           test ! -f "$output_dir/ShiroBot.Model.QQ.dll"
           test ! -f "$output_dir/ShiroBot.SDK.dll"
+
+          dotnet publish ShiroBot.AiChatPlugin/ShiroBot.AiChatPlugin.csproj -c Release \
+            -o "$plugin_dir"
+          test -f "$plugin_dir/ShiroBot.AiChatPlugin.dll"
+          test ! -f "$plugin_dir/ShiroBot.Model.QQ.dll"
+          test ! -f "$plugin_dir/ShiroBot.SDK.dll"
 
           cat > "$config_path" <<'EOF'
           protocol = ""
@@ -136,7 +144,8 @@ jobs:
           key = ""
           EOF
 
-          "$output_dir/ShiroBot" --config "$config_path" &
+          "$output_dir/ShiroBot" --config "$config_path" \
+            --plugin-dir "$(dirname "$plugin_dir")" &
           host_pid=$!
           trap 'kill "$host_pid" 2>/dev/null || true; wait "$host_pid" 2>/dev/null || true' EXIT
 
@@ -154,6 +163,14 @@ jobs:
             .[0].source == "built_in" and
             .[0].reloadable == false
           ' "$response_path"
+
+          curl --fail --silent --show-error \
+            http://127.0.0.1:17081/api/v1/plugins/list \
+            -o "$plugin_response_path"
+
+          jq -e '
+            any(.[]; .id == "AiChatPlugin" and .enable == true)
+          ' "$plugin_response_path"
 
       - name: Build dashboard
         run: |

@@ -52,8 +52,14 @@ var builtInModelRoot = Path.Combine(
     "models");
 try
 {
-    var modelRegistry = new ModelPackageRegistry(new SharedAssemblyResolver());
+    var sharedAssemblies = new SharedAssemblyResolver();
+    var modelRegistry = new ModelPackageRegistry(sharedAssemblies);
     modelRegistry.RegisterBuiltIn(typeof(QGroup).Assembly);
+    if (sharedAssemblies.TryGetRegisteredAssembly("ShiroBot.Model.QQ") != typeof(QGroup).Assembly ||
+        sharedAssemblies.TryGetRegisteredAssembly("ShiroBot.Model.QQ.dll") != typeof(QGroup).Assembly)
+    {
+        throw new InvalidOperationException("Built-in Model was not available as a registered shared contract.");
+    }
     modelRegistry.LoadFromDirectory(builtInModelRoot);
     var builtInModel = modelRegistry.GetPackages().Single();
     if (builtInModel is not

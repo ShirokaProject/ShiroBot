@@ -1026,6 +1026,11 @@ internal sealed class PluginManager(
             {
                 foreach (var assemblyName in plugin.Info.SharedAssemblies)
                 {
+                    if (SharedAssemblies.TryGetRegisteredAssembly(assemblyName) is not null)
+                    {
+                        continue;
+                    }
+
                     var assemblyPath = ResolveSharedContractAssemblyPath(plugin.AssemblyPath, assemblyName)
                         ?? throw new FileNotFoundException(
                             $"Shared contract assembly {assemblyName}.dll declared by {plugin.Info.Id} was not found beside the plugin.");
