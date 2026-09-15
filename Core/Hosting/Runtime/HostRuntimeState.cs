@@ -132,7 +132,7 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
             return informationalVersion.Split('+', 2)[0];
         }
 
-        return assembly.GetName().Version?.ToString(3) ?? "0.9.0";
+        return assembly.GetName().Version?.ToString(3) ?? "0.9.1";
     }
 
     private sealed class RuntimeEvent

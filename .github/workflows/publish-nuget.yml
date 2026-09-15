@@ -7,18 +7,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: SDK package version, for example 0.9.0
+        description: SDK package version, for example 0.9.1
         required: true
         type: string
 
 jobs:
   publish:
     runs-on: windows-latest
-    env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - name: Checkout
@@ -47,21 +46,10 @@ jobs:
         shell: pwsh
         run: |
            $expected = '${{ steps.version.outputs.value }}'
-           [xml]$hostProject = Get-Content .\Core\ShiroBot.csproj
-           [xml]$sdkProject = Get-Content .\SDK\ShiroBot.SDK.csproj
-           [xml]$discordModelProject = Get-Content .\Models\Discord\ShiroBot.Model.Discord.csproj
-           [xml]$qqModelProject = Get-Content .\Models\QQ\ShiroBot.Model.QQ.csproj
-           [xml]$telegramModelProject = Get-Content .\Models\Telegram\ShiroBot.Model.Telegram.csproj
-           $sdkVersion = $sdkProject.Project.PropertyGroup.Version | Select-Object -First 1
-           $hostVersion = $hostProject.Project.PropertyGroup.Version | Select-Object -First 1
-           $discordModelVersion = $discordModelProject.Project.PropertyGroup.Version | Select-Object -First 1
-           $qqModelVersion = $qqModelProject.Project.PropertyGroup.Version | Select-Object -First 1
-           $telegramModelVersion = $telegramModelProject.Project.PropertyGroup.Version | Select-Object -First 1
-           [xml]$templateProject = Get-Content .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj
-           $templateVersion = $templateProject.Project.PropertyGroup.Version | Select-Object -First 1
-           $versions = @($hostVersion, $sdkVersion, $discordModelVersion, $qqModelVersion, $telegramModelVersion, $templateVersion)
-           if ($versions | Where-Object { $_ -ne $expected }) {
-             throw "Release version $expected does not match Host=$hostVersion, SDK=$sdkVersion, DiscordModel=$discordModelVersion, QQModel=$qqModelVersion, TelegramModel=$telegramModelVersion, Templates=$templateVersion."
+           [xml]$buildProps = Get-Content .\Directory.Build.props
+           $productVersion = $buildProps.Project.PropertyGroup.ShiroBotProductVersion | Select-Object -First 1
+           if ($productVersion -ne $expected) {
+             throw "Release version $expected does not match ShiroBotProductVersion=$productVersion."
            }
 
       - name: Build and verify
@@ -70,10 +58,7 @@ jobs:
           dotnet run --project .\Tests\Verification\ShiroBot.Verification.csproj -c Release --no-build
       - name: Pack SDK packages
         run: |
-           dotnet pack .\Models\Discord\ShiroBot.Model.Discord.csproj -c Release -o artifacts\nuget --no-build --no-restore
-           dotnet pack .\Models\QQ\ShiroBot.Model.QQ.csproj -c Release -o artifacts\nuget --no-build --no-restore
-           dotnet pack .\Models\Telegram\ShiroBot.Model.Telegram.csproj -c Release -o artifacts\nuget --no-build --no-restore
-           dotnet pack .\SDK\ShiroBot.SDK.csproj -c Release -o artifacts\nuget --no-build --no-restore
+           dotnet pack .\Packaging\ShiroBot.SDK.Package\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
            dotnet pack .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release -o artifacts\nuget --no-build --no-restore
 
       - name: Upload package artifacts
@@ -84,11 +69,13 @@ jobs:
             artifacts/nuget/*.nupkg
             artifacts/nuget/*.snupkg
 
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: greepar
+
       - name: Push to NuGet.org
-        if: ${{ env.NUGET_API_KEY != '' }}
         run: |
-           dotnet nuget push artifacts\nuget\ShiroBot.Model.Discord.${{ steps.version.outputs.value }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
-           dotnet nuget push artifacts\nuget\ShiroBot.Model.QQ.${{ steps.version.outputs.value }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
-           dotnet nuget push artifacts\nuget\ShiroBot.Model.Telegram.${{ steps.version.outputs.value }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
-           dotnet nuget push artifacts\nuget\ShiroBot.SDK.${{ steps.version.outputs.value }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
-           dotnet nuget push artifacts\nuget\ShiroBot.Templates.${{ steps.version.outputs.value }}.nupkg --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+           dotnet nuget push artifacts\nuget\ShiroBot.SDK.${{ steps.version.outputs.value }}.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+           dotnet nuget push artifacts\nuget\ShiroBot.Templates.${{ steps.version.outputs.value }}.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

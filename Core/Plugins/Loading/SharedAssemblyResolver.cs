@@ -172,14 +172,28 @@ public sealed class SharedAssemblyResolver
 
     private static void EnsureCompatible(AssemblyName requested, AssemblyName loaded, string requestedPath)
     {
-        if (AssemblyName.ReferenceMatchesDefinition(requested, loaded) && requested.Version == loaded.Version)
+        if (HasSameIdentity(requested, loaded) &&
+            (requested.Version is null || loaded.Version is not null && loaded.Version >= requested.Version))
         {
             return;
         }
 
         throw new InvalidOperationException(
             $"Shared assembly conflict for {requested.Name}: {loaded.FullName} is already loaded, " +
-            $"but {requested.FullName} was requested from {requestedPath}.");
+            $"but {requested.FullName} was requested from {requestedPath}. A host can satisfy the same or an " +
+            "older component ABI, but an older host cannot satisfy a newer component ABI.");
+    }
+
+    private static bool HasSameIdentity(AssemblyName left, AssemblyName right)
+    {
+        if (!string.Equals(left.Name, right.Name, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(left.CultureName ?? string.Empty, right.CultureName ?? string.Empty,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return (left.GetPublicKeyToken() ?? []).SequenceEqual(right.GetPublicKeyToken() ?? []);
     }
 
     private static void EnsureSameModuleOrRestart(Assembly loaded, string requestedPath)

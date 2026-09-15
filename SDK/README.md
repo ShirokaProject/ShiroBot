@@ -1,11 +1,13 @@
 # ShiroBot.SDK
 
-`ShiroBot.SDK` provides the core contracts and helper APIs for ShiroBot plugins and adapters.
+`ShiroBot.SDK` provides the core contracts and helper APIs for ShiroBot plugins and adapters. The
+same package includes the built-in QQ, Discord, and Telegram Model contract assemblies; component
+outputs exclude these shared DLLs because the host supplies their runtime copies.
 
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="0.9.0" />
+<PackageReference Include="ShiroBot.SDK" Version="0.9.1" />
 ```
 
 `ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build

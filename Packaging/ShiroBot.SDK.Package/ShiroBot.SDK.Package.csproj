@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>ShiroBot.SDK</PackageId>
+    <Version>$(ShiroBotProductVersion)</Version>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ShiroBotPluginPackagingEnabled>false</ShiroBotPluginPackagingEnabled>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Authors>ShirokaProject</Authors>
+    <Description>Core SDK and built-in platform contracts for ShiroBot plugins and adapters.</Description>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageTags>ShiroBot;bot;sdk;plugin;adapter;QQ;Discord;Telegram;Avalonia;rendering</PackageTags>
+    <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>0.9.1 restores old-plugin compatibility and distributes all built-in Model contracts through the single ShiroBot.SDK package.</PackageReleaseNotes>
+    <NoWarn>$(NoWarn);NU5104;NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <ProjectReference Include="..\..\Models\Discord\ShiroBot.Model.Discord.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <ProjectReference Include="..\..\Models\QQ\ShiroBot.Model.QQ.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <ProjectReference Include="..\..\Models\Telegram\ShiroBot.Model.Telegram.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <PackageReference Include="ILRepack.Lib.MSBuild.Task" PrivateAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.HarfBuzz" />
+    <PackageReference Include="Avalonia.Skia" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\SDK\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\SDK\buildTransitive\ShiroBot.SDK.props" Pack="true" PackagePath="buildTransitive\ShiroBot.SDK.props" />
+    <None Include="..\..\SDK\buildTransitive\ShiroBot.SDK.targets" Pack="true" PackagePath="buildTransitive\ShiroBot.SDK.targets" />
+    <None Include="$(PkgILRepack_Lib_MSBuild_Task)\build\ILRepack.Lib.MSBuild.Task.dll" Pack="true" PackagePath="tools\ILRepack.Lib.MSBuild.Task.dll" Visible="false" />
+    <None Include="..\..\SDK\bin\$(Configuration)\$(TargetFramework)\ShiroBot.SDK.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
+    <None Include="..\..\Models\Discord\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Model.Discord.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
+    <None Include="..\..\Models\QQ\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Model.QQ.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
+    <None Include="..\..\Models\Telegram\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Model.Telegram.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
+  </ItemGroup>
+
+</Project>

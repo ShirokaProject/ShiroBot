@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>ShiroBot.Templates</PackageId>
-    <Version>0.9.0</Version>
+    <Version>$(ShiroBotProductVersion)</Version>
     <PackageType>Template</PackageType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <Title>ShiroBot project templates</Title>

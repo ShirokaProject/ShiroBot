@@ -1,3 +1,4 @@
+using System.Reflection;
 using ShiroBot.Adapters;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Configuration;
@@ -19,7 +20,7 @@ using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
 using ShiroBot.Plugins.Compatibility;
 
-[assembly: ShiroBotApiCompatibility("0.8", "0.8")]
+[assembly: ShiroBotApiCompatibility("0.9", "0.9")]
 var serviceRegistry = new PluginServiceRegistry();
 using var providerServices = new PluginServiceScope(serviceRegistry, "provider");
 using var consumerServices = new PluginServiceScope(serviceRegistry, "consumer");
@@ -46,9 +47,10 @@ if (serviceRegistry.GetService("consumer", typeof(IVerificationService)) is not 
 
 Console.WriteLine("Plugin service registry verification passed.");
 
-ComponentApiCompatibility.EnsureCompatible("Plugin", "compatible", "0.8", "0.8.0");
+ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
+ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
 AssertThrows<InvalidOperationException>(() =>
-    ComponentApiCompatibility.EnsureCompatible("Plugin", "future", "0.9", "0.9"));
+    ComponentApiCompatibility.EnsureCompatible("Plugin", "future", "0.10", "0.10"));
 AssertThrows<InvalidOperationException>(() =>
     ComponentApiCompatibility.EnsureCompatible("Plugin", "invalid", "0.9", "0.8"));
 AssertThrows<InvalidOperationException>(() =>
@@ -56,6 +58,11 @@ AssertThrows<InvalidOperationException>(() =>
 Console.WriteLine("Component API version verification passed.");
 
 {
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.0.0");
+    AssertAssemblyVersion(typeof(QGroup).Assembly, "0.9.0.0");
+    AssertAssemblyVersion(typeof(DiscordUser).Assembly, "0.9.0.0");
+    AssertAssemblyVersion(typeof(TelegramUser).Assembly, "0.9.0.0");
+
     var sharedAssemblies = new SharedAssemblyResolver();
     var modelRegistry = new ModelPackageRegistry(sharedAssemblies);
     modelRegistry.RegisterBuiltIn(typeof(DiscordUser).Assembly);
@@ -69,11 +76,26 @@ Console.WriteLine("Component API version verification passed.");
         throw new InvalidOperationException("Built-in Model was not available as a registered shared contract.");
     }
 
+    var legacyQqRequest = new AssemblyName(typeof(QGroup).Assembly.FullName!)
+    {
+        Version = new Version(0, 8, 0, 0)
+    };
+    if (sharedAssemblies.TryResolve(legacyQqRequest) != typeof(QGroup).Assembly)
+    {
+        throw new InvalidOperationException("Current host did not satisfy an older QQ Model ABI request.");
+    }
+
+    var futureQqRequest = new AssemblyName(typeof(QGroup).Assembly.FullName!)
+    {
+        Version = new Version(0, 10, 0, 0)
+    };
+    AssertThrows<InvalidOperationException>(() => sharedAssemblies.TryResolve(futureQqRequest));
+
     var builtInModels = modelRegistry.GetPackages();
     if (builtInModels.Count != 3 ||
         !builtInModels.All(model => model is
         {
-            Version: "0.9.0",
+            Version: "0.9.1",
             Source: "built_in",
             Reloadable: false,
             AssemblyPath: null
@@ -84,7 +106,7 @@ Console.WriteLine("Component API version verification passed.");
         throw new InvalidOperationException("Built-in Model package metadata is incorrect.");
     }
 
-    Console.WriteLine("Built-in Model package verification passed.");
+    Console.WriteLine("Shared contract ABI and built-in Model package verification passed.");
 }
 
 var qqAdapter = new VerificationAdapter("qq");
@@ -186,7 +208,7 @@ try
     var queuedEventService = new VerificationEventService();
     var adapterProbe = AdapterContractProbe.ReadMetadata(typeof(VerificationAdapter).Assembly.Location)
                        ?? throw new InvalidOperationException("Adapter metadata probe failed.");
-    if (adapterProbe is not { Id: "verification", MinimumApiVersion: "0.8", MaximumApiVersion: "0.8" })
+    if (adapterProbe is not { Id: "verification", MinimumApiVersion: "0.9", MaximumApiVersion: "0.9" })
     {
         throw new InvalidOperationException("Adapter API version metadata was read incorrectly.");
     }
@@ -445,6 +467,17 @@ static void AssertThrows<TException>(Action action) where TException : Exception
     }
 
     throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
+}
+
+static void AssertAssemblyVersion(Assembly assembly, string expectedVersion)
+{
+    var actualVersion = assembly.GetName().Version?.ToString();
+    if (!string.Equals(actualVersion, expectedVersion, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            $"Shared contract ABI changed for {assembly.GetName().Name}: expected {expectedVersion}, got {actualVersion}. " +
+            "Compatible releases must not change AssemblyVersion.");
+    }
 }
 
 static void AssertUnloadTimedOut(PluginUnloadResult result, string expectedPhase)

@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <ShiroBotProductVersion>0.9.1</ShiroBotProductVersion>
+    <ShiroBotFileVersion>0.9.1.0</ShiroBotFileVersion>
+    <ShiroBotSdkAbiVersion>0.9.0.0</ShiroBotSdkAbiVersion>
+    <ShiroBotQqModelAbiVersion>0.9.0.0</ShiroBotQqModelAbiVersion>
+    <ShiroBotDiscordModelAbiVersion>0.9.0.0</ShiroBotDiscordModelAbiVersion>
+    <ShiroBotTelegramModelAbiVersion>0.9.0.0</ShiroBotTelegramModelAbiVersion>
+  </PropertyGroup>
+</Project>

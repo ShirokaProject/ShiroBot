@@ -43,25 +43,7 @@ jobs:
 
           dotnet restore "${{ env.SOLUTION_FILE }}" --property:Configuration="${{ env.CONFIGURATION }}"
 
-          dotnet pack Models/Discord/ShiroBot.Model.Discord.csproj \
-            --configuration "${{ env.CONFIGURATION }}" \
-            --no-restore \
-            --output artifacts/nuget \
-            /p:ContinuousIntegrationBuild=true
-
-          dotnet pack Models/QQ/ShiroBot.Model.QQ.csproj \
-            --configuration "${{ env.CONFIGURATION }}" \
-            --no-restore \
-            --output artifacts/nuget \
-            /p:ContinuousIntegrationBuild=true
-
-          dotnet pack Models/Telegram/ShiroBot.Model.Telegram.csproj \
-            --configuration "${{ env.CONFIGURATION }}" \
-            --no-restore \
-            --output artifacts/nuget \
-            /p:ContinuousIntegrationBuild=true
-
-          dotnet pack SDK/ShiroBot.SDK.csproj \
+          dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore \
             --output artifacts/nuget \

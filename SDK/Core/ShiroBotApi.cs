@@ -4,10 +4,10 @@ namespace ShiroBot.SDK.Core;
 public static class ShiroBotApi
 {
     /// <summary>The API version implemented by this SDK and its matching host.</summary>
-    public const string CurrentVersion = "0.8";
+    public const string CurrentVersion = "0.9";
 }
 
-/// <summary>Declares the inclusive range of ShiroBot API versions supported by a component.</summary>
+/// <summary>Declares the minimum required API and the newest API version tested by a component.</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class ShiroBotApiCompatibilityAttribute(string minimumVersion, string maximumVersion) : Attribute
 {

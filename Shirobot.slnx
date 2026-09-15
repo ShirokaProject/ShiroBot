@@ -4,6 +4,9 @@
     <Project Path="Models/QQ/ShiroBot.Model.QQ.csproj" />
     <Project Path="Models/Telegram/ShiroBot.Model.Telegram.csproj" />
   </Folder>
+  <Folder Name="/Packaging/">
+    <Project Path="Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj" />
+  </Folder>
   <Folder Name="/SDK/">
     <Project Path="SDK/ShiroBot.SDK.csproj" />
   </Folder>

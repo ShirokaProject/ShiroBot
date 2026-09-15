@@ -3,7 +3,7 @@
     <!-- Component packaging is intentionally opt-in because it rewrites output artifacts. -->
     <ShiroBotPluginPackagingEnabled Condition="'$(ShiroBotPluginPackagingEnabled)' == ''">false</ShiroBotPluginPackagingEnabled>
     <ShiroBotNativePackageSource Condition="'$(ShiroBotNativePackageSource)' == ''">https://api.nuget.org/v3-flatcontainer</ShiroBotNativePackageSource>
-    <ShiroBotSharedAssemblyPrefixes Condition="'$(ShiroBotSharedAssemblyPrefixes)' == ''">ShiroBot.SDK;Avalonia;SkiaSharp;HarfBuzzSharp;MicroCom;System.;Microsoft.</ShiroBotSharedAssemblyPrefixes>
+    <ShiroBotSharedAssemblyPrefixes Condition="'$(ShiroBotSharedAssemblyPrefixes)' == ''">ShiroBot.SDK;ShiroBot.Model.;Avalonia;SkiaSharp;HarfBuzzSharp;MicroCom;System.;Microsoft.</ShiroBotSharedAssemblyPrefixes>
     <ShiroBotSharedAssemblyPrefixes Condition="'$(ShiroBotPluginSharedAssemblies)' != ''">$(ShiroBotSharedAssemblyPrefixes);$(ShiroBotPluginSharedAssemblies)</ShiroBotSharedAssemblyPrefixes>
     <ShiroBotSharedNativePackagePrefixes Condition="'$(ShiroBotSharedNativePackagePrefixes)' == ''">Avalonia;SkiaSharp.NativeAssets;HarfBuzzSharp.NativeAssets</ShiroBotSharedNativePackagePrefixes>
   </PropertyGroup>

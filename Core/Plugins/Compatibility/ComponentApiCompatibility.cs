@@ -15,11 +15,11 @@ internal static class ComponentApiCompatibility
         }
 
         var currentVersion = Version.Parse(ShiroBotApi.CurrentVersion);
-        if (currentVersion < minimumVersion || currentVersion > maximumVersion)
+        if (currentVersion < minimumVersion)
         {
             throw new InvalidOperationException(
-                $"{kind} {id} supports ShiroBot API {minimumApiVersion}..{maximumApiVersion}, " +
-                $"but this host implements API {ShiroBotApi.CurrentVersion}.");
+                $"{kind} {id} requires ShiroBot API {minimumApiVersion} or later " +
+                $"(tested through {maximumApiVersion}), but this host implements API {ShiroBotApi.CurrentVersion}.");
         }
     }
 }

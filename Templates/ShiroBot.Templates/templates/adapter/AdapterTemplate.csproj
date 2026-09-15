@@ -18,15 +18,6 @@
 
   <ItemGroup>
     <PackageReference Include="ShiroBot.SDK" />
-    <!--#if (useQq)-->
-    <PackageReference Include="ShiroBot.Model.QQ" />
-    <!--#endif-->
-    <!--#if (useDiscord)-->
-    <PackageReference Include="ShiroBot.Model.Discord" />
-    <!--#endif-->
-    <!--#if (useTelegram)-->
-    <PackageReference Include="ShiroBot.Model.Telegram" />
-    <!--#endif-->
   </ItemGroup>
 
 </Project>

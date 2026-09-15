@@ -41,12 +41,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
-          dotnet pack Models/Discord/ShiroBot.Model.Discord.csproj -c Release -o artifacts/nuget --no-build
-          dotnet pack Models/QQ/ShiroBot.Model.QQ.csproj -c Release -o artifacts/nuget --no-build
-          dotnet pack Models/Telegram/ShiroBot.Model.Telegram.csproj -c Release -o artifacts/nuget --no-build
-          dotnet pack SDK/ShiroBot.SDK.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
-          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.0.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
+          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
+          test "$(find artifacts/nuget -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 2
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
@@ -55,16 +57,18 @@ jobs:
               <ImplicitUsings>enable</ImplicitUsings>
               <Nullable>enable</Nullable>
               <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
+              <ShiroBotPluginSharedAssemblies>ShiroBot.Model.QQ</ShiroBotPluginSharedAssemblies>
               <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
             </PropertyGroup>
             <ItemGroup>
-              <PackageReference Include="ShiroBot.SDK" Version="0.9.0" />
+              <PackageReference Include="ShiroBot.SDK" Version="0.9.1" />
             </ItemGroup>
           </Project>
           EOF
           cat > "$RUNNER_TEMP/package-smoke/Smoke.cs" <<'EOF'
           using ShiroBot.SDK.Core;
           using ShiroBot.SDK.Plugin;
+          using ShiroBot.Model.QQ;
           using ShiroBot.AvaloniaSdk;
           using Avalonia.Controls;
 
@@ -76,6 +80,7 @@ jobs:
               public override string Name => "PackageSmoke";
 
               public ControlRenderOptions Options { get; } = ControlRenderOptions.Default;
+              public Type QqModelType { get; } = typeof(QGroup);
 
               public Task<byte[]> RenderAsync() => Context.RenderControlPngAsync<Card>();
           }
@@ -109,7 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           template_root="$RUNNER_TEMP/template-smoke"
-          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.0.nupkg --force
+          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.1.nupkg --force
           dotnet new shirobot-plugin -n TemplatePlugin --platform qq -o "$template_root/TemplatePlugin"
           dotnet new shirobot-adapter -n TemplateAdapter --platform discord -o "$template_root/TemplateAdapter"
           dotnet build "$template_root/TemplatePlugin/TemplatePlugin.csproj" -c Release \
@@ -147,8 +152,13 @@ jobs:
           test ! -f "$output_dir/ShiroBot.Model.Telegram.dll"
           test ! -f "$output_dir/ShiroBot.SDK.dll"
 
+          legacy_build_root="$RUNNER_TEMP/shirobot-legacy-abi-build"
           dotnet publish Tests/SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
-            -o "$plugin_dir"
+            -o "$plugin_dir" \
+            /p:ShiroBotSdkAbiVersion=0.8.0.0 \
+            /p:ShiroBotQqModelAbiVersion=0.8.0.0 \
+            /p:BaseOutputPath="$legacy_build_root/bin/" \
+            '/p:IntermediateOutputPath='"$legacy_build_root"'/obj/$(MSBuildProjectName)/'
           test -f "$plugin_dir/ShiroBot.SharedContractPluginProbe.dll"
           test ! -f "$plugin_dir/ShiroBot.Model.QQ.dll"
           test ! -f "$plugin_dir/ShiroBot.SDK.dll"
@@ -180,7 +190,7 @@ jobs:
 
           jq -e '
             length == 3 and
-            all(.[]; .version == "0.9.0" and .path == null and .source == "built_in" and .reloadable == false) and
+            all(.[]; .version == "0.9.1" and .path == null and .source == "built_in" and .reloadable == false) and
             ([.[] | {id, assembly}] | sort_by(.id)) == [
               {id: "shirobot.model.discord", assembly: "ShiroBot.Model.Discord"},
               {id: "shirobot.model.qq", assembly: "ShiroBot.Model.QQ"},

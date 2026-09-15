@@ -1,21 +1,21 @@
 # Plugin and Adapter API Compatibility
 
-ShiroBot API `0.8` is the current compatibility baseline for plugins and adapters built against the
-current SDK. Existing components that do not declare an API range are treated as supporting `0.8`,
-so they continue to load without recompilation.
+ShiroBot API `0.9` is the current compatibility level. Existing components that do not declare API
+metadata are treated as requiring `0.8`, so newer hosts continue to load them without recompilation.
 
 Components may declare their supported range in metadata:
 
 ```csharp
-[assembly: ShiroBotApiCompatibility("0.8", "0.8")]
+[assembly: ShiroBotApiCompatibility("0.9", "0.9")]
 
 [BotPlugin("example")]
 public sealed class ExamplePlugin : PluginBase;
 ```
 
-Adapters use the same standalone compatibility attribute. Keeping the compatibility declaration
-separate lets older hosts ignore metadata they do not understand. The new host reads it without
-loading component code and rejects incompatible ranges before creating the component load context.
+Adapters use the same standalone compatibility attribute. `MinimumVersion` is the hard requirement;
+`MaximumVersion` records the newest host API tested by the component. A newer host may load a
+component beyond that tested version because host APIs evolve additively. An older host rejects a
+component whose minimum version is newer before creating the component load context.
 
 ## Evolution rules
 
@@ -27,14 +27,16 @@ loading component code and rejects incompatible ranges before creating the compo
   properties when a contract must grow.
 - Do not add `required` properties to an existing public type.
 - Deprecate public members with `ObsoleteAttribute` for at least one major API-version transition.
-- SDK and contracts loaded into the Default ALC require a host restart. Model packages use a
-  coordinated collectible ALC and may be reloaded only after dependent adapters and plugins stop.
-  Private component implementation assemblies support normal hot reload.
+- SDK and built-in Model contracts loaded into the Default ALC require a host restart. Private
+  component implementation assemblies support normal hot reload.
 - Change `ShiroBotApi.CurrentVersion` only for a deliberate compatibility transition and update component
   ranges explicitly.
 
-`ShiroBot.SDK` keeps a stable `AssemblyVersion` for its current compatibility line. NuGet package
-and file versions may increase independently for compatible releases.
+Shared SDK and Model assembly versions represent the minimum host ABI required by a component.
+The host may satisfy references to the same or an older ABI, so a newer host continues to load old
+plugins. A host never satisfies a reference to a newer ABI, so a plugin compiled against newly added
+contracts correctly requires that host version or later. ABI changes must remain additive: do not
+remove or change existing public contracts merely because `AssemblyVersion` increases.
 
 ## Multi-adapter background work
 
