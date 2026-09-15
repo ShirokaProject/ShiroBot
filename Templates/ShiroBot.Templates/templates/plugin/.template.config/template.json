@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "ShirokaProject",
+  "classifications": ["ShiroBot", "Plugin", "Library"],
+  "identity": "ShirokaProject.ShiroBot.Templates.Plugin.CSharp",
+  "name": "ShiroBot Plugin",
+  "shortName": "shirobot-plugin",
+  "description": "Creates a ShiroBot plugin with a working ping command.",
+  "sourceName": "PluginTemplate",
+  "defaultName": "MyShiroBotPlugin",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "symbols": {
+    "creator": {
+      "type": "parameter",
+      "datatype": "string",
+      "displayName": "Creator",
+      "description": "Plugin author written to BotPlugin metadata.",
+      "defaultValue": "Your Name",
+      "replaces": "TemplateAuthor"
+    },
+    "pluginVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "displayName": "Plugin version",
+      "description": "Initial plugin version.",
+      "defaultValue": "1.0.0",
+      "replaces": "TemplateVersion"
+    },
+    "platform": {
+      "type": "parameter",
+      "datatype": "choice",
+      "displayName": "Platform model",
+      "description": "Optional platform Model contract referenced by the plugin.",
+      "defaultValue": "generic",
+      "choices": [
+        { "choice": "generic", "description": "Use only platform-neutral SDK contracts." },
+        { "choice": "qq", "description": "Reference ShiroBot.Model.QQ." },
+        { "choice": "discord", "description": "Reference ShiroBot.Model.Discord." },
+        { "choice": "telegram", "description": "Reference ShiroBot.Model.Telegram." }
+      ]
+    },
+    "useQq": {
+      "type": "computed",
+      "value": "(platform == \"qq\")"
+    },
+    "useDiscord": {
+      "type": "computed",
+      "value": "(platform == \"discord\")"
+    },
+    "useTelegram": {
+      "type": "computed",
+      "value": "(platform == \"telegram\")"
+    }
+  }
+}

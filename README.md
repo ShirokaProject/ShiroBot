@@ -16,9 +16,18 @@
 
 ## 项目结构
 
-- `ShiroBot`: 主程序，内置 Avalonia Headless 渲染集成
-- `ShiroBot.SDK`: 插件与适配器 SDK，内置 Avalonia 控件渲染契约和编译支持
-- `ShiroBot.Model`: 共享模型
+- `Core`: ShiroBot 宿主本体，内置 Avalonia Headless 渲染集成
+- `Shirobot.Dashboard`: 宿主 Dashboard 前端子模块
+- `Models`: Discord、QQ、Telegram 平台契约
+- `SDK`: 插件与适配器 SDK，内置 Avalonia 控件渲染契约和编译支持
+- `Templates`: `dotnet new` Plugin 与 Adapter 项目模板
+- `Tests`: 主仓库验证与共享契约探针
+
+NuGet 包版本由根目录 [`Directory.Packages.props`](./Directory.Packages.props) 统一管理。项目文件只声明包引用，不单独指定版本。
+
+插件和适配器是独立开发仓库，分别位于主仓库同级的 `../plugins` 和 `../adapters`，不纳入 ShiroBot 主仓库。
+
+Discord、QQ 和 Telegram Model 随宿主内置。宿主不创建或扫描独立的 `models/` 目录，也不支持运行时安装第三方 Model；第三方平台能力与业务扩展应实现为标准 Plugin，并放入运行时 `plugins/` 目录加载。
 
 ## 构建
 
@@ -27,6 +36,28 @@ dotnet build .\ShiroBot.slnx
 ```
 
 Avalonia、Skia 和 HarfBuzz 从 0.7.0 起属于统一宿主，不再提供 `lite` 构建。宿主明确保持 `PublishTrimmed=false`，因为插件发现、配置 schema 和程序集加载依赖反射与 metadata，当前不具备安全裁剪条件。
+
+## 项目模板
+
+安装模板包：
+
+```bash
+dotnet new install ShiroBot.Templates
+```
+
+创建 Plugin：
+
+```bash
+dotnet new shirobot-plugin -n MyPlugin --creator "Your Name"
+```
+
+创建 Discord Adapter：
+
+```bash
+dotnet new shirobot-adapter -n MyDiscordAdapter --platform discord --creator "Your Name"
+```
+
+`--platform` 支持 `generic`、`qq`、`discord` 和 `telegram`。使用 `--help` 查看版本等其他参数。
 
 ## 文档
 
@@ -59,4 +90,4 @@ npm run build
 ## 许可证
 
 本项目使用 GNU General Public License v3.0。
-详见 [LICENSE](/C:/Users/greep/RiderProjects/QB/QBotSharp/LICENSE)。
+详见 [LICENSE](./LICENSE)。

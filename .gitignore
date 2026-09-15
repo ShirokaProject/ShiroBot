@@ -8,16 +8,9 @@ riderModule.iml
 META-INF/
 *.DotSettings.user
 artifacts/
-ShiroBot/Assets/dashboard/
+Core/Assets/dashboard/
 Shirobot.Dashboard/dist/
 Shirobot.Dashboard/node_modules/
 MilkyModelGenerator.Net/output/
 MilkyModelGenerator.Net/QBotSharp.Model/
 .playwright-mcp/
-ShiroBot.AiChatPlugin/
-ShiroBot.JmParser/
-ShiroBot.Plugin.GithubView/
-Shirobot.Plugin.AvaloniaDemo/
-Shirobot.Plugin.DemoPlugin/
-Shirobot.Plugin.MyList/
-Shirobot.Plugin.MyParser/

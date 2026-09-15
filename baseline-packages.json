@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "path": "Core/ShiroBot.csproj",
+      "packages": {
+        "Avalonia": "12.1.0",
+        "Avalonia.Headless": "12.1.0",
+        "Avalonia.Markup.Xaml.Loader": "12.1.0",
+        "Avalonia.Skia": "12.1.0",
+        "Avalonia.Themes.Fluent": "12.1.0",
+        "Microsoft.NET.ILLink.Tasks": "10.0.9",
+        "Spectre.Console": "0.57.2",
+        "System.CommandLine": "3.0.0-preview.2.26159.112",
+        "Tomlyn": "2.10.1"
+      }
+    },
+    {
+      "path": "SDK/ShiroBot.SDK.csproj",
+      "packages": {
+        "Avalonia": "12.1.0",
+        "Avalonia.HarfBuzz": "12.1.0",
+        "Avalonia.Skia": "12.1.0",
+        "ILRepack.Lib.MSBuild.Task": "2.0.45"
+      }
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <PackageId>ShiroBot.SDK</PackageId>
+        <Version>0.9.0</Version>
+        <AssemblyVersion>0.9.0.0</AssemblyVersion>
+        <FileVersion>0.9.0.0</FileVersion>
+        <EnablePackageValidation>true</EnablePackageValidation>
+        <PackageValidationBaselineVersion Condition="'$(PackageValidationBaselineVersion)' == '' and '$(Version)' != '0.8.0'">0.8.0</PackageValidationBaselineVersion>
+        <IsPackable>true</IsPackable>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Authors>ShirokaProject</Authors>
+        <Description>Core contracts, Avalonia rendering APIs and packaging targets for ShiroBot plugins and adapters.</Description>
+        <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+        <PackageTags>ShiroBot;bot;sdk;plugin;adapter;Avalonia;rendering</PackageTags>
+        <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageReleaseNotes>0.9 adds built-in Discord and Telegram models, concurrent adapter event dispatch, centralized package versions, project templates, a reorganized host architecture, and read-only built-in Model management.</PackageReleaseNotes>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <NoWarn>$(NoWarn);NU5104</NoWarn>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Avalonia" />
+      <PackageReference Include="Avalonia.HarfBuzz" />
+      <PackageReference Include="Avalonia.Skia" />
+      <PackageReference Include="ILRepack.Lib.MSBuild.Task"
+                        PrivateAssets="all"
+                        GeneratePathProperty="true" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Include="README.md" Pack="true" PackagePath="\" />
+      <None Include="buildTransitive\ShiroBot.SDK.props"
+            Pack="true"
+            PackagePath="buildTransitive\ShiroBot.SDK.props" />
+      <None Include="buildTransitive\ShiroBot.SDK.targets"
+            Pack="true"
+            PackagePath="buildTransitive\ShiroBot.SDK.targets" />
+      <None Include="$(PkgILRepack_Lib_MSBuild_Task)\build\ILRepack.Lib.MSBuild.Task.dll"
+            Pack="true"
+            PackagePath="tools\ILRepack.Lib.MSBuild.Task.dll"
+            Visible="false" />
+    </ItemGroup>
+
+</Project>

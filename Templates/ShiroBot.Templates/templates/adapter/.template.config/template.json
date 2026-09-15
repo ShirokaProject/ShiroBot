@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "ShirokaProject",
+  "classifications": ["ShiroBot", "Adapter", "Library"],
+  "identity": "ShirokaProject.ShiroBot.Templates.Adapter.CSharp",
+  "name": "ShiroBot Adapter",
+  "shortName": "shirobot-adapter",
+  "description": "Creates a ShiroBot adapter with lifecycle and service skeletons.",
+  "sourceName": "AdapterTemplate",
+  "defaultName": "MyShiroBotAdapter",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "symbols": {
+    "creator": {
+      "type": "parameter",
+      "datatype": "string",
+      "displayName": "Creator",
+      "description": "Adapter author written to BotAdapter metadata.",
+      "defaultValue": "Your Name",
+      "replaces": "TemplateAuthor"
+    },
+    "adapterVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "displayName": "Adapter version",
+      "description": "Initial adapter version.",
+      "defaultValue": "1.0.0",
+      "replaces": "TemplateVersion"
+    },
+    "platform": {
+      "type": "parameter",
+      "datatype": "choice",
+      "displayName": "Platform",
+      "description": "Platform ID and optional shared Model contract.",
+      "defaultValue": "generic",
+      "replaces": "template-platform",
+      "choices": [
+        { "choice": "generic", "description": "Start with platform-neutral SDK contracts." },
+        { "choice": "qq", "description": "Reference and require ShiroBot.Model.QQ." },
+        { "choice": "discord", "description": "Reference and require ShiroBot.Model.Discord." },
+        { "choice": "telegram", "description": "Reference and require ShiroBot.Model.Telegram." }
+      ]
+    },
+    "useQq": {
+      "type": "computed",
+      "value": "(platform == \"qq\")"
+    },
+    "useDiscord": {
+      "type": "computed",
+      "value": "(platform == \"discord\")"
+    },
+    "useTelegram": {
+      "type": "computed",
+      "value": "(platform == \"telegram\")"
+    }
+  }
+}

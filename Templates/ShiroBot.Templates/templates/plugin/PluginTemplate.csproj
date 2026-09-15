@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
+    <!--#if (useQq)-->
+    <ShiroBotPluginSharedAssemblies>ShiroBot.Model.QQ</ShiroBotPluginSharedAssemblies>
+    <!--#endif-->
+    <!--#if (useDiscord)-->
+    <ShiroBotPluginSharedAssemblies>ShiroBot.Model.Discord</ShiroBotPluginSharedAssemblies>
+    <!--#endif-->
+    <!--#if (useTelegram)-->
+    <ShiroBotPluginSharedAssemblies>ShiroBot.Model.Telegram</ShiroBotPluginSharedAssemblies>
+    <!--#endif-->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ShiroBot.SDK" />
+    <!--#if (useQq)-->
+    <PackageReference Include="ShiroBot.Model.QQ" />
+    <!--#endif-->
+    <!--#if (useDiscord)-->
+    <PackageReference Include="ShiroBot.Model.Discord" />
+    <!--#endif-->
+    <!--#if (useTelegram)-->
+    <PackageReference Include="ShiroBot.Model.Telegram" />
+    <!--#endif-->
+  </ItemGroup>
+
+</Project>

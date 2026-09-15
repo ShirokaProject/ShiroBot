@@ -12,7 +12,7 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
   DOTNET_NOLOGO: '1'
   CONFIGURATION: Release
-  HOST_PROJECT: ShiroBot/ShiroBot.csproj
+  HOST_PROJECT: Core/ShiroBot.csproj
   SOLUTION_FILE: Shirobot.slnx
 
 jobs:
@@ -43,19 +43,37 @@ jobs:
 
           dotnet restore "${{ env.SOLUTION_FILE }}" --property:Configuration="${{ env.CONFIGURATION }}"
 
-          dotnet pack ShiroBot.Model.QQ/ShiroBot.Model.QQ.csproj \
+          dotnet pack Models/Discord/ShiroBot.Model.Discord.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore \
             --output artifacts/nuget \
             /p:ContinuousIntegrationBuild=true
 
-          dotnet pack ShiroBot.SDK/ShiroBot.SDK.csproj \
+          dotnet pack Models/QQ/ShiroBot.Model.QQ.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore \
             --output artifacts/nuget \
             /p:ContinuousIntegrationBuild=true
 
-          dotnet run --project ShiroBot.Verification/ShiroBot.Verification.csproj \
+          dotnet pack Models/Telegram/ShiroBot.Model.Telegram.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --no-restore \
+            --output artifacts/nuget \
+            /p:ContinuousIntegrationBuild=true
+
+          dotnet pack SDK/ShiroBot.SDK.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --no-restore \
+            --output artifacts/nuget \
+            /p:ContinuousIntegrationBuild=true
+
+          dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --no-restore \
+            --output artifacts/nuget \
+            /p:ContinuousIntegrationBuild=true
+
+          dotnet run --project Tests/Verification/ShiroBot.Verification.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore
 
@@ -70,7 +88,7 @@ jobs:
             /p:BuildDashboard=true \
             /p:BuildDashboardOnPublish=false
 
-          test -f ShiroBot/Assets/dashboard/index.html
+          test -f Core/Assets/dashboard/index.html
 
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v4
@@ -85,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dashboard-assets
-          path: ShiroBot/Assets/dashboard/**
+          path: Core/Assets/dashboard/**
           if-no-files-found: error
 
   publish-host:
@@ -112,7 +130,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dashboard-assets
-          path: ShiroBot/Assets/dashboard
+          path: Core/Assets/dashboard
 
       - name: Publish host package
         run: |
@@ -147,7 +165,9 @@ jobs:
             /p:IncludeNativeLibrariesForSelfExtract=true
 
           test -f "$output_dir/$host_exe"
+          test ! -f "$output_dir/ShiroBot.Model.Discord.dll"
           test ! -f "$output_dir/ShiroBot.Model.QQ.dll"
+          test ! -f "$output_dir/ShiroBot.Model.Telegram.dll"
           test ! -f "$output_dir/ShiroBot.SDK.dll"
 
           chmod +x "$output_dir/$host_exe"

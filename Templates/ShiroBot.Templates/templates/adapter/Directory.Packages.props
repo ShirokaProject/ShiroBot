@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="ShiroBot.Model.Discord" Version="0.9.0" />
+    <PackageVersion Include="ShiroBot.Model.QQ" Version="0.9.0" />
+    <PackageVersion Include="ShiroBot.Model.Telegram" Version="0.9.0" />
+    <PackageVersion Include="ShiroBot.SDK" Version="0.9.0" />
+  </ItemGroup>
+</Project>

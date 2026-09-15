@@ -34,16 +34,19 @@ jobs:
         run: |
           set -euo pipefail
           dotnet build Shirobot.slnx -c Release
-          dotnet run --project ShiroBot.Verification/ShiroBot.Verification.csproj -c Release --no-build
+          dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
 
       - name: Pack SDK and smoke-test NuGet consumer
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
-          dotnet pack ShiroBot.Model.QQ/ShiroBot.Model.QQ.csproj -c Release -o artifacts/nuget --no-build
-          dotnet pack ShiroBot.SDK/ShiroBot.SDK.csproj -c Release -o artifacts/nuget --no-build
-          unzip -p artifacts/nuget/ShiroBot.SDK.0.8.0.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.0"'
+          dotnet pack Models/Discord/ShiroBot.Model.Discord.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack Models/QQ/ShiroBot.Model.QQ.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack Models/Telegram/ShiroBot.Model.Telegram.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack SDK/ShiroBot.SDK.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
+          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.0.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
@@ -55,7 +58,7 @@ jobs:
               <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
             </PropertyGroup>
             <ItemGroup>
-              <PackageReference Include="ShiroBot.SDK" Version="0.8.0" />
+              <PackageReference Include="ShiroBot.SDK" Version="0.9.0" />
             </ItemGroup>
           </Project>
           EOF
@@ -101,6 +104,25 @@ jobs:
           test ! -f "$RUNNER_TEMP/package-smoke/publish/Avalonia.dll"
           test ! -d "$RUNNER_TEMP/package-smoke/publish/runtimes"
 
+      - name: Smoke-test project templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          template_root="$RUNNER_TEMP/template-smoke"
+          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.0.nupkg --force
+          dotnet new shirobot-plugin -n TemplatePlugin --platform qq -o "$template_root/TemplatePlugin"
+          dotnet new shirobot-adapter -n TemplateAdapter --platform discord -o "$template_root/TemplateAdapter"
+          dotnet build "$template_root/TemplatePlugin/TemplatePlugin.csproj" -c Release \
+            --source "$GITHUB_WORKSPACE/artifacts/nuget" \
+            --source https://api.nuget.org/v3/index.json
+          dotnet build "$template_root/TemplateAdapter/TemplateAdapter.csproj" -c Release \
+            --source "$GITHUB_WORKSPACE/artifacts/nuget" \
+            --source https://api.nuget.org/v3/index.json
+          test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.SDK.dll"
+          test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.Model.QQ.dll"
+          test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/ShiroBot.SDK.dll"
+          test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/ShiroBot.Model.Discord.dll"
+
       - name: Smoke-test single-file built-in Model
         shell: bash
         run: |
@@ -111,7 +133,7 @@ jobs:
           response_path="$RUNNER_TEMP/shirobot-models.json"
           plugin_response_path="$RUNNER_TEMP/shirobot-plugins.json"
 
-          dotnet publish ShiroBot/ShiroBot.csproj -c Release -r linux-x64 \
+          dotnet publish Core/ShiroBot.csproj -c Release -r linux-x64 \
             --self-contained true \
             -o "$output_dir" \
             /p:BuildDashboard=false \
@@ -120,10 +142,12 @@ jobs:
             /p:IncludeNativeLibrariesForSelfExtract=true
 
           test -f "$output_dir/ShiroBot"
+          test ! -f "$output_dir/ShiroBot.Model.Discord.dll"
           test ! -f "$output_dir/ShiroBot.Model.QQ.dll"
+          test ! -f "$output_dir/ShiroBot.Model.Telegram.dll"
           test ! -f "$output_dir/ShiroBot.SDK.dll"
 
-          dotnet publish ShiroBot.SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
+          dotnet publish Tests/SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
             -o "$plugin_dir"
           test -f "$plugin_dir/ShiroBot.SharedContractPluginProbe.dll"
           test ! -f "$plugin_dir/ShiroBot.Model.QQ.dll"
@@ -155,13 +179,13 @@ jobs:
             -o "$response_path"
 
           jq -e '
-            length == 1 and
-            .[0].id == "shirobot.model.qq" and
-            .[0].version == "0.8.0" and
-            .[0].assembly == "ShiroBot.Model.QQ" and
-            .[0].path == null and
-            .[0].source == "built_in" and
-            .[0].reloadable == false
+            length == 3 and
+            all(.[]; .version == "0.9.0" and .path == null and .source == "built_in" and .reloadable == false) and
+            ([.[] | {id, assembly}] | sort_by(.id)) == [
+              {id: "shirobot.model.discord", assembly: "ShiroBot.Model.Discord"},
+              {id: "shirobot.model.qq", assembly: "ShiroBot.Model.QQ"},
+              {id: "shirobot.model.telegram", assembly: "ShiroBot.Model.Telegram"}
+            ]
           ' "$response_path"
 
           curl --fail --silent --show-error \

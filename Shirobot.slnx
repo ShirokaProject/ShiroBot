@@ -1,10 +1,17 @@
 <Solution>
-  <Project Path="ShiroBot.Model.QQ/ShiroBot.Model.QQ.csproj" />
+  <Folder Name="/Models/">
+    <Project Path="Models/Discord/ShiroBot.Model.Discord.csproj" />
+    <Project Path="Models/QQ/ShiroBot.Model.QQ.csproj" />
+    <Project Path="Models/Telegram/ShiroBot.Model.Telegram.csproj" />
+  </Folder>
   <Folder Name="/SDK/">
-    <Project Path="ShiroBot.SDK/ShiroBot.SDK.csproj" />
+    <Project Path="SDK/ShiroBot.SDK.csproj" />
   </Folder>
-  <Folder Name="/Verification/">
-    <Project Path="ShiroBot.Verification/ShiroBot.Verification.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="Tests/Verification/ShiroBot.Verification.csproj" />
   </Folder>
-  <Project Path="ShiroBot/ShiroBot.csproj" />
+  <Folder Name="/Templates/">
+    <Project Path="Templates/ShiroBot.Templates/ShiroBot.Templates.csproj" />
+  </Folder>
+  <Project Path="Core/ShiroBot.csproj" />
 </Solution>
