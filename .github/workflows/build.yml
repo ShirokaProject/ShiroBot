@@ -247,5 +247,4 @@ jobs:
           files: |
             artifacts/archives/*
             artifacts/nuget/*.nupkg
-            artifacts/nuget/*.snupkg
           fail_on_unmatched_files: true
