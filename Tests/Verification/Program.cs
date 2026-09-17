@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.IO.Compression;
 using ShiroBot.Adapters;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Configuration;
@@ -95,7 +96,7 @@ Console.WriteLine("Component API version verification passed.");
     if (builtInModels.Count != 3 ||
         !builtInModels.All(model => model is
         {
-            Version: "0.9.1",
+            Version: "0.9.2",
             Source: "built_in",
             Reloadable: false,
             AssemblyPath: null
@@ -160,6 +161,91 @@ var configPath = Path.Combine(tempRoot, "config.toml");
 
 try
 {
+    var adapterPackageRoot = Path.Combine(tempRoot, "adapters");
+    var adapterWorkRoot = Path.Combine(tempRoot, "adapter-work");
+    Directory.CreateDirectory(adapterWorkRoot);
+    var adapterPackage = new AdapterPackageManager(adapterPackageRoot);
+    var adapterDll = typeof(VerificationAdapter).Assembly.Location;
+    var dllProbe = adapterPackage.Prepare(adapterDll, adapterWorkRoot);
+    var firstInstall = adapterPackage.Install(dllProbe, enabled: true);
+    if (adapterPackage.Get("verification") is not { Enabled: true } || !File.Exists(firstInstall.AssemblyPath))
+        throw new InvalidOperationException("Adapter DLL install verification failed.");
+
+    var zipPath = Path.Combine(adapterWorkRoot, "adapter.zip");
+    using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        archive.CreateEntryFromFile(adapterDll, "adapter.dll");
+    var zipProbe = adapterPackage.Prepare(zipPath, adapterWorkRoot);
+    var replacement = adapterPackage.Install(zipProbe, enabled: false);
+    if (adapterPackage.Get("verification") is not { Enabled: false } || !File.Exists(replacement.AssemblyPath))
+        throw new InvalidOperationException("Adapter ZIP replacement verification failed.");
+
+    var installedConfig = Path.Combine(adapterPackageRoot, "verification", "config.toml");
+    File.WriteAllText(installedConfig, "user_value = true");
+    var packageWithDefaultConfig = Path.Combine(adapterWorkRoot, "adapter-with-config.zip");
+    using (var archive = ZipFile.Open(packageWithDefaultConfig, ZipArchiveMode.Create))
+    {
+        archive.CreateEntryFromFile(adapterDll, "adapter.dll");
+        using var writer = new StreamWriter(archive.CreateEntry("config.toml").Open());
+        writer.Write("user_value = false");
+    }
+    var configProbe = adapterPackage.Prepare(packageWithDefaultConfig, Path.Combine(adapterWorkRoot, "config-preview"));
+    adapterPackage.Install(configProbe, enabled: true);
+    if (File.ReadAllText(installedConfig) != "user_value = true")
+        throw new InvalidOperationException("Adapter replacement overwrote user config.toml.");
+
+    AssertThrows<InvalidOperationException>(() => adapterPackage.Uninstall("."));
+    if (!Directory.Exists(adapterPackageRoot))
+        throw new InvalidOperationException("Adapter root was deleted by invalid uninstall ID.");
+
+    adapterPackage.SetEnabled("verification", true);
+    var restoreCalled = false;
+    await AssertThrowsAsync<InvalidOperationException>(() => adapterPackage.InstallAndActivateAsync(
+        zipProbe,
+        enabled: true,
+        _ => throw new InvalidOperationException("simulated new adapter startup failure"),
+        _ =>
+        {
+            restoreCalled = true;
+            return Task.CompletedTask;
+        }));
+    if (!restoreCalled || adapterPackage.Get("verification") is not { Enabled: true })
+        throw new InvalidOperationException("Adapter activation failure did not restore the prior package.");
+    if (AdapterMarketplaceCache.MarketplaceUrl != "https://raw.githubusercontent.com/ShirokaProject/awesome-shirobot/automation/refresh-marketplace/dist/adapters.v1.json")
+        throw new InvalidOperationException("Adapter marketplace URL contract changed.");
+
+    var traversalZip = Path.Combine(adapterWorkRoot, "traversal.zip");
+    using (var archive = ZipFile.Open(traversalZip, ZipArchiveMode.Create))
+        archive.CreateEntry("../escape.dll");
+    AssertThrows<InvalidOperationException>(() => adapterPackage.Prepare(traversalZip, Path.Combine(tempRoot, "traversal-work")));
+    Console.WriteLine("Adapter package ZIP, traversal, config preservation, and replacement verification passed.");
+
+    var pluginUpdateRoot = Path.Combine(tempRoot, "plugin-update");
+    Directory.CreateDirectory(pluginUpdateRoot);
+    var targetPluginName = "ShiroBot.Plugin.Example.dll";
+    var expectedPluginBytes = new byte[] { 1, 2, 3, 4 };
+    var pluginUpdateZip = Path.Combine(pluginUpdateRoot, "plugin.zip");
+    using (var archive = ZipFile.Open(pluginUpdateZip, ZipArchiveMode.Create))
+    {
+        var entry = archive.CreateEntry("nested/" + targetPluginName);
+        using (var output = entry.Open()) output.Write(expectedPluginBytes);
+        archive.CreateEntry("nested/ShiroBot.SDK.dll");
+        archive.CreateEntry("nested/ShiroBot.Model.QQ.dll");
+    }
+    var extractedPlugin = Path.Combine(pluginUpdateRoot, "extracted.dll");
+    ShiroBot.Update.Updater.ExtractPluginEntryFromZip(pluginUpdateZip, extractedPlugin, targetPluginName);
+    if (!File.ReadAllBytes(extractedPlugin).SequenceEqual(expectedPluginBytes))
+        throw new InvalidOperationException("Plugin ZIP update did not extract the target entry DLL.");
+
+    var ambiguousPluginZip = Path.Combine(pluginUpdateRoot, "ambiguous.zip");
+    using (var archive = ZipFile.Open(ambiguousPluginZip, ZipArchiveMode.Create))
+    {
+        archive.CreateEntry("First.Plugin.dll");
+        archive.CreateEntry("Second.Plugin.dll");
+    }
+    AssertThrows<InvalidOperationException>(() =>
+        ShiroBot.Update.Updater.ExtractPluginEntryFromZip(ambiguousPluginZip, extractedPlugin, targetPluginName));
+    Console.WriteLine("Plugin ZIP update extraction verification passed.");
+
     var eventLogHub = new HostLogHub();
     var eventDispatcher = new HostEventDispatcher(
         new Lock(),
@@ -469,6 +555,20 @@ static void AssertThrows<TException>(Action action) where TException : Exception
     throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
 }
 
+static async Task AssertThrowsAsync<TException>(Func<Task> action) where TException : Exception
+{
+    try
+    {
+        await action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
+}
+
 static void AssertAssemblyVersion(Assembly assembly, string expectedVersion)
 {
     var actualVersion = assembly.GetName().Version?.ToString();
@@ -630,6 +730,10 @@ internal sealed class ConcurrentDispatchPlugin : IBotPlugin, IBotEventSubscriber
 [BotAdapter("verification")]
 internal sealed class VerificationAdapter(string platform) : IBotAdapter
 {
+    public VerificationAdapter() : this("verification")
+    {
+    }
+
     public VerificationMessageService MessageService { get; } = new();
     public string Platform { get; } = platform;
     public IMessageService Message => MessageService;

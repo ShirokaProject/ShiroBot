@@ -6,5 +6,5 @@ Discord contracts are distributed by the `ShiroBot.SDK` package and built into t
 A component that uses these contracts should declare the runtime package requirement:
 
 ```csharp
-[assembly: RequiresShiroBotPackage("shirobot.model.discord", MinimumVersion = "0.9.1")]
+[assembly: RequiresShiroBotPackage("shirobot.model.discord", MinimumVersion = "0.9.2")]
 ```

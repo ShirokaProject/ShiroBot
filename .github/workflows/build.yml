@@ -22,20 +22,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: Shirobot.Dashboard/package-lock.json
 
       - name: Pack NuGet packages
         run: |
@@ -59,18 +50,28 @@ jobs:
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore
 
-      - name: Build dashboard assets once
+      - name: Download dashboard dist
         run: |
           set -euo pipefail
 
-          dotnet msbuild "${{ env.HOST_PROJECT }}" \
-            -target:BuildDashboardAssets \
-            -property:Configuration="${{ env.CONFIGURATION }}" \
-            /p:ContinuousIntegrationBuild=true \
-            /p:BuildDashboard=true \
-            /p:BuildDashboardOnPublish=false
+          version="$(sed -n 's/.*<ShirobotDashboardVersion>\([^<]*\)<.*/\1/p' Directory.Build.props | head -1)"
+          if [ -z "$version" ]; then
+            echo "::error::Directory.Build.props 缺少 ShirobotDashboardVersion"
+            exit 1
+          fi
 
+          base="https://github.com/ShirokaProject/Shirobot.Dashboard/releases/download/v${version}"
+          archive="shirobot-dashboard-${version}.zip"
+
+          curl -fsSL "$base/$archive" -o "/tmp/$archive"
+          curl -fsSL "$base/$archive.sha256" -o "/tmp/$archive.sha256"
+          (cd /tmp && sha256sum -c "$archive.sha256")
+
+          mkdir -p Core/Assets/dashboard
+          unzip -q -o "/tmp/$archive" -d Core/Assets/dashboard
           test -f Core/Assets/dashboard/index.html
+
+          echo "已获取 Dashboard v${version} 成品资源"
 
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v4
@@ -100,8 +101,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -141,8 +140,7 @@ jobs:
             --self-contained "$self_contained" \
             --output "$output_dir" \
             /p:ContinuousIntegrationBuild=true \
-            /p:BuildDashboard=false \
-            /p:BuildDashboardOnPublish=false \
+            /p:RequireDashboard=true \
             /p:PublishSingleFile=true \
             /p:IncludeNativeLibrariesForSelfExtract=true
 

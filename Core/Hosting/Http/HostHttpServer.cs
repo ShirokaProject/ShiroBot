@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Events;
@@ -47,7 +48,8 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         BotContext botContext,
         ModelPackageRegistry modelPackages,
         AdapterManager adapterManager,
-        ComponentReloadCoordinator reloadCoordinator)
+        ComponentReloadCoordinator reloadCoordinator,
+        AdapterPackageManager adapterPackages)
     {
         if (!config.Enable) return null;
 
@@ -79,7 +81,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         MapDashboardAssets(app);
         MapApiEndpoints(
             app, config, configManager, configPath, pluginManager, eventDispatcher,
-            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator);
+            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator, adapterPackages);
         MapDebugEndpoints(app, config, botContext, eventDispatcher);
 
         app.MapFallback((HttpContext context, WebHostContext registry) => registry.HandleRequest(context));
@@ -93,13 +95,28 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     {
         const string dashboardPath = "/dashboard";
         const string resourcePrefix = "Assets.dashboard.";
-        var assembly = Assembly.GetExecutingAssembly();
+        var assembly = typeof(Program).Assembly;
         var contentTypeProvider = new FileExtensionContentTypeProvider();
 
         IResult ServeDashboardFile(string path)
         {
             path = path.TrimStart('/', '\\');
             var resourcePath = path.Replace('/', '\\');
+            var physicalPath = Path.Combine(
+                AppContext.BaseDirectory,
+                "Assets",
+                "dashboard",
+                path.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(physicalPath))
+            {
+                if (!contentTypeProvider.TryGetContentType(path, out var physicalContentType))
+                {
+                    physicalContentType = "application/octet-stream";
+                }
+
+                return Results.File(physicalPath, physicalContentType, enableRangeProcessing: true);
+            }
+
             var stream = assembly.GetManifestResourceStream(resourcePrefix + resourcePath)
                          ?? assembly.GetManifestResourceStream(resourcePrefix + path.Replace('\\', '/'));
             if (stream is null) return Results.NotFound();
@@ -131,7 +148,8 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         HostLogHub logHub,
         ModelPackageRegistry modelPackages,
         AdapterManager adapterManager,
-        ComponentReloadCoordinator reloadCoordinator)
+        ComponentReloadCoordinator reloadCoordinator,
+        AdapterPackageManager adapterPackages)
     {
         var api = app.MapGroup("/api/v1");
         api.AddEndpointFilter(async (context, next) =>
@@ -191,9 +209,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         {
             try
             {
-                var plugins = await pluginManager.UnloadAllAsync(eventDispatcher).ConfigureAwait(false);
-                await adapterManager.StopAsync().ConfigureAwait(false);
-                await pluginManager.ReloadAsync(eventDispatcher, routePolicy, plugins).ConfigureAwait(false);
+                await reloadCoordinator.ExecuteAdapterMutationAsync(() => adapterManager.StopAsync()).ConfigureAwait(false);
                 return Results.Ok(new { ok = true, adapter = adapterManager.CreateStatus() });
             }
             catch (Exception ex)
@@ -201,6 +217,142 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                 return Results.Conflict(new { ok = false, error = "adapter_stop_failed", message = ex.Message });
             }
         });
+
+        api.MapGet("/adapters", () => Results.Ok(adapterPackages.List().Select(package => new
+        {
+            id = package.Id,
+            name = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Name ?? package.Name,
+            version = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Version ?? package.Version,
+            platform = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Platform ?? package.Platform,
+            description = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Description ?? package.Description,
+            assembly_path = (string?)package.AssemblyPath,
+            enabled = package.Enabled,
+            loaded = adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase),
+            error = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Error,
+            restartRequired = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.RestartRequired ?? false
+        }).Concat(adapterManager.GetSnapshot().Where(item => adapterPackages.Get(item.Id) is null).Select(item => new
+        {
+            id = item.Id, name = item.Name, version = item.Version ?? string.Empty, platform = item.Platform, description = item.Description, assembly_path = item.AssemblyPath,
+            enabled = false, loaded = item.Loaded, error = item.Error, restartRequired = item.RestartRequired
+        }))));
+        api.MapGet("/adapter-market/adapters", async (HttpContext context) =>
+        {
+            var installed = adapterPackages.List();
+            var loaded = adapterManager.LoadedIds;
+            var entries = await AdapterMarketplaceCache.GetAsync(context.RequestAborted).ConfigureAwait(false);
+            foreach (var node in entries)
+            {
+                if (node is not JsonObject entry || entry["id"]?.GetValue<string>() is not { } id) continue;
+                var package = installed.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (package is null) continue;
+                entry["installed"] = new JsonObject
+                {
+                    ["version"] = package.Version,
+                    ["enabled"] = package.Enabled,
+                    ["loaded"] = loaded.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
+                };
+            }
+            return Results.Ok(new { adapters = entries });
+        });
+
+        api.MapPost("/adapters/upload", async (HttpContext context) =>
+        {
+            if (!context.Request.HasFormContentType) return Results.BadRequest(new { error = "invalid_request", message = "请使用 multipart/form-data 上传 Adapter 文件。" });
+            var form = await context.Request.ReadFormAsync(context.RequestAborted).ConfigureAwait(false);
+            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            if (file is null || file.Length == 0) return Results.BadRequest(new { error = "missing_file", message = "未收到 Adapter 文件。" });
+            if (file.Length > MaxPluginUploadBytes) return Results.BadRequest(new { error = "file_too_large", message = "Adapter 文件不能超过 100MB。" });
+            var uploadId = Guid.NewGuid().ToString("N");
+            var root = GetAdapterUploadRoot(uploadId);
+            Directory.CreateDirectory(root);
+            try
+            {
+                var path = Path.Combine(root, Path.GetFileName(file.FileName));
+                await using (var stream = File.Create(path))
+                {
+                    await file.CopyToAsync(stream, context.RequestAborted).ConfigureAwait(false);
+                }
+                var probe = adapterPackages.Prepare(path, root);
+                ScheduleAdapterUploadCleanup(root);
+                return Results.Ok(CreateAdapterPreview(uploadId, probe, adapterPackages.Get(probe.Id), "upload", Path.GetFileName(path), file.Length));
+            }
+            catch (InvalidOperationException ex) { TryDeleteDirectory(root); return Results.BadRequest(new { error = "invalid_adapter", message = ex.Message }); }
+        });
+
+        api.MapPost("/adapters/upload/{uploadId}/confirm", async (string uploadId, HttpContext context) =>
+        {
+            var root = GetAdapterUploadRoot(uploadId);
+            if (!Directory.Exists(root)) return Results.NotFound(new { error = "upload_not_found" });
+            var request = await JsonSerializer.DeserializeAsync<AdapterUploadConfirmRequest>(context.Request.Body, JsonSerializerOptions.Web, context.RequestAborted).ConfigureAwait(false) ?? new();
+            try
+            {
+                var source = Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly).FirstOrDefault(path => Path.GetExtension(path) is ".dll" or ".zip")
+                    ?? throw new InvalidOperationException("上传文件不存在。");
+                var probe = adapterPackages.Prepare(source, root);
+                var existing = adapterPackages.Get(probe.Id);
+                if (existing is not null && !request.Replace) return Results.Conflict(new { error = "adapter_exists", message = "Adapter 已存在，请确认替换。" });
+                var wasLoaded = adapterManager.LoadedIds.Contains(probe.Id, StringComparer.OrdinalIgnoreCase);
+                var installed = await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                {
+                    if (wasLoaded) await adapterManager.StopByIdAsync(probe.Id).ConfigureAwait(false);
+                    return await adapterPackages.InstallAndActivateAsync(
+                        probe,
+                        request.Enable,
+                        installed => adapterManager.LoadByIdAsync(installed.Id, installed.AssemblyPath),
+                        wasLoaded ? restored => adapterManager.LoadByIdAsync(restored.Id, restored.AssemblyPath) : null).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+                TryDeleteDirectory(root);
+                return Results.Ok(new { ok = true, adapter = new { id = installed.Id, enabled = request.Enable }, rollback = false, restarted = request.Enable || wasLoaded });
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+            { return Results.Conflict(new { error = "install_failed", message = ex.Message, rollback = ex.Message.Contains("恢复", StringComparison.Ordinal), restarted = ex.Message.Contains("恢复", StringComparison.Ordinal) }); }
+        });
+
+        api.MapDelete("/adapters/upload/{uploadId}", (string uploadId) => { TryDeleteDirectory(GetAdapterUploadRoot(uploadId)); return Results.Ok(new { ok = true }); });
+        api.MapPost("/adapters/install/github", async (AdapterGitHubInstallRequest request, HttpContext context) =>
+        {
+            if (!TryNormalizeGitHubRepository(request.Repository, out var repository)) return Results.BadRequest(new { error = "invalid_repository" });
+            string assetUrl;
+            string assetName;
+            string? digest = null;
+            if (!string.IsNullOrWhiteSpace(request.AssetUrl))
+            {
+                if (!TryNormalizeSha256(request.AssetSha256, out digest) || !TryNormalizeGitHubAssetUrl(request.AssetUrl, request.AssetName, repository, out assetUrl, out assetName))
+                    return Results.BadRequest(new { error = "invalid_asset", message = "assetUrl、assetName 或 assetSha256 无效。" });
+            }
+            else
+            {
+                var release = await Updater.GetLatestPluginPackageAsync(repository, request.IncludePrerelease, context.RequestAborted).ConfigureAwait(false);
+                if (release is null || string.IsNullOrWhiteSpace(release.AssetDownloadUrl) || string.IsNullOrWhiteSpace(release.AssetName)) return Results.NotFound(new { error = "release_not_found" });
+                assetUrl = release.AssetDownloadUrl;
+                assetName = release.AssetName;
+            }
+            var uploadId = Guid.NewGuid().ToString("N");
+            var root = GetAdapterUploadRoot(uploadId);
+            Directory.CreateDirectory(root);
+            try
+            {
+                var path = Path.Combine(root, Path.GetFileName(assetName));
+                await Updater.DownloadFileAsync(assetUrl, path, context.RequestAborted, MaxPluginUploadBytes, digest).ConfigureAwait(false);
+                var probe = adapterPackages.Prepare(path, root);
+                ScheduleAdapterUploadCleanup(root);
+                return Results.Ok(CreateAdapterPreview(uploadId, probe, adapterPackages.Get(probe.Id), "github", assetName, new FileInfo(path).Length, repository));
+            }
+            catch (InvalidOperationException ex) { TryDeleteDirectory(root); return Results.BadRequest(new { error = "invalid_adapter", message = ex.Message }); }
+        });
+        api.MapPost("/adapters/{id}/start", async (string id) =>
+        {
+            try
+            {
+                var package = adapterPackages.Get(id); if (package is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.LoadByIdAsync(package.Id, package.AssemblyPath).ConfigureAwait(false); adapterPackages.SetEnabled(package.Id, true); }).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, restartRequired = false });
+            }
+            catch (Exception ex) { return AdapterOperationError("adapter_start_failed", ex); }
+        });
+        api.MapPost("/adapters/{id}/stop", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.SetEnabled(id, false); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_stop_failed", ex); } });
+        api.MapPost("/adapters/{id}/reload", async (string id) => { try { await reloadCoordinator.ReloadAdapterByIdAsync(id).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_reload_failed", ex); } });
+        api.MapDelete("/adapters/{id}", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { if (adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)) await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.Uninstall(id); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_delete_failed", ex); } });
 
         //配置
         api.MapGet("/config", async () => Results.Ok(CreateConfigResponse(await configManager.LoadCoreConfig().ConfigureAwait(false))));
@@ -894,7 +1046,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                 return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 未配置 GithubRepo" });
             }
 
-            var update = await Updater.CheckGitHubReleaseAsync(
+            var update = await Updater.CheckGitHubPluginPackageUpdateAsync(
                 plugin.GithubRepo,
                 plugin.Version,
                 cancellationToken: context.RequestAborted).ConfigureAwait(false);
@@ -903,16 +1055,18 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                 return Results.Ok(new { ok = true, message = $"插件 {plugin.Name} 已是最新版本" });
             }
 
-            if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) ||
-                string.IsNullOrWhiteSpace(update.AssetName) ||
-                !update.AssetName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) || string.IsNullOrWhiteSpace(update.AssetName))
             {
-                return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 有新版本，但 release 中没有可用的 dll asset" });
+                return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 有新版本，但 release 中没有可用的 zip 或 dll 插件包" });
             }
 
-            await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name).ConfigureAwait(false);
-            await Updater.UpdatePluginAsync(plugin.Name, update.AssetDownloadUrl, plugin.AssemblyPath, context.RequestAborted).ConfigureAwait(false);
-            await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, plugin.Name).ConfigureAwait(false);
+            await Updater.ApplyPluginUpdateAsync(
+                plugin.Name,
+                update.AssetDownloadUrl,
+                plugin.AssemblyPath,
+                () => pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name),
+                () => pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, plugin.Name),
+                context.RequestAborted).ConfigureAwait(false);
 
             return Results.Ok(new
             {
@@ -1074,6 +1228,29 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         var provided = authorization["Bearer ".Length..].Trim();
 
         return FixedTimeEquals(provided, expected);
+    }
+
+    private static object CreateAdapterPreview(
+        string uploadId,
+        AdapterPackageProbe probe,
+        InstalledAdapterPackage? installed,
+        string sourceType,
+        string fileName,
+        long size,
+        string? repository = null) => new
+    {
+        upload_id = uploadId,
+        status = "parsed",
+        source = new { type = sourceType, repository },
+        adapter = new { id = probe.Id, name = probe.Name, version = probe.Version, platform = probe.Platform, description = probe.Description, entry_assembly = Path.GetFileName(probe.EntryAssemblyPath) },
+        package = new { file_name = fileName, type = probe.Type, size },
+        conflict = new { exists = installed is not null, installed_version = installed?.Version, uploaded_version = probe.Version, action = installed is null ? "install" : "replace" }
+    };
+
+    private static IResult AdapterOperationError(string error, Exception exception)
+    {
+        var restartRequired = exception.Message.Contains("需要重启", StringComparison.OrdinalIgnoreCase);
+        return Results.Conflict(new { ok = false, error, message = exception.Message, restartRequired });
     }
 
     private static bool IsBearerAuthorized(HttpContext context, ApiHostConfig config)
@@ -1958,6 +2135,13 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         return Path.Combine(Path.GetTempPath(), "ShiroBot", "plugin_uploads", uploadId);
     }
 
+    private static string GetAdapterUploadRoot(string uploadId)
+    {
+        if (string.IsNullOrWhiteSpace(uploadId) || uploadId.Any(ch => !char.IsAsciiLetterOrDigit(ch)))
+            throw new InvalidOperationException("upload_id 无效。");
+        return Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_uploads", uploadId);
+    }
+
     private static bool TryNormalizeGitHubRepository(string? input, out string repository)
     {
         repository = string.Empty;
@@ -2087,6 +2271,8 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             TryDeleteDirectory(uploadRoot);
         });
     }
+
+    private static void ScheduleAdapterUploadCleanup(string uploadRoot) => SchedulePluginUploadCleanup(uploadRoot);
 
     private static object CreateConfigResponse(CoreConfig config) => new
     {
@@ -2284,6 +2470,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     private static readonly DateTimeOffset AppStartedAt = DateTimeOffset.UtcNow;
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> PluginOperationLocks = new(StringComparer.OrdinalIgnoreCase);
     private static readonly PluginMarketplaceCache MarketplaceCache = new();
+    private static readonly AdapterMarketplaceCache AdapterMarketplaceCache = new();
     private const string ApiCorsPolicyName = "ShiroBotApiCors";
     private const string DisabledPluginSuffix = ".disable";
     private const long MaxPluginUploadBytes = 100L * 1024L * 1024L;
@@ -2321,6 +2508,13 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         [property: JsonPropertyName("message")] string Message);
 
     private sealed record PluginUploadConfirmRequest(bool Replace = false, bool Enable = true);
+    private sealed record AdapterUploadConfirmRequest(bool Replace = false, bool Enable = true);
+    private sealed record AdapterGitHubInstallRequest(
+        string Repository = "",
+        bool IncludePrerelease = false,
+        string? AssetUrl = null,
+        string? AssetName = null,
+        string? AssetSha256 = null);
 
     private sealed record GitHubPluginInstallRequest(
         string Repository = "",

@@ -105,6 +105,26 @@ public static class Updater
             asset?.Name);
     }
 
+    public static async Task<GitHubReleaseUpdate?> CheckGitHubPluginPackageUpdateAsync(
+        string repository,
+        string currentVersion,
+        bool includePrerelease = false,
+        CancellationToken cancellationToken = default)
+    {
+        var package = await GetLatestPluginPackageAsync(repository, includePrerelease, cancellationToken).ConfigureAwait(false);
+        if (package is null || !IsNewerVersion(package.Version, currentVersion)) return null;
+
+        return new GitHubReleaseUpdate(
+            package.Repository,
+            NormalizeVersion(currentVersion),
+            package.Version,
+            package.ReleaseName,
+            package.ReleaseUrl,
+            package.Body,
+            package.AssetDownloadUrl,
+            package.AssetName);
+    }
+
     public static async Task<GitHubPluginPackage?> GetLatestPluginPackageAsync(
         string repository,
         bool includePrerelease = false,
@@ -173,14 +193,24 @@ public static class Updater
     public static async Task<string> RequestPluginUpdateAsync(
         PluginUpdateRequest request,
         CancellationToken cancellationToken = default)
+        => await RequestPluginUpdateAsync(
+            request,
+            token => UpdatePluginAsync(request.PluginName, request.AssetDownloadUrl, request.TargetPath, token),
+            cancellationToken).ConfigureAwait(false);
+
+    internal static async Task<string> RequestPluginUpdateAsync(
+        PluginUpdateRequest request,
+        Func<CancellationToken, Task> executeAsync,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(executeAsync);
         var id = CreatePendingUpdate(
             UpdateTarget.Plugin,
             request.PluginName,
             request.CurrentVersion,
             request.LatestVersion,
             request.ReleaseUrl,
-            async () => await UpdatePluginAsync(request.PluginName, request.AssetDownloadUrl, request.TargetPath, cancellationToken));
+            async () => await executeAsync(cancellationToken).ConfigureAwait(false));
 
         await NotifyOwnersAsync(
             $"检测到插件更新: {request.PluginName} {request.CurrentVersion} -> {request.LatestVersion}\n" +
@@ -191,6 +221,41 @@ public static class Updater
             cancellationToken);
 
         return id;
+    }
+
+    internal static async Task ApplyPluginUpdateAsync(
+        string pluginName,
+        string? assetDownloadUrl,
+        string targetPath,
+        Func<Task> unloadAsync,
+        Func<Task> loadAsync,
+        CancellationToken cancellationToken = default)
+    {
+        var fullTargetPath = Path.GetFullPath(targetPath);
+        var backupPath = fullTargetPath + ".update-backup-" + Guid.NewGuid().ToString("N");
+        File.Copy(fullTargetPath, backupPath, overwrite: true);
+        var unloaded = false;
+        try
+        {
+            await unloadAsync().ConfigureAwait(false);
+            unloaded = true;
+            await UpdatePluginAsync(pluginName, assetDownloadUrl, fullTargetPath, cancellationToken).ConfigureAwait(false);
+            await loadAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            if (File.Exists(backupPath)) File.Copy(backupPath, fullTargetPath, overwrite: true);
+            if (unloaded)
+            {
+                try { await loadAsync().ConfigureAwait(false); }
+                catch { /* Preserve the original update failure. */ }
+            }
+            throw;
+        }
+        finally
+        {
+            if (File.Exists(backupPath)) File.Delete(backupPath);
+        }
     }
 
     public static IReadOnlyList<PendingUpdateInfo> GetPendingUpdates()
@@ -569,7 +634,7 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
     {
         if (string.IsNullOrWhiteSpace(assetDownloadUrl))
         {
-            throw new InvalidOperationException($"插件 {pluginName} 的更新缺少 DLL 下载地址。");
+            throw new InvalidOperationException($"插件 {pluginName} 的更新缺少插件包下载地址。");
         }
 
         if (string.IsNullOrWhiteSpace(targetPath))
@@ -581,20 +646,46 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
         var tempDirectory = Path.Combine(targetDirectory, ".tmp");
         Directory.CreateDirectory(tempDirectory);
 
-        var tempPath = Path.Combine(
+        var packagePath = Path.Combine(
             tempDirectory,
-            $"{Path.GetFileName(targetPath)}.{Guid.NewGuid():N}.download");
+            $"{Path.GetFileName(targetPath)}.{Guid.NewGuid():N}.package");
+        var replacementPath = Path.Combine(
+            tempDirectory,
+            $"{Path.GetFileName(targetPath)}.{Guid.NewGuid():N}.replacement");
+        var backupPath = Path.Combine(
+            tempDirectory,
+            $"{Path.GetFileName(targetPath)}.{Guid.NewGuid():N}.backup");
 
         try
         {
-            await DownloadFileAsync(assetDownloadUrl, tempPath, cancellationToken);
-            File.Copy(tempPath, targetPath, overwrite: true);
+            await DownloadFileAsync(assetDownloadUrl, packagePath, cancellationToken);
+            if (IsZipPackage(packagePath))
+            {
+                ExtractPluginEntryFromZip(packagePath, replacementPath, Path.GetFileName(targetPath));
+            }
+            else
+            {
+                File.Copy(packagePath, replacementPath, overwrite: true);
+            }
+
+            if (File.Exists(targetPath)) File.Copy(targetPath, backupPath, overwrite: true);
+            try
+            {
+                File.Move(replacementPath, targetPath, overwrite: true);
+            }
+            catch
+            {
+                if (File.Exists(backupPath)) File.Copy(backupPath, targetPath, overwrite: true);
+                throw;
+            }
         }
         finally
         {
             try
             {
-                if (File.Exists(tempPath)) File.Delete(tempPath);
+                if (File.Exists(packagePath)) File.Delete(packagePath);
+                if (File.Exists(replacementPath)) File.Delete(replacementPath);
+                if (File.Exists(backupPath)) File.Delete(backupPath);
                 DeleteDirectoryIfEmpty(tempDirectory);
             }
             catch
@@ -602,6 +693,22 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
                 // ignored: best-effort cleanup
             }
         }
+    }
+
+    internal static void ExtractPluginEntryFromZip(string packagePath, string destinationPath, string targetFileName)
+    {
+        using var archive = ZipFile.OpenRead(packagePath);
+        var exactMatches = archive.Entries
+            .Where(entry => string.Equals(Path.GetFileName(entry.FullName), targetFileName, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (exactMatches.Length != 1)
+            throw new InvalidOperationException($"插件更新包中未找到唯一入口 DLL: {targetFileName}");
+
+        var entry = exactMatches[0];
+        if (entry.Length <= 0) throw new InvalidOperationException($"插件更新包中的入口 DLL 为空: {entry.FullName}");
+        using var input = entry.Open();
+        using var output = File.Create(destinationPath);
+        input.CopyTo(output);
     }
 
     private static void DeleteDirectoryIfEmpty(string directory)

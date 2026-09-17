@@ -15,39 +15,48 @@ internal sealed class ComponentReloadCoordinator(
 
     public async Task ReloadAdapterAsync(string? assemblyPath = null)
     {
+        await ExecuteAdapterMutationAsync(
+            () => adapterManager.ReloadAsync(assemblyPath)).ConfigureAwait(false);
+    }
+
+    public Task ReloadAdapterByIdAsync(string id) =>
+        ExecuteAdapterMutationAsync(() => adapterManager.ReloadByIdAsync(id));
+
+    public async Task ExecuteAdapterMutationAsync(Func<Task> mutation)
+    {
         await _gate.WaitAsync().ConfigureAwait(false);
+        IReadOnlyList<string> plugins = [];
         try
         {
-            var plugins = await pluginManager.UnloadAllAsync(eventDispatcher).ConfigureAwait(false);
-            var previousAdapterPaths = adapterManager.AssemblyPaths;
-            try
-            {
-                await adapterManager.ReloadAsync(assemblyPath).ConfigureAwait(false);
-            }
-            catch
-            {
-                if (!adapterManager.IsLoaded && previousAdapterPaths.Count > 0)
-                {
-                    try
-                    {
-                        await adapterManager.LoadAsync(previousAdapterPaths.Where(File.Exists)).ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // Keep the original reload error; runtime state already shows no adapter.
-                    }
-                }
-
-                throw;
-            }
-            finally
-            {
-                await pluginManager.ReloadAsync(eventDispatcher, routePolicy, plugins).ConfigureAwait(false);
-            }
+            plugins = await pluginManager.UnloadAllAsync(eventDispatcher).ConfigureAwait(false);
+            await mutation().ConfigureAwait(false);
         }
         finally
         {
-            _gate.Release();
+            try
+            {
+                await pluginManager.ReloadAsync(eventDispatcher, routePolicy, plugins).ConfigureAwait(false);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+    }
+
+    public async Task<T> ExecuteAdapterMutationAsync<T>(Func<Task<T>> mutation)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        IReadOnlyList<string> plugins = [];
+        try
+        {
+            plugins = await pluginManager.UnloadAllAsync(eventDispatcher).ConfigureAwait(false);
+            return await mutation().ConfigureAwait(false);
+        }
+        finally
+        {
+            try { await pluginManager.ReloadAsync(eventDispatcher, routePolicy, plugins).ConfigureAwait(false); }
+            finally { _gate.Release(); }
         }
     }
 

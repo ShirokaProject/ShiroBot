@@ -8,6 +8,8 @@ using ShiroBot.Console;
 using ShiroBot.Update;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Plugins;
+using ShiroBot.Adapters;
+using ShiroBot.Components.Reloading;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
@@ -28,6 +30,8 @@ internal sealed class HostCommandHandler(
     [
         new("help", "显示帮助信息"),
         new("plugins", "显示已加载插件"),
+        new("adapters", "显示已安装适配器"),
+        new("adapter", "管理适配器: start|stop|reload <id>"),
         new("load", "热加载指定插件"),
         new("unload", "热卸载指定插件"),
         new("restart", "重启程序"),
@@ -39,6 +43,17 @@ internal sealed class HostCommandHandler(
         new("exit", "退出程序"),
         new("quit", "退出程序")
     ];
+
+    private AdapterManager? _adapterManager;
+    private ComponentReloadCoordinator? _reloadCoordinator;
+    private AdapterPackageManager? _adapterPackages;
+
+    public void SetAdapterCommands(AdapterManager adapterManager, ComponentReloadCoordinator? reloadCoordinator, AdapterPackageManager? adapterPackages = null)
+    {
+        _adapterManager = adapterManager;
+        _reloadCoordinator = reloadCoordinator;
+        _adapterPackages = adapterPackages;
+    }
 
     public void RunConsoleLoop(
         TaskCompletionSource<bool> exitRequested,
@@ -67,6 +82,12 @@ internal sealed class HostCommandHandler(
                         return;
                     case "plugins":
                         CH.Info(BuildLoadedPluginsText(pluginManager.GetLoadedPluginSnapshot()));
+                        break;
+                    case "adapters":
+                        CH.Info(BuildAdaptersText());
+                        break;
+                    case "adapter":
+                        CH.Info(HandleAdapterCommandAsync(splitInput).GetAwaiter().GetResult());
                         break;
                     case "load":
                         if (splitInput.Length < 2)
@@ -285,6 +306,43 @@ internal sealed class HostCommandHandler(
 
     private static string? NormalizeCommand(string? command) => command?.TrimStart('/').ToLowerInvariant();
 
+    private string BuildAdaptersText() => _adapterManager is null || _adapterManager.LoadedIds.Count == 0
+        ? "当前没有已加载适配器。"
+        : "已加载适配器: " + string.Join(", ", _adapterManager.LoadedIds);
+
+    private async Task<string> HandleAdapterCommandAsync(string[] input)
+    {
+        if (_adapterManager is null) return "Adapter 管理器不可用。";
+        if (input.Length < 2 || string.Equals(input[1], "list", StringComparison.OrdinalIgnoreCase)) return BuildAdaptersText();
+        if (input.Length < 3) return "用法: adapter start|stop|reload <id>";
+        try
+        {
+            switch (input[1].ToLowerInvariant())
+            {
+                case "start":
+                    var package = _adapterPackages?.Get(input[2]) ?? throw new InvalidOperationException($"未安装 Adapter: {input[2]}");
+                    if (_reloadCoordinator is not null)
+                        await _reloadCoordinator.ExecuteAdapterMutationAsync(() => _adapterManager.LoadByIdAsync(package.Id, package.AssemblyPath));
+                    else
+                        await _adapterManager.LoadByIdAsync(package.Id, package.AssemblyPath);
+                    _adapterPackages!.SetEnabled(package.Id, true);
+                    return $"已启动 Adapter: {package.Id}";
+                case "stop":
+                    if (_reloadCoordinator is not null)
+                        await _reloadCoordinator.ExecuteAdapterMutationAsync(() => _adapterManager.StopByIdAsync(input[2]));
+                    else
+                        await _adapterManager.StopByIdAsync(input[2]);
+                    _adapterPackages?.SetEnabled(input[2], false);
+                    return $"已停止 Adapter: {input[2]}";
+                case "reload":
+                    if (_reloadCoordinator is not null) await _reloadCoordinator.ReloadAdapterByIdAsync(input[2]); else await _adapterManager.ReloadByIdAsync(input[2]);
+                    return $"已重载 Adapter: {input[2]}";
+                default: return "用法: adapter start|stop|reload <id>";
+            }
+        }
+        catch (Exception ex) { return "Adapter 操作失败: " + ex.Message; }
+    }
+
     private async Task<string> HandleUpdateCommandAsync(string[] splitInput)
     {
         if (splitInput.Length < 2 || string.Equals(splitInput[1], "list", StringComparison.OrdinalIgnoreCase))
@@ -417,31 +475,38 @@ internal sealed class HostCommandHandler(
         {
             try
             {
-                var update = await Updater.CheckGitHubReleaseAsync(plugin.GithubRepo!, plugin.Version);
+                var update = await Updater.CheckGitHubPluginPackageUpdateAsync(plugin.GithubRepo!, plugin.Version);
                 if (update is null)
                 {
                     builder.AppendLine($"{plugin.Name}: 已是最新版本 ({plugin.Version})");
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) ||
-                    string.IsNullOrWhiteSpace(update.AssetName) ||
-                    !update.AssetName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) || string.IsNullOrWhiteSpace(update.AssetName))
                 {
-                    builder.AppendLine($"{plugin.Name}: 发现 {update.LatestVersion}，但 release 中没有裸 .dll asset。");
+                    builder.AppendLine($"{plugin.Name}: 发现 {update.LatestVersion}，但 release 中没有 .zip 或 .dll 插件包。");
                     continue;
                 }
 
-                var id = await Updater.RequestPluginUpdateAsync(new PluginUpdateRequest(
+                var request = new PluginUpdateRequest(
                     plugin.Name,
                     update.CurrentVersion,
                     update.LatestVersion,
                     update.ReleaseUrl,
                     update.ReleaseNotes,
                     update.AssetDownloadUrl,
-                    plugin.AssemblyPath));
+                    plugin.AssemblyPath);
+                var id = await Updater.RequestPluginUpdateAsync(
+                    request,
+                    cancellationToken => Updater.ApplyPluginUpdateAsync(
+                        plugin.Name,
+                        update.AssetDownloadUrl,
+                        plugin.AssemblyPath,
+                        () => pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name),
+                        () => pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, plugin.Name),
+                        cancellationToken));
 
-                builder.AppendLine($"{plugin.Name}: {update.CurrentVersion} -> {update.LatestVersion}，更新任务 {id}");
+                builder.AppendLine($"{plugin.Name}: {update.CurrentVersion} -> {update.LatestVersion} ({update.AssetName})，更新任务 {id}");
             }
             catch (Exception ex)
             {

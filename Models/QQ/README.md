@@ -6,7 +6,7 @@ QQ contracts are distributed by the `ShiroBot.SDK` package and built into the of
 component that uses these contracts should declare the runtime package requirement:
 
 ```csharp
-[assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.1")]
+[assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.2")]
 ```
 
 Public contracts follow the API evolution rules documented by ShiroBot API 0.9: existing

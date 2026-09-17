@@ -17,7 +17,7 @@
 ## 项目结构
 
 - `Core`: ShiroBot 宿主本体，内置 Avalonia Headless 渲染集成
-- `Shirobot.Dashboard`: 宿主 Dashboard 前端子模块
+- Dashboard: 宿主 Web 面板前端。独立仓库 [Shirobot.Dashboard](https://github.com/ShirokaProject/Shirobot.Dashboard)，构建时按 `ShirobotDashboardVersion` 拉取其 Release 成品 `dist` 并嵌入宿主程序集
 - `Models`: Discord、QQ、Telegram 平台契约
 - `SDK`: 插件与适配器 SDK，内置 Avalonia 控件渲染契约和编译支持
 - `Templates`: `dotnet new` Plugin 与 Adapter 项目模板
@@ -34,6 +34,8 @@ Discord、QQ 和 Telegram Model 随宿主内置。宿主不创建或扫描独立
 ```powershell
 dotnet build .\ShiroBot.slnx
 ```
+
+构建宿主机时会自动从 Shirobot.Dashboard 仓的 Release 下载 `ShirobotDashboardVersion` 对应的前端成品并嵌入程序集，因此不需要 Node.js 或子模块。离线或未发布对应版本时构建仍会成功，但 `/dashboard` 不可用；发布流程会以 `-p:RequireDashboard=true` 强制校验资源存在。本地联调未发布的前端改动可用 `-p:DashboardDistPath=<本地 dist 目录>`。
 
 Avalonia、Skia 和 HarfBuzz 从 0.7.0 起属于统一宿主，不再提供 `lite` 构建。宿主明确保持 `PublishTrimmed=false`，因为插件发现、配置 schema 和程序集加载依赖反射与 metadata，当前不具备安全裁剪条件。
 

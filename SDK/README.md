@@ -7,7 +7,7 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="0.9.1" />
+<PackageReference Include="ShiroBot.SDK" Version="0.9.2" />
 ```
 
 `ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build

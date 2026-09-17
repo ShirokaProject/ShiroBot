@@ -9,8 +9,6 @@ META-INF/
 *.DotSettings.user
 artifacts/
 Core/Assets/dashboard/
-Shirobot.Dashboard/dist/
-Shirobot.Dashboard/node_modules/
 MilkyModelGenerator.Net/output/
 MilkyModelGenerator.Net/QBotSharp.Model/
 .playwright-mcp/

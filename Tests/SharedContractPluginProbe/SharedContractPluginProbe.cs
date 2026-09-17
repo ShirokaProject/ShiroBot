@@ -9,7 +9,7 @@ namespace ShiroBot.SharedContractPluginProbe;
 [BotPlugin(
     "SharedContractPluginProbe",
     Name = "Shared contract plugin probe",
-    Version = "0.9.1",
+    Version = "0.9.2",
     SharedAssemblies = "ShiroBot.Model.QQ")]
 public sealed class SharedContractPluginProbe : PluginBase
 {

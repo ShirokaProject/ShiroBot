@@ -15,7 +15,7 @@
     <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>0.9.1 restores old-plugin compatibility and distributes all built-in Model contracts through the single ShiroBot.SDK package.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.9.2 adds managed Adapter installation, start/stop/reload and the Adapter marketplace, and fixes Dashboard static asset delivery.</PackageReleaseNotes>
     <NoWarn>$(NoWarn);NU5104;NU5128</NoWarn>
   </PropertyGroup>
 

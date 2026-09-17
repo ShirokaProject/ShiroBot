@@ -14,20 +14,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: Shirobot.Dashboard/package-lock.json
 
       - name: Build and verify core
         shell: bash
@@ -43,12 +34,12 @@ jobs:
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
           dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
-          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
+          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.2.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
           test "$(find artifacts/nuget -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 2
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.1.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.2.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.2.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.2.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.2.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
@@ -61,7 +52,7 @@ jobs:
               <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
             </PropertyGroup>
             <ItemGroup>
-              <PackageReference Include="ShiroBot.SDK" Version="0.9.1" />
+              <PackageReference Include="ShiroBot.SDK" Version="0.9.2" />
             </ItemGroup>
           </Project>
           EOF
@@ -114,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           template_root="$RUNNER_TEMP/template-smoke"
-          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.1.nupkg --force
+          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.2.nupkg --force
           dotnet new shirobot-plugin -n TemplatePlugin --platform qq -o "$template_root/TemplatePlugin"
           dotnet new shirobot-adapter -n TemplateAdapter --platform discord -o "$template_root/TemplateAdapter"
           dotnet build "$template_root/TemplatePlugin/TemplatePlugin.csproj" -c Release \
@@ -141,8 +132,7 @@ jobs:
           dotnet publish Core/ShiroBot.csproj -c Release -r linux-x64 \
             --self-contained true \
             -o "$output_dir" \
-            /p:BuildDashboard=false \
-            /p:BuildDashboardOnPublish=false \
+            /p:RequireDashboard=true \
             /p:PublishSingleFile=true \
             /p:IncludeNativeLibrariesForSelfExtract=true
 
@@ -190,7 +180,7 @@ jobs:
 
           jq -e '
             length == 3 and
-            all(.[]; .version == "0.9.1" and .path == null and .source == "built_in" and .reloadable == false) and
+            all(.[]; .version == "0.9.2" and .path == null and .source == "built_in" and .reloadable == false) and
             ([.[] | {id, assembly}] | sort_by(.id)) == [
               {id: "shirobot.model.discord", assembly: "ShiroBot.Model.Discord"},
               {id: "shirobot.model.qq", assembly: "ShiroBot.Model.QQ"},
@@ -206,7 +196,6 @@ jobs:
             any(.[]; .id == "SharedContractPluginProbe" and .enable == true)
           ' "$plugin_response_path"
 
-      - name: Build dashboard
-        run: |
-          npm --prefix Shirobot.Dashboard ci
-          npm --prefix Shirobot.Dashboard run build
+          curl --fail --silent --show-error \
+            http://127.0.0.1:17081/dashboard/ \
+            -o /dev/null

@@ -16,11 +16,23 @@
 
     <PropertyGroup>
         <ManagedAdapterDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\adapters\ShiroBot.DemoAdapter</ManagedAdapterDebugDir>
-        <DashboardSourceDir>$(MSBuildThisFileDirectory)..\Shirobot.Dashboard\</DashboardSourceDir>
-        <DashboardAssetsDir>$(MSBuildProjectDirectory)/Assets/dashboard</DashboardAssetsDir>
-        <DashboardDistIndex>$(DashboardSourceDir)dist/index.html</DashboardDistIndex>
-        <BuildDashboard Condition="'$(BuildDashboard)'==''">false</BuildDashboard>
-        <BuildDashboardOnPublish Condition="'$(BuildDashboardOnPublish)'==''">false</BuildDashboardOnPublish>
+
+        <!-- Dashboard 前端以成品 dist 形式从 Shirobot.Dashboard 仓的 Release 拉取，并嵌入宿主程序集。 -->
+        <ShirobotDashboardVersion Condition="'$(ShirobotDashboardVersion)' == ''">$(ShiroBotProductVersion)</ShirobotDashboardVersion>
+        <ShirobotDashboardRepo Condition="'$(ShirobotDashboardRepo)' == ''">ShirokaProject/Shirobot.Dashboard</ShirobotDashboardRepo>
+        <ShirobotDashboardArchiveName>shirobot-dashboard-$(ShirobotDashboardVersion).zip</ShirobotDashboardArchiveName>
+        <ShirobotDashboardDistUrl Condition="'$(ShirobotDashboardDistUrl)' == ''">https://github.com/$(ShirobotDashboardRepo)/releases/download/v$(ShirobotDashboardVersion)/$(ShirobotDashboardArchiveName)</ShirobotDashboardDistUrl>
+        <ShirobotDashboardDistSha256 Condition="'$(ShirobotDashboardDistSha256)' == ''"></ShirobotDashboardDistSha256>
+
+        <!-- 本地联调：指向本地 dashboard 仓的 dist 目录（含 index.html），跳过下载。 -->
+        <DashboardDistPath Condition="'$(DashboardDistPath)' == ''"></DashboardDistPath>
+        <!-- 成品落盘/嵌入目录，已被 .gitignore 忽略。 -->
+        <DashboardAssetsDir Condition="'$(DashboardAssetsDir)' == ''">$(MSBuildProjectDirectory)/Assets/dashboard</DashboardAssetsDir>
+        <!-- 发布流程置为 true：资源缺失时构建失败，避免发出一个没有面板的包。 -->
+        <RequireDashboard Condition="'$(RequireDashboard)' == ''">false</RequireDashboard>
+
+        <_DashboardResolvedDir Condition="'$(DashboardDistPath)' != '' and Exists('$(DashboardDistPath)/index.html')">$(DashboardDistPath)</_DashboardResolvedDir>
+        <_DashboardResolvedDir Condition="'$(_DashboardResolvedDir)' == ''">$(DashboardAssetsDir)</_DashboardResolvedDir>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
@@ -58,63 +70,62 @@
         </AssemblyAttribute>
     </ItemGroup>
 
-    <Target Name="BuildDashboardAssets"
-            BeforeTargets="PrepareResourceNames"
-            Condition="'$(BuildDashboard)'=='true' or '$(BuildDashboardOnPublish)'=='true'">
-        <Warning Condition="!Exists('$(DashboardSourceDir)package.json')"
-                 Text="Dashboard 源码未找到，跳过 Dashboard 构建: $(DashboardSourceDir)。宿主仍会继续构建，但 /dashboard 可能不可用。" />
-
-        <Exec Command="npm --version" IgnoreExitCode="true" ConsoleToMSBuild="true"
-              Condition="Exists('$(DashboardSourceDir)package.json')">
-            <Output TaskParameter="ExitCode" PropertyName="DashboardNpmExitCode" />
-        </Exec>
-        <Warning Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'!='0'"
-                 Text="未检测到可用的 npm，跳过 Dashboard 构建。宿主仍会继续构建，但 /dashboard 可能不可用。" />
-
-        <Message Importance="high"
-                 Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0'"
-                 Text="Building dashboard assets from $(DashboardSourceDir)" />
-        <Exec WorkingDirectory="$(DashboardSourceDir)" Command="npm ci" IgnoreExitCode="true"
-              Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and !Exists('$(DashboardSourceDir)node_modules')">
-            <Output TaskParameter="ExitCode" PropertyName="DashboardNpmCiExitCode" />
-        </Exec>
-
+    <Target Name="AcquireDashboardAssets" BeforeTargets="PrepareForBuild">
         <PropertyGroup>
-            <DashboardNpmCiOk Condition="Exists('$(DashboardSourceDir)node_modules') or '$(DashboardNpmCiExitCode)'=='0'">true</DashboardNpmCiOk>
+            <_DashboardNeedsAcquire Condition="'$(DashboardDistPath)' == '' and !Exists('$(_DashboardResolvedDir)/index.html')">true</_DashboardNeedsAcquire>
         </PropertyGroup>
-        <Warning Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and '$(DashboardNpmCiOk)'!='true'"
-                 Text="npm ci 执行失败，跳过 Dashboard 构建。宿主仍会继续构建，但 /dashboard 可能不可用。" />
 
-        <Exec WorkingDirectory="$(DashboardSourceDir)" Command="npm run build" IgnoreExitCode="true"
-              Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and '$(DashboardNpmCiOk)'=='true'">
-            <Output TaskParameter="ExitCode" PropertyName="DashboardNpmBuildExitCode" />
-        </Exec>
-        <Warning Condition="Exists('$(DashboardSourceDir)package.json') and '$(DashboardNpmExitCode)'=='0' and '$(DashboardNpmCiOk)'=='true' and '$(DashboardNpmBuildExitCode)'!='0'"
-                 Text="npm run build 执行失败，跳过 Dashboard 资源更新。宿主仍会继续构建。" />
+        <MakeDir Directories="$(IntermediateOutputPath)dashboard"
+                 Condition="'$(_DashboardNeedsAcquire)' == 'true'" />
 
-        <Warning Condition="'$(DashboardNpmBuildExitCode)'=='0' and !Exists('$(DashboardDistIndex)')"
-                 Text="Dashboard 构建完成但未找到 dist/index.html，跳过 Dashboard 资源更新。宿主仍会继续构建。" />
-        <RemoveDir Directories="$(DashboardAssetsDir)"
-                   Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
-        <MakeDir Directories="$(DashboardAssetsDir)"
-                 Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
-        <ItemGroup Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')">
-            <DashboardDistFiles Include="$(DashboardSourceDir)dist/**/*" />
+        <DownloadFile Condition="'$(_DashboardNeedsAcquire)' == 'true'"
+                      SourceUrl="$(ShirobotDashboardDistUrl)"
+                      DestinationFolder="$(IntermediateOutputPath)dashboard"
+                      DestinationFileName="$(ShirobotDashboardArchiveName)"
+                      ContinueOnError="true">
+            <Output TaskParameter="DownloadedFile" PropertyName="_DashboardArchive" />
+        </DownloadFile>
+
+        <GetFileHash Condition="'$(_DashboardArchive)' != '' and '$(ShirobotDashboardDistSha256)' != ''"
+                     Files="$(_DashboardArchive)"
+                     Algorithm="SHA256">
+            <Output TaskParameter="Items" ItemName="_DashboardHashedArchive" />
+        </GetFileHash>
+        <PropertyGroup>
+            <_DashboardArchiveHash>@(_DashboardHashedArchive->'%(FileHash)')</_DashboardArchiveHash>
+        </PropertyGroup>
+        <Error Condition="'$(_DashboardArchiveHash)' != '' and !$([System.String]::Equals('$(_DashboardArchiveHash)', '$(ShirobotDashboardDistSha256)', System.StringComparison.OrdinalIgnoreCase))"
+               Text="Dashboard 成品校验失败：期望 $(ShirobotDashboardDistSha256)，实际 $(_DashboardArchiveHash)。" />
+
+        <RemoveDir Directories="$(_DashboardResolvedDir)"
+                   Condition="'$(_DashboardArchive)' != ''" />
+        <Unzip Condition="'$(_DashboardArchive)' != ''"
+               SourceFiles="$(_DashboardArchive)"
+               DestinationFolder="$(_DashboardResolvedDir)" />
+
+        <Error Condition="'$(RequireDashboard)' == 'true' and !Exists('$(_DashboardResolvedDir)/index.html')"
+               Text="未获取到 Dashboard 资源：$(ShirobotDashboardDistUrl)。请先在 Shirobot.Dashboard 仓发布对应 tag 的 Release，或用 -p:DashboardDistPath=&lt;本地 dist 目录&gt; 指定。" />
+        <Warning Condition="'$(RequireDashboard)' != 'true' and !Exists('$(_DashboardResolvedDir)/index.html')"
+                 Text="未获取到 Dashboard 资源，/dashboard 将不可用：$(ShirobotDashboardDistUrl)" />
+
+        <ItemGroup Condition="Exists('$(_DashboardResolvedDir)/index.html')">
+            <_DashboardEmbeddedFile Include="$(_DashboardResolvedDir)/**/*" />
         </ItemGroup>
-        <Copy SourceFiles="@(DashboardDistFiles)"
-              DestinationFiles="@(DashboardDistFiles->'$(DashboardAssetsDir)/%(RecursiveDir)%(Filename)%(Extension)')"
-              Condition="'$(DashboardNpmBuildExitCode)'=='0' and Exists('$(DashboardDistIndex)')" />
+        <ItemGroup Condition="Exists('$(_DashboardResolvedDir)/index.html')">
+            <EmbeddedResource Include="@(_DashboardEmbeddedFile)">
+                <LogicalName>Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+            </EmbeddedResource>
+        </ItemGroup>
     </Target>
 
-    <Target Name="RefreshDashboardEmbeddedResources"
-            BeforeTargets="PrepareResourceNames"
-            DependsOnTargets="BuildDashboardAssets">
+    <Target Name="CopyDashboardAssetsToOutput"
+            BeforeTargets="CopyFilesToOutputDirectory;CopyFilesToPublishDirectory"
+            Condition="Exists('$(_DashboardResolvedDir)/index.html')">
         <ItemGroup>
-            <EmbeddedResource Remove="@(EmbeddedResource)"
-                              Condition="$([System.String]::Copy('%(EmbeddedResource.Identity)').Contains('Assets/dashboard/')) or $([System.String]::Copy('%(EmbeddedResource.Identity)').Contains('Assets\dashboard\'))" />
-            <EmbeddedResource Include="Assets\dashboard\**\*"
-                              LogicalName="Assets.dashboard.%(RecursiveDir)%(Filename)%(Extension)" />
+            <_DashboardAssetFile Include="$(_DashboardResolvedDir)/**/*" />
         </ItemGroup>
+        <Copy SourceFiles="@(_DashboardAssetFile)"
+              DestinationFiles="@(_DashboardAssetFile->'$(OutDir)Assets/dashboard/%(RecursiveDir)%(Filename)%(Extension)')" />
     </Target>
 
     <ItemGroup>

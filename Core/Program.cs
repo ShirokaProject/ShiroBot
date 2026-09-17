@@ -42,11 +42,13 @@ public static class Program
 
     public static async Task Main(string[] args)
     {
+        if (await TryRunAdapterManagementCommandAsync(args).ConfigureAwait(false)) return;
+
         var logHub = new HostLogHub();
         BotLog.SetDefault(new ConsoleLogger(logHub: logHub));
 
         var configOption = new Option<string?>("--config", "-c") { Description = "指定配置文件路径" };
-        var adapterOption = new Option<string?>("--adapter") { Description = "指定适配器 DLL 路径" };
+        var adapterOption = new Option<string[]>("--adapter", "--adapter-path") { Description = "指定适配器 DLL 路径（可重复）" };
         var pluginOption = new Option<string?>("--plugin-dir") { Description = "指定插件文件夹路径（可以是相对路径或绝对路径）" };
         var noConsoleOption = new Option<bool>("--no-console") { Description = "禁用控制台交互输入" };
 
@@ -151,7 +153,8 @@ public static class Program
                 Directory.CreateDirectory(adapterRoot);
             }
 
-            var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption));
+            var adapterPackages = new AdapterPackageManager(adapterRoot);
+            var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption), adapterPackages);
 
             // ─── BotContext + 基础设施 ───
             var webPublicBaseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
@@ -208,6 +211,7 @@ public static class Program
                 runtimeState,
                 logHub,
                 commandHandler.HandleDirectMessageAsync);
+            commandHandler.SetAdapterCommands(adapterManager, null, adapterPackages);
             if (adapterPaths.Count > 0)
             {
                 await adapterManager.LoadAsync(adapterPaths).ConfigureAwait(false);
@@ -224,6 +228,7 @@ public static class Program
                 pluginManager,
                 hostEventDispatcher,
                 groupRoutePolicy);
+            commandHandler.SetAdapterCommands(adapterManager, reloadCoordinator, adapterPackages);
             componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
             hostHttpServer = await HostHttpServer.StartAsync(
                 coreConfig.Api,
@@ -238,10 +243,12 @@ public static class Program
                 botContext,
                 modelPackages,
                 adapterManager,
-                reloadCoordinator);
+                reloadCoordinator,
+                adapterPackages);
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
+                CH.Success("Dashboard 地址: " + webPublicBaseUrl.TrimEnd('/') + "/dashboard/");
                 if (coreConfig.Api.Auth.Enable)
                 {
                     CH.Warning("API 鉴权密钥: " + coreConfig.Api.Auth.Key);
@@ -356,12 +363,13 @@ public static class Program
         manager.SaveConfig(configPath, coreConfig);
     }
 
-    private static IReadOnlyList<string> ResolveAdapterPaths(CoreConfig coreConfig, string? commandAdapterPath)
+    private static IReadOnlyList<string> ResolveAdapterPaths(CoreConfig coreConfig, IReadOnlyList<string>? commandAdapterPaths, AdapterPackageManager packages)
     {
-        if (!string.IsNullOrWhiteSpace(commandAdapterPath))
+        if (commandAdapterPaths is { Count: > 0 })
         {
-            BotLog.Info("检测到命令行适配器路径，使用指定的适配器文件: " + commandAdapterPath);
-            return File.Exists(commandAdapterPath) ? [Path.GetFullPath(commandAdapterPath)] : [];
+            var commandPaths = commandAdapterPaths.Where(File.Exists).Select(Path.GetFullPath).ToArray();
+            foreach (var path in commandPaths) BotLog.Info("检测到命令行适配器路径: " + path);
+            return commandPaths;
         }
 
         var configured = coreConfig.Protocols.Length > 0
@@ -376,7 +384,8 @@ public static class Program
             paths.Add(path);
         }
 
-        return paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return paths.Concat(packages.List().Where(package => package.Enabled).Select(package => package.AssemblyPath))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static string? ResolveAdapterPath(string configured)
@@ -390,6 +399,100 @@ public static class Program
         if (File.Exists(flat)) return flat;
         var folder = Path.Combine(root, name, name + ".dll");
         return File.Exists(folder) ? folder : null;
+    }
+
+    private static Task<bool> TryRunAdapterManagementCommandAsync(string[] args)
+    {
+        if (args.Length == 0 || !string.Equals(args[0], "adapter", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(false);
+
+        var adapterRoot = GetOptionValue(args, "--adapter-dir") is { Length: > 0 } configuredRoot
+            ? Path.GetFullPath(configuredRoot)
+            : Path.Combine(BasePath, "adapters");
+        var packages = new AdapterPackageManager(adapterRoot);
+        var action = args.Length > 1 ? args[1].ToLowerInvariant() : "help";
+        try
+        {
+            switch (action)
+            {
+                case "list":
+                    var installed = packages.List();
+                    if (installed.Count == 0)
+                    {
+                        global::System.Console.WriteLine("No adapters installed.");
+                        break;
+                    }
+                    foreach (var adapter in installed)
+                        global::System.Console.WriteLine($"{adapter.Id}\t{(adapter.Enabled ? "enabled" : "disabled")}\t{adapter.AssemblyPath}");
+                    break;
+                case "verify":
+                    var verifyPath = GetCommandArgument(args, 2);
+                    var verifyRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_cli", Guid.NewGuid().ToString("N"));
+                    try
+                    {
+                        var probe = packages.Prepare(verifyPath, verifyRoot);
+                        global::System.Console.WriteLine($"Valid adapter package: {probe.Id} (API {probe.MinimumApiVersion}..{probe.MaximumApiVersion})");
+                    }
+                    finally
+                    {
+                        if (Directory.Exists(verifyRoot)) Directory.Delete(verifyRoot, recursive: true);
+                    }
+                    break;
+                case "install":
+                    var packagePath = GetCommandArgument(args, 2);
+                    var workRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_cli", Guid.NewGuid().ToString("N"));
+                    try
+                    {
+                        var probe = packages.Prepare(packagePath, workRoot);
+                        if (packages.Get(probe.Id) is not null && !args.Contains("--replace", StringComparer.OrdinalIgnoreCase))
+                            throw new InvalidOperationException($"Adapter {probe.Id} is already installed. Pass --replace to replace it.");
+                        var enabled = !args.Contains("--no-enable", StringComparer.OrdinalIgnoreCase);
+                        var result = packages.Install(probe, enabled);
+                        global::System.Console.WriteLine($"Installed {result.Id} ({(result.Enabled ? "enabled" : "disabled")}) to {result.AssemblyPath}");
+                    }
+                    finally
+                    {
+                        if (Directory.Exists(workRoot)) Directory.Delete(workRoot, recursive: true);
+                    }
+                    break;
+                case "remove":
+                case "uninstall":
+                    var id = GetCommandArgument(args, 2);
+                    packages.Uninstall(id);
+                    global::System.Console.WriteLine($"Removed adapter {id}.");
+                    break;
+                default:
+                    global::System.Console.WriteLine("Adapter management commands:");
+                    global::System.Console.WriteLine("  ShiroBot adapter list [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter verify <dll|zip> [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter install <dll|zip> [--replace] [--no-enable] [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter remove <id> [--adapter-dir <path>]");
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            global::System.Console.Error.WriteLine("Adapter command failed: " + ex.Message);
+            Environment.ExitCode = 1;
+        }
+
+        return Task.FromResult(true);
+    }
+
+    private static string GetCommandArgument(string[] args, int index)
+    {
+        if (args.Length <= index || args[index].StartsWith("--", StringComparison.Ordinal))
+            throw new InvalidOperationException("Missing adapter command argument.");
+        return args[index];
+    }
+
+    private static string? GetOptionValue(string[] args, string option)
+    {
+        for (var index = 0; index < args.Length - 1; index++)
+        {
+            if (string.Equals(args[index], option, StringComparison.OrdinalIgnoreCase)) return args[index + 1];
+        }
+        return null;
     }
 
 }

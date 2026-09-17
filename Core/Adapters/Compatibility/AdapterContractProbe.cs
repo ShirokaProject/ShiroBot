@@ -30,6 +30,7 @@ internal static class AdapterContractProbe
 
             var reader = peReader.GetMetadataReader();
             var compatibility = ReadApiCompatibility(reader);
+            AdapterProbeInfo? result = null;
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var type = reader.GetTypeDefinition(typeHandle);
@@ -48,13 +49,25 @@ internal static class AdapterContractProbe
                     }
                 }
 
-                if (adapterAttribute is { } adapter)
-                    return new AdapterProbeInfo(
-                        adapter.Id,
-                        adapter.SharedAssemblies,
-                        compatibility.MinimumVersion,
-                        compatibility.MaximumVersion);
+                if (adapterAttribute is not { } adapter) continue;
+                if (result is not null)
+                    throw new InvalidOperationException("程序集包含多个 BotAdapter 入口。");
+                result = new AdapterProbeInfo(
+                    adapter.Id,
+                    adapter.SharedAssemblies,
+                    compatibility.MinimumVersion,
+                    compatibility.MaximumVersion,
+                    adapter.Name,
+                    adapter.Version,
+                    adapter.Description,
+                    adapter.Protocol);
             }
+
+            return result;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
         }
         catch
         {
@@ -86,6 +99,10 @@ internal static class AdapterContractProbe
         if (string.IsNullOrWhiteSpace(id)) return false;
 
         string? sharedAssemblies = null;
+        string? name = null;
+        string? version = null;
+        string? description = null;
+        string? protocol = null;
 
         var namedArgumentCount = blob.ReadUInt16();
         for (var i = 0; i < namedArgumentCount; i++)
@@ -103,6 +120,16 @@ internal static class AdapterContractProbe
                 typeCode == SerializedTypeString)
             {
                 sharedAssemblies = blob.ReadSerializedString();
+                continue;
+            }
+
+            if (typeCode == SerializedTypeString)
+            {
+                var value = blob.ReadSerializedString();
+                if (string.Equals(memberName, nameof(BotAdapterAttribute.Name), StringComparison.Ordinal)) name = value;
+                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Version), StringComparison.Ordinal)) version = value;
+                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Description), StringComparison.Ordinal)) description = value;
+                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Protocol), StringComparison.Ordinal)) protocol = value;
                 continue;
             }
 
@@ -131,7 +158,7 @@ internal static class AdapterContractProbe
             : sharedAssemblies.Split(
                 ';',
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        attribute = new RawAdapterAttribute(id, contracts);
+        attribute = new RawAdapterAttribute(id, contracts, name, version, description, protocol);
         return true;
     }
 
@@ -198,9 +225,14 @@ internal static class AdapterContractProbe
         string Id,
         IReadOnlyList<string> SharedAssemblies,
         string MinimumApiVersion,
-        string MaximumApiVersion);
+        string MaximumApiVersion,
+        string? Name,
+        string? Version,
+        string? Description,
+        string? Protocol);
 
-    private readonly record struct RawAdapterAttribute(string Id, IReadOnlyList<string> SharedAssemblies);
+    private readonly record struct RawAdapterAttribute(
+        string Id, IReadOnlyList<string> SharedAssemblies, string? Name, string? Version, string? Description, string? Protocol);
 
     private readonly record struct RawApiCompatibilityAttribute(string MinimumVersion, string MaximumVersion);
 }
