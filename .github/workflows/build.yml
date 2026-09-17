@@ -228,21 +228,24 @@ jobs:
             done
           } > RELEASE_NOTES.md
 
-      - name: Upload release assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-assets
-          path: |
-            artifacts/archives/*
-            artifacts/nuget/*.nupkg
-            artifacts/nuget/*.snupkg
-          if-no-files-found: error
-
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: RELEASE_NOTES.md
-          files: |
-            artifacts/archives/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          tag='${{ github.ref_name }}'
+          repo='${{ github.repository }}'
+
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release edit "$tag" --repo "$repo" --notes-file RELEASE_NOTES.md
+          else
+            gh release create "$tag" --repo "$repo" --title "$tag" --notes-file RELEASE_NOTES.md --draft
+          fi
+
+          gh release upload "$tag" --repo "$repo" --clobber \
+            artifacts/archives/*.zip \
             artifacts/nuget/*.nupkg
-          fail_on_unmatched_files: true
+
+          gh release edit "$tag" --repo "$repo" --draft=false
+          echo "已发布 Release ${tag}"
