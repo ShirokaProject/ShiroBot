@@ -787,15 +787,15 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                 return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
             }
 
-            if (!plugin.Supports<IPluginWebActionProvider>())
+            if (!plugin.Supports<IPluginActionProvider>())
             {
                 return Results.Ok(new { actions = Array.Empty<object>() });
             }
 
             try
             {
-                var dispatch = await plugin.DispatchAsync<IPluginWebActionProvider, IReadOnlyList<PluginWebActionDescriptor>>(
-                    provider => Task.FromResult(provider.WebActions)).ConfigureAwait(false);
+                var dispatch = await plugin.DispatchAsync<IPluginActionProvider, IReadOnlyList<PluginActionDescriptor>>(
+                    provider => Task.FromResult(provider.Actions)).ConfigureAwait(false);
                 if (!dispatch.Dispatched)
                 {
                     return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
@@ -839,24 +839,24 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             }
 
             var plugin = FindLoadedPlugin(pluginManager, id);
-            if (plugin is null || !plugin.Supports<IPluginWebActionProvider>())
+            if (plugin is null || !plugin.Supports<IPluginActionProvider>())
             {
                 return Results.NotFound(new { error = "action_not_found", message = $"插件 {id} 未提供该操作。" });
             }
 
             try
             {
-                var dispatch = await plugin.DispatchAsync<IPluginWebActionProvider, PluginActionExecution>(
+                var dispatch = await plugin.DispatchAsync<IPluginActionProvider, PluginActionExecution>(
                     async provider =>
                     {
-                        var descriptor = provider.WebActions.FirstOrDefault(action =>
+                        var descriptor = provider.Actions.FirstOrDefault(action =>
                             string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
                         if (descriptor is null)
                         {
                             return new PluginActionExecution(false, null);
                         }
 
-                        var actionResult = await provider.ExecuteWebActionAsync(actionId, context.RequestAborted)
+                        var actionResult = await provider.ExecuteActionAsync(actionId, context.RequestAborted)
                             .ConfigureAwait(false);
                         return new PluginActionExecution(true, actionResult);
                     }).ConfigureAwait(false);
@@ -2538,7 +2538,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     private sealed record PluginConfigTarget(string Id, string AssemblyPath);
 
-    private sealed record PluginActionExecution(bool Found, PluginWebActionResult? Result);
+    private sealed record PluginActionExecution(bool Found, PluginActionResult? Result);
 
     private sealed record ConfigSchemaItem(
         [property: JsonPropertyName("key")] string Key,
