@@ -10,7 +10,6 @@ using ShiroBot.Hosting.Events;
 using ShiroBot.Plugins;
 using ShiroBot.Adapters;
 using ShiroBot.Components.Reloading;
-using ShiroBot.SDK.Plugin;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
@@ -19,7 +18,6 @@ using CH = ShiroBot.Console.ConsoleOutput;
 namespace ShiroBot.Hosting.Commands;
 
 internal sealed class HostCommandHandler(
-    BotContext botContext,
     PluginManager pluginManager,
     HostEventDispatcher eventDispatcher,
     PluginRouteConfig routePolicy,
@@ -188,93 +186,8 @@ internal sealed class HostCommandHandler(
         }
     }
 
-    public async Task HandleDirectMessageAsync(MessageEvent message)
-    {
-        if (await TryHandleHostPrivateCommandAsync(message))
-            return;
-        await eventDispatcher.PublishAsync(message);
-    }
-
-    private async Task<bool> TryHandleHostPrivateCommandAsync(MessageEvent message)
-    {
-        if (!botContext.OwnerList.Contains(message.Sender.Id)) return false;
-
-        var input = message.GetPlainText().Trim();
-        if (string.IsNullOrWhiteSpace(input)) return false;
-
-        var splitInput = input.Split(null as char[], StringSplitOptions.RemoveEmptyEntries);
-        if (splitInput.Length == 0) return false;
-
-        switch (NormalizeCommand(splitInput[0]))
-        {
-            case "help":
-            {
-                var orderedCommands = ConsoleCommands
-                    .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                var nameWidth = Math.Max(orderedCommands.Max(command => command.Name.Length), 8) + 2;
-                var helpText = new StringBuilder()
-                    .AppendLine("可用命令")
-                    .AppendLine(new string('-', 24));
-
-                foreach (var command in orderedCommands)
-                    helpText.Append("  ")
-                        .Append(command.Name.PadRight(nameWidth))
-                        .AppendLine(command.Description);
-
-                await botContext.Message.ReplyAsync(message, helpText.ToString().TrimEnd());
-                return true;
-            }
-            case "plugins":
-            {
-                await botContext.Message.ReplyAsync(
-                    message,
-                    BuildLoadedPluginsText(pluginManager.GetLoadedPluginSnapshot()));
-                return true;
-            }
-            case "update":
-            {
-                await botContext.Message.ReplyAsync(message, await HandleUpdateCommandAsync(splitInput));
-                return true;
-            }
-            case "api":
-            {
-                await botContext.Message.ReplyAsync(message, HandleApiCommand(splitInput));
-                return true;
-            }
-            case "load":
-            {
-                if (splitInput.Length < 2)
-                {
-                    await botContext.Message.ReplyAsync(message, "用法: load <插件名|dll路径>");
-                    return true;
-                }
-
-                await pluginManager.ScheduleLoadPluginByName(
-                    eventDispatcher,
-                    routePolicy,
-                    splitInput[1]);
-                await botContext.Message.ReplyAsync(message, $"已加入热加载队列: {splitInput[1]}");
-                return true;
-            }
-            case "unload":
-            {
-                if (splitInput.Length < 2)
-                {
-                    await botContext.Message.ReplyAsync(message, "用法: unload <插件名>");
-                    return true;
-                }
-
-                await pluginManager.ScheduleUnloadPluginByName(
-                    eventDispatcher,
-                    splitInput[1]);
-                await botContext.Message.ReplyAsync(message, $"已加入热卸载队列: {splitInput[1]}");
-                return true;
-            }
-            default:
-                return false;
-        }
-    }
+    public Task HandleDirectMessageAsync(MessageEvent message) =>
+        eventDispatcher.PublishAsync(message);
 
     private string HandleApiCommand(string[] splitInput)
     {
