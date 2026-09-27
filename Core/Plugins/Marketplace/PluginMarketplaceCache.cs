@@ -22,15 +22,16 @@ internal sealed class PluginMarketplaceCache
 
     public async Task<JsonObject> GetAsync(
         IReadOnlyCollection<MarketplaceInstalledPlugin> installedPlugins,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forceRefresh = false)
     {
-        var marketplace = await GetMarketplaceAsync(cancellationToken).ConfigureAwait(false);
+        var marketplace = await GetMarketplaceAsync(forceRefresh, cancellationToken).ConfigureAwait(false);
         return AddInstalledState(marketplace, installedPlugins);
     }
 
-    private async Task<JsonObject> GetMarketplaceAsync(CancellationToken cancellationToken)
+    private async Task<JsonObject> GetMarketplaceAsync(bool forceRefresh, CancellationToken cancellationToken)
     {
-        if (_memoryCache is not null && DateTimeOffset.UtcNow - _memoryCachedAt < CacheDuration)
+        if (!forceRefresh && IsFresh(_memoryCachedAt) && _memoryCache is not null)
         {
             return (JsonObject)_memoryCache.DeepClone();
         }
@@ -38,13 +39,13 @@ internal sealed class PluginMarketplaceCache
         await _refreshLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_memoryCache is not null && DateTimeOffset.UtcNow - _memoryCachedAt < CacheDuration)
+            if (!forceRefresh && IsFresh(_memoryCachedAt) && _memoryCache is not null)
             {
                 return (JsonObject)_memoryCache.DeepClone();
             }
 
             var diskCache = await TryReadDiskCacheAsync(cancellationToken).ConfigureAwait(false);
-            if (diskCache.Document is not null && DateTimeOffset.UtcNow - diskCache.CachedAt < CacheDuration)
+            if (!forceRefresh && diskCache.Document is not null && IsFresh(diskCache.CachedAt))
             {
                 SetMemoryCache(diskCache.Document, diskCache.CachedAt);
                 return (JsonObject)diskCache.Document.DeepClone();
@@ -80,6 +81,9 @@ internal sealed class PluginMarketplaceCache
             _refreshLock.Release();
         }
     }
+
+    private static bool IsFresh(DateTimeOffset cachedAt) =>
+        DateTimeOffset.UtcNow - cachedAt < CacheDuration;
 
     private static JsonObject AddInstalledState(
         JsonObject source,

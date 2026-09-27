@@ -442,9 +442,12 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         {
             try
             {
+                var forceRefresh = context.Request.Query.TryGetValue("refresh", out var refreshValue) &&
+                                   (refreshValue == "1" || string.Equals(refreshValue, "true", StringComparison.OrdinalIgnoreCase));
                 var marketplace = await MarketplaceCache.GetAsync(
                     GetMarketplaceInstalledPlugins(pluginManager),
-                    context.RequestAborted).ConfigureAwait(false);
+                    context.RequestAborted,
+                    forceRefresh).ConfigureAwait(false);
                 return Results.Json(marketplace);
             }
             catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
