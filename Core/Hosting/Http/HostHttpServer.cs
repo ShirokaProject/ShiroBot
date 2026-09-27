@@ -578,7 +578,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                     DeletePluginPath(pluginManager.PluginRootPath, installed.AssemblyPath, package.Info.Id);
                 }
 
-                InstallUploadedPlugin(pluginManager.PluginRootPath, package);
+                InstallUploadedPlugin(pluginManager, package);
                 if (request.Enable)
                 {
                     await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id).ConfigureAwait(false);
@@ -2043,21 +2043,29 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         return PreparePluginUploadPackage(pluginManager, packagePath);
     }
 
-    private static void InstallUploadedPlugin(string pluginRootPath, PluginUploadPackage package)
+    private static void InstallUploadedPlugin(PluginManager pluginManager, PluginUploadPackage package)
     {
+        var pluginRootPath = pluginManager.PluginRootPath;
         Directory.CreateDirectory(pluginRootPath);
         if (package.Type.Equals("dll", StringComparison.OrdinalIgnoreCase))
         {
             var targetPath = Path.Combine(pluginRootPath, Path.GetFileName(package.EntryAssemblyPath));
+            // The caller loads the plugin itself; without this the file watcher
+            // would queue a second, redundant load for the same assembly.
+            pluginManager.SuppressWatcherPath(targetPath);
             if (File.Exists(targetPath)) File.Delete(targetPath);
             File.Copy(package.EntryAssemblyPath, targetPath);
+            pluginManager.SuppressWatcherPath(targetPath);
             return;
         }
 
         var sourceRoot = GetZipInstallSourceRoot(package.RootPath, package.EntryAssemblyPath);
         var targetRoot = Path.Combine(pluginRootPath, Path.GetFileNameWithoutExtension(package.EntryAssemblyPath));
+        pluginManager.SuppressWatcherPath(targetRoot);
         if (Directory.Exists(targetRoot)) Directory.Delete(targetRoot, recursive: true);
         CopyDirectory(sourceRoot, targetRoot);
+        // Restart the window so it is measured from the last write, not the first.
+        pluginManager.SuppressWatcherPath(targetRoot);
     }
 
     private static string GetZipInstallSourceRoot(string uploadRoot, string entryAssemblyPath)

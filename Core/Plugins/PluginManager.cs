@@ -373,7 +373,7 @@ internal sealed class PluginManager(
         }
     }
 
-    private void SuppressWatcherPath(string path, int seconds = 10)
+    public void SuppressWatcherPath(string path, int seconds = 10)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         _suppressedWatcherPaths[NormalizeWatcherPath(path)] = DateTime.UtcNow.AddSeconds(seconds);
