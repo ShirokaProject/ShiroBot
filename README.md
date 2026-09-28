@@ -39,6 +39,31 @@ dotnet build .\ShiroBot.slnx
 
 Avalonia、Skia 和 HarfBuzz 从 0.7.0 起属于统一宿主，不再提供 `lite` 构建。宿主明确保持 `PublishTrimmed=false`，因为插件发现、配置 schema 和程序集加载依赖反射与 metadata，当前不具备安全裁剪条件。
 
+## Docker 与 Gitea 发布
+
+本仓库的 `Dockerfile` 生成 `linux-x64` 自包含单文件宿主；`compose.yaml` 默认从 `registry.oeo.one/justme/shirobot:latest` 拉取镜像。启动前先登录 zot，并确保 Docker Engine 已运行：
+
+```powershell
+docker login registry.oeo.one
+docker compose pull
+docker compose up -d
+docker compose logs -f shirobot
+```
+
+首次启动会在 `docker-data/config.toml` 生成容器配置和 API 鉴权密钥。`docker-data/plugins/` 与 `docker-data/adapters/` 分别保存插件和适配器，重建容器不会删除。Dashboard 仅绑定本机 `http://127.0.0.1:7001/dashboard/`；远程访问请通过反向代理并保留 API 鉴权。指定镜像版本时设置 `SHIROBOT_IMAGE_TAG=v...` 后再运行 `docker compose pull` 和 `docker compose up -d`。
+
+Gitea 推送 `v*` tag 后，Woodpecker 的 `.woodpecker/release.yml` 先验证项目，再发布 Linux 自包含单文件到 `registry.oeo.one/justme/shirobot-linux-x64:<tag>`（OCI artifact），最后发布 `registry.oeo.one/justme/shirobot:<tag>` 和 `:latest` 镜像。Woodpecker 仓库需要两个仅在 tag 事件使用的密钥 `zot_username` 与 `zot_password`。Linux 二进制可用 ORAS 下载：
+
+```bash
+oras login registry.oeo.one
+oras pull registry.oeo.one/justme/shirobot-linux-x64:<tag>
+sha256sum -c ShiroBot.sha256
+chmod +x ShiroBot
+./ShiroBot --no-console
+```
+
+本地从源码构建镜像时运行 `docker build -t shirobot:local .`。宿主仍通过 DLL 动态加载插件与适配器，因此发布产物没有启用 NativeAOT。
+
 ## 项目模板
 
 安装模板包：
