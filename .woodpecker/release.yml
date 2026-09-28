@@ -53,7 +53,7 @@ steps:
   - name: build-image
     image: bash
     commands:
-      - buildah bud --layers --network=host -f Dockerfile -t "localhost/shirobot:${CI_COMMIT_SHA}" .
+      - buildah bud --layers --network=host --target prebuilt -f Dockerfile -t "localhost/shirobot:${CI_COMMIT_SHA}" .
 
   - name: push-image-to-zot
     image: bash
