@@ -1,6 +1,7 @@
 when:
   - event: tag
     ref: refs/tags/v*
+  - event: manual
 
 labels:
   platform: linux/amd64
@@ -18,7 +19,7 @@ steps:
       - git checkout --detach FETCH_HEAD
 
   - name: publish-linux-x64
-    image: mcr.microsoft.com/dotnet/sdk:10.0
+    image: bash
     commands:
       - dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release
       - dotnet publish Core/ShiroBot.csproj -c Release -r linux-x64 --self-contained true -o artifacts/publish/linux-x64 -p:PublishSingleFile=true -p:PublishAot=false -p:IncludeNativeLibrariesForSelfExtract=true -p:RequireDashboard=true
@@ -29,7 +30,9 @@ steps:
       - cd artifacts/release && sha256sum ShiroBot > ShiroBot.sha256
 
   - name: push-binary-to-zot
-    image: alpine:3.21
+    image: bash
+    when:
+      - event: tag
     environment:
       ZOT_USERNAME:
         from_secret: zot_username
@@ -38,21 +41,35 @@ steps:
     commands:
       - |
         set -eu
-        apk add --no-cache curl tar ca-certificates
-        curl -fsSL https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz -o /tmp/oras.tgz
-        tar -xzf /tmp/oras.tgz -C /usr/local/bin oras
-        printf '%s' "$ZOT_PASSWORD" | oras login registry.oeo.one -u "$ZOT_USERNAME" --password-stdin
+        tool_dir="$(mktemp -d)"
+        trap 'rm -f "$tool_dir/oras" "$tool_dir/oras.tgz" "$tool_dir/auth.json"; rmdir "$tool_dir"' EXIT
+        curl -fsSL https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz -o "$tool_dir/oras.tgz"
+        tar -xzf "$tool_dir/oras.tgz" -C "$tool_dir" oras
+        printf '%s' "$ZOT_PASSWORD" | "$tool_dir/oras" login --registry-config "$tool_dir/auth.json" registry.oeo.one -u "$ZOT_USERNAME" --password-stdin
         cd artifacts/release
-        oras push --artifact-type application/vnd.shiro.bot.binary.v1 "registry.oeo.one/justme/shirobot-linux-x64:${CI_COMMIT_TAG}" ShiroBot:application/octet-stream ShiroBot.sha256:text/plain
+        "$tool_dir/oras" push --registry-config "$tool_dir/auth.json" --artifact-type application/vnd.shiro.bot.binary.v1 "registry.oeo.one/justme/shirobot-linux-x64:${CI_COMMIT_TAG}" ShiroBot:application/octet-stream ShiroBot.sha256:text/plain
+
+  - name: build-image
+    image: bash
+    commands:
+      - buildah bud --layers -f Dockerfile -t "localhost/shirobot:${CI_COMMIT_SHA}" .
 
   - name: push-image-to-zot
-    image: woodpeckerci/plugin-kaniko:2.3.3
-    settings:
-      registry: registry.oeo.one
-      repo: justme/shirobot
-      tags: "${CI_COMMIT_TAG},latest"
-      dockerfile: Dockerfile
-      username:
+    image: bash
+    when:
+      - event: tag
+    environment:
+      ZOT_USERNAME:
         from_secret: zot_username
-      password:
+      ZOT_PASSWORD:
         from_secret: zot_password
+    commands:
+      - |
+        set -eu
+        auth_dir="$(mktemp -d)"
+        trap 'rm -f "$auth_dir/auth.json"; rmdir "$auth_dir"' EXIT
+        printf '%s' "$ZOT_PASSWORD" | buildah login --authfile "$auth_dir/auth.json" -u "$ZOT_USERNAME" --password-stdin registry.oeo.one
+        buildah tag "localhost/shirobot:${CI_COMMIT_SHA}" "registry.oeo.one/justme/shirobot:${CI_COMMIT_TAG}"
+        buildah push --authfile "$auth_dir/auth.json" "registry.oeo.one/justme/shirobot:${CI_COMMIT_TAG}"
+        buildah tag "localhost/shirobot:${CI_COMMIT_SHA}" registry.oeo.one/justme/shirobot:latest
+        buildah push --authfile "$auth_dir/auth.json" registry.oeo.one/justme/shirobot:latest
