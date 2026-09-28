@@ -52,7 +52,7 @@ docker compose logs -f shirobot
 
 首次启动会在 `docker-data/config.toml` 生成容器配置和 API 鉴权密钥。`docker-data/plugins/` 与 `docker-data/adapters/` 分别保存插件和适配器，重建容器不会删除。Dashboard 仅绑定本机 `http://127.0.0.1:7001/dashboard/`；远程访问请通过反向代理并保留 API 鉴权。指定镜像版本时设置 `SHIROBOT_IMAGE_TAG=v...` 后再运行 `docker compose pull` 和 `docker compose up -d`。
 
-Gitea 推送 `v*` tag 后，Woodpecker 的 `.woodpecker/release.yml` 先验证项目，再发布 Linux 自包含单文件到 `registry.oeo.one/justme/shirobot-linux-x64:<tag>`（OCI artifact），最后发布 `registry.oeo.one/justme/shirobot:<tag>` 和 `:latest` 镜像。Woodpecker 仓库需要两个仅在 tag 事件使用的密钥 `zot_username` 与 `zot_password`。Linux 二进制可用 ORAS 下载：
+Gitea 推送 `v*` tag 后，Woodpecker 的 `.woodpecker/release.yml` 先验证并生成 Linux 自包含单文件，随后并行打包二进制和用同一产物构建 Docker 镜像。两步成功后，发布下载包到 `registry.oeo.one/justme/shirobot-linux-x64:<tag>`（OCI artifact），并发布 `registry.oeo.one/justme/shirobot:<tag>` 与 `:latest` 镜像。Woodpecker 仓库需要两个仅在 tag 事件使用的密钥 `zot_username` 与 `zot_password`。Linux 二进制可用 ORAS 下载：
 
 ```bash
 oras login registry.oeo.one
