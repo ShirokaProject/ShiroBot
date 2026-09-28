@@ -48,6 +48,7 @@ export default defineConfig({
           items: [
             { text: '接收消息与事件', link: '/plugin/routes-events' },
             { text: '调用 API', link: '/plugin/apis' },
+            { text: '插件操作与控制台', link: '/plugin/actions' },
             { text: '上下文、配置与日志', link: '/plugin/context-config' }
           ]
         },

@@ -1,6 +1,6 @@
 # 创建第一个插件
 
-本章创建一个可以响应群聊和私聊消息的单 DLL 插件。后续按用途阅读 [接收消息与事件](/plugin/routes-events)、[调用 API](/plugin/apis) 和 [Model](/plugin/models)。
+本章创建一个可以响应群聊和私聊消息的单 DLL 插件。后续按用途阅读 [接收消息与事件](/plugin/routes-events)、[调用 API](/plugin/apis)、[插件操作与控制台](/plugin/actions) 和 [Model](/plugin/models)。
 
 ## 环境要求
 
@@ -13,7 +13,7 @@
 ```bash
 dotnet new classlib -n HelloPlugin -f net10.0
 cd HelloPlugin
-dotnet add package ShiroBot.SDK --version 0.9.2
+dotnet add package ShiroBot.SDK --version 0.9.3
 ```
 
 项目文件可以保持精简：
@@ -27,7 +27,7 @@ dotnet add package ShiroBot.SDK --version 0.9.2
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ShiroBot.SDK" Version="0.9.2" />
+    <PackageReference Include="ShiroBot.SDK" Version="0.9.3" />
   </ItemGroup>
 </Project>
 ```
@@ -130,6 +130,8 @@ load HelloPlugin
 
 然后发送 `#ping` 或 `#hello ShiroBot` 验证插件。
 
+使用 `dotnet new shirobot-plugin` 生成的项目会带 `.github/workflows/release.yml`。推送代码或提交 PR 时自动构建；将 `Plugin.cs` 中的 `Version` 改为目标版本后推送同版本 tag（如 `v1.0.0`），Action 会把 Release 构建输出的 ZIP 和入口 DLL 上传到 GitHub Release。
+
 ## 元数据字段
 
 | 字段 | 用途 |
@@ -145,27 +147,4 @@ load HelloPlugin
 
 ## 插件操作
 
-插件可以选择实现 `IPluginActionProvider`，只声明一次操作，即可同时在宿主控制台和受 Bearer 鉴权保护的 Dashboard 中使用，无需接触 `HttpContext`：
-
-```csharp
-public sealed class Main : PluginBase, IPluginActionProvider
-{
-    public IReadOnlyList<PluginActionDescriptor> Actions { get; } =
-    [
-        new("refresh-cache", "刷新缓存", "重新拉取远端数据", "primary"),
-        new("clear-data", "清空数据", Tone: "danger", RequiresConfirmation: true,
-            ConfirmationText: "确认清空插件数据？")
-    ];
-
-    public Task<PluginActionResult> ExecuteActionAsync(
-        string actionId,
-        CancellationToken cancellationToken = default) => actionId switch
-        {
-            "refresh-cache" => Task.FromResult(new PluginActionResult(true, "缓存已刷新", Refresh: true)),
-            "clear-data" => Task.FromResult(new PluginActionResult(true, "数据已清空", Refresh: true)),
-            _ => Task.FromResult(new PluginActionResult(false, "未知操作"))
-        };
-}
-```
-
-控制台输入 `actions` 可查看操作，输入 `action HelloPlugin refresh-cache` 可执行。`help` 也会列出插件操作；需要确认的操作会在控制台询问。Dashboard 通过 `GET /api/v1/plugins/{id}/actions` 获取描述，通过 `POST /api/v1/plugins/{id}/actions/{actionId}` 执行。`PluginActionResult.Refresh` 提示 Dashboard 刷新。调用会进入插件的活动执行保护，热卸载会等待操作结束。
+需要向控制台和 Dashboard 暴露插件操作时，实现 `IPluginActionProvider`。接口、示例和确认行为见[插件操作与控制台](/plugin/actions)。
