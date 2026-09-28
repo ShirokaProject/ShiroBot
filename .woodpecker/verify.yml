@@ -21,5 +21,8 @@ steps:
     commands:
       - command -v dotnet
       - command -v docker || true
+      - command -v podman || true
+      - command -v buildah || true
+      - command -v oras || true
       - dotnet build Shirobot.slnx -c Release
       - dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
