@@ -20,18 +20,31 @@ steps:
 
   - name: publish-linux-x64
     image: bash
+    depends_on: [clone-public]
     commands:
       - dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release
       - dotnet publish Core/ShiroBot.csproj -c Release -r linux-x64 --self-contained true -o artifacts/publish/linux-x64 -p:PublishSingleFile=true -p:PublishAot=false -p:IncludeNativeLibrariesForSelfExtract=true -p:RequireDashboard=true
       - test -x artifacts/publish/linux-x64/ShiroBot
       - test ! -f artifacts/publish/linux-x64/ShiroBot.SDK.dll
+
+  - name: package-linux-x64
+    image: bash
+    depends_on: [publish-linux-x64]
+    commands:
       - mkdir -p artifacts/release
       - cp artifacts/publish/linux-x64/ShiroBot artifacts/release/ShiroBot
       - sha256sum artifacts/release/ShiroBot | sed 's#artifacts/release/##' > artifacts/release/ShiroBot.sha256
       - gzip -1 -n artifacts/release/ShiroBot
 
+  - name: build-image
+    image: bash
+    depends_on: [publish-linux-x64]
+    commands:
+      - buildah bud --layers --network=host --target prebuilt -f Dockerfile -t "localhost/shirobot:${CI_COMMIT_SHA}" .
+
   - name: push-binary-to-zot
     image: bash
+    depends_on: [package-linux-x64, build-image]
     when:
       - event: tag
     environment:
@@ -50,13 +63,9 @@ steps:
         cd artifacts/release
         "$tool_dir/oras" push --registry-config "$tool_dir/auth.json" --artifact-type application/vnd.shiro.bot.binary.v1 "registry.oeo.one/justme/shirobot-linux-x64:${CI_COMMIT_TAG}" ShiroBot.gz:application/gzip ShiroBot.sha256:text/plain
 
-  - name: build-image
-    image: bash
-    commands:
-      - buildah bud --layers --network=host --target prebuilt -f Dockerfile -t "localhost/shirobot:${CI_COMMIT_SHA}" .
-
   - name: push-image-to-zot
     image: bash
+    depends_on: [package-linux-x64, build-image]
     when:
       - event: tag
     environment:
