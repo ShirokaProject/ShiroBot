@@ -57,6 +57,7 @@ Gitea 推送 `v*` tag 后，Woodpecker 的 `.woodpecker/release.yml` 先验证�
 ```bash
 oras login registry.oeo.one
 oras pull registry.oeo.one/justme/shirobot-linux-x64:<tag>
+gzip -d ShiroBot.gz
 sha256sum -c ShiroBot.sha256
 chmod +x ShiroBot
 ./ShiroBot --no-console

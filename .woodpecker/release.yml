@@ -27,7 +27,8 @@ steps:
       - test ! -f artifacts/publish/linux-x64/ShiroBot.SDK.dll
       - mkdir -p artifacts/release
       - cp artifacts/publish/linux-x64/ShiroBot artifacts/release/ShiroBot
-      - cd artifacts/release && sha256sum ShiroBot > ShiroBot.sha256
+      - sha256sum artifacts/release/ShiroBot | sed 's#artifacts/release/##' > artifacts/release/ShiroBot.sha256
+      - gzip -1 -n artifacts/release/ShiroBot
 
   - name: push-binary-to-zot
     image: bash
@@ -47,7 +48,7 @@ steps:
         tar -xzf "$tool_dir/oras.tgz" -C "$tool_dir" oras
         printf '%s' "$ZOT_PASSWORD" | "$tool_dir/oras" login --registry-config "$tool_dir/auth.json" registry.oeo.one -u "$ZOT_USERNAME" --password-stdin
         cd artifacts/release
-        "$tool_dir/oras" push --registry-config "$tool_dir/auth.json" --artifact-type application/vnd.shiro.bot.binary.v1 "registry.oeo.one/justme/shirobot-linux-x64:${CI_COMMIT_TAG}" ShiroBot:application/octet-stream ShiroBot.sha256:text/plain
+        "$tool_dir/oras" push --registry-config "$tool_dir/auth.json" --artifact-type application/vnd.shiro.bot.binary.v1 "registry.oeo.one/justme/shirobot-linux-x64:${CI_COMMIT_TAG}" ShiroBot.gz:application/gzip ShiroBot.sha256:text/plain
 
   - name: build-image
     image: bash
