@@ -1,6 +1,6 @@
 # 创建第一个插件
 
-本章创建一个可以响应群聊和好友消息的单 DLL 插件。
+本章创建一个可以响应群聊和私聊消息的单 DLL 插件。后续按用途阅读 [接收消息与事件](/plugin/routes-events)、[调用 API](/plugin/apis) 和 [Model](/plugin/models)。
 
 ## 环境要求
 
@@ -41,9 +41,9 @@ dotnet add package ShiroBot.SDK --version 0.9.2
 删除默认的 `Class1.cs`，创建 `HelloPlugin.cs`：
 
 ```csharp
-using ShiroBot.Model.Common;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
+using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
 namespace HelloPlugin;
@@ -63,16 +63,16 @@ public sealed class Main : PluginBase
     protected override void ConfigureRoutes()
     {
         GroupCommands.MapExact("#ping", HandleGroupPingAsync);
-        FriendCommands.MapPrefix("#hello", HandleFriendHelloAsync);
+        DirectCommands.MapPrefix("#hello", HandleDirectHelloAsync);
 
         BotLog.Info("HelloPlugin 路由注册完成");
     }
 
-    private Task HandleGroupPingAsync(GroupIncomingMessage message) =>
+    private Task HandleGroupPingAsync(MessageEvent message) =>
         Context.Message.ReplyAsync(message, "pong");
 
-    private Task HandleFriendHelloAsync(FriendIncomingMessage message) =>
-        Context.Message.ReplyAsync(message, $"你好，{message.SenderId}");
+    private Task HandleDirectHelloAsync(MessageEvent message) =>
+        Context.Message.ReplyAsync(message, $"你好，{message.Sender.Id}");
 }
 ```
 
@@ -143,25 +143,29 @@ load HelloPlugin
 | `GithubRepo` | GitHub 仓库，例如 `owner/repo` |
 | `IsPluginSingleFile` | 告诉宿主该 DLL 可以直接在插件根目录加载 |
 
-## Dashboard Actions
+## 插件操作
 
-插件可以选择实现 `IPluginWebActionProvider`，向受 Bearer 鉴权保护的 Dashboard API 暴露不依赖 `HttpContext` 的管理操作：
+插件可以选择实现 `IPluginActionProvider`，只声明一次操作，即可同时在宿主控制台和受 Bearer 鉴权保护的 Dashboard 中使用，无需接触 `HttpContext`：
 
 ```csharp
-public sealed class Main : PluginBase, IPluginWebActionProvider
+public sealed class Main : PluginBase, IPluginActionProvider
 {
-    public IReadOnlyList<PluginWebActionDescriptor> WebActions { get; } =
+    public IReadOnlyList<PluginActionDescriptor> Actions { get; } =
     [
         new("refresh-cache", "刷新缓存", "重新拉取远端数据", "primary"),
         new("clear-data", "清空数据", Tone: "danger", RequiresConfirmation: true,
             ConfirmationText: "确认清空插件数据？")
     ];
 
-    public Task<PluginWebActionResult> ExecuteWebActionAsync(
+    public Task<PluginActionResult> ExecuteActionAsync(
         string actionId,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(new PluginWebActionResult(true, $"已执行 {actionId}", Refresh: true));
+        CancellationToken cancellationToken = default) => actionId switch
+        {
+            "refresh-cache" => Task.FromResult(new PluginActionResult(true, "缓存已刷新", Refresh: true)),
+            "clear-data" => Task.FromResult(new PluginActionResult(true, "数据已清空", Refresh: true)),
+            _ => Task.FromResult(new PluginActionResult(false, "未知操作"))
+        };
 }
 ```
 
-宿主通过 `GET /api/v1/plugins/{id}/actions` 获取描述，通过 `POST /api/v1/plugins/{id}/actions/{actionId}` 执行。调用会进入插件 active-dispatch 防护，热卸载会等待操作结束，插件异常只返回该请求失败。
+控制台输入 `actions` 可查看操作，输入 `action HelloPlugin refresh-cache` 可执行。`help` 也会列出插件操作；需要确认的操作会在控制台询问。Dashboard 通过 `GET /api/v1/plugins/{id}/actions` 获取描述，通过 `POST /api/v1/plugins/{id}/actions/{actionId}` 执行。`PluginActionResult.Refresh` 提示 Dashboard 刷新。调用会进入插件的活动执行保护，热卸载会等待操作结束。

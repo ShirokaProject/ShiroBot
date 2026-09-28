@@ -701,10 +701,14 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
         var exactMatches = archive.Entries
             .Where(entry => string.Equals(Path.GetFileName(entry.FullName), targetFileName, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (exactMatches.Length != 1)
+        var matches = exactMatches.Length > 0
+            ? exactMatches
+            : archive.Entries.Where(entry => entry.FullName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+                                              !string.IsNullOrEmpty(entry.Name)).ToArray();
+        if (matches.Length != 1)
             throw new InvalidOperationException($"插件更新包中未找到唯一入口 DLL: {targetFileName}");
 
-        var entry = exactMatches[0];
+        var entry = matches[0];
         if (entry.Length <= 0) throw new InvalidOperationException($"插件更新包中的入口 DLL 为空: {entry.FullName}");
         using var input = entry.Open();
         using var output = File.Create(destinationPath);

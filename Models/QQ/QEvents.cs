@@ -13,6 +13,8 @@ public abstract record QEventPayload
 /// <summary>PlatformEvent.Kind 常量表。</summary>
 public static class QEventKinds
 {
+    /// <summary>QQ 官方 INTERACTION_CREATE，type=11 的消息按钮点击。</summary>
+    public const string OfficialButtonInteraction = "official_button_interaction";
     public const string FriendNudge = "friend_nudge";
     public const string FriendFileUpload = "friend_file_upload";
     public const string GroupAdminChange = "group_admin_change";
@@ -27,6 +29,28 @@ public static class QEventKinds
     public const string GroupInvitedJoinRequest = "group_invited_join_request";
     public const string GroupDisband = "group_disband";
     public const string PeerPinChange = "peer_pin_change";
+}
+
+/// <summary>
+/// QQ 官方消息按钮回调。适配器将 INTERACTION_CREATE(type=11) 映射到
+/// PlatformEvent.Raw，并使用 QEventKinds.OfficialButtonInteraction 作为 Kind。
+/// </summary>
+public sealed record QOfficialButtonInteraction : QEventPayload
+{
+    /// <summary>互动 ID，用于调用 PUT /interactions/{interaction_id}。</summary>
+    public required string InteractionId { get; init; }
+    /// <summary>按钮 action.data，即事件 data.resolved.button_data。</summary>
+    public required string ButtonData { get; init; }
+    /// <summary>按钮 ID；发送时未指定则可能为空。</summary>
+    public string? ButtonId { get; init; }
+    /// <summary>被点击按钮所在的消息 ID，平台未提供时为空。</summary>
+    public string? MessageId { get; init; }
+    /// <summary>发生点击的目标会话，频道场景可使用 channel_id。</summary>
+    public required QOfficialMessageTarget Target { get; init; }
+    /// <summary>操作者 ID：单聊 user_openid、群聊 group_member_openid、频道 user_id。</summary>
+    public required string UserId { get; init; }
+    /// <summary>频道场景的 guild_id。</summary>
+    public string? GuildId { get; init; }
 }
 
 /// <summary>好友戳一戳。</summary>

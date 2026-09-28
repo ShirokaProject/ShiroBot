@@ -20,6 +20,7 @@ using ShiroBot.Model.Discord;
 using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
 using ShiroBot.Plugins.Compatibility;
+using ShiroBot.SharedContractPluginProbe;
 
 [assembly: ShiroBotApiCompatibility("0.9", "0.9")]
 var serviceRegistry = new PluginServiceRegistry();
@@ -48,6 +49,27 @@ if (serviceRegistry.GetService("consumer", typeof(IVerificationService)) is not 
 
 Console.WriteLine("Plugin service registry verification passed.");
 
+{
+    var pluginRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"), "plugins");
+    var pluginDirectory = Path.Combine(pluginRoot, "SharedContractPluginProbe");
+    Directory.CreateDirectory(pluginDirectory);
+    try
+    {
+        var entryPath = Path.Combine(pluginDirectory, "ShiroBot.SharedContractPluginProbe.dll");
+        File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, entryPath);
+        var entries = PluginManager.EnumeratePluginEntryAssemblies(pluginRoot).ToArray();
+        if (entries.Length != 1 || !string.Equals(entries[0], entryPath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Plugin entry discovery did not recognize an ID-named directory containing a prefixed DLL.");
+        }
+    }
+    finally
+    {
+        Directory.Delete(Path.GetDirectoryName(pluginRoot)!, recursive: true);
+    }
+}
+Console.WriteLine("Plugin ID directory discovery verification passed.");
+
 ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
 ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
 AssertThrows<InvalidOperationException>(() =>
@@ -59,7 +81,7 @@ AssertThrows<InvalidOperationException>(() =>
 Console.WriteLine("Component API version verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.0.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.1.0");
     AssertAssemblyVersion(typeof(QGroup).Assembly, "0.9.0.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "0.9.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "0.9.0.0");
@@ -115,6 +137,30 @@ var discordAdapter = new VerificationAdapter("discord");
 var botContext = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
 botContext.RegisterAdapter(qqAdapter);
 botContext.RegisterAdapter(discordAdapter);
+
+{
+    var pluginRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"), "plugins");
+    var configDirectory = Path.Combine(pluginRoot, "SharedContractPluginProbe");
+    Directory.CreateDirectory(configDirectory);
+    try
+    {
+        var renamedDll = Path.Combine(pluginRoot, "test.dll");
+        File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, renamedDll);
+        var resolver = new SharedAssemblyResolver();
+        var pluginManager = new PluginManager(botContext, resolver, new ModelPackageRegistry(resolver),
+            new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub()) { PluginRootPath = pluginRoot };
+        var candidates = pluginManager.ResolvePluginLoadCandidates(pluginRoot, "SharedContractPluginProbe");
+        if (candidates.Count != 1 || !string.Equals(candidates[0], renamedDll, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Plugin ID lookup failed when a config-only ID directory exists beside a renamed root DLL.");
+        }
+    }
+    finally
+    {
+        Directory.Delete(Path.GetDirectoryName(pluginRoot)!, recursive: true);
+    }
+}
+Console.WriteLine("Renamed plugin ID lookup verification passed.");
 
 await Task.WhenAll(
     SendInAdapterScopeAsync(qqAdapter, "qq-message"),
@@ -235,6 +281,17 @@ try
     ShiroBot.Update.Updater.ExtractPluginEntryFromZip(pluginUpdateZip, extractedPlugin, targetPluginName);
     if (!File.ReadAllBytes(extractedPlugin).SequenceEqual(expectedPluginBytes))
         throw new InvalidOperationException("Plugin ZIP update did not extract the target entry DLL.");
+
+    var renamedPluginZip = Path.Combine(pluginUpdateRoot, "renamed.zip");
+    using (var archive = ZipFile.Open(renamedPluginZip, ZipArchiveMode.Create))
+    {
+        var entry = archive.CreateEntry("ShiroBot.Plugin.Example.dll");
+        using var output = entry.Open();
+        output.Write(expectedPluginBytes);
+    }
+    ShiroBot.Update.Updater.ExtractPluginEntryFromZip(renamedPluginZip, extractedPlugin, "test.dll");
+    if (!File.ReadAllBytes(extractedPlugin).SequenceEqual(expectedPluginBytes))
+        throw new InvalidOperationException("Plugin ZIP update did not handle a locally renamed DLL.");
 
     var ambiguousPluginZip = Path.Combine(pluginUpdateRoot, "ambiguous.zip");
     using (var archive = ZipFile.Open(ambiguousPluginZip, ZipArchiveMode.Create))

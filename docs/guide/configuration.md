@@ -46,12 +46,10 @@ key = ""
 | `github_proxy` | 空 | GitHub 下载代理前缀 |
 | `host_update_repository` | `ShirokaProject/ShiroBot` | 宿主更新仓库 |
 | `avalonia_theme` | `Light` | `Light`、`Dark` 或 `Auto` |
-| `owner_list` | `[]` | 所有者账号列表，拥有宿主管理命令权限 |
+| `owner_list` | `[]` | 所有者账号列表，供插件通过 `Context.IsOwner` / `Context.IsAdmin` 判断 |
 | `admin_list` | `[]` | 管理员账号列表，插件可通过 `Context.IsAdmin` 判断 |
 
-::: warning 所有者命令
-所有者可以通过好友私聊执行插件加载、卸载和 API 管理命令。请只填写可信账号。
-:::
+`owner_list` 和 `admin_list` 供插件判断权限，不开放宿主控制台命令的私聊入口。禁用控制台输入后，仍可使用受鉴权保护的 Dashboard API 管理宿主。
 
 ## 插件群路由
 

@@ -61,6 +61,10 @@ internal sealed class PluginManager(
     {
         _hotReloadEventDispatcher = eventDispatcher;
         _hotReloadRoutePolicy = routePolicy;
+        if (!string.IsNullOrWhiteSpace(PluginRootPath) && Directory.Exists(PluginRootPath))
+        {
+            EnsurePluginRootWatcher(Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar));
+        }
     }
 
     private Lock PluginLifecycleLock { get; } = new();
@@ -91,15 +95,19 @@ internal sealed class PluginManager(
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        foreach (var normalizedPath in from directory in pluginDirectories
-                 let directoryName = new DirectoryInfo(directory).Name
-                 select Path.Combine(directory, $"{directoryName}.dll")
-                 into entryDll
-                 where File.Exists(entryDll) && !sharedAssemblies.Contains(Path.GetFileName(entryDll))
-                 select Path.GetFullPath(entryDll)
-                 into normalizedPath
-                 where yieldedPaths.Add(normalizedPath)
-                 select normalizedPath) yield return normalizedPath;
+        foreach (var directory in pluginDirectories)
+        {
+            foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
+                         .Where(path => !sharedAssemblies.Contains(Path.GetFileName(path)))
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                var normalizedPath = Path.GetFullPath(dll);
+                if (TryProbePluginInfo(normalizedPath) is not null && yieldedPaths.Add(normalizedPath))
+                {
+                    yield return normalizedPath;
+                }
+            }
+        }
     }
 
     public List<string> GetLoadedPluginNames()
@@ -315,11 +323,13 @@ internal sealed class PluginManager(
 
             if (!Directory.Exists(fullPath)) return;
 
-            var directoryName = new DirectoryInfo(fullPath).Name;
-            var entryDll = Path.Combine(fullPath, $"{directoryName}.dll");
-            if (File.Exists(entryDll))
+            foreach (var entryDll in Directory.EnumerateFiles(fullPath, "*.dll", SearchOption.TopDirectoryOnly)
+                         .OrderBy(candidate => candidate, StringComparer.OrdinalIgnoreCase))
             {
-                HandleCreatedPluginFile(entryDll);
+                if (TryProbePluginInfo(entryDll) is not null)
+                {
+                    HandleCreatedPluginFile(entryDll);
+                }
             }
         });
     }
@@ -1172,7 +1182,11 @@ internal sealed class PluginManager(
             if (File.Exists(pluginDirectoryDll)) return [Path.GetFullPath(pluginDirectoryDll)];
 
             var pluginDirectory = Path.Combine(pluginRoot, alias);
-            if (Directory.Exists(pluginDirectory)) return ResolvePluginDirectoryCandidates(pluginDirectory, normalizedInput);
+            if (Directory.Exists(pluginDirectory))
+            {
+                var directoryCandidates = ResolvePluginDirectoryCandidates(pluginDirectory, normalizedInput);
+                if (directoryCandidates.Count > 0) return directoryCandidates;
+            }
         }
 
         var inputAliases = GetPluginNameAliases(normalizedInput).ToHashSet(StringComparer.OrdinalIgnoreCase);
