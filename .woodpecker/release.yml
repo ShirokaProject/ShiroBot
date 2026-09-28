@@ -59,9 +59,10 @@ steps:
         trap 'rm -f "$tool_dir/oras" "$tool_dir/oras.tgz" "$tool_dir/auth.json"; rmdir "$tool_dir"' EXIT
         curl -fsSL https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz -o "$tool_dir/oras.tgz"
         tar -xzf "$tool_dir/oras.tgz" -C "$tool_dir" oras
-        printf '%s' "$ZOT_PASSWORD" | "$tool_dir/oras" login --registry-config "$tool_dir/auth.json" registry.oeo.one -u "$ZOT_USERNAME" --password-stdin
+        zot_host="$(ip route | awk '/default/ {print $3; exit}'):5000"
+        printf '%s' "$ZOT_PASSWORD" | "$tool_dir/oras" login --plain-http --registry-config "$tool_dir/auth.json" "$zot_host" -u "$ZOT_USERNAME" --password-stdin
         cd artifacts/release
-        "$tool_dir/oras" push --registry-config "$tool_dir/auth.json" --artifact-type application/vnd.shiro.bot.binary.v1 "registry.oeo.one/justme/shirobot-linux-x64:${CI_COMMIT_TAG}" ShiroBot.gz:application/gzip ShiroBot.sha256:text/plain
+        "$tool_dir/oras" push --plain-http --registry-config "$tool_dir/auth.json" --artifact-type application/vnd.shiro.bot.binary.v1 "$zot_host/justme/shirobot-linux-x64:${CI_COMMIT_TAG}" ShiroBot.gz:application/gzip ShiroBot.sha256:text/plain
 
   - name: push-image-to-zot
     image: bash
@@ -78,8 +79,9 @@ steps:
         set -eu
         auth_dir="$(mktemp -d)"
         trap 'rm -f "$auth_dir/auth.json"; rmdir "$auth_dir"' EXIT
-        printf '%s' "$ZOT_PASSWORD" | buildah login --authfile "$auth_dir/auth.json" -u "$ZOT_USERNAME" --password-stdin registry.oeo.one
-        buildah tag "localhost/shirobot:${CI_COMMIT_SHA}" "registry.oeo.one/justme/shirobot:${CI_COMMIT_TAG}"
-        buildah push --authfile "$auth_dir/auth.json" "registry.oeo.one/justme/shirobot:${CI_COMMIT_TAG}"
-        buildah tag "localhost/shirobot:${CI_COMMIT_SHA}" registry.oeo.one/justme/shirobot:latest
-        buildah push --authfile "$auth_dir/auth.json" registry.oeo.one/justme/shirobot:latest
+        zot_host="$(ip route | awk '/default/ {print $3; exit}'):5000"
+        printf '%s' "$ZOT_PASSWORD" | buildah login --tls-verify=false --authfile "$auth_dir/auth.json" -u "$ZOT_USERNAME" --password-stdin "$zot_host"
+        buildah tag "localhost/shirobot:${CI_COMMIT_SHA}" "$zot_host/justme/shirobot:${CI_COMMIT_TAG}"
+        buildah push --tls-verify=false --authfile "$auth_dir/auth.json" "$zot_host/justme/shirobot:${CI_COMMIT_TAG}"
+        buildah tag "localhost/shirobot:${CI_COMMIT_SHA}" "$zot_host/justme/shirobot:latest"
+        buildah push --tls-verify=false --authfile "$auth_dir/auth.json" "$zot_host/justme/shirobot:latest"
