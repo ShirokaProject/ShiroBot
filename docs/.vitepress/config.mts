@@ -38,11 +38,37 @@ export default defineConfig({
       ],
       '/plugin/': [
         {
-          text: '插件开发',
+          text: '入门',
           items: [
-            { text: '创建第一个插件', link: '/plugin/' },
-            { text: '消息路由与事件', link: '/plugin/routes-events' },
-            { text: '上下文、配置与日志', link: '/plugin/context-config' },
+            { text: '创建第一个插件', link: '/plugin/' }
+          ]
+        },
+        {
+          text: 'SDK',
+          items: [
+            { text: '接收消息与事件', link: '/plugin/routes-events' },
+            { text: '调用 API', link: '/plugin/apis' },
+            { text: '上下文、配置与日志', link: '/plugin/context-config' }
+          ]
+        },
+        {
+          text: 'Model',
+          items: [
+            { text: '通用 Model', link: '/plugin/models' },
+            {
+              text: 'QQ Model',
+              items: [
+                { text: 'QQ 特有能力', link: '/plugin/qq-model' },
+                { text: '官方 Markdown 与按钮', link: '/plugin/qq-official' }
+              ]
+            },
+            { text: 'Discord Model', link: '/plugin/discord-model' },
+            { text: 'Telegram Model', link: '/plugin/telegram-model' }
+          ]
+        },
+        {
+          text: '构建与渲染',
+          items: [
             { text: '单 DLL 与 native 依赖', link: '/plugin/packaging-native' },
             { text: 'Avalonia 图片渲染', link: '/plugin/avalonia' }
           ]

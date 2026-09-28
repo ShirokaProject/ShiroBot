@@ -561,6 +561,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             try
             {
                 var package = LoadPreparedPluginUploadPackage(pluginManager, uploadId);
+                var pluginDirectory = GetPluginInstallDirectory(pluginManager.PluginRootPath, package.Info.Id);
                 var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
                 if (installed is not null && !request.Replace)
                 {
@@ -573,15 +574,46 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
                     await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, loaded.Name).ConfigureAwait(false);
                 }
 
+                string? preservedConfigPath = null;
                 if (installed is not null)
                 {
-                    DeletePluginPath(pluginManager.PluginRootPath, installed.AssemblyPath, package.Info.Id);
+                    var installedConfigPath = GetPluginConfigPath(pluginManager, installed.AssemblyPath, package.Info.Id);
+                    if (File.Exists(installedConfigPath))
+                    {
+                        preservedConfigPath = Path.Combine(uploadRoot, "preserved-config.toml");
+                        File.Copy(installedConfigPath, preservedConfigPath, overwrite: true);
+                    }
+
+                    var installedDirectory = Path.GetFullPath(Path.GetDirectoryName(installed.AssemblyPath)!);
+                    if (package.Type.Equals("dll", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(installedDirectory, Path.GetFullPath(pluginDirectory), StringComparison.OrdinalIgnoreCase))
+                    {
+                        // A single-file plugin may keep its configuration beside the DLL.
+                        // Replacing it must not remove the whole plugin directory.
+                        pluginManager.SuppressWatcherPath(installed.AssemblyPath);
+                        File.Delete(installed.AssemblyPath);
+                    }
+                    else
+                    {
+                        DeletePluginPath(pluginManager.PluginRootPath, installed.AssemblyPath, package.Info.Id);
+                    }
                 }
 
-                InstallUploadedPlugin(pluginManager, package);
+                var installedAssemblyPath = InstallUploadedPlugin(pluginManager, package);
+                if (preservedConfigPath is not null)
+                {
+                    var configPath = GetPluginConfigPath(pluginManager, installedAssemblyPath, package.Info.Id);
+                    Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+                    File.Copy(preservedConfigPath, configPath, overwrite: true);
+                }
                 if (request.Enable)
                 {
                     await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id).ConfigureAwait(false);
+                }
+                else
+                {
+                    pluginManager.SuppressWatcherPath(installedAssemblyPath);
+                    DisablePluginFile(installedAssemblyPath);
                 }
 
                 TryDeleteDirectory(uploadRoot);
@@ -2021,12 +2053,20 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             .Where(item => item.Info is not null)
             .ToArray();
 
-        return pluginDlls.Length switch
+        var package = pluginDlls.Length switch
         {
             0 => throw new InvalidOperationException("压缩包中未找到有效插件 DLL。"),
             > 1 => throw new InvalidOperationException("压缩包中包含多个插件入口 DLL，请一次只上传一个插件。"),
             _ => new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, pluginDlls[0].Path, "zip", pluginDlls[0].Info!)
         };
+        var sourceRoot = GetZipInstallSourceRoot(package.RootPath, package.EntryAssemblyPath);
+        var relativeEntry = Path.GetRelativePath(sourceRoot, package.EntryAssemblyPath);
+        if (relativeEntry.Contains(Path.DirectorySeparatorChar) || relativeEntry.Contains(Path.AltDirectorySeparatorChar))
+        {
+            throw new InvalidOperationException("压缩包的插件入口 DLL 必须位于包根目录或唯一的顶层文件夹中。");
+        }
+
+        return package;
     }
 
     private static PluginUploadPackage LoadPreparedPluginUploadPackage(PluginManager pluginManager, string uploadId)
@@ -2043,29 +2083,42 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         return PreparePluginUploadPackage(pluginManager, packagePath);
     }
 
-    private static void InstallUploadedPlugin(PluginManager pluginManager, PluginUploadPackage package)
+    private static string InstallUploadedPlugin(PluginManager pluginManager, PluginUploadPackage package)
     {
         var pluginRootPath = pluginManager.PluginRootPath;
         Directory.CreateDirectory(pluginRootPath);
+        var targetRoot = GetPluginInstallDirectory(pluginRootPath, package.Info.Id);
+        pluginManager.SuppressWatcherPath(targetRoot);
         if (package.Type.Equals("dll", StringComparison.OrdinalIgnoreCase))
         {
-            var targetPath = Path.Combine(pluginRootPath, Path.GetFileName(package.EntryAssemblyPath));
+            Directory.CreateDirectory(targetRoot);
+            var targetPath = Path.Combine(targetRoot, Path.GetFileName(package.EntryAssemblyPath));
             // The caller loads the plugin itself; without this the file watcher
             // would queue a second, redundant load for the same assembly.
             pluginManager.SuppressWatcherPath(targetPath);
-            if (File.Exists(targetPath)) File.Delete(targetPath);
-            File.Copy(package.EntryAssemblyPath, targetPath);
+            File.Copy(package.EntryAssemblyPath, targetPath, overwrite: true);
             pluginManager.SuppressWatcherPath(targetPath);
-            return;
+            pluginManager.SuppressWatcherPath(targetRoot);
+            return targetPath;
         }
 
         var sourceRoot = GetZipInstallSourceRoot(package.RootPath, package.EntryAssemblyPath);
-        var targetRoot = Path.Combine(pluginRootPath, Path.GetFileNameWithoutExtension(package.EntryAssemblyPath));
-        pluginManager.SuppressWatcherPath(targetRoot);
-        if (Directory.Exists(targetRoot)) Directory.Delete(targetRoot, recursive: true);
         CopyDirectory(sourceRoot, targetRoot);
         // Restart the window so it is measured from the last write, not the first.
         pluginManager.SuppressWatcherPath(targetRoot);
+        return Path.Combine(targetRoot, Path.GetRelativePath(sourceRoot, package.EntryAssemblyPath));
+    }
+
+    private static string GetPluginInstallDirectory(string pluginRootPath, string pluginId)
+    {
+        if (string.IsNullOrWhiteSpace(pluginId) || pluginId is "." or ".." ||
+            pluginId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+            pluginId.Contains(Path.DirectorySeparatorChar) || pluginId.Contains(Path.AltDirectorySeparatorChar))
+        {
+            throw new InvalidOperationException("插件 ID 不能用于安装目录名。");
+        }
+
+        return Path.Combine(pluginRootPath, pluginId);
     }
 
     private static string GetZipInstallSourceRoot(string uploadRoot, string entryAssemblyPath)

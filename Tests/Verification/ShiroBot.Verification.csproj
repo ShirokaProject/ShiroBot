@@ -10,5 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Core\ShiroBot.csproj" />
     <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" />
+    <ProjectReference Include="..\SharedContractPluginProbe\ShiroBot.SharedContractPluginProbe.csproj" />
   </ItemGroup>
 </Project>

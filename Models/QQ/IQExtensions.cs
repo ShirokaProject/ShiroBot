@@ -258,3 +258,38 @@ public interface IQMessageApi
     Task MarkAsReadAsync(QMessageScene scene, long peerId, long messageSeq)
         => throw new NotSupportedException();
 }
+
+/// <summary>
+/// QQ 官方开放平台的 Markdown 与按钮发送能力。插件通过
+/// context.GetAdapterExtension&lt;IQOfficialMessageApi&gt;() 探测；
+/// 未实现此接口的适配器不声明该能力。
+/// </summary>
+public interface IQOfficialMessageApi
+{
+    /// <summary>
+    /// 探测此目标和按钮形式是否被适配器支持。平台权限可能变化，
+    /// 返回 true 不保证后续发送一定成功。
+    /// </summary>
+    bool CanSendMarkdown(
+        QOfficialMessageTarget target,
+        QOfficialMarkdown markdown,
+        QOfficialKeyboard? keyboard = null);
+
+    /// <summary>
+    /// 发送 Markdown，可附带底部按钮。返回官方消息 ID。
+    /// 自定义按钮是否可用取决于机器人开放平台权限和发送场景。
+    /// </summary>
+    Task<string> SendMarkdownAsync(
+        QOfficialMessageTarget target,
+        QOfficialMarkdown markdown,
+        QOfficialKeyboard? keyboard = null,
+        QOfficialMessageReply? reply = null);
+
+    /// <summary>
+    /// 回应消息按钮互动。每个 InteractionId 仅能回应一次且会过期；
+    /// 适配器应及时调用，避免等待耗时的插件处理使客户端一直显示加载。
+    /// </summary>
+    Task AcknowledgeInteractionAsync(
+        string interactionId,
+        QOfficialInteractionResponseCode code = QOfficialInteractionResponseCode.Success);
+}

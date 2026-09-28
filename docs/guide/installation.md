@@ -67,11 +67,13 @@ protocol = "MyAdapter"
 plugins/HelloPlugin.dll
 ```
 
-目录插件的入口 DLL 名称应与目录一致：
+目录插件的入口 DLL 放在目录顶层；目录通常使用插件 ID 命名，DLL 文件名可以不同：
 
 ```text
-plugins/HelloPlugin/HelloPlugin.dll
+plugins/HelloPlugin/ShiroBot.Plugin.Hello.dll
 ```
+
+宿主会检查目录顶层的 DLL 并识别插件元数据。通过 Dashboard 上传单 DLL 或 ZIP 安装时，宿主统一创建 `plugins/<插件 ID>/`，将入口 DLL 和依赖放在其中。ZIP 的入口 DLL 必须位于包根目录或唯一的顶层文件夹中。插件替换时保留原有 `config.toml`。
 
 插件内如果包含 native NuGet 依赖清单，首次加载时宿主会联网下载当前平台所需的 native 文件。下载结果缓存在插件目录下的 `.shirobot/native`。
 

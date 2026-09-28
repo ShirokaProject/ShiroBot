@@ -7,10 +7,9 @@
 | 属性 | 用途 |
 | --- | --- |
 | `Context.Message` | 发送、回复、撤回、查询消息 |
-| `Context.Group` | 群设置、群成员管理、请求处理 |
-| `Context.Friend` | 好友请求、点赞、戳一戳等 |
-| `Context.File` | 上传、下载、移动、删除文件 |
-| `Context.System` | 登录信息、好友列表、群列表等 |
+| `Context.Channel` | 群或频道信息与成员管理 |
+| `Context.User` | 机器人、用户和好友信息与请求 |
+| `Context.GetAdapterExtension<T>()` | 探测平台特有扩展 API |
 | `Context.Config` | 插件独立 TOML 配置 |
 | `Context.WebHost` | 宿主 HTTP 服务与公开地址 |
 | `Context.Updater` | 插件更新能力 |
@@ -22,7 +21,7 @@
 权限判断：
 
 ```csharp
-if (!Context.IsAdmin(message.SenderId))
+if (!Context.IsAdmin(message.Sender.Id))
 {
     await Context.Message.ReplyAsync(message, "权限不足");
     return;
@@ -119,7 +118,7 @@ BotLog.Error("操作失败");
 var sent = await Context.Message.SendGroupMessageAsync(groupId, "请回复 yes");
 
 var subscription = Context.Message.SubscribeReply(
-    sent.MessageSeq,
+    sent.MessageId,
     "yes",
     TimeSpan.FromMinutes(1),
     async reply =>

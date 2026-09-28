@@ -7,10 +7,14 @@
 | 命令 | 说明 |
 | --- | --- |
 | `plugins` | 显示已加载插件、程序集文件大小和宿主进程工作集 |
+| `adapters` | 显示已安装适配器 |
+| `adapter start\|stop\|reload <ID>` | 启动、停止或重载适配器 |
+| `actions` | 列出已加载插件注册的操作 |
+| `action <插件 ID> <操作 ID>` | 执行插件操作 |
 | `load <插件名或路径>` | 热加载插件 |
 | `unload <插件 ID>` | 热卸载插件 |
 | `restart` | 启动替代进程并退出当前进程 |
-| `/api` | 显示或设置 API 鉴权信息 |
+| `api` | 显示或设置 API 鉴权信息 |
 | `update` | 查看或处理待确认更新 |
 | `path` | 打开程序目录 |
 | `log` | 开关普通日志输出 |
@@ -20,7 +24,9 @@
 进程退出会停止宿主 HTTP 服务、适配器和 Avalonia dispatcher，但不会逐个热卸载插件。
 插件程序集和剩余资源由操作系统随进程直接回收。
 
-`owner_list` 中的用户也可以通过好友私聊执行 `help`、`plugins`、`load`、`unload`、`update` 和 `api` 命令。
+宿主命令只能从交互式控制台输入；好友私聊消息会交给插件的消息路由，不会被解释为宿主命令。`disable_console_input = true` 或 `--no-console` 会关闭交互式控制台输入。
+
+插件可实现 `IPluginActionProvider`，把操作同时提供给控制台与已鉴权的 Dashboard。`help` 会列出插件操作，`actions` 只列出插件操作；输入 `action <插件 ID> <操作 ID>` 执行。带 `RequiresConfirmation` 的操作会在控制台提示确认。写法见[插件操作](/plugin/#插件操作)。
 
 ## 热加载与热卸载
 
@@ -55,6 +61,8 @@ Dashboard 的插件 actions 也使用同一套 active-dispatch 计数。执行�
 `GET /api/v1/plugin-market/plugins` 从 awesome-shirobot 的 `marketplace.v1.json` 获取列表，并为每项增加 `installed`。缓存同时保存在内存和宿主 `cache/plugin-marketplace.v1.json`，有效期约 24 小时；远端失败时使用 last-known-good，不会影响宿主启动。
 
 `POST /api/v1/plugins/install/github` 接受 `repository`，也接受市场提供的 `assetUrl` / `assetName` / `assetSha256`。市场安装会校验 URL 确实属于对应仓库的 GitHub Release、限制下载为 100 MiB、校验 SHA-256，并限制 ZIP 条目数和解压后总大小。两种方式都会先生成 upload preview，再调用原有 confirm 接口安装；`includePrerelease=true` 会从 GitHub releases 列表中包含预发布版本。
+
+通过 Dashboard 上传或市场安装时，插件统一放在 `plugins/<插件 ID>/`，入口 DLL 可与插件 ID 不同名。替换已有插件会保留其 `config.toml`；选择暂不启用时，安装后的入口 DLL 会被禁用，之后可在 Dashboard 中启用。ZIP 包只接受根目录中的入口 DLL，或唯一顶层文件夹中的入口 DLL。手动放入插件目录的规则见[安装插件](/guide/installation#安装插件)。
 
 ## native 依赖缓存
 
