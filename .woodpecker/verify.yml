@@ -1,9 +1,24 @@
 when:
   - event: [push, pull_request, manual]
 
+labels:
+  platform: linux/amd64
+  ci: domain-linux-native
+
+clone:
+  - name: public-gitea
+    image: bash
+    commands:
+      - git init .
+      - git remote add origin https://git.oeo.one/justme/ShiroBot.git
+      - git fetch --depth=1 origin "${CI_COMMIT_REF}"
+      - git checkout --detach FETCH_HEAD
+
 steps:
   - name: verify
-    image: mcr.microsoft.com/dotnet/sdk:10.0
+    image: bash
     commands:
+      - command -v dotnet
+      - command -v docker || true
       - dotnet build Shirobot.slnx -c Release
       - dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
