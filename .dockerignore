@@ -3,7 +3,7 @@
 .idea/
 **/bin/
 **/obj/
-artifacts/
+artifacts/release/
 docker-data/
 Core/Assets/dashboard/
 *.binlog
