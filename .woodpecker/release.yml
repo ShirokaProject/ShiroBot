@@ -6,8 +6,10 @@ labels:
   platform: linux/amd64
   ci: domain-linux-native
 
-clone:
-  - name: public-gitea
+skip_clone: true
+
+steps:
+  - name: clone-public
     image: bash
     commands:
       - git init .
@@ -15,7 +17,6 @@ clone:
       - git fetch --depth=1 origin "${CI_COMMIT_REF}"
       - git checkout --detach FETCH_HEAD
 
-steps:
   - name: publish-linux-x64
     image: mcr.microsoft.com/dotnet/sdk:10.0
     commands:
