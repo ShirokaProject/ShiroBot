@@ -61,9 +61,9 @@ public partial class HelloCard : UserControl
 ```csharp
 using HelloPlugin.Views;
 using ShiroBot.AvaloniaSdk;
-using ShiroBot.Model.Common;
+using ShiroBot.SDK.Models;
 
-private async Task HandleCardAsync(GroupIncomingMessage message)
+private async Task HandleCardAsync(MessageEvent message)
 {
     if (Context.Render is null)
     {
@@ -80,7 +80,7 @@ private async Task HandleCardAsync(GroupIncomingMessage message)
     };
 
     var png = await Context.RenderControlPngAsync<HelloCard>(viewModel);
-    var image = new ImageOutgoingSegment(
+    var image = new ImageSegment(
         "base64://" + Convert.ToBase64String(png));
 
     await Context.Message.ReplyAsync(message, image);

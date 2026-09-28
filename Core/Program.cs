@@ -194,7 +194,6 @@ public static class Program
 
             // ─── 适配器事件桥接 ───
             var commandHandler = new HostCommandHandler(
-                botContext,
                 pluginManager,
                 hostEventDispatcher,
                 groupRoutePolicy,

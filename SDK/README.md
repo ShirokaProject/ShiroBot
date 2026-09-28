@@ -183,21 +183,22 @@ Avalonia compile references and AXAML build support flow from `ShiroBot.SDK`. Th
 does not enable `PublishTrimmed`; plugin discovery, configuration
 metadata and collectible loading use reflection paths that are not trimming-safe.
 
-## Dashboard Actions
+## Plugin Actions
 
-Implement `IPluginWebActionProvider` to expose authenticated dashboard operations without exposing
-ASP.NET `HttpContext` to plugin code:
+Implement `IPluginActionProvider` to expose operations without handing plugin code an ASP.NET
+`HttpContext`. Each action is declared once and reachable from both front ends: the authenticated
+dashboard, and the host console as `action <plugin> <id>`.
 
 ```csharp
-public IReadOnlyList<PluginWebActionDescriptor> WebActions { get; } =
+public IReadOnlyList<PluginActionDescriptor> Actions { get; } =
 [
     new("reload", "Reload data", Tone: "primary")
 ];
 
-public Task<PluginWebActionResult> ExecuteWebActionAsync(
+public Task<PluginActionResult> ExecuteActionAsync(
     string actionId,
     CancellationToken cancellationToken = default) =>
-    Task.FromResult(new PluginWebActionResult(true, "Reloaded", Refresh: true));
+    Task.FromResult(new PluginActionResult(true, "Reloaded", Refresh: true));
 ```
 
 ## Command Routes

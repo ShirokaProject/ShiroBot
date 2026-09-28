@@ -18,7 +18,6 @@ using CH = ShiroBot.Console.ConsoleOutput;
 namespace ShiroBot.Hosting.Commands;
 
 internal sealed class HostCommandHandler(
-    BotContext botContext,
     PluginManager pluginManager,
     HostEventDispatcher eventDispatcher,
     PluginRouteConfig routePolicy,
@@ -32,10 +31,12 @@ internal sealed class HostCommandHandler(
         new("plugins", "显示已加载插件"),
         new("adapters", "显示已安装适配器"),
         new("adapter", "管理适配器: start|stop|reload <id>"),
+        new("actions", "显示插件注册的操作"),
+        new("action", "执行插件操作: <插件> <操作>"),
         new("load", "热加载指定插件"),
         new("unload", "热卸载指定插件"),
         new("restart", "重启程序"),
-        new("/api", "显示或设置 API 鉴权信息"),
+        new("api", "显示或设置 API 鉴权信息"),
         new("update", "查看或处理待确认更新"),
         new("path", "打开当前程序目录"),
         new("log", "切换日志输出"),
@@ -67,7 +68,8 @@ internal sealed class HostCommandHandler(
                 "> ",
                 () => BuildConsoleCompletions(
                     pluginManager.GetLoadedPluginNames(),
-                    pluginManager.GetLoadablePluginCandidates(includePluginNames: true)));
+                    pluginManager.GetLoadablePluginCandidates(includePluginNames: true),
+                    CollectPluginActionsAsync().GetAwaiter().GetResult()));
             if (string.IsNullOrWhiteSpace(input)) continue;
 
             if (CH.IsEnabled ||
@@ -123,6 +125,12 @@ internal sealed class HostCommandHandler(
                     case "api":
                         CH.Info(HandleApiCommand(splitInput));
                         break;
+                    case "actions":
+                        CH.Info(BuildPluginActionListAsync().GetAwaiter().GetResult());
+                        break;
+                    case "action":
+                        CH.Info(ExecutePluginActionAsync(splitInput).GetAwaiter().GetResult());
+                        break;
                     case "update":
                         CH.Info(HandleUpdateCommandAsync(splitInput).GetAwaiter().GetResult());
                         break;
@@ -130,7 +138,13 @@ internal sealed class HostCommandHandler(
                         var orderedCommands = ConsoleCommands
                             .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
                             .ToList();
-                        var nameWidth = Math.Max(orderedCommands.Max(command => command.Name.Length), 8) + 2;
+                        var pluginActions = CollectPluginActionsAsync().GetAwaiter().GetResult();
+                        // Plugin entries are the long ones, so size the column across both.
+                        var nameWidth = Math.Max(
+                            Math.Max(orderedCommands.Max(command => command.Name.Length), 8),
+                            pluginActions.Count == 0
+                                ? 0
+                                : pluginActions.Max(entry => $"action {entry.PluginId} {entry.Action.Id}".Length)) + 2;
                         var helpText = new StringBuilder()
                             .AppendLine("可用命令")
                             .AppendLine(new string('-', 24));
@@ -139,6 +153,8 @@ internal sealed class HostCommandHandler(
                             helpText.Append("  ")
                                 .Append(command.Name.PadRight(nameWidth))
                                 .AppendLine(command.Description);
+
+                        AppendPluginActions(helpText, pluginActions, nameWidth);
 
                         CH.Info(helpText.ToString().TrimEnd());
                         break;
@@ -170,93 +186,8 @@ internal sealed class HostCommandHandler(
         }
     }
 
-    public async Task HandleDirectMessageAsync(MessageEvent message)
-    {
-        if (await TryHandleHostPrivateCommandAsync(message))
-            return;
-        await eventDispatcher.PublishAsync(message);
-    }
-
-    private async Task<bool> TryHandleHostPrivateCommandAsync(MessageEvent message)
-    {
-        if (!botContext.OwnerList.Contains(message.Sender.Id)) return false;
-
-        var input = message.GetPlainText().Trim();
-        if (string.IsNullOrWhiteSpace(input)) return false;
-
-        var splitInput = input.Split(null as char[], StringSplitOptions.RemoveEmptyEntries);
-        if (splitInput.Length == 0) return false;
-
-        switch (NormalizeCommand(splitInput[0]))
-        {
-            case "help":
-            {
-                var orderedCommands = ConsoleCommands
-                    .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                var nameWidth = Math.Max(orderedCommands.Max(command => command.Name.Length), 8) + 2;
-                var helpText = new StringBuilder()
-                    .AppendLine("可用命令")
-                    .AppendLine(new string('-', 24));
-
-                foreach (var command in orderedCommands)
-                    helpText.Append("  ")
-                        .Append(command.Name.PadRight(nameWidth))
-                        .AppendLine(command.Description);
-
-                await botContext.Message.ReplyAsync(message, helpText.ToString().TrimEnd());
-                return true;
-            }
-            case "plugins":
-            {
-                await botContext.Message.ReplyAsync(
-                    message,
-                    BuildLoadedPluginsText(pluginManager.GetLoadedPluginSnapshot()));
-                return true;
-            }
-            case "update":
-            {
-                await botContext.Message.ReplyAsync(message, await HandleUpdateCommandAsync(splitInput));
-                return true;
-            }
-            case "api":
-            {
-                await botContext.Message.ReplyAsync(message, HandleApiCommand(splitInput));
-                return true;
-            }
-            case "load":
-            {
-                if (splitInput.Length < 2)
-                {
-                    await botContext.Message.ReplyAsync(message, "用法: load <插件名|dll路径>");
-                    return true;
-                }
-
-                await pluginManager.ScheduleLoadPluginByName(
-                    eventDispatcher,
-                    routePolicy,
-                    splitInput[1]);
-                await botContext.Message.ReplyAsync(message, $"已加入热加载队列: {splitInput[1]}");
-                return true;
-            }
-            case "unload":
-            {
-                if (splitInput.Length < 2)
-                {
-                    await botContext.Message.ReplyAsync(message, "用法: unload <插件名>");
-                    return true;
-                }
-
-                await pluginManager.ScheduleUnloadPluginByName(
-                    eventDispatcher,
-                    splitInput[1]);
-                await botContext.Message.ReplyAsync(message, $"已加入热卸载队列: {splitInput[1]}");
-                return true;
-            }
-            default:
-                return false;
-        }
-    }
+    public Task HandleDirectMessageAsync(MessageEvent message) =>
+        eventDispatcher.PublishAsync(message);
 
     private string HandleApiCommand(string[] splitInput)
     {
@@ -267,7 +198,7 @@ internal sealed class HostCommandHandler(
 
         if (!string.Equals(splitInput[1], "token", StringComparison.OrdinalIgnoreCase))
         {
-            return "用法: /api | /api token | /api token <密钥>";
+            return "用法: api | api token | api token <密钥>";
         }
 
         coreConfig.Api.Auth.Key = splitInput.Length >= 3
@@ -526,9 +457,118 @@ internal sealed class HostCommandHandler(
                 $"{item.Id} | {item.Target} | {item.Name} {item.CurrentVersion} -> {item.LatestVersion}"));
     }
 
+    private async Task<IReadOnlyList<(string PluginId, PluginActionDescriptor Action)>> CollectPluginActionsAsync()
+    {
+        var collected = new List<(string PluginId, PluginActionDescriptor Action)>();
+
+        foreach (var plugin in pluginManager.GetLoadedPluginSnapshot()
+                     .OrderBy(plugin => plugin.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!plugin.Supports<IPluginActionProvider>()) continue;
+
+            var dispatch = await plugin
+                .DispatchAsync<IPluginActionProvider, IReadOnlyList<PluginActionDescriptor>>(
+                    provider => Task.FromResult(provider.Actions))
+                .ConfigureAwait(false);
+            if (!dispatch.Dispatched || dispatch.Result is null) continue;
+
+            var actions = dispatch.Result
+                .Where(action => !string.IsNullOrWhiteSpace(action.Id) && !string.IsNullOrWhiteSpace(action.Label))
+                .GroupBy(action => action.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First());
+
+            foreach (var action in actions) collected.Add((plugin.Name, action));
+        }
+
+        return collected;
+    }
+
+    private static void AppendPluginActions(
+        StringBuilder text,
+        IReadOnlyList<(string PluginId, PluginActionDescriptor Action)> actions,
+        int nameWidth)
+    {
+        if (actions.Count == 0) return;
+
+        text.AppendLine().AppendLine("插件操作");
+        foreach (var group in actions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var (pluginId, action) in group)
+            {
+                text.Append("  ")
+                    .Append($"action {pluginId} {action.Id}".PadRight(nameWidth))
+                    .AppendLine(string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description);
+            }
+        }
+    }
+
+    private async Task<string> BuildPluginActionListAsync()
+    {
+        var actions = await CollectPluginActionsAsync().ConfigureAwait(false);
+        if (actions.Count == 0) return "当前没有插件注册操作。";
+
+        var nameWidth = actions.Max(entry => $"action {entry.PluginId} {entry.Action.Id}".Length) + 2;
+        var text = new StringBuilder().AppendLine("插件操作").AppendLine(new string('-', 24));
+        foreach (var group in actions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var (pluginId, action) in group)
+            {
+                text.Append("  ")
+                    .Append($"action {pluginId} {action.Id}".PadRight(nameWidth))
+                    .AppendLine(string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description);
+            }
+        }
+
+        return text.ToString().TrimEnd();
+    }
+
+    private async Task<string> ExecutePluginActionAsync(string[] splitInput)
+    {
+        if (splitInput.Length < 3) return "用法: action <插件> <操作>，可用 actions 查看列表";
+
+        var pluginId = splitInput[1];
+        var actionId = splitInput[2];
+
+        var plugin = pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, pluginId, StringComparison.OrdinalIgnoreCase));
+        if (plugin is null) return $"未找到已加载插件: {pluginId}";
+        if (!plugin.Supports<IPluginActionProvider>()) return $"插件 {pluginId} 未提供操作。";
+
+        var descriptors = await plugin
+            .DispatchAsync<IPluginActionProvider, IReadOnlyList<PluginActionDescriptor>>(
+                provider => Task.FromResult(provider.Actions))
+            .ConfigureAwait(false);
+        if (!descriptors.Dispatched) return $"插件 {pluginId} 正在卸载。";
+
+        var descriptor = descriptors.Result?.FirstOrDefault(action =>
+            string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
+        if (descriptor is null) return $"未找到插件操作: {actionId}";
+
+        if (descriptor.RequiresConfirmation)
+        {
+            var prompt = string.IsNullOrWhiteSpace(descriptor.ConfirmationText)
+                ? $"确认执行 {descriptor.Label}?"
+                : descriptor.ConfirmationText;
+            var answer = CH.ReadPrompt($"{prompt} [y/N] ")?.Trim();
+            if (!string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase)) return "已取消。";
+        }
+
+        var execution = await plugin
+            .DispatchAsync<IPluginActionProvider, PluginActionResult?>(
+                async provider => await provider.ExecuteActionAsync(actionId).ConfigureAwait(false))
+            .ConfigureAwait(false);
+        if (!execution.Dispatched) return $"插件 {pluginId} 正在卸载。";
+
+        var result = execution.Result;
+        if (result is null) return $"插件操作没有返回结果: {actionId}";
+
+        return result.Ok ? result.Message : $"操作失败: {result.Message}";
+    }
+
     private static IReadOnlyList<CH.ConsoleCommandOption> BuildConsoleCompletions(
         IReadOnlyList<string> loadedPluginNames,
-        IReadOnlyList<string> loadablePluginCandidates)
+        IReadOnlyList<string> loadablePluginCandidates,
+        IReadOnlyList<(string PluginId, PluginActionDescriptor Action)> pluginActions)
     {
         var completions = new List<ConsoleOutput.ConsoleCommandOption>(ConsoleCommands);
         var loadedNameSet = new HashSet<string>(loadedPluginNames, StringComparer.OrdinalIgnoreCase);
@@ -544,6 +584,13 @@ internal sealed class HostCommandHandler(
             if (IsAlreadyLoadedCandidate(candidate, loadedNameSet)) continue;
 
             completions.Add(new ConsoleOutput.ConsoleCommandOption($"load {candidate}", $"热加载插件 {candidate}"));
+        }
+
+        foreach (var (pluginId, action) in pluginActions)
+        {
+            completions.Add(new ConsoleOutput.ConsoleCommandOption(
+                $"action {pluginId} {action.Id}",
+                string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description));
         }
 
         return completions;

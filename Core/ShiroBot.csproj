@@ -72,7 +72,11 @@
 
     <Target Name="AcquireDashboardAssets" BeforeTargets="PrepareForBuild">
         <PropertyGroup>
+            <_DashboardStampFile>$(_DashboardResolvedDir)/.dashboard-version</_DashboardStampFile>
+            <_DashboardCachedVersion Condition="Exists('$(_DashboardStampFile)')">$([System.IO.File]::ReadAllText('$(_DashboardStampFile)').Trim())</_DashboardCachedVersion>
+            <!-- Re-acquire when the extract is missing or was produced by a different version. -->
             <_DashboardNeedsAcquire Condition="'$(DashboardDistPath)' == '' and !Exists('$(_DashboardResolvedDir)/index.html')">true</_DashboardNeedsAcquire>
+            <_DashboardNeedsAcquire Condition="'$(DashboardDistPath)' == '' and '$(_DashboardCachedVersion)' != '$(ShirobotDashboardVersion)'">true</_DashboardNeedsAcquire>
         </PropertyGroup>
 
         <MakeDir Directories="$(IntermediateOutputPath)dashboard"
@@ -102,6 +106,10 @@
         <Unzip Condition="'$(_DashboardArchive)' != ''"
                SourceFiles="$(_DashboardArchive)"
                DestinationFolder="$(_DashboardResolvedDir)" />
+        <WriteLinesToFile Condition="'$(_DashboardArchive)' != '' and Exists('$(_DashboardResolvedDir)/index.html')"
+                          File="$(_DashboardStampFile)"
+                          Lines="$(ShirobotDashboardVersion)"
+                          Overwrite="true" />
 
         <Error Condition="'$(RequireDashboard)' == 'true' and !Exists('$(_DashboardResolvedDir)/index.html')"
                Text="未获取到 Dashboard 资源：$(ShirobotDashboardDistUrl)。请先在 Shirobot.Dashboard 仓发布对应 tag 的 Release，或用 -p:DashboardDistPath=&lt;本地 dist 目录&gt; 指定。" />

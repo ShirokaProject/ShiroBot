@@ -1,125 +1,71 @@
-# 消息路由与事件
+# 接收消息与事件
 
-`PluginBase` 提供群消息路由、好友消息路由和通用事件路由。宿主会在事件进入插件前完成第一层匹配，避免把每条消息广播给所有插件。
+插件继承 `PluginBase` 后，在 `ConfigureRoutes()` 注册消息命令与事件。普通入站消息的类型是 `MessageEvent`；其他通用事件和平台特有事件通过 `Events` 路由。
 
-## 消息命令路由
+## 接收消息
 
 ```csharp
+using ShiroBot.SDK.Models;
+
 protected override void ConfigureRoutes()
 {
     GroupCommands.MapExact("#ping", HandlePingAsync);
     GroupCommands.MapPrefix("#echo ", HandleEchoAsync);
-    GroupCommands.MapWhen(
-        message => message.GetPlainText().Contains("ShiroBot"),
-        HandleKeywordAsync);
-
-    FriendCommands.MapExact("帮助", HandleHelpAsync);
+    GroupCommands.MapMention(HandleMentionAsync);
+    DirectCommands.MapExact("帮助", HandleHelpAsync);
 }
+
+private Task HandlePingAsync(MessageEvent message) =>
+    Context.Message.ReplyAsync(message, "pong");
+
+private Task HandleEchoAsync(MessageEvent message) =>
+    Context.Message.ReplyAsync(message, message.GetPlainText()["#echo ".Length..]);
 ```
 
-| 方法 | 匹配方式 |
-| --- | --- |
-| `MapExact` | 去除首尾空白后完全匹配，不区分大小写 |
-| `MapPrefix` / `Map` | 前缀匹配，不区分大小写 |
-| `MapWhen` | 使用消息对象执行自定义条件 |
-| `MapAll` | 接收此类型的全部消息 |
+`GroupCommands` 接收群聊或频道消息，`DirectCommands` 接收私聊消息。`MapExact` 完全匹配，`MapPrefix` 按前缀匹配，`MapWhen` 使用自定义条件，`MapAll` 接收全部消息；同一路由器按注册顺序执行第一条匹配的处理器。
 
-同一个 `CommandRouter` 按注册顺序查找，第一条匹配的路由执行后停止继续匹配。
+消息辅助方法包括 `GetPlainText()`、`HasMention()`、`HasMention(userId)`、`HasMentionAll()` 与 `GetQuote()`。还可以读取 `message.Channel`、`message.Sender`、`message.Member` 和有序的 `message.Segments`。消息段类型见[通用 Model](/plugin/models)。
 
-### Mention 与回复路由
+如果需要接收某一场景的所有消息，也可重写 `OnGroupMessageAsync(MessageEvent)` 或 `OnDirectMessageAsync(MessageEvent)`。重写后若仍需执行命令路由，应调用基类实现。
 
-SDK 提供常用扩展：
-
-```csharp
-GroupCommands.MapMention(HandleAnyMentionAsync);
-GroupCommands.MapMention(botUserId, HandleMentionBotAsync);
-GroupCommands.MapMentionAll(HandleMentionAllAsync);
-GroupCommands.MapReply(HandleReplyAsync);
-GroupCommands.MapReplyTo(userId, HandleReplyToUserAsync);
-GroupCommands.MapReplyMessage(messageSeq, HandleSpecificReplyAsync);
-```
-
-好友消息也支持 `MapMention`、`MapReply`、`MapReplyTo` 和 `MapReplyMessage`。
-
-### 读取文本与消息段
-
-```csharp
-var text = message.GetPlainText();
-var mention = message.Segments.OfType<MentionIncomingSegment>().FirstOrDefault();
-var reply = message.GetReply();
-var images = message.Segments.OfType<ImageIncomingSegment>().ToArray();
-```
-
-发送回复：
-
-```csharp
-await Context.Message.ReplyAsync(message, "普通回复");
-await Context.Message.QuoteReplyAsync(message, "引用回复");
-
-await Context.Message.ReplyAsync(
-    message,
-    new TextOutgoingSegment("结果："),
-    new ImageOutgoingSegment("https://example.com/image.png"));
-```
-
-## 通用事件路由
-
-推荐在 `ConfigureRoutes()` 中映射事件：
+## 接收通用事件
 
 ```csharp
 protected override void ConfigureRoutes()
 {
-    Events.Map<GroupMemberIncreaseEvent>(HandleMemberIncreaseAsync);
+    Events.Map<MemberJoinedEvent>(async evt =>
+    {
+        await Context.Message.SendGroupMessageAsync(evt.Channel.Id, $"欢迎 {evt.UserId}");
+    });
 
-    Events.MapWhen<GroupMessageReactionEvent>(
-        reaction => reaction.IsAdd,
-        HandleReactionAddedAsync);
+    Events.MapWhen<MemberLeftEvent>(
+        evt => evt.Channel.Type == ChannelType.Group,
+        evt => HandleMemberLeftAsync(evt));
 }
 ```
 
-群消息和好友消息也可以重写 `PluginBase` 提供的方法。这样会让插件接收对应类型的全部消息；其他事件应使用 `Events.Map`：
+可订阅的通用事件包括 `MessageDeletedEvent`、`MemberJoinedEvent`、`MemberLeftEvent`、`FriendRequestEvent`、`GuildInviteEvent` 和 `BotOfflineEvent`。所有类型继承 `BotEvent`，并带有 `Platform`、可选 `SelfId` 与 `Raw`。新增类型只需用 `Events.Map<TEvent>()` 注册。
+
+## 接收平台特有事件
+
+适配器把无法映射成通用事件的内容放进 `PlatformEvent`，用 `Kind` 区分事件类型，`Raw` 保存平台 Model 的负载：
 
 ```csharp
-protected override Task OnGroupMessageAsync(GroupIncomingMessage message)
+using ShiroBot.Model.QQ;
+
+Events.MapPlatform(QEventKinds.OfficialButtonInteraction, evt =>
 {
-    return Context.Message.ReplyAsync(message, "收到了群消息");
-}
+    if (evt.Raw is not QOfficialButtonInteraction click)
+        return Task.CompletedTask;
+
+    return HandleButtonAsync(click.ButtonData, click.UserId);
+});
 ```
 
-常用事件包括：
+QQ 事件详见 [QQ Model](/plugin/qq-model)，官方按钮事件详见[官方 Markdown 与按钮](/plugin/qq-official)。
 
-- `FriendRequestEvent`
-- `GroupJoinRequestEvent`
-- `GroupInvitedJoinRequestEvent`
-- `GroupInvitationEvent`
-- `FriendNudgeEvent` / `GroupNudgeEvent`
-- `FriendFileUploadEvent` / `GroupFileUploadEvent`
-- `GroupAdminChangeEvent`
-- `GroupMemberIncreaseEvent` / `GroupMemberDecreaseEvent`
-- `GroupMessageReactionEvent`
-- `GroupMuteEvent` / `GroupWholeMuteEvent`
-- `MessageRecallEvent`
-- `PeerPinChangeEvent`
-- `GroupDisbandEvent`
-- `BotOfflineEvent`
+## 并发与范围
 
-插件的有效订阅直接由已注册命令路由、事件映射和重写的方法对应的模型 `Type` 推断，不再经过有限的 flags 位图。Model 新增事件后，插件可以直接 `Events.Map<NewEvent>()`。
-
-## 群路由限制
-
-宿主会在分发前应用核心配置中的 `plugin_routes`。如果某插件只应在指定群运行：
-
-```toml
-[plugin_routes.plugins.HelloPlugin]
-mode = "whitelist"
-groups = [10001, 10002]
-```
-
-插件 ID 必须与 `[BotPlugin("HelloPlugin")]` 一致。
-
-## 并发行为
-
-- 不同插件的同一事件由宿主并发分发。
-- 单个插件可能同时收到多条事件；插件内部共享状态需要自行同步。
-- 热卸载会等待已经进入该插件的分发结束。
-- 不要在事件处理器中长时间同步阻塞；使用真正的异步 I/O。
+- 事件处理时 `Context.Platform` 指向事件来源适配器；后台任务需要用 `Context.UsePlatform(platform)` 指定目标。
+- 不同插件可并发处理同一个事件，同一个插件也可能同时收到多条事件；共享状态应自行同步。
+- 群路由限制由宿主配置 `plugin_routes` 控制。收到事件后不要长时间同步阻塞。
