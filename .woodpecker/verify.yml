@@ -1,0 +1,9 @@
+when:
+  - event: [push, pull_request]
+
+steps:
+  - name: verify
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    commands:
+      - dotnet build Shirobot.slnx -c Release
+      - dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build

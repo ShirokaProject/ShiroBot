@@ -1,0 +1,9 @@
+services:
+  shirobot:
+    image: registry.oeo.one/justme/shirobot:${SHIROBOT_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7001:7001"
+    volumes:
+      - ./docker-data:/data

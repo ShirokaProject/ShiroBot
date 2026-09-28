@@ -8,6 +8,7 @@ riderModule.iml
 META-INF/
 *.DotSettings.user
 artifacts/
+docker-data/
 Core/Assets/dashboard/
 MilkyModelGenerator.Net/output/
 MilkyModelGenerator.Net/QBotSharp.Model/
