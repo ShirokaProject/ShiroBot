@@ -2,12 +2,14 @@
 
 适配器把某个机器人协议的 API 与事件转换为 ShiroBot 统一接口。插件只依赖这些统一接口，因此同一插件可以运行在不同适配器上。
 
+使用 `dotnet new shirobot-adapter` 生成的项目包含 `.github/workflows/release.yml`：推送代码或提交 PR 时构建；将 `Adapter.cs` 中的 `Version` 改为目标版本并推送同版本 tag（如 `v1.0.0`）后，Action 会创建包含 Release 构建输出 ZIP 和入口 DLL 的 GitHub Release。
+
 ## 创建项目
 
 ```bash
 dotnet new classlib -n ExampleAdapter -f net10.0
 cd ExampleAdapter
-dotnet add package ShiroBot.SDK --version 0.9.2
+dotnet add package ShiroBot.SDK --version 0.9.3
 ```
 
 SDK 会通过 `BotAdapterAttribute` 自动识别适配器，并生成与插件一致的单 DLL 产物。宿主会读取嵌入的 native 依赖清单、校验 NuGet 包并按当前 RID 准备 native 文件，因此不需要手写 ILRepack：
@@ -22,7 +24,7 @@ SDK 会通过 `BotAdapterAttribute` 自动识别适配器，并生成与插件�
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ShiroBot.SDK" Version="0.9.2" />
+    <PackageReference Include="ShiroBot.SDK" Version="0.9.3" />
   </ItemGroup>
 </Project>
 ```

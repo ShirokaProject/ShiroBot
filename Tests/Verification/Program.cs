@@ -82,7 +82,7 @@ Console.WriteLine("Component API version verification passed.");
 
 {
     AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.1.0");
-    AssertAssemblyVersion(typeof(QGroup).Assembly, "0.9.0.0");
+    AssertAssemblyVersion(typeof(QGroup).Assembly, "0.9.1.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "0.9.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "0.9.0.0");
 
@@ -108,6 +108,15 @@ Console.WriteLine("Component API version verification passed.");
         throw new InvalidOperationException("Current host did not satisfy an older QQ Model ABI request.");
     }
 
+    var previousQqRequest = new AssemblyName(typeof(QGroup).Assembly.FullName!)
+    {
+        Version = new Version(0, 9, 0, 0)
+    };
+    if (sharedAssemblies.TryResolve(previousQqRequest) != typeof(QGroup).Assembly)
+    {
+        throw new InvalidOperationException("Current host did not satisfy the previous QQ Model ABI request.");
+    }
+
     var futureQqRequest = new AssemblyName(typeof(QGroup).Assembly.FullName!)
     {
         Version = new Version(0, 10, 0, 0)
@@ -118,7 +127,7 @@ Console.WriteLine("Component API version verification passed.");
     if (builtInModels.Count != 3 ||
         !builtInModels.All(model => model is
         {
-            Version: "0.9.2",
+            Version: "0.9.3",
             Source: "built_in",
             Reloadable: false,
             AssemblyPath: null
@@ -632,8 +641,7 @@ static void AssertAssemblyVersion(Assembly assembly, string expectedVersion)
     if (!string.Equals(actualVersion, expectedVersion, StringComparison.Ordinal))
     {
         throw new InvalidOperationException(
-            $"Shared contract ABI changed for {assembly.GetName().Name}: expected {expectedVersion}, got {actualVersion}. " +
-            "Compatible releases must not change AssemblyVersion.");
+            $"Unexpected shared contract ABI for {assembly.GetName().Name}: expected {expectedVersion}, got {actualVersion}.");
     }
 }
 
