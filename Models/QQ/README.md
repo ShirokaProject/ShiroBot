@@ -71,3 +71,14 @@ Events.MapPlatform(QEventKinds.OfficialButtonInteraction, async evt =>
 The adapter should acknowledge the interaction promptly with
 `IQOfficialMessageApi.AcknowledgeInteractionAsync(click.InteractionId)` before
 dispatching slow plugin work. QQ accepts only one response for each interaction ID.
+
+## QQ official direct messages
+
+An adapter can expose `IQOfficialDirectMessageApi` for C2C typing indicators and
+streamed replies. Plugins request it through `context.GetAdapterExtension<IQOfficialDirectMessageApi>()`
+and handle a missing capability. `BeginStream` returns `IQOfficialMessageStream`;
+`AppendAsync` receives the complete text visible at that point, and `CompleteAsync`
+finishes the response. These contracts belong to the host model; the adapter owns
+the OpenAPI transport and protocol details.
+
+Ark template messages are available through `IQOfficialMessageApi.SendArkAsync`.

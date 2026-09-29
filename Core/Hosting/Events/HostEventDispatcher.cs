@@ -308,7 +308,7 @@ internal sealed class HostEventDispatcher(
             FriendRequestEvent e => $"用户 {e.UserId} 发来好友请求: {e.Comment}",
             GuildInviteEvent e => $"用户 {e.InviterId} 邀请机器人加入 {e.GuildId}",
             BotOfflineEvent e => $"机器人离线: {e.Reason}",
-            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{e.Channel.Id}"),
+            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{Display(e.Channel.Name, e.Channel.Id)}"),
             _ => evt.GetType().Name
         };
     }
