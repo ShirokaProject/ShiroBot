@@ -299,9 +299,9 @@ internal sealed class HostEventDispatcher(
         return evt switch
         {
             MessageEvent { IsDirect: false } message =>
-                $"{message.Channel.Name}({message.Channel.Id}) {message.Sender.Id}发送: {GetMessageSegments(message.Segments)}",
+                $"{Display(message.Channel.Name, message.Channel.Id)} {Display(message.Member?.DisplayName ?? message.Sender.Name, message.Sender.Id)}发送: {GetMessageSegments(message.Segments)}",
             MessageEvent message =>
-                $"{message.Sender.Name}({message.Sender.Id})发送: {GetMessageSegments(message.Segments)}",
+                $"{Display(message.Sender.Name, message.Sender.Id)}发送: {GetMessageSegments(message.Segments)}",
             MessageDeletedEvent e => $"{e.Channel.Id} 中消息 {e.MessageId} 被撤回",
             MemberJoinedEvent e => $"用户 {e.UserId} 加入 {e.Channel.Id}",
             MemberLeftEvent e => $"用户 {e.UserId} 离开 {e.Channel.Id}",
@@ -312,6 +312,10 @@ internal sealed class HostEventDispatcher(
             _ => evt.GetType().Name
         };
     }
+
+    private static string Display(string? name, string id) =>
+        string.IsNullOrWhiteSpace(name) || string.Equals(name, id, StringComparison.Ordinal)
+            ? id : name;
 
     private static string GetMessageSegments(IReadOnlyList<MessageSegment> segments)
     {
