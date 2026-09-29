@@ -87,8 +87,11 @@ finishes the response. These contracts belong to the host model; the adapter own
 the OpenAPI transport and protocol details.
 
 Ark template messages and Embed cards are available through `IQOfficialMessageApi.SendArkAsync`
-and `SendEmbedAsync`. The QQPlatform adapter routes rich messages to C2C, group, text-channel,
-and channel-DM endpoints. A channel-DM target's `Id` is the official `guild_id`.
+and `SendEmbedAsync`. The interface also declares `SendTextAsync` for official text messages.
+Adapters that do not support `SendTextAsync` or `SendArkAsync` use default implementations that
+throw `NotSupportedException`, so plugins should handle that case. The QQPlatform adapter routes
+supported rich messages to C2C, group, text-channel, and channel-DM endpoints. A channel-DM
+target's `Id` is the official `guild_id`.
 
 ## QQ official media upload
 

@@ -213,7 +213,7 @@ internal sealed class HostCommandHandler(
     private string BuildApiInfoText()
     {
         var baseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
-            ? (coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? coreConfig.Api.ListenUrl)
+            ? coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? ApiHostConfig.DefaultListenUrl
             : coreConfig.Api.PublicBaseUrl;
 
         return new StringBuilder()

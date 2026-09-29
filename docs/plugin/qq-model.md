@@ -4,24 +4,44 @@
 
 以下示例使用 `ShiroBot.Model.QQ`；记录日志时还需要 `ShiroBot.SDK.Abstractions`。
 
-## 扩展接口
+## 常用 Model 类型
 
-插件通过 `Context.GetAdapterExtension<T>()` 获取扩展；返回 `null` 表示适配器未实现。
+| 名称 | 类型 | 必填字段 | 描述 |
+| --- | --- | --- | --- |
+| `QFriend` | 实体 | `UserId`、`Nickname` | 好友资料；QQ ID 使用 `long` |
+| `QGroup` | 实体 | `GroupId`、`GroupName` | 群资料 |
+| `QGroupMember` | 实体 | `UserId`、`GroupId`、`Nickname` | 群成员资料和角色 |
+| `QFriendMessage` / `QGroupMessage` / `QTempMessage` | 入站消息 | `PeerId`、`MessageSeq`、`SenderId`；好友消息还需 `Friend`，群消息还需 `Group`、`GroupMember` | 好友、群和临时会话消息 |
+| `QIncomingSegment` / `QOutgoingSegment` | 消息段基类 | 由具体子类型决定 | QQ 原生入站、出站消息段 |
+| `QEventPayload` | 事件负载基类 | 由具体子类型决定 | 放在 `PlatformEvent.Raw` 中 |
+| `QOfficialMessageTarget` | 值对象 | `Scene`、`Id` | QQ 官方消息目标；单聊和群聊的 `Id` 为 openid |
 
-| 接口 | 能力 |
-| --- | --- |
-| `IQFriendApi` | 戳一戳、点赞、好友请求与删除好友 |
-| `IQGroupApi` | 群资料、成员管理、禁言、公告、精华、表情回应和群请求 |
-| `IQFileApi` | 私聊与群文件上传、下载链接、目录管理 |
-| `IQSystemApi` | QQ 资料、好友与群列表、协议实现信息、账号设置 |
-| `IQMessageApi` | QQ 原生消息段、历史消息、撤回与已读 |
-| `IQOfficialMessageApi` | QQ 官方开放平台 Markdown、按钮与互动回应 |
+适配器如何将这些类型映射为通用 `MessageEvent`、`User`、`Channel`，见[适配不同 Model](/adapter/models)。
+
+## 目前提供的功能
+
+以下列出 `ShiroBot.Model.QQ` 当前定义的功能。**Model 提供的是数据类型和可选接口，不代表每个 QQ 适配器都实现了全部功能。**插件通过 `Context.GetAdapterExtension<T>()` 获取扩展；返回 `null` 表示适配器未实现该接口。即使拿到了接口，具体方法仍可能抛出 `NotSupportedException`。
+
+| 功能 | Model 接口 | 适配器实现内容 | 必需 |
+| --- | --- | --- | --- |
+| 好友 | `IQFriendApi` | 戳一戳、资料点赞、删除好友；查询、接受和拒绝好友请求 | 否，按协议能力实现 |
+| 群管理 | `IQGroupApi` | 群名、头像、名片、头衔、管理员、禁言、踢人、退群；戳一戳、表情回应、公告、精华和入群请求 | 否，按协议能力实现 |
+| 文件 | `IQFileApi` | 私聊和群文件上传、下载链接；群文件与文件夹查询、移动、重命名、删除和永久转存 | 否，按协议能力实现 |
+| 账号与资料 | `IQSystemApi` | 用户、好友、群成员、置顶会话、登录账号和协议实现信息查询；头像、昵称、简介、置顶设置 | 否，按协议能力实现 |
+| 原生消息 | `IQMessageApi` | QQ 原生段收发、单条与历史查询、撤回、已读、资源链接和合并转发 | 否，按协议能力实现 |
+| QQ 官方消息 | `IQOfficialMessageApi` | Markdown 与按钮能力探测、发送和互动回应；另定义文本与 Ark 发送方法，旧适配器可能不支持 | 否，仅官方平台适配器按需实现 |
+| QQ 官方私聊 | `IQOfficialDirectMessageApi` | 输入状态与流式回复；参见[官方消息](/plugin/qq-official) | 否，适配器单独实现 |
+
+`IQSystemApi` 还定义了 Cookie、CSRF Token 和收藏表情 URL 查询；`IQGroupApi` 还支持查询和处理群通知、入群申请与邀请。表中是功能概览，具体方法以接口签名为准。
 
 这些接口互相独立。实现了 `IQMessageApi` 不代表能发送官方 Markdown；插件必须单独探测 `IQOfficialMessageApi`。
 
 ## QQ 原生消息与段
 
-`QIncomingMessage` 有好友、群和临时会话子类型。`QIncomingSegment` 包含文本、@、表情、引用、图片、语音、视频、文件、合并转发、小程序、XML 和 Markdown 等入站段。`QOutgoingSegment` 包含相应的可发送原生段；具体适配器可能只支持其中一部分。
+`QIncomingMessage` 有好友、群和临时会话子类型。当前定义的消息段如下；具体适配器可能只支持其中一部分。
+
+- **入站 `QIncomingSegment`**：文本、@ 用户、@ 全体、QQ 表情、引用、图片、语音、视频、文件、合并转发、商城表情、小程序或卡片、XML、Markdown。
+- **出站 `QOutgoingSegment`**：文本、@ 用户、@ 全体、QQ 表情、引用、图片、语音、视频、小程序或卡片、合并转发。出站暂未定义文件、XML 或 Markdown 段；QQ 官方 Markdown 使用 `IQOfficialMessageApi`。
 
 ```csharp
 var messageApi = Context.GetAdapterExtension<IQMessageApi>();
@@ -38,7 +58,13 @@ if (messageApi is not null && long.TryParse(groupId, out var qqGroupId))
 
 ## QQ 特有事件
 
-QQ 特有事件以 `PlatformEvent` 上报：`Kind` 使用 `QEventKinds` 常量，`Raw` 使用对应的 `QEventPayload` 子类型。例如 `QGroupNudge`、`QGroupMessageReaction`、`QFriendRequestReceived`。插件通过 `Events.MapPlatform(kind, handler)` 订阅。
+QQ 特有事件以 `PlatformEvent` 上报：`Kind` 使用 `QEventKinds` 常量，`Raw` 使用对应的 `QEventPayload` 子类型。当前定义的事件种类包括：
+
+- **好友**：戳一戳、文件上传。
+- **群**：管理员变更、精华消息变更、群名变更、消息表情回应、成员禁言、全员禁言、戳一戳、文件上传、入群申请、邀请入群申请、群解散。
+- **其他**：会话置顶变更、QQ 官方消息按钮互动。
+
+插件通过 `Events.MapPlatform(kind, handler)` 订阅，例如 `QGroupNudge`：
 
 ```csharp
 Events.MapPlatform(QEventKinds.GroupNudge, evt =>

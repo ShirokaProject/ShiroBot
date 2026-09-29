@@ -6,7 +6,7 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 
 ```toml
 # adapters/MyAdapter.dll 或 adapters/MyAdapter/MyAdapter.dll
-protocol = "MyAdapter"
+protocols = ["MyAdapter"]
 
 enable_log = true
 disable_console_input = false
@@ -27,8 +27,7 @@ groups = [10001, 10002]
 
 [api]
 enable = true
-listen_url = "http://127.0.0.1:7001"
-listen_urls = []
+listen_urls = ["http://127.0.0.1:7001"]
 public_base_url = ""
 
 [api.auth]
@@ -40,7 +39,7 @@ key = ""
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `protocol` | 空 | 适配器程序集名称，不含 `.dll` |
+| `protocols` | `[]` | 适配器程序集名称或路径列表；只用一个适配器时也写成单元素数组 |
 | `enable_log` | `true` | 是否显示普通日志 |
 | `disable_console_input` | `false` | 是否禁用交互式控制台命令 |
 | `github_proxy` | 空 | GitHub 下载代理前缀 |
@@ -79,7 +78,6 @@ groups = [10001, 10002]
 ```toml
 [api]
 enable = true
-listen_url = "http://127.0.0.1:7001"
 listen_urls = ["http://127.0.0.1:7001", "http://[::1]:7001"]
 public_base_url = "https://bot.example.com"
 
@@ -88,8 +86,8 @@ enable = true
 key = ""
 ```
 
-- `listen_url` 是单地址兼容配置。
-- `listen_urls` 非空时可配置多个监听地址。
+- `listen_urls` 是监听地址列表；只监听一个地址时也写成单元素数组，默认为 `["http://127.0.0.1:7001"]`。
+- 旧配置中的 `protocol` 和 `api.listen_url` 会在读取时迁移为数组字段。
 - `public_base_url` 是反向代理后的外部地址，会提供给插件的 `Context.WebHost`。
 - 开启鉴权且 `key` 为空时，宿主会自动生成随机密钥并写回配置。
 

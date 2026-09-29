@@ -31,3 +31,7 @@ npm run build
 | Node.js | `22` |
 
 Cloudflare Pages 的 `pages.dev` 域名和自定义域名都部署在站点根路径，不需要设置 `DOCS_BASE`。
+
+GitHub Pages 绑定 `docs.shiroka.org` 后也从站点根路径提供文档。工作流使用
+`DOCS_BASE=/` 构建，页面地址如 `https://docs.shiroka.org/plugin/`；
+`/ShiroBot/` 仅适用于未绑定自定义域名的项目站点。
