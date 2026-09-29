@@ -260,12 +260,27 @@ public interface IQMessageApi
 }
 
 /// <summary>
-/// QQ 官方开放平台的 Markdown 与按钮发送能力。插件通过
+/// QQ 官方开放平台的 Markdown、按钮与 Ark 消息能力。插件通过
 /// context.GetAdapterExtension&lt;IQOfficialMessageApi&gt;() 探测；
 /// 未实现此接口的适配器不声明该能力。
 /// </summary>
 public interface IQOfficialMessageApi
 {
+    /// <summary>发送官方文本消息，可通过 reply 指定消息或事件被动回复。</summary>
+    Task<string> SendTextAsync(
+        QOfficialMessageTarget target,
+        string content,
+        QOfficialMessageReply? reply = null)
+        => throw new NotSupportedException();
+
+    /// <summary>发送 QQ 官方 Ark 模板消息；不支持时抛出 NotSupportedException。</summary>
+    Task<string> SendArkAsync(
+        QOfficialMessageTarget target,
+        int templateId,
+        IReadOnlyDictionary<string, string> fields,
+        QOfficialMessageReply? reply = null)
+        => throw new NotSupportedException();
+
     /// <summary>
     /// 探测此目标和按钮形式是否被适配器支持。平台权限可能变化，
     /// 返回 true 不保证后续发送一定成功。
@@ -292,4 +307,26 @@ public interface IQOfficialMessageApi
     Task AcknowledgeInteractionAsync(
         string interactionId,
         QOfficialInteractionResponseCode code = QOfficialInteractionResponseCode.Success);
+}
+
+/// <summary>
+/// QQ 官方私聊输入状态与流式回复。插件通过
+/// context.GetAdapterExtension&lt;IQOfficialDirectMessageApi&gt;() 探测。
+/// </summary>
+public interface IQOfficialDirectMessageApi
+{
+    Task SendTypingAsync(QOfficialMessageTarget target, QOfficialMessageReply reply, TimeSpan duration);
+
+    IQOfficialMessageStream BeginStream(
+        QOfficialMessageTarget target,
+        QOfficialMessageReply reply,
+        QOfficialStreamContentType contentType = QOfficialStreamContentType.Text);
+}
+
+/// <summary>流式回复；AppendAsync 接收截至当前的完整可见文本。</summary>
+public interface IQOfficialMessageStream : IAsyncDisposable
+{
+    bool HasStarted { get; }
+    Task AppendAsync(string cumulativeText, CancellationToken cancellationToken = default);
+    Task<string> CompleteAsync(CancellationToken cancellationToken = default);
 }

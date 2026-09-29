@@ -94,6 +94,12 @@ public sealed record QOfficialMessageReply
     public int? MessageSequence { get; init; }
 }
 
+public enum QOfficialStreamContentType
+{
+    Text = 0,
+    Markdown = 1
+}
+
 /// <summary>QQ 官方互动事件响应码。</summary>
 public enum QOfficialInteractionResponseCode
 {

@@ -39,6 +39,8 @@ public sealed record QOfficialButtonInteraction : QEventPayload
 {
     /// <summary>互动 ID，用于调用 PUT /interactions/{interaction_id}。</summary>
     public required string InteractionId { get; init; }
+    /// <summary>Gateway 事件 ID，用于发送按钮点击后的被动回复。</summary>
+    public string? EventId { get; init; }
     /// <summary>按钮 action.data，即事件 data.resolved.button_data。</summary>
     public required string ButtonData { get; init; }
     /// <summary>按钮 ID；发送时未指定则可能为空。</summary>
