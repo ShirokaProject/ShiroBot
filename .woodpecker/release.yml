@@ -26,7 +26,8 @@ steps:
       - |
         release_version="${CI_COMMIT_TAG:-$(sed -n 's/.*<ShiroBotProductVersion>\([^<]*\)<.*/\1/p' Directory.Build.props | head -n 1)}"
         test -n "$release_version"
-        dotnet publish Core/ShiroBot.csproj -c Release -r linux-x64 --self-contained true -o artifacts/publish/linux-x64 -p:PublishSingleFile=true -p:PublishAot=false -p:IncludeNativeLibrariesForSelfExtract=true -p:RequireDashboard=true "-p:InformationalVersion=${release_version}+${CI_COMMIT_SHA}"
+        echo "Embedding startup version: $release_version"
+        dotnet publish Core/ShiroBot.csproj -c Release -r linux-x64 --self-contained true -o artifacts/publish/linux-x64 -p:PublishSingleFile=true -p:PublishAot=false -p:IncludeNativeLibrariesForSelfExtract=true -p:RequireDashboard=true "-p:InformationalVersion=$release_version+${CI_COMMIT_SHA}"
       - test -x artifacts/publish/linux-x64/ShiroBot
       - test ! -f artifacts/publish/linux-x64/ShiroBot.SDK.dll
 
