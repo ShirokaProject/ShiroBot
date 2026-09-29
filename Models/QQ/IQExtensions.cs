@@ -260,12 +260,41 @@ public interface IQMessageApi
 }
 
 /// <summary>
-/// QQ 官方开放平台的 Markdown、按钮与 Ark 消息能力。插件通过
+/// QQ 官方开放平台的 Markdown、按钮、Embed 与 Ark 消息能力。插件通过
 /// context.GetAdapterExtension&lt;IQOfficialMessageApi&gt;() 探测；
 /// 未实现此接口的适配器不声明该能力。
 /// </summary>
 public interface IQOfficialMessageApi
 {
+    /// <summary>发送一条类型化 QQ 官方消息；媒体类型需要适配器同时实现 IQOfficialMediaApi。</summary>
+    async Task<string> SendAsync(
+        QOfficialMessageTarget target,
+        QOfficialMessage message,
+        QOfficialMessageReply? reply = null,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(message);
+        return message switch
+        {
+            QOfficialTextMessage text => await SendTextAsync(target, text.Content, reply).ConfigureAwait(false),
+            QOfficialMarkdownMessage markdown => await SendMarkdownAsync(target, markdown.Content,
+                markdown.Keyboard, reply).ConfigureAwait(false),
+            QOfficialMediaSourceMessage media when this is IQOfficialMediaApi mediaApi =>
+                media.Caption is null
+                    ? await mediaApi.UploadAndSendAsync(target, media.Type, media.Content, media.FileName,
+                        reply, cancellationToken).ConfigureAwait(false)
+                    : await mediaApi.UploadAndSendWithCaptionAsync(target, media.Type, media.Content, media.FileName,
+                        media.Caption, reply, cancellationToken).ConfigureAwait(false),
+            QOfficialUploadedMediaMessage media when this is IQOfficialMediaApi mediaApi =>
+                media.Caption is null
+                    ? await mediaApi.SendAsync(target, media.UploadedMedia, reply).ConfigureAwait(false)
+                    : await mediaApi.SendWithCaptionAsync(target, media.UploadedMedia, media.Caption, reply)
+                        .ConfigureAwait(false),
+            _ => throw new NotSupportedException("This adapter does not support the requested QQ official message type.")
+        };
+    }
+
     /// <summary>发送官方文本消息，可通过 reply 指定消息或事件被动回复。</summary>
     Task<string> SendTextAsync(
         QOfficialMessageTarget target,
@@ -278,6 +307,13 @@ public interface IQOfficialMessageApi
         QOfficialMessageTarget target,
         int templateId,
         IReadOnlyDictionary<string, string> fields,
+        QOfficialMessageReply? reply = null)
+        => throw new NotSupportedException();
+
+    /// <summary>发送 QQ 官方 Embed 卡片消息。</summary>
+    Task<string> SendEmbedAsync(
+        QOfficialMessageTarget target,
+        QOfficialEmbed embed,
         QOfficialMessageReply? reply = null)
         => throw new NotSupportedException();
 
@@ -307,6 +343,52 @@ public interface IQOfficialMessageApi
     Task AcknowledgeInteractionAsync(
         string interactionId,
         QOfficialInteractionResponseCode code = QOfficialInteractionResponseCode.Success);
+}
+
+/// <summary>QQ 官方群媒体上传与发送能力。媒体上传使用可读流，避免插件依赖适配器实现。</summary>
+public interface IQOfficialMediaApi
+{
+    /// <summary>上传本地媒体并返回可复用的官方 file_info。</summary>
+    Task<QOfficialMedia> UploadAsync(
+        QOfficialMessageTarget target,
+        QOfficialMediaType type,
+        Stream content,
+        string fileName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>发送已上传媒体；可传入消息或事件用于被动回复。</summary>
+    Task<string> SendAsync(
+        QOfficialMessageTarget target,
+        QOfficialMedia media,
+        QOfficialMessageReply? reply = null);
+
+    /// <summary>发送官方媒体并附带文本说明；图片说明可通过同一条富媒体消息发送。</summary>
+    Task<string> SendWithCaptionAsync(
+        QOfficialMessageTarget target,
+        QOfficialMedia media,
+        string content,
+        QOfficialMessageReply? reply = null)
+        => throw new NotSupportedException();
+
+    /// <summary>上传并发送媒体。没有 reply 时使用平台主动发送接口。</summary>
+    Task<string> UploadAndSendAsync(
+        QOfficialMessageTarget target,
+        QOfficialMediaType type,
+        Stream content,
+        string fileName,
+        QOfficialMessageReply? reply = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>上传媒体并在同一条富媒体消息中附带文本说明。</summary>
+    Task<string> UploadAndSendWithCaptionAsync(
+        QOfficialMessageTarget target,
+        QOfficialMediaType type,
+        Stream content,
+        string fileName,
+        string caption,
+        QOfficialMessageReply? reply = null,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
 }
 
 /// <summary>
