@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Config;
 using ShiroBot.Console;
@@ -11,9 +12,7 @@ namespace ShiroBot.Configuration;
 //总配置类
 public class CoreConfig
 {
-    public string Protocol { get; set; } = string.Empty;
-
-    /// <summary>并行加载的 Adapter 名称或 DLL 路径。为空时回退到旧的 protocol。</summary>
+    /// <summary>并行加载的 Adapter 名称或 DLL 路径。</summary>
     public string[] Protocols { get; set; } = [];
 
     public bool EnableLog { get; set; } = true;
@@ -45,11 +44,11 @@ public class CoreConfig
 
 public class ApiHostConfig
 {
+    public const string DefaultListenUrl = "http://127.0.0.1:7001";
+
     public bool Enable { get; set; } = true;
 
-    public string ListenUrl { get; set; } = "http://127.0.0.1:7001";
-
-    public string[] ListenUrls { get; set; } = [];
+    public string[] ListenUrls { get; set; } = [DefaultListenUrl];
 
     public string? PublicBaseUrl { get; set; }
 
@@ -135,6 +134,12 @@ public class ConfigManager(string? coreConfigPath = null)
             if (!File.Exists(_coreConfigPath)) return await CreateDefaultConfig();
             var tomlString = await File.ReadAllTextAsync(_coreConfigPath);
             if (string.IsNullOrWhiteSpace(tomlString)) return await CreateDefaultConfig();
+            var normalizedToml = NormalizeLegacyCoreConfig(tomlString);
+            if (normalizedToml != tomlString)
+            {
+                await File.WriteAllTextAsync(_coreConfigPath, normalizedToml);
+                tomlString = normalizedToml;
+            }
             var config = TomlSerializer.Deserialize<CoreConfig>(tomlString, _options);
             return config ?? await CreateDefaultConfig();
         }
@@ -286,9 +291,100 @@ public class ConfigManager(string? coreConfigPath = null)
             return;
         }
 
-        var current = File.ReadAllText(normalizedConfigPath);
+        var original = File.ReadAllText(normalizedConfigPath);
+        var current = config is CoreConfig ? NormalizeLegacyCoreConfig(original) : original;
         var updated = MergeToml(current, tomlString, overwriteExisting: true);
-        if (updated != current) File.WriteAllText(normalizedConfigPath, updated);
+        if (updated != original) File.WriteAllText(normalizedConfigPath, updated);
+    }
+
+    private static string NormalizeLegacyCoreConfig(string toml)
+    {
+        DocumentSyntax document;
+        try
+        {
+            document = SyntaxParser.ParseStrict(toml);
+        }
+        catch
+        {
+            var repaired = RepairGeneratedDuplicateRouteDefaults(toml);
+            if (repaired == toml) throw;
+            toml = repaired;
+            document = SyntaxParser.ParseStrict(toml);
+        }
+        var edits = new List<TomlEdit>();
+        Migrate(document.KeyValues, "protocol", "protocols");
+        foreach (var table in document.Tables)
+        {
+            if (string.Equals(table.Name?.ToString().Trim(), "api", StringComparison.OrdinalIgnoreCase))
+                Migrate(table.Items, "listen_url", "listen_urls");
+        }
+
+        var normalized = toml;
+        foreach (var edit in edits.OrderByDescending(edit => edit.Offset))
+            normalized = normalized.Remove(edit.Offset, edit.Length).Insert(edit.Offset, edit.Text);
+
+        if (edits.Count > 0) SyntaxParser.ParseStrict(normalized);
+        return normalized;
+
+        void Migrate(SyntaxList<KeyValueSyntax> items, string oldKey, string newKey)
+        {
+            var legacy = items.FirstOrDefault(item =>
+                string.Equals(item.Key?.ToString().Trim(), oldKey, StringComparison.OrdinalIgnoreCase));
+            if (legacy is null) return;
+            var legacyValue = legacy.Value!.Span;
+            var legacyLiteral = toml.Substring(legacyValue.Offset, legacyValue.Length);
+            var emptyLegacyValue = legacyLiteral.Trim() is "\"\"" or "''";
+            var arrayLiteral = emptyLegacyValue ? "[]" : "[" + legacyLiteral + "]";
+
+            var canonical = items.FirstOrDefault(item =>
+                string.Equals(item.Key?.ToString().Trim(), newKey, StringComparison.OrdinalIgnoreCase));
+            if (canonical is not null)
+            {
+                var canonicalValue = canonical.Value!.Span;
+                var literal = toml.Substring(canonicalValue.Offset, canonicalValue.Length).Trim();
+                if (!emptyLegacyValue && literal.StartsWith('[') && literal.EndsWith(']') &&
+                    string.IsNullOrWhiteSpace(literal[1..^1]))
+                {
+                    edits.Add(new TomlEdit(canonicalValue.Offset, canonicalValue.Length,
+                        arrayLiteral, edits.Count));
+                }
+
+                var lineStart = toml.LastIndexOf('\n', Math.Max(0, legacy.Key!.Span.Offset - 1)) + 1;
+                var lineEnd = legacy.EndOfLineToken is { } eol
+                    ? eol.Span.Offset + eol.Span.Length
+                    : legacy.Span.Offset + legacy.Span.Length;
+                edits.Add(new TomlEdit(lineStart, lineEnd - lineStart, string.Empty, edits.Count));
+                return;
+            }
+
+            var keySpan = legacy.Key!.Span;
+            edits.Add(new TomlEdit(keySpan.Offset, keySpan.Length, newKey, edits.Count));
+            edits.Add(new TomlEdit(legacyValue.Offset, legacyValue.Length, arrayLiteral, edits.Count));
+        }
+    }
+
+    private static string RepairGeneratedDuplicateRouteDefaults(string toml)
+    {
+        var headers = Regex.Matches(toml,
+            @"(?m)^[ \t]*\[[^\r\n]+\][ \t]*(?:\r?\n|$)");
+        var routeHeaders = headers.Cast<Match>()
+            .Where(match => match.Value.Trim() == "[plugin_routes.default]")
+            .ToArray();
+        if (routeHeaders.Length != 2) return toml;
+
+        var first = routeHeaders[0];
+        var next = headers.Cast<Match>().FirstOrDefault(match => match.Index > first.Index);
+        if (next is null) return toml;
+        var section = toml[(first.Index + first.Length)..next.Index];
+        var values = section.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 && !line.StartsWith('#'))
+            .ToArray();
+        if (!values.Contains("mode = \"blacklist\"") || !values.Contains("groups = []") ||
+            values.Any(line => line is not ("mode = \"blacklist\"" or "groups = []" or "listen_urls = []")))
+            return toml;
+
+        return toml.Remove(first.Index, next.Index - first.Index);
     }
 
     private static string MergeToml(string current, string incoming, bool overwriteExisting)

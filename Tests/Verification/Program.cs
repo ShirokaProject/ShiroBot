@@ -546,12 +546,19 @@ try
     Directory.CreateDirectory(Path.GetDirectoryName(coreConfigPath)!);
     File.WriteAllText(coreConfigPath, """
         # preserved core comment
+        protocol = "LegacyAdapter"
+        protocols = []
         enable_log = true
         future_core_value = "keep"
+
+        [plugin_routes.default]
+        mode = "whitelist"
+        groups = ["group-1"]
 
         [api]
         enable = true
         listen_url = "http://127.0.0.1:7001"
+        listen_urls = []
         future_api_value = "keep"
 
         [future_core_section]
@@ -559,25 +566,96 @@ try
         """);
     var coreManager = new ConfigManager(coreConfigPath);
     var coreConfig = await coreManager.LoadCoreConfig();
+    if (!coreConfig.Protocols.SequenceEqual(["LegacyAdapter"]) ||
+        !coreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7001"]))
+    {
+        throw new InvalidOperationException("Legacy core settings were not migrated to array settings.");
+    }
     coreConfig.EnableLog = false;
-    coreConfig.Api.ListenUrl = "http://127.0.0.1:7999";
+    coreConfig.Api.ListenUrls = ["http://127.0.0.1:7999"];
     coreManager.SaveConfig(coreConfigPath, coreConfig);
     coreManager.SaveConfig(coreConfigPath, coreConfig);
 
     var preservedCoreToml = File.ReadAllText(coreConfigPath);
     AssertContains(preservedCoreToml, "enable_log = false");
-    AssertContains(preservedCoreToml, "listen_url = \"http://127.0.0.1:7999\"");
+    AssertContains(preservedCoreToml, "protocols = [\"LegacyAdapter\"]");
+    AssertContains(preservedCoreToml, "listen_urls = [\"http://127.0.0.1:7999\"]");
+    AssertSingle(preservedCoreToml, "[plugin_routes.default]");
+    AssertSingle(preservedCoreToml, "[api]");
+    if (preservedCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
+        preservedCoreToml.Contains("listen_url =", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Legacy core keys remained after migration.");
+    }
     AssertContains(preservedCoreToml, "future_core_value = \"keep\"");
     AssertContains(preservedCoreToml, "future_api_value = \"keep\"");
     AssertContains(preservedCoreToml, "[future_core_section]");
     AssertContains(preservedCoreToml, "value = 9");
     AssertSingle(preservedCoreToml, "# preserved core comment");
     var reloadedCoreConfig = await coreManager.LoadCoreConfig();
-    if (reloadedCoreConfig.EnableLog || reloadedCoreConfig.Api.ListenUrl != "http://127.0.0.1:7999")
+    if (reloadedCoreConfig.EnableLog ||
+        !reloadedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7999"]))
     {
         throw new InvalidOperationException("Preserved core TOML did not deserialize with the saved values.");
     }
     Console.WriteLine("Core config preserving-save verification passed.");
+
+    var newCorePath = Path.Combine(tempRoot, "new-core", "config.toml");
+    await new ConfigManager(newCorePath).LoadCoreConfig();
+    var newCoreToml = File.ReadAllText(newCorePath);
+    AssertContains(newCoreToml, "protocols = []");
+    AssertContains(newCoreToml, "listen_urls = [\"http://127.0.0.1:7001\"]");
+    if (newCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
+        newCoreToml.Contains("listen_url =", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("New core TOML contains legacy single-value keys.");
+    }
+
+    var emptyLegacyPath = Path.Combine(tempRoot, "empty-legacy-core", "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(emptyLegacyPath)!);
+    File.WriteAllText(emptyLegacyPath, "protocol = \"\"\nprotocols = []\n");
+    if ((await new ConfigManager(emptyLegacyPath).LoadCoreConfig()).Protocols.Length != 0)
+        throw new InvalidOperationException("Empty legacy adapter setting became a nonempty adapter list.");
+
+    var malformedCorePath = Path.Combine(tempRoot, "malformed-core", "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(malformedCorePath)!);
+    File.WriteAllText(malformedCorePath, """
+        protocol = "LegacyAdapter"
+        protocols = []
+
+        [plugin_routes.default]
+        mode = "blacklist"
+        groups = []
+        listen_urls = []
+
+        [api]
+        enable = true
+        listen_url = "http://127.0.0.1:7021"
+        listen_urls = []
+
+        [api.auth]
+        enable = true
+        key = "example"
+
+        [plugin_routes]
+
+        [plugin_routes.default]
+        mode = "whitelist"
+        groups = ["915449089"]
+        """);
+    var malformedManager = new ConfigManager(malformedCorePath);
+    var repairedCoreConfig = await malformedManager.LoadCoreConfig();
+    if (!repairedCoreConfig.Protocols.SequenceEqual(["LegacyAdapter"]) ||
+        !repairedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7021"]) ||
+        !repairedCoreConfig.PluginRoutes.Default.Groups.SequenceEqual(["915449089"]))
+    {
+        throw new InvalidOperationException("Generated duplicate core section was not repaired without losing settings.");
+    }
+    var repairedToml = File.ReadAllText(malformedCorePath);
+    AssertSingle(repairedToml, "[plugin_routes.default]");
+    await malformedManager.LoadCoreConfig();
+    if (File.ReadAllText(malformedCorePath) != repairedToml)
+        throw new InvalidOperationException("Core config migration was not idempotent.");
 
     async Task<LoadedPluginHandle> CreatePluginHandleAsync(
         IBotPlugin plugin,

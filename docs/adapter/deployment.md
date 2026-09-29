@@ -41,7 +41,7 @@ adapters/ExampleAdapter/runtimes/...
 核心配置：
 
 ```toml
-protocol = "ExampleAdapter"
+protocols = ["ExampleAdapter"]
 ```
 
 宿主依次尝试：

@@ -1319,7 +1319,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
             return config.ListenUrls.Where(url => !string.IsNullOrWhiteSpace(url));
         }
 
-        return [config.ListenUrl];
+        return [ApiHostConfig.DefaultListenUrl];
     }
 
     private static LoadedPluginHandle? FindLoadedPlugin(PluginManager pluginManager, string id) =>
@@ -2340,7 +2340,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
     private static object CreateConfigResponse(CoreConfig config) => new
     {
-        protocol = config.Protocol,
+        protocol = config.Protocols.FirstOrDefault() ?? string.Empty,
         protocols = config.Protocols,
         enable_log = config.EnableLog,
         disable_console_input = config.DisableConsoleInput,
@@ -2352,7 +2352,7 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
         api = new
         {
             enable = config.Api.Enable,
-            listen_url = config.Api.ListenUrl,
+            listen_url = config.Api.ListenUrls.FirstOrDefault() ?? ApiHostConfig.DefaultListenUrl,
             listen_urls = config.Api.ListenUrls,
             public_base_url = config.Api.PublicBaseUrl,
             auth_enable = config.Api.Auth.Enable,
@@ -2368,7 +2368,12 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
     {
         if (TryGetString(patch, "protocol", out var protocol))
         {
-            configManager.SetConfigValue(configPath, "protocol", protocol);
+            configManager.SetConfigValue(configPath, "protocols", new[] { protocol });
+        }
+
+        if (TryGetStringArray(patch, "protocols", out var protocols))
+        {
+            configManager.SetConfigValue(configPath, "protocols", protocols);
         }
 
         if (TryGetBool(patch, "enable_log", out var enableLog))
@@ -2422,8 +2427,8 @@ internal sealed class HostHttpServer(WebApplication app) : IAsyncDisposable
 
         if (TryGetString(apiPatch, "listen_url", out var listenUrl))
         {
-            currentApiConfig.ListenUrl = listenUrl;
-            configManager.SetConfigValue(configPath, "api.listen_url", listenUrl);
+            currentApiConfig.ListenUrls = [listenUrl];
+            configManager.SetConfigValue(configPath, "api.listen_urls", currentApiConfig.ListenUrls);
         }
 
         if (TryGetStringArray(apiPatch, "listen_urls", out var listenUrls))
