@@ -40,7 +40,7 @@ jobs:
       - name: Build docs
         working-directory: docs
         env:
-          DOCS_BASE: /ShiroBot/
+          DOCS_BASE: /
         run: npm run build
 
       - name: Upload Pages artifact
