@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.IO.Compression;
+using System.Text.Json;
 using ShiroBot.Adapters;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Configuration;
@@ -7,6 +8,7 @@ using ShiroBot.SDK.Config;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Logging;
+using ShiroBot.Hosting.Http;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Packages;
 using ShiroBot.Plugins;
@@ -69,6 +71,42 @@ Console.WriteLine("Plugin service registry verification passed.");
     }
 }
 Console.WriteLine("Plugin ID directory discovery verification passed.");
+
+{
+    var pluginTomlPath = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"), "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(pluginTomlPath)!);
+    try
+    {
+        File.WriteAllText(pluginTomlPath, "name = \"a,b#c\"\n[network]\nport = 7021\nvalues = [1, 2]\n[[targets]]\nid = \"first\"\n");
+        var config = HostHttpServer.LoadTomlObject(pluginTomlPath);
+        if (config["name"] is not "a,b#c" ||
+            config["network"] is not Dictionary<string, object?> network ||
+            network["port"] is not 7021L ||
+            network["values"] is not object?[] values || values.Length != 2 ||
+            values[0] is not 1L ||
+            config["targets"] is not object?[] targets || targets.Length != 1 ||
+            targets[0] is not Dictionary<string, object?> target ||
+            target["id"] is not "first")
+        {
+            throw new InvalidOperationException("Plugin config TOML model did not preserve nested tables, arrays, or string values.");
+        }
+
+        using var patch = JsonDocument.Parse("{\"network\":{\"port\":8080,\"enabled\":true}}");
+        HostHttpServer.ApplyPluginConfigPatch(new ConfigManager(pluginTomlPath), pluginTomlPath, "test", patch.RootElement);
+        var updated = HostHttpServer.LoadTomlObject(pluginTomlPath);
+        if (updated["network"] is not Dictionary<string, object?> updatedNetwork ||
+            updatedNetwork["port"] is not 8080L || updatedNetwork["enabled"] is not true)
+        {
+            throw new InvalidOperationException("Plugin config API patch did not update nested TOML values.");
+        }
+    }
+    finally
+    {
+        Directory.Delete(Path.GetDirectoryName(pluginTomlPath)!, recursive: true);
+    }
+}
+Console.WriteLine("Plugin config TOML model verification passed.");
+Console.WriteLine("Plugin config nested patch verification passed.");
 
 ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
 ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
@@ -163,6 +201,14 @@ botContext.RegisterAdapter(discordAdapter);
         {
             throw new InvalidOperationException("Plugin ID lookup failed when a config-only ID directory exists beside a renamed root DLL.");
         }
+
+        var detail = HostHttpServer.FindPluginListItem(pluginManager, "sharedcontractpluginprobe");
+        if (detail is null || detail.Id != "SharedContractPluginProbe" ||
+            detail.Name != "Shared contract plugin probe" || detail.Version != "0.9.2" || detail.Enable ||
+            HostHttpServer.FindPluginListItem(pluginManager, "missing-plugin") is not null)
+        {
+            throw new InvalidOperationException("Plugin detail lookup did not return installed plugin metadata or reject a missing plugin.");
+        }
     }
     finally
     {
@@ -170,6 +216,7 @@ botContext.RegisterAdapter(discordAdapter);
     }
 }
 Console.WriteLine("Renamed plugin ID lookup verification passed.");
+Console.WriteLine("Plugin detail lookup verification passed.");
 
 await Task.WhenAll(
     SendInAdapterScopeAsync(qqAdapter, "qq-message"),
