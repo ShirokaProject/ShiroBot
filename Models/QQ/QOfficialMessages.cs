@@ -1,7 +1,38 @@
 namespace ShiroBot.Model.QQ;
 
-/// <summary>QQ 官方机器人消息目标。单聊/群聊 Id 是开放平台 openid；频道使用对应频道或私信会话 ID。</summary>
+/// <summary>QQ 官方机器人消息目标。单聊/群聊 Id 是开放平台 openid；频道 Id 是 channel_id；频道私信 Id 是 guild_id。</summary>
 public sealed record QOfficialMessageTarget(QOfficialMessageScene Scene, string Id);
+
+/// <summary>一条 QQ 官方消息。根据消息种类限制可组合的正文和键盘。</summary>
+public abstract record QOfficialMessage
+{
+    public static QOfficialMessage Text(string content) => new QOfficialTextMessage(content);
+
+    public static QOfficialMessage Markdown(QOfficialMarkdown markdown, QOfficialKeyboard? keyboard = null) =>
+        new QOfficialMarkdownMessage(markdown, keyboard);
+
+    /// <summary>创建本地媒体消息；媒体上传由适配器在发送时完成。</summary>
+    public static QOfficialMessage Media(QOfficialMediaType type, Stream content, string fileName,
+        string? caption = null) => new QOfficialMediaSourceMessage(type, content, fileName, caption);
+
+    /// <summary>创建已上传媒体消息，可在被动回复时复用 file_info。</summary>
+    public static QOfficialMessage Media(QOfficialMedia media, string? caption = null) =>
+        new QOfficialUploadedMediaMessage(media, caption);
+}
+
+public sealed record QOfficialTextMessage(string Content) : QOfficialMessage;
+
+public sealed record QOfficialMarkdownMessage(QOfficialMarkdown Content, QOfficialKeyboard? Keyboard = null)
+    : QOfficialMessage;
+
+public sealed record QOfficialMediaSourceMessage(
+    QOfficialMediaType Type,
+    Stream Content,
+    string FileName,
+    string? Caption = null) : QOfficialMessage;
+
+public sealed record QOfficialUploadedMediaMessage(QOfficialMedia UploadedMedia, string? Caption = null)
+    : QOfficialMessage;
 
 public enum QOfficialMessageScene
 {
@@ -21,6 +52,19 @@ public sealed record QTemplateMarkdown(
     IReadOnlyList<QMarkdownParameter> Params) : QOfficialMarkdown;
 
 public sealed record QMarkdownParameter(string Key, IReadOnlyList<string> Values);
+
+/// <summary>QQ 官方 Embed 卡片。字段格式按官方 Embed 消息模型定义。</summary>
+public sealed record QOfficialEmbed
+{
+    public string? Title { get; init; }
+    public string? Prompt { get; init; }
+    public QOfficialEmbedThumbnail? Thumbnail { get; init; }
+    public IReadOnlyList<QOfficialEmbedField>? Fields { get; init; }
+}
+
+public sealed record QOfficialEmbedThumbnail(string Url);
+
+public sealed record QOfficialEmbedField(string Name);
 
 /// <summary>QQ 官方按钮键盘。模板 ID 和自定义按钮内容互斥。</summary>
 public abstract record QOfficialKeyboard;
@@ -93,6 +137,18 @@ public sealed record QOfficialMessageReply
     public string? EventId { get; init; }
     public int? MessageSequence { get; init; }
 }
+
+/// <summary>QQ 官方群媒体类型。</summary>
+public enum QOfficialMediaType
+{
+    Image = 1,
+    Video = 2,
+    Audio = 3,
+    File = 4
+}
+
+/// <summary>已上传到 QQ 官方平台的媒体引用，可用于后续发送。</summary>
+public sealed record QOfficialMedia(string FileInfo, QOfficialMediaType Type, string FileName);
 
 public enum QOfficialStreamContentType
 {
