@@ -1,6 +1,6 @@
 # QQ 官方机器人富消息
 
-`ShiroBot.Model.QQ` 提供 QQ 官方开放平台的 Markdown、消息按钮和按钮点击事件模型。它们是可选的平台能力：官方适配器实现 `IQOfficialMessageApi` 后，插件才能发送；Milky 等不实现该接口的适配器会在探测时返回 `null`。
+`ShiroBot.Model.QQ` 提供 QQ 官方开放平台的 Markdown、消息按钮和按钮点击事件模型。它们是可选的平台能力：官方适配器实现 `IQOfficialMessageApi` 后，插件才能使用它实际支持的方法；Milky 等不实现该接口的适配器会在探测时返回 `null`。
 
 插件和适配器应使用与宿主匹配的 `ShiroBot.Model.QQ` 程序集。发送目标的 `Id` 在单聊和群聊中是开放平台的 **openid**，不能传普通 QQ 号或群号。
 
@@ -67,6 +67,8 @@ else
 Markdown 正文可以直接包含远程图片语法，再接正文与按钮。需要发送本地图片时，使用 `QOfficialMessage.Media`，可附加普通文本说明；不要把 Markdown 对象和本地媒体放进同一消息，因为官方接口按消息类型选择正文字段。
 
 Embed 卡片、Ark 模板和 Markdown/按钮都通过 `IQOfficialMessageApi` 发送。`SendEmbedAsync` 使用 QQ 官方 `msg_type=4`；Embed 的字段包含标题、提示、缩略图和字段名称。目标场景会路由到 C2C、群聊、文字子频道或频道私信接口；频道私信的目标 ID 是官方 `guild_id`。
+
+接口还定义了 `SendTextAsync` 和 `SendArkAsync`，分别发送官方文本和 Ark 模板消息。旧适配器可能不支持这两个方法，默认实现会抛出 `NotSupportedException`；拿到 `IQOfficialMessageApi` 并不表示当前适配器支持它们，调用时应处理该异常。私聊输入状态和流式回复使用独立的 `IQOfficialDirectMessageApi`；只有适配器实现并暴露该扩展后才能使用。
 
 | 模型 | 用途 |
 | --- | --- |

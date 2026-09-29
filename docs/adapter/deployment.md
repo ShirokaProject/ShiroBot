@@ -22,8 +22,10 @@ public async Task StartAsync()
 
 ```text
 adapters/ExampleAdapter.dll
-adapters/ExampleAdapter.toml
+adapters/config.toml
 ```
+
+宿主按入口 DLL 所在目录寻找 `config.toml`。多个根目录单 DLL 适配器会共用 `adapters/config.toml`，因此需要独立配置时使用目录部署。
 
 ### 目录部署
 
@@ -39,7 +41,7 @@ adapters/ExampleAdapter/runtimes/...
 核心配置：
 
 ```toml
-protocol = "ExampleAdapter"
+protocols = ["ExampleAdapter"]
 ```
 
 宿主依次尝试：
@@ -59,7 +61,7 @@ adapters/ExampleAdapter/ExampleAdapter.dll
 
 ## 发布目录适配器
 
-适配器当前不使用插件的自动 native 延迟下载流程。最稳妥的方式是发布完整目录：
+有 managed 或 native 依赖时，推荐发布完整目录：
 
 ```bash
 dotnet publish -c Release -o ./publish
@@ -75,9 +77,7 @@ ShiroBot/adapters/ExampleAdapter/
 
 ## 适配器单 DLL
 
-如果适配器只有 managed 依赖，可以自行使用 ILRepack 合并，或者在发布流程中加入合并目标。不要直接启用插件自动打包目标，因为适配器没有 `BotPluginAttribute`，生命周期和 native 加载策略也与插件不同。
-
-包含 native 库的适配器推荐使用目录部署，并保留 `.deps.json` 与 `runtimes` 结构，让 `AssemblyDependencyResolver` 按正常 .NET 规则解析。
+当前模板启用 SDK 的单 DLL 打包目标；没有额外文件依赖时可以直接部署构建出的入口 DLL。宿主也会读取适配器中嵌入的 native NuGet 依赖清单，并按当前 RID 准备资源。若依赖协议客户端配置文件或其他不能嵌入的文件，仍应使用目录部署并保留所需文件。
 
 ## 日志
 
@@ -96,7 +96,7 @@ Logger.Error("鉴权失败");
 
 ## 连接生命周期
 
-`IBotAdapter` 提供默认 no-op 生命周期；需要连接或后台任务的适配器再重写：
+`IBotAdapter` 提供默认 no-op 生命周期；这些方法由宿主调用，需要连接或后台任务的适配器再重写：
 
 - `StartAsync()` 完成初始连接和鉴权。
 - `StopAsync()` 取消事件循环并关闭协议连接。

@@ -1,17 +1,18 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Config;
 using ShiroBot.Console;
 using Tomlyn;
+using Tomlyn.Parsing;
+using Tomlyn.Syntax;
 
 namespace ShiroBot.Configuration;
 
 //总配置类
 public class CoreConfig
 {
-    public string Protocol { get; set; } = string.Empty;
-
-    /// <summary>并行加载的 Adapter 名称或 DLL 路径。为空时回退到旧的 protocol。</summary>
+    /// <summary>并行加载的 Adapter 名称或 DLL 路径。</summary>
     public string[] Protocols { get; set; } = [];
 
     public bool EnableLog { get; set; } = true;
@@ -43,11 +44,11 @@ public class CoreConfig
 
 public class ApiHostConfig
 {
+    public const string DefaultListenUrl = "http://127.0.0.1:7001";
+
     public bool Enable { get; set; } = true;
 
-    public string ListenUrl { get; set; } = "http://127.0.0.1:7001";
-
-    public string[] ListenUrls { get; set; } = [];
+    public string[] ListenUrls { get; set; } = [DefaultListenUrl];
 
     public string? PublicBaseUrl { get; set; }
 
@@ -133,6 +134,12 @@ public class ConfigManager(string? coreConfigPath = null)
             if (!File.Exists(_coreConfigPath)) return await CreateDefaultConfig();
             var tomlString = await File.ReadAllTextAsync(_coreConfigPath);
             if (string.IsNullOrWhiteSpace(tomlString)) return await CreateDefaultConfig();
+            var normalizedToml = NormalizeLegacyCoreConfig(tomlString);
+            if (normalizedToml != tomlString)
+            {
+                await File.WriteAllTextAsync(_coreConfigPath, normalizedToml);
+                tomlString = normalizedToml;
+            }
             var config = TomlSerializer.Deserialize<CoreConfig>(tomlString, _options);
             return config ?? await CreateDefaultConfig();
         }
@@ -181,8 +188,11 @@ public class ConfigManager(string? coreConfigPath = null)
             }
 
             var toml = File.ReadAllText(normalizedConfigPath);
-            if (TryEnsureTomlDefaults(normalizedConfigPath, toml, Activator.CreateInstance<T>(), _options, out var updatedToml))
+            var defaults = SerializeToml(Activator.CreateInstance<T>(), _options);
+            var updatedToml = MergeToml(toml, defaults, overwriteExisting: false);
+            if (updatedToml != toml)
             {
+                File.WriteAllText(normalizedConfigPath, updatedToml);
                 toml = updatedToml;
             }
 
@@ -208,92 +218,6 @@ public class ConfigManager(string? coreConfigPath = null)
     public T? LoadScopedConfig<T>(string directory, string scopeName) where T : class, new()
     {
         return LoadConfig<T>(Path.Combine(directory, "config.toml"), scopeName);
-    }
-
-    private static bool TryEnsureTomlDefaults<T>(
-        string configPath,
-        string currentToml,
-        T defaultConfig,
-        TomlSerializerOptions options,
-        out string updatedToml) where T : class
-    {
-        updatedToml = currentToml;
-        if (string.IsNullOrWhiteSpace(currentToml)) return false;
-
-        var defaultToml = SerializeToml(defaultConfig, options);
-        var currentSections = ParseTomlSections(currentToml);
-        var defaultSections = ParseTomlSections(defaultToml);
-        var lines = currentToml.Replace("\r\n", "\n").Split('\n').ToList();
-        var changed = false;
-
-        foreach (var (sectionName, defaultSection) in defaultSections)
-        {
-            if (!currentSections.TryGetValue(sectionName, out var currentSection))
-            {
-                AppendMissingSection(lines, sectionName, defaultSection.Lines);
-                changed = true;
-                continue;
-            }
-
-            var missingLines = GetMissingTomlEntryLines(defaultSection.Lines, currentSection.Keys);
-            if (missingLines.Count == 0) continue;
-
-            var insertAt = sectionName.Length == 0
-                ? FindFirstSectionIndex(lines)
-                : FindSectionInsertIndex(lines, currentSection.HeaderLineIndex);
-            lines.InsertRange(insertAt, missingLines);
-            changed = true;
-        }
-
-        if (!changed) return false;
-
-        updatedToml = string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine;
-        File.WriteAllText(configPath, updatedToml);
-        return true;
-    }
-
-    private static Dictionary<string, TomlSectionInfo> ParseTomlSections(string toml)
-    {
-        var sections = new Dictionary<string, TomlSectionInfo>(StringComparer.OrdinalIgnoreCase);
-        var current = GetOrCreateSection("");
-        var rawLines = toml.Replace("\r\n", "\n").Split('\n');
-
-        for (var i = 0; i < rawLines.Length; i++)
-        {
-            var line = rawLines[i];
-            var trimmed = line.Trim();
-            if (TryParseTomlHeader(trimmed, out var sectionName, out var isArrayTable))
-            {
-                if (isArrayTable)
-                {
-                    GetOrCreateSection("").Keys.Add(sectionName);
-                }
-
-                current = GetOrCreateSection(sectionName);
-                current.HeaderLineIndex = i;
-                current.Lines.Add(line);
-                continue;
-            }
-
-            current.Lines.Add(line);
-            if (TryGetTomlKey(line, out var key))
-            {
-                current.Keys.Add(key);
-            }
-        }
-
-        return sections;
-
-        TomlSectionInfo GetOrCreateSection(string name)
-        {
-            if (!sections.TryGetValue(name, out var section))
-            {
-                section = new TomlSectionInfo(name);
-                sections[name] = section;
-            }
-
-            return section;
-        }
     }
 
     private static bool TryParseTomlHeader(string trimmed, out string sectionName, out bool isArrayTable)
@@ -327,89 +251,6 @@ public class ConfigManager(string? coreConfigPath = null)
         return !string.IsNullOrEmpty(key);
     }
 
-    private static int FindSectionInsertIndex(List<string> lines, int headerLineIndex)
-    {
-        if (headerLineIndex < 0) headerLineIndex = -1;
-        for (var i = headerLineIndex + 1; i < lines.Count; i++)
-        {
-            var trimmed = lines[i].Trim();
-            if (TryParseTomlHeader(trimmed, out _, out _)) return i;
-        }
-
-        return lines.Count;
-    }
-
-    private static int FindFirstSectionIndex(List<string> lines)
-    {
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var trimmed = lines[i].Trim();
-            if (TryParseTomlHeader(trimmed, out _, out _)) return i;
-        }
-
-        return lines.Count;
-    }
-
-    private static void AppendMissingSection(List<string> lines, string sectionName, List<string> sectionLines)
-    {
-        if (sectionName.Length == 0)
-        {
-            lines.InsertRange(FindFirstSectionIndex(lines), sectionLines.Where(TryGetTomlKeyLine));
-            return;
-        }
-
-        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
-        {
-            lines.RemoveAt(lines.Count - 1);
-        }
-
-        if (lines.Count > 0) lines.Add(string.Empty);
-        lines.AddRange(sectionLines.Where(line => !string.IsNullOrWhiteSpace(line)));
-    }
-
-    private static bool TryGetTomlKeyLine(string line) => TryGetTomlKey(line, out _);
-
-    private static List<string> GetMissingTomlEntryLines(
-        IReadOnlyList<string> defaultLines,
-        IReadOnlySet<string> currentKeys)
-    {
-        var result = new List<string>();
-        var pendingComments = new List<string>();
-
-        foreach (var line in defaultLines)
-        {
-            var trimmed = line.Trim();
-            if (trimmed.StartsWith('#') || (trimmed.Length == 0 && pendingComments.Count > 0))
-            {
-                pendingComments.Add(line);
-                continue;
-            }
-
-            if (TryGetTomlKey(line, out var key))
-            {
-                if (!currentKeys.Contains(key))
-                {
-                    result.AddRange(pendingComments);
-                    result.Add(line);
-                }
-
-                pendingComments.Clear();
-                continue;
-            }
-
-            pendingComments.Clear();
-        }
-
-        return result;
-    }
-
-    private sealed class TomlSectionInfo(string name)
-    {
-        public int HeaderLineIndex { get; set; } = name.Length == 0 ? -1 : 0;
-        public List<string> Lines { get; } = [];
-        public HashSet<string> Keys { get; } = new(StringComparer.OrdinalIgnoreCase);
-    }
-
     public void SaveScopedConfig<T>(string directory, T config) where T : class
     {
         SaveConfig(Path.Combine(directory, "config.toml"), config);
@@ -427,33 +268,16 @@ public class ConfigManager(string? coreConfigPath = null)
         var normalizedConfigPath = Path.GetFullPath(configPath);
         Directory.CreateDirectory(Path.GetDirectoryName(normalizedConfigPath)!);
 
-        var toml = File.Exists(normalizedConfigPath) ? File.ReadAllText(normalizedConfigPath) : string.Empty;
-        var lines = toml.Replace("\r\n", "\n").Split('\n').ToList();
-        if (lines is [{ Length: 0 }]) lines.Clear();
-
         var pathParts = keyPath.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (pathParts.Length == 0) throw new ArgumentException("配置键路径不能为空。", nameof(keyPath));
 
         var key = pathParts[^1];
         var sectionName = string.Join('.', pathParts[..^1]);
         var valueLiteral = FormatTomlValue(value);
-
-        var (sectionStart, sectionEnd) = FindOrAppendSection(lines, sectionName);
-        for (var i = sectionStart; i < sectionEnd; i++)
-        {
-            if (!TryGetTomlKey(lines[i], out var existingKey)
-                || !string.Equals(existingKey, key, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            lines[i] = ReplaceTomlValue(lines[i], valueLiteral);
-            WritePatchedToml(normalizedConfigPath, lines);
-            return;
-        }
-
-        lines.Insert(sectionEnd, $"{key} = {valueLiteral}");
-        WritePatchedToml(normalizedConfigPath, lines);
+        var patch = (sectionName.Length == 0 ? string.Empty : $"[{sectionName}]\n") + $"{key} = {valueLiteral}\n";
+        var current = File.Exists(normalizedConfigPath) ? File.ReadAllText(normalizedConfigPath) : string.Empty;
+        var updated = MergeToml(current, patch, overwriteExisting: true);
+        if (updated != current) File.WriteAllText(normalizedConfigPath, updated);
     }
 
     private static void SaveToml<T>(string configPath, T config, TomlSerializerOptions options) where T : class
@@ -467,84 +291,196 @@ public class ConfigManager(string? coreConfigPath = null)
             return;
         }
 
-        var lines = File.ReadAllText(normalizedConfigPath).Replace("\r\n", "\n").Split('\n').ToList();
-        if (lines is [{ Length: 0 }]) lines.Clear();
+        var original = File.ReadAllText(normalizedConfigPath);
+        var current = config is CoreConfig ? NormalizeLegacyCoreConfig(original) : original;
+        var updated = MergeToml(current, tomlString, overwriteExisting: true);
+        if (updated != original) File.WriteAllText(normalizedConfigPath, updated);
+    }
 
-        foreach (var entry in GetTomlEntries(tomlString))
+    private static string NormalizeLegacyCoreConfig(string toml)
+    {
+        DocumentSyntax document;
+        try
         {
-            var (sectionStart, sectionEnd) = FindOrAppendSection(lines, entry.SectionName);
-            var existingLineIndex = -1;
-            for (var i = sectionStart; i < sectionEnd; i++)
+            document = SyntaxParser.ParseStrict(toml);
+        }
+        catch
+        {
+            var repaired = RepairGeneratedDuplicateRouteDefaults(toml);
+            if (repaired == toml) throw;
+            toml = repaired;
+            document = SyntaxParser.ParseStrict(toml);
+        }
+        var edits = new List<TomlEdit>();
+        Migrate(document.KeyValues, "protocol", "protocols");
+        foreach (var table in document.Tables)
+        {
+            if (string.Equals(table.Name?.ToString().Trim(), "api", StringComparison.OrdinalIgnoreCase))
+                Migrate(table.Items, "listen_url", "listen_urls");
+        }
+
+        var normalized = toml;
+        foreach (var edit in edits.OrderByDescending(edit => edit.Offset))
+            normalized = normalized.Remove(edit.Offset, edit.Length).Insert(edit.Offset, edit.Text);
+
+        if (edits.Count > 0) SyntaxParser.ParseStrict(normalized);
+        return normalized;
+
+        void Migrate(SyntaxList<KeyValueSyntax> items, string oldKey, string newKey)
+        {
+            var legacy = items.FirstOrDefault(item =>
+                string.Equals(item.Key?.ToString().Trim(), oldKey, StringComparison.OrdinalIgnoreCase));
+            if (legacy is null) return;
+            var legacyValue = legacy.Value!.Span;
+            var legacyLiteral = toml.Substring(legacyValue.Offset, legacyValue.Length);
+            var emptyLegacyValue = legacyLiteral.Trim() is "\"\"" or "''";
+            var arrayLiteral = emptyLegacyValue ? "[]" : "[" + legacyLiteral + "]";
+
+            var canonical = items.FirstOrDefault(item =>
+                string.Equals(item.Key?.ToString().Trim(), newKey, StringComparison.OrdinalIgnoreCase));
+            if (canonical is not null)
             {
-                if (TryGetTomlKey(lines[i], out var existingKey)
-                    && string.Equals(existingKey, entry.Key, StringComparison.OrdinalIgnoreCase))
+                var canonicalValue = canonical.Value!.Span;
+                var literal = toml.Substring(canonicalValue.Offset, canonicalValue.Length).Trim();
+                if (!emptyLegacyValue && literal.StartsWith('[') && literal.EndsWith(']') &&
+                    string.IsNullOrWhiteSpace(literal[1..^1]))
                 {
-                    existingLineIndex = i;
-                    break;
+                    edits.Add(new TomlEdit(canonicalValue.Offset, canonicalValue.Length,
+                        arrayLiteral, edits.Count));
+                }
+
+                var lineStart = toml.LastIndexOf('\n', Math.Max(0, legacy.Key!.Span.Offset - 1)) + 1;
+                var lineEnd = legacy.EndOfLineToken is { } eol
+                    ? eol.Span.Offset + eol.Span.Length
+                    : legacy.Span.Offset + legacy.Span.Length;
+                edits.Add(new TomlEdit(lineStart, lineEnd - lineStart, string.Empty, edits.Count));
+                return;
+            }
+
+            var keySpan = legacy.Key!.Span;
+            edits.Add(new TomlEdit(keySpan.Offset, keySpan.Length, newKey, edits.Count));
+            edits.Add(new TomlEdit(legacyValue.Offset, legacyValue.Length, arrayLiteral, edits.Count));
+        }
+    }
+
+    private static string RepairGeneratedDuplicateRouteDefaults(string toml)
+    {
+        var headers = Regex.Matches(toml,
+            @"(?m)^[ \t]*\[[^\r\n]+\][ \t]*(?:\r?\n|$)");
+        var routeHeaders = headers.Cast<Match>()
+            .Where(match => match.Value.Trim() == "[plugin_routes.default]")
+            .ToArray();
+        if (routeHeaders.Length != 2) return toml;
+
+        var first = routeHeaders[0];
+        var next = headers.Cast<Match>().FirstOrDefault(match => match.Index > first.Index);
+        if (next is null) return toml;
+        var section = toml[(first.Index + first.Length)..next.Index];
+        var values = section.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 && !line.StartsWith('#'))
+            .ToArray();
+        if (!values.Contains("mode = \"blacklist\"") || !values.Contains("groups = []") ||
+            values.Any(line => line is not ("mode = \"blacklist\"" or "groups = []" or "listen_urls = []")))
+            return toml;
+
+        return toml.Remove(first.Index, next.Index - first.Index);
+    }
+
+    private static string MergeToml(string current, string incoming, bool overwriteExisting)
+    {
+        if (string.IsNullOrWhiteSpace(current))
+        {
+            SyntaxParser.ParseStrict(incoming);
+            return incoming;
+        }
+
+        var original = SyntaxParser.ParseStrict(current);
+        var replacement = SyntaxParser.ParseStrict(incoming);
+        var newline = current.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var edits = new List<TomlEdit>();
+        var matchedTables = new HashSet<TableSyntaxBase>();
+        MergeSection(original.KeyValues, replacement.KeyValues, original.Tables.ChildrenCount > 0
+            ? original.Tables.GetChild(0)!.Span.Offset
+            : current.Length);
+
+        foreach (var newTable in replacement.Tables)
+        {
+            var oldTable = original.Tables.FirstOrDefault(table =>
+                !matchedTables.Contains(table) &&
+                table.GetType() == newTable.GetType() &&
+                string.Equals(table.Name!.ToString().Trim(), newTable.Name!.ToString().Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (oldTable is null)
+            {
+                var sectionText = newTable.ToString().TrimStart('\r', '\n');
+                var separator = current.Length == 0 || current.EndsWith("\n\n", StringComparison.Ordinal)
+                    ? string.Empty
+                    : current.EndsWith('\n') ? newline : newline + newline;
+                edits.Add(new TomlEdit(current.Length, 0, separator + ConvertNewlines(sectionText, newline), edits.Count));
+                continue;
+            }
+
+            matchedTables.Add(oldTable);
+            var insertion = oldTable.Items.ChildrenCount > 0
+                ? EndOfLine(oldTable.Items.GetChild(oldTable.Items.ChildrenCount - 1)!)
+                : EndOfTableHeader(oldTable);
+            MergeSection(oldTable.Items, newTable.Items, insertion);
+        }
+
+        if (edits.Count == 0) return current;
+
+        // Apply source-span edits from the end, so earlier offsets remain valid.
+        var updated = current;
+        foreach (var edit in edits.OrderByDescending(edit => edit.Offset).ThenByDescending(edit => edit.Order))
+        {
+            updated = updated.Remove(edit.Offset, edit.Length).Insert(edit.Offset, edit.Text);
+        }
+
+        SyntaxParser.ParseStrict(updated);
+        return updated;
+
+        void MergeSection(SyntaxList<KeyValueSyntax> oldItems, SyntaxList<KeyValueSyntax> newItems, int insertion)
+        {
+            var additions = new System.Text.StringBuilder();
+            foreach (var newItem in newItems)
+            {
+                var oldItem = oldItems.FirstOrDefault(item =>
+                    string.Equals(item.Key!.ToString().Trim(), newItem.Key!.ToString().Trim(), StringComparison.OrdinalIgnoreCase));
+                if (oldItem is null)
+                {
+                    additions.Append(ConvertNewlines(newItem.ToString(), newline));
+                }
+                else if (overwriteExisting)
+                {
+                    var oldValue = oldItem.Value!.Span;
+                    var newValue = newItem.Value!.Span;
+                    var literal = incoming.Substring(newValue.Offset, newValue.Length);
+                    if (current.AsSpan(oldValue.Offset, oldValue.Length).SequenceEqual(literal)) continue;
+                    edits.Add(new TomlEdit(oldValue.Offset, oldValue.Length, ConvertNewlines(literal, newline), edits.Count));
                 }
             }
 
-            if (existingLineIndex >= 0)
+            if (additions.Length > 0)
             {
-                lines[existingLineIndex] = ReplaceTomlValue(lines[existingLineIndex], entry.ValueLiteral);
-                continue;
+                var prefix = insertion > 0 && current[insertion - 1] != '\n' ? newline : string.Empty;
+                edits.Add(new TomlEdit(insertion, 0, prefix + additions.ToString(), edits.Count));
             }
-
-            lines.InsertRange(sectionEnd, entry.LeadingComments.Append(entry.Line));
         }
 
-        WritePatchedToml(normalizedConfigPath, lines);
+        int EndOfLine(KeyValueSyntax item) => item.EndOfLineToken is { } eol
+            ? eol.Span.Offset + eol.Span.Length
+            : item.Span.Offset + item.Span.Length;
+
+        int EndOfTableHeader(TableSyntaxBase table) => table.EndOfLineToken is { } eol
+            ? eol.Span.Offset + eol.Span.Length
+            : table.CloseBracket!.Span.Offset + table.CloseBracket.Span.Length;
     }
 
-    private static IEnumerable<TomlEntry> GetTomlEntries(string toml)
-    {
-        var sectionName = string.Empty;
-        var pendingComments = new List<string>();
+    private static string ConvertNewlines(string text, string newline) =>
+        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", newline, StringComparison.Ordinal);
 
-        foreach (var line in toml.Replace("\r\n", "\n").Split('\n'))
-        {
-            var trimmed = line.Trim();
-            if (TryParseTomlHeader(trimmed, out var parsedSectionName, out _))
-            {
-                sectionName = parsedSectionName;
-                pendingComments.Clear();
-                continue;
-            }
-
-            if (trimmed.StartsWith('#') || (trimmed.Length == 0 && pendingComments.Count > 0))
-            {
-                pendingComments.Add(line);
-                continue;
-            }
-
-            if (TryGetTomlKey(line, out var key))
-            {
-                yield return new TomlEntry(
-                    sectionName,
-                    key,
-                    line,
-                    GetTomlValueLiteral(line),
-                    pendingComments.ToArray());
-            }
-
-            pendingComments.Clear();
-        }
-    }
-
-    private static string GetTomlValueLiteral(string line)
-    {
-        var equalsIndex = line.IndexOf('=');
-        var commentIndex = FindInlineCommentIndex(line, equalsIndex + 1);
-        var valueEnd = commentIndex >= 0 ? commentIndex : line.Length;
-        return line[(equalsIndex + 1)..valueEnd].Trim();
-    }
-
-    private sealed record TomlEntry(
-        string SectionName,
-        string Key,
-        string Line,
-        string ValueLiteral,
-        IReadOnlyList<string> LeadingComments);
+    private sealed record TomlEdit(int Offset, int Length, string Text, int Order);
 
     private static string SerializeToml<T>(T config, TomlSerializerOptions options) where T : class
     {
@@ -651,99 +587,6 @@ public class ConfigManager(string? coreConfigPath = null)
         return builder.ToString();
     }
 
-    private static (int Start, int End) FindOrAppendSection(List<string> lines, string sectionName)
-    {
-        if (sectionName.Length == 0)
-        {
-            return (0, FindFirstSectionIndex(lines));
-        }
-
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var trimmed = lines[i].Trim();
-            if (!TryParseTomlHeader(trimmed, out var currentSection, out var isArrayTable)
-                || isArrayTable
-                || !string.Equals(currentSection, sectionName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            return (i + 1, FindSectionInsertIndex(lines, i));
-        }
-
-        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[^1]))
-        {
-            lines.RemoveAt(lines.Count - 1);
-        }
-
-        if (lines.Count > 0) lines.Add(string.Empty);
-        lines.Add($"[{sectionName}]");
-        return (lines.Count, lines.Count);
-    }
-
-    private static string ReplaceTomlValue(string line, string valueLiteral)
-    {
-        var equalsIndex = line.IndexOf('=');
-        if (equalsIndex < 0) return line;
-
-        var commentIndex = FindInlineCommentIndex(line, equalsIndex + 1);
-        var prefix = line[..(equalsIndex + 1)].TrimEnd();
-        var spacing = GetValueSpacing(line, equalsIndex + 1);
-        var comment = commentIndex >= 0 ? line[commentIndex..] : string.Empty;
-        var beforeCommentSpacing = commentIndex >= 0 ? GetBeforeCommentSpacing(line, commentIndex) : string.Empty;
-
-        return prefix + spacing + valueLiteral + beforeCommentSpacing + comment;
-    }
-
-    private static int FindInlineCommentIndex(string line, int startIndex)
-    {
-        var inString = false;
-        var quote = '\0';
-        var escaped = false;
-
-        for (var i = startIndex; i < line.Length; i++)
-        {
-            var c = line[i];
-            if (inString)
-            {
-                if (quote == '"' && c == '\\' && !escaped)
-                {
-                    escaped = true;
-                    continue;
-                }
-
-                if (c == quote && !escaped) inString = false;
-                escaped = false;
-                continue;
-            }
-
-            if (c is '"' or '\'')
-            {
-                inString = true;
-                quote = c;
-                continue;
-            }
-
-            if (c == '#') return i;
-        }
-
-        return -1;
-    }
-
-    private static string GetValueSpacing(string line, int valueStart)
-    {
-        var end = valueStart;
-        while (end < line.Length && char.IsWhiteSpace(line[end])) end++;
-        return end == valueStart ? " " : line[valueStart..end];
-    }
-
-    private static string GetBeforeCommentSpacing(string line, int commentIndex)
-    {
-        var start = commentIndex;
-        while (start > 0 && char.IsWhiteSpace(line[start - 1])) start--;
-        return start == commentIndex ? " " : line[start..commentIndex];
-    }
-
     private static string FormatTomlValue(object? value)
     {
         return value switch
@@ -770,8 +613,4 @@ public class ConfigManager(string? coreConfigPath = null)
         return JsonSerializer.Serialize(value);
     }
 
-    private static void WritePatchedToml(string configPath, List<string> lines)
-    {
-        File.WriteAllText(configPath, string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine);
-    }
 }

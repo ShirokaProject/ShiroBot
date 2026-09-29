@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.IO.Compression;
+using System.Text.Json;
 using ShiroBot.Adapters;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Configuration;
@@ -7,6 +8,7 @@ using ShiroBot.SDK.Config;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Logging;
+using ShiroBot.Hosting.Http;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Packages;
 using ShiroBot.Plugins;
@@ -69,6 +71,42 @@ Console.WriteLine("Plugin service registry verification passed.");
     }
 }
 Console.WriteLine("Plugin ID directory discovery verification passed.");
+
+{
+    var pluginTomlPath = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"), "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(pluginTomlPath)!);
+    try
+    {
+        File.WriteAllText(pluginTomlPath, "name = \"a,b#c\"\n[network]\nport = 7021\nvalues = [1, 2]\n[[targets]]\nid = \"first\"\n");
+        var config = HostHttpServer.LoadTomlObject(pluginTomlPath);
+        if (config["name"] is not "a,b#c" ||
+            config["network"] is not Dictionary<string, object?> network ||
+            network["port"] is not 7021L ||
+            network["values"] is not object?[] values || values.Length != 2 ||
+            values[0] is not 1L ||
+            config["targets"] is not object?[] targets || targets.Length != 1 ||
+            targets[0] is not Dictionary<string, object?> target ||
+            target["id"] is not "first")
+        {
+            throw new InvalidOperationException("Plugin config TOML model did not preserve nested tables, arrays, or string values.");
+        }
+
+        using var patch = JsonDocument.Parse("{\"network\":{\"port\":8080,\"enabled\":true}}");
+        HostHttpServer.ApplyPluginConfigPatch(new ConfigManager(pluginTomlPath), pluginTomlPath, "test", patch.RootElement);
+        var updated = HostHttpServer.LoadTomlObject(pluginTomlPath);
+        if (updated["network"] is not Dictionary<string, object?> updatedNetwork ||
+            updatedNetwork["port"] is not 8080L || updatedNetwork["enabled"] is not true)
+        {
+            throw new InvalidOperationException("Plugin config API patch did not update nested TOML values.");
+        }
+    }
+    finally
+    {
+        Directory.Delete(Path.GetDirectoryName(pluginTomlPath)!, recursive: true);
+    }
+}
+Console.WriteLine("Plugin config TOML model verification passed.");
+Console.WriteLine("Plugin config nested patch verification passed.");
 
 ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
 ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
@@ -163,6 +201,14 @@ botContext.RegisterAdapter(discordAdapter);
         {
             throw new InvalidOperationException("Plugin ID lookup failed when a config-only ID directory exists beside a renamed root DLL.");
         }
+
+        var detail = HostHttpServer.FindPluginListItem(pluginManager, "sharedcontractpluginprobe");
+        if (detail is null || detail.Id != "SharedContractPluginProbe" ||
+            detail.Name != "Shared contract plugin probe" || detail.Version != "0.9.2" || detail.Enable ||
+            HostHttpServer.FindPluginListItem(pluginManager, "missing-plugin") is not null)
+        {
+            throw new InvalidOperationException("Plugin detail lookup did not return installed plugin metadata or reject a missing plugin.");
+        }
     }
     finally
     {
@@ -170,6 +216,7 @@ botContext.RegisterAdapter(discordAdapter);
     }
 }
 Console.WriteLine("Renamed plugin ID lookup verification passed.");
+Console.WriteLine("Plugin detail lookup verification passed.");
 
 await Task.WhenAll(
     SendInAdapterScopeAsync(qqAdapter, "qq-message"),
@@ -507,16 +554,58 @@ try
     saveContext.Dispose();
     Console.WriteLine("Plugin config preserving-save verification passed.");
 
+    var patchPath = Path.Combine(tempRoot, "patch", "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(patchPath)!);
+    File.WriteAllText(patchPath,
+        "# root comment\r\nmessage = \"before # value\" # inline comment\r\n" +
+        "tags = [\"#one\", \"two\"] # array comment\r\n" +
+        "notes = '''\r\nfirst # line\r\nsecond\r\n''' # multiline comment\r\n\r\n" +
+        "[retry]\r\ncount = 2 # nested comment\r\n");
+    manager.SetConfigValue(patchPath, "message", "after # value = ok");
+    manager.SetConfigValue(patchPath, "tags", new[] { "x#y", "z" });
+    manager.SetConfigValue(patchPath, "notes", "done");
+    manager.SetConfigValue(patchPath, "new_root", 3);
+    manager.SetConfigValue(patchPath, "retry.count", 5);
+    manager.SetConfigValue(patchPath, "retry.enabled", true);
+    manager.SetConfigValue(patchPath, "new_section.label", "created");
+    var patchedToml = File.ReadAllText(patchPath);
+    AssertContains(patchedToml, "message = \"after # value = ok\" # inline comment");
+    AssertContains(patchedToml, "tags = [\"x#y\", \"z\"] # array comment");
+    AssertContains(patchedToml, "notes = \"done\" # multiline comment");
+    AssertBefore(patchedToml, "new_root = 3", "[retry]");
+    AssertContains(patchedToml, "count = 5 # nested comment");
+    AssertContains(patchedToml, "enabled = true");
+    AssertContains(patchedToml, "[new_section]");
+    AssertContains(patchedToml, "label = \"created\"");
+    AssertSingle(patchedToml, "# root comment");
+    if (patchedToml.Replace("\r\n", string.Empty).Contains('\n'))
+    {
+        throw new InvalidOperationException("Config patch changed CRLF line endings.");
+    }
+    _ = manager.LoadConfig<VerificationConfig>(patchPath, "verification")
+        ?? throw new InvalidOperationException("Patched TOML did not deserialize.");
+    var defaultMergedToml = File.ReadAllText(patchPath);
+    AssertBefore(defaultMergedToml, "# Options: compact, detailed", "output_mode = \"compact\"");
+    AssertContains(defaultMergedToml, "message = \"after # value = ok\" # inline comment");
+    Console.WriteLine("Config syntax-tree patch verification passed.");
+
     var coreConfigPath = Path.Combine(tempRoot, "core", "config.toml");
     Directory.CreateDirectory(Path.GetDirectoryName(coreConfigPath)!);
     File.WriteAllText(coreConfigPath, """
         # preserved core comment
+        protocol = "LegacyAdapter"
+        protocols = []
         enable_log = true
         future_core_value = "keep"
+
+        [plugin_routes.default]
+        mode = "whitelist"
+        groups = ["group-1"]
 
         [api]
         enable = true
         listen_url = "http://127.0.0.1:7001"
+        listen_urls = []
         future_api_value = "keep"
 
         [future_core_section]
@@ -524,25 +613,96 @@ try
         """);
     var coreManager = new ConfigManager(coreConfigPath);
     var coreConfig = await coreManager.LoadCoreConfig();
+    if (!coreConfig.Protocols.SequenceEqual(["LegacyAdapter"]) ||
+        !coreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7001"]))
+    {
+        throw new InvalidOperationException("Legacy core settings were not migrated to array settings.");
+    }
     coreConfig.EnableLog = false;
-    coreConfig.Api.ListenUrl = "http://127.0.0.1:7999";
+    coreConfig.Api.ListenUrls = ["http://127.0.0.1:7999"];
     coreManager.SaveConfig(coreConfigPath, coreConfig);
     coreManager.SaveConfig(coreConfigPath, coreConfig);
 
     var preservedCoreToml = File.ReadAllText(coreConfigPath);
     AssertContains(preservedCoreToml, "enable_log = false");
-    AssertContains(preservedCoreToml, "listen_url = \"http://127.0.0.1:7999\"");
+    AssertContains(preservedCoreToml, "protocols = [\"LegacyAdapter\"]");
+    AssertContains(preservedCoreToml, "listen_urls = [\"http://127.0.0.1:7999\"]");
+    AssertSingle(preservedCoreToml, "[plugin_routes.default]");
+    AssertSingle(preservedCoreToml, "[api]");
+    if (preservedCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
+        preservedCoreToml.Contains("listen_url =", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Legacy core keys remained after migration.");
+    }
     AssertContains(preservedCoreToml, "future_core_value = \"keep\"");
     AssertContains(preservedCoreToml, "future_api_value = \"keep\"");
     AssertContains(preservedCoreToml, "[future_core_section]");
     AssertContains(preservedCoreToml, "value = 9");
     AssertSingle(preservedCoreToml, "# preserved core comment");
     var reloadedCoreConfig = await coreManager.LoadCoreConfig();
-    if (reloadedCoreConfig.EnableLog || reloadedCoreConfig.Api.ListenUrl != "http://127.0.0.1:7999")
+    if (reloadedCoreConfig.EnableLog ||
+        !reloadedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7999"]))
     {
         throw new InvalidOperationException("Preserved core TOML did not deserialize with the saved values.");
     }
     Console.WriteLine("Core config preserving-save verification passed.");
+
+    var newCorePath = Path.Combine(tempRoot, "new-core", "config.toml");
+    await new ConfigManager(newCorePath).LoadCoreConfig();
+    var newCoreToml = File.ReadAllText(newCorePath);
+    AssertContains(newCoreToml, "protocols = []");
+    AssertContains(newCoreToml, "listen_urls = [\"http://127.0.0.1:7001\"]");
+    if (newCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
+        newCoreToml.Contains("listen_url =", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("New core TOML contains legacy single-value keys.");
+    }
+
+    var emptyLegacyPath = Path.Combine(tempRoot, "empty-legacy-core", "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(emptyLegacyPath)!);
+    File.WriteAllText(emptyLegacyPath, "protocol = \"\"\nprotocols = []\n");
+    if ((await new ConfigManager(emptyLegacyPath).LoadCoreConfig()).Protocols.Length != 0)
+        throw new InvalidOperationException("Empty legacy adapter setting became a nonempty adapter list.");
+
+    var malformedCorePath = Path.Combine(tempRoot, "malformed-core", "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(malformedCorePath)!);
+    File.WriteAllText(malformedCorePath, """
+        protocol = "LegacyAdapter"
+        protocols = []
+
+        [plugin_routes.default]
+        mode = "blacklist"
+        groups = []
+        listen_urls = []
+
+        [api]
+        enable = true
+        listen_url = "http://127.0.0.1:7021"
+        listen_urls = []
+
+        [api.auth]
+        enable = true
+        key = "example"
+
+        [plugin_routes]
+
+        [plugin_routes.default]
+        mode = "whitelist"
+        groups = ["915449089"]
+        """);
+    var malformedManager = new ConfigManager(malformedCorePath);
+    var repairedCoreConfig = await malformedManager.LoadCoreConfig();
+    if (!repairedCoreConfig.Protocols.SequenceEqual(["LegacyAdapter"]) ||
+        !repairedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7021"]) ||
+        !repairedCoreConfig.PluginRoutes.Default.Groups.SequenceEqual(["915449089"]))
+    {
+        throw new InvalidOperationException("Generated duplicate core section was not repaired without losing settings.");
+    }
+    var repairedToml = File.ReadAllText(malformedCorePath);
+    AssertSingle(repairedToml, "[plugin_routes.default]");
+    await malformedManager.LoadCoreConfig();
+    if (File.ReadAllText(malformedCorePath) != repairedToml)
+        throw new InvalidOperationException("Core config migration was not idempotent.");
 
     async Task<LoadedPluginHandle> CreatePluginHandleAsync(
         IBotPlugin plugin,
