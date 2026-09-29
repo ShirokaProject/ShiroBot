@@ -299,19 +299,23 @@ internal sealed class HostEventDispatcher(
         return evt switch
         {
             MessageEvent { IsDirect: false } message =>
-                $"{message.Channel.Name}({message.Channel.Id}) {message.Sender.Id}发送: {GetMessageSegments(message.Segments)}",
+                $"{Display(message.Channel.Name, message.Channel.Id)} {Display(message.Member?.DisplayName ?? message.Sender.Name, message.Sender.Id)}发送: {GetMessageSegments(message.Segments)}",
             MessageEvent message =>
-                $"{message.Sender.Name}({message.Sender.Id})发送: {GetMessageSegments(message.Segments)}",
+                $"{Display(message.Sender.Name, message.Sender.Id)}发送: {GetMessageSegments(message.Segments)}",
             MessageDeletedEvent e => $"{e.Channel.Id} 中消息 {e.MessageId} 被撤回",
             MemberJoinedEvent e => $"用户 {e.UserId} 加入 {e.Channel.Id}",
             MemberLeftEvent e => $"用户 {e.UserId} 离开 {e.Channel.Id}",
             FriendRequestEvent e => $"用户 {e.UserId} 发来好友请求: {e.Comment}",
             GuildInviteEvent e => $"用户 {e.InviterId} 邀请机器人加入 {e.GuildId}",
             BotOfflineEvent e => $"机器人离线: {e.Reason}",
-            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{e.Channel.Id}"),
+            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{Display(e.Channel.Name, e.Channel.Id)}"),
             _ => evt.GetType().Name
         };
     }
+
+    private static string Display(string? name, string id) =>
+        string.IsNullOrWhiteSpace(name) || string.Equals(name, id, StringComparison.Ordinal)
+            ? id : name;
 
     private static string GetMessageSegments(IReadOnlyList<MessageSegment> segments)
     {
