@@ -57,7 +57,7 @@ adapters/MyAdapter/其他依赖文件
 protocol = "MyAdapter"
 ```
 
-根目录单 DLL 适配器的配置位于 `adapters/MyAdapter.toml`；目录适配器的配置位于 `adapters/MyAdapter/config.toml`。
+根目录单 DLL 适配器的配置位于 `adapters/config.toml`；目录适配器的配置位于 `adapters/MyAdapter/config.toml`。多个根目录单 DLL 适配器会共用同一配置文件，建议用目录形式部署。
 
 ## 安装插件
 

@@ -1,59 +1,59 @@
 # 上报事件
 
-适配器通过 `IEventService.EventReceived` 将统一的 `Event` 模型交给宿主。新增模型事件不再要求 SDK、宿主和适配器分别增加 typed event。
+适配器通过 `IEventService.EventReceived` 向宿主上报 `ShiroBot.SDK.Models.BotEvent`。宿主在调用 `StartAsync()` 前订阅此事件，因此适配器启动连接后即可发布最早收到的事件。
 
 ## 实现事件服务
 
 ```csharp
-using ShiroBot.Model.Common;
 using ShiroBot.SDK.Adapter;
+using ShiroBot.SDK.Models;
 
-public sealed class ExampleEventService : IEventService
+public sealed class MyEventService : IEventService
 {
-    public event Func<Event, Task>? EventReceived;
+    public event Func<BotEvent, Task>? EventReceived;
 
-    public async Task PublishAsync(Event evt)
+    public async Task PublishAsync(BotEvent botEvent)
     {
         var handlers = EventReceived;
         if (handlers is null) return;
 
-        foreach (Func<Event, Task> handler in handlers.GetInvocationList())
-        {
-            await handler(evt);
-        }
+        foreach (Func<BotEvent, Task> handler in handlers.GetInvocationList())
+            await handler(botEvent);
     }
 }
 ```
 
-协议层收到事件后只需转换为对应模型并发布：
+适配器将协议事件映射为通用事件，再调用 `PublishAsync`。每个事件的 `Platform` 必须与 `IBotAdapter.Platform` 相同；`SelfId` 是当前机器人账号 ID。
 
 ```csharp
-private async Task OnProtocolEventAsync(ProtocolEvent raw)
+await _events.PublishAsync(new MessageEvent
 {
-    var evt = ProtocolEventMapper.Map(raw);
-    if (evt is null)
-    {
-        _logger.Warning($"未支持的协议事件: {raw.Type}");
-        return;
-    }
-
-    await _eventService.PublishAsync(evt);
-}
+    Platform = "qq",
+    SelfId = selfId,
+    MessageId = messageSeq.ToString(),
+    Channel = Channel.Group(groupId.ToString()),
+    Sender = new User(senderId.ToString()) { Name = senderName },
+    Segments = [new TextSegment(text)],
+    Timestamp = receivedAt
+});
 ```
 
-Milky 模型生成器会根据 IR 生成 `EventMetadataRegistry`，其中包含 `event_type` 和 `message_scene` 到模型类型的映射。协议新增事件后重新生成 Model 即可，不需要维护手写事件字典。
+示例中的 `selfId`、`messageSeq`、`groupId`、`senderId`、`senderName`、`text` 和 `receivedAt` 来自协议客户端。实际映射需处理完整的消息段、群成员和平台原始负载，见[适配不同 Model](/adapter/models)。
 
-## 分发与背压
+## 选择事件类型
 
-宿主把适配器事件投入后台分发并立即完成回调，避免慢插件阻塞协议接收循环。适配器仍应：
+| 协议事件 | 通用类型 |
+| --- | --- |
+| 收到消息 | `MessageEvent` |
+| 消息撤回或删除 | `MessageDeletedEvent` |
+| 成员加入或离开 | `MemberJoinedEvent` / `MemberLeftEvent` |
+| 好友请求 | `FriendRequestEvent` |
+| 机器人收到群或服务器邀请 | `GuildInviteEvent` |
+| 机器人离线 | `BotOfflineEvent` |
+| 仅该平台具有的事件 | `PlatformEvent`，用 `Kind` 区分 |
 
-- 使用有界 `Channel<Event>` 控制高流量事件。
-- 明确队列满时的丢弃或等待策略。
-- 对断线重连使用退避和取消。
-- 保证同一消息不会因重连重复上报，或提供可去重标识。
+通用事件有平台特有字段时，可把平台 Model 对象放进 `BotEvent.Raw`。QQ 戳一戳等没有通用事件类型的情况，用 `PlatformEvent { Kind = QEventKinds.GroupNudge, Raw = qGroupNudge }`。不要把同一事件同时作为通用事件和 `PlatformEvent` 重复上报，除非插件确实需要两次独立通知。
 
-`EventReceived` 的多个订阅者应按注册顺序等待，避免适配器内部制造无序并发。
+## 接收循环
 
-## 启动时序
-
-宿主会先订阅 `EventReceived`，再调用适配器 `StartAsync()`。适配器可以在启动期间建立事件连接，不会丢失最早一批事件。
+宿主接收适配器事件后使用有界队列分发，适配器仍需处理协议客户端自己的流控、取消、断线重连和去重。`PublishAsync` 应等待事件订阅者完成入队；不要在协议回调中悄悄丢弃异常。`StopAsync()` 应停止接收循环并释放连接。

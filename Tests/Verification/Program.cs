@@ -507,6 +507,41 @@ try
     saveContext.Dispose();
     Console.WriteLine("Plugin config preserving-save verification passed.");
 
+    var patchPath = Path.Combine(tempRoot, "patch", "config.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(patchPath)!);
+    File.WriteAllText(patchPath,
+        "# root comment\r\nmessage = \"before # value\" # inline comment\r\n" +
+        "tags = [\"#one\", \"two\"] # array comment\r\n" +
+        "notes = '''\r\nfirst # line\r\nsecond\r\n''' # multiline comment\r\n\r\n" +
+        "[retry]\r\ncount = 2 # nested comment\r\n");
+    manager.SetConfigValue(patchPath, "message", "after # value = ok");
+    manager.SetConfigValue(patchPath, "tags", new[] { "x#y", "z" });
+    manager.SetConfigValue(patchPath, "notes", "done");
+    manager.SetConfigValue(patchPath, "new_root", 3);
+    manager.SetConfigValue(patchPath, "retry.count", 5);
+    manager.SetConfigValue(patchPath, "retry.enabled", true);
+    manager.SetConfigValue(patchPath, "new_section.label", "created");
+    var patchedToml = File.ReadAllText(patchPath);
+    AssertContains(patchedToml, "message = \"after # value = ok\" # inline comment");
+    AssertContains(patchedToml, "tags = [\"x#y\", \"z\"] # array comment");
+    AssertContains(patchedToml, "notes = \"done\" # multiline comment");
+    AssertBefore(patchedToml, "new_root = 3", "[retry]");
+    AssertContains(patchedToml, "count = 5 # nested comment");
+    AssertContains(patchedToml, "enabled = true");
+    AssertContains(patchedToml, "[new_section]");
+    AssertContains(patchedToml, "label = \"created\"");
+    AssertSingle(patchedToml, "# root comment");
+    if (patchedToml.Replace("\r\n", string.Empty).Contains('\n'))
+    {
+        throw new InvalidOperationException("Config patch changed CRLF line endings.");
+    }
+    _ = manager.LoadConfig<VerificationConfig>(patchPath, "verification")
+        ?? throw new InvalidOperationException("Patched TOML did not deserialize.");
+    var defaultMergedToml = File.ReadAllText(patchPath);
+    AssertBefore(defaultMergedToml, "# Options: compact, detailed", "output_mode = \"compact\"");
+    AssertContains(defaultMergedToml, "message = \"after # value = ok\" # inline comment");
+    Console.WriteLine("Config syntax-tree patch verification passed.");
+
     var coreConfigPath = Path.Combine(tempRoot, "core", "config.toml");
     Directory.CreateDirectory(Path.GetDirectoryName(coreConfigPath)!);
     File.WriteAllText(coreConfigPath, """

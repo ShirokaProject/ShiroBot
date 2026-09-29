@@ -1,6 +1,6 @@
 # QQ 官方机器人 Markdown 与按钮
 
-`ShiroBot.Model.QQ` 提供 QQ 官方开放平台的 Markdown、消息按钮和按钮点击事件模型。它们是可选的平台能力：官方适配器实现 `IQOfficialMessageApi` 后，插件才能发送；Milky 等不实现该接口的适配器会在探测时返回 `null`。
+`ShiroBot.Model.QQ` 提供 QQ 官方开放平台的 Markdown、消息按钮和按钮点击事件模型。它们是可选的平台能力：官方适配器实现 `IQOfficialMessageApi` 后，插件才能使用它实际支持的方法；Milky 等不实现该接口的适配器会在探测时返回 `null`。
 
 插件和适配器应使用与宿主匹配的 `ShiroBot.Model.QQ` 程序集。发送目标的 `Id` 在单聊和群聊中是开放平台的 **openid**，不能传普通 QQ 号或群号。
 
@@ -43,6 +43,8 @@ else
 ```
 
 `QCustomMarkdown` 对应 `markdown.content`。使用已申请的 Markdown 模板时，改用 `QTemplateMarkdown`，并提供 `QMarkdownParameter` 列表。按钮也有两种形式：`QKeyboardTemplate` 对应 `keyboard.id`，`QInlineKeyboard` 对应 `keyboard.content.rows`。
+
+接口还定义了 `SendTextAsync` 和 `SendArkAsync`，分别发送官方文本和 Ark 模板消息。这两个方法有抛出 `NotSupportedException` 的默认实现；拿到 `IQOfficialMessageApi` 并不表示当前适配器支持它们。调用时应处理该异常。私聊输入状态和流式回复使用独立的 `IQOfficialDirectMessageApi`；只有适配器实现并暴露该扩展后才能使用。
 
 | 模型 | 用途 |
 | --- | --- |

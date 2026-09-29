@@ -81,4 +81,9 @@ and handle a missing capability. `BeginStream` returns `IQOfficialMessageStream`
 finishes the response. These contracts belong to the host model; the adapter owns
 the OpenAPI transport and protocol details.
 
-Ark template messages are available through `IQOfficialMessageApi.SendArkAsync`.
+`IQOfficialMessageApi` also declares `SendTextAsync` and `SendArkAsync` for official
+text and Ark template messages. Existing adapters may implement the interface without
+supporting these newer methods; their default implementations throw
+`NotSupportedException`. Plugins must handle that case. The optional
+`IQOfficialDirectMessageApi` likewise needs a separate adapter implementation before
+typing indicators or streamed replies are available.

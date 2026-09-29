@@ -1,93 +1,44 @@
 # 实现服务接口
 
-`IBotAdapter` 将能力拆成六组服务。接口中的方法都有默认实现，未实现的方法会抛出 `NotSupportedException`，所以适配器可以先完成协议支持的部分。
+适配器固定提供三组通用服务和一组事件服务。通用服务的方法有默认实现；只实现协议端真正支持的方法，其他方法调用时会抛 `NotSupportedException`。`IEventService.EventReceived` 是必须声明的事件。
 
-## 服务分组
+| 接口 | 当前方法 | 映射目标 |
+| --- | --- | --- |
+| `IMessageService` | `SendMessageAsync`、`DeleteMessageAsync`、`GetMessageAsync`、`GetHistoryMessagesAsync`、`GetResourceUrlAsync` | 通用 `MessageSegment`、`MessageEvent` 和 `SentMessage` |
+| `IChannelService` | `GetChannelsAsync`、`GetChannelAsync`、`GetMembersAsync`、`GetMemberAsync`、`SetChannelNameAsync`、`KickMemberAsync`、`MuteMemberAsync`、`LeaveChannelAsync` | 群、频道、话题及其成员 |
+| `IUserService` | `GetSelfAsync`、`GetUserAsync`、`GetFriendsAsync`、`AcceptFriendRequestAsync`、`RejectFriendRequestAsync` | 机器人、用户、好友和好友请求 |
+| `IEventService` | `EventReceived` | 向宿主发布 `BotEvent`；实现方式见[上报事件](/adapter/events) |
 
-| 服务 | 主要能力 |
-| --- | --- |
-| `IMessageService` | 发送、撤回、查询消息，历史消息和转发消息 |
-| `IGroupService` | 群设置、成员管理、群请求、公告、精华和表情回应 |
-| `IFriendService` | 好友请求、点赞、戳一戳和删除好友 |
-| `IFileService` | 私聊/群文件上传、下载和目录管理 |
-| `ISystemService` | 登录信息、实现信息、好友/群列表和账号资料 |
-| `IEventService` | 从协议实现端向宿主上报事件 |
+`IBotAdapter` 的 `Config`、`Logger`、`Platform`、四个服务属性与生命周期要求见[创建适配器](/adapter/)。平台特有能力不应塞入通用服务：QQ 的戳一戳、群公告和群文件等，按需实现 [QQ Model 扩展接口](/plugin/qq-model)并通过 `GetExtension<TService>()` 暴露。
 
-## 消息服务示例
+## 消息服务的输入和输出
+
+`SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)` 接收平台无关的会话和消息段。适配器应按原顺序转换文本、@、引用、图片等段，再把协议返回的消息 ID 包装成 `SentMessage`：
 
 ```csharp
-using ShiroBot.Model.Message.Requests;
-using ShiroBot.Model.Message.Responses;
 using ShiroBot.SDK.Adapter;
+using ShiroBot.SDK.Models;
 
-public sealed class ExampleMessageService : IMessageService
+public sealed class MyMessageService : IMessageService
 {
-    public Task<SendPrivateMessageResponse> SendPrivateMessageAsync(
-        SendPrivateMessageRequest request) =>
-        ProtocolClient.RequestAsync<
-            SendPrivateMessageRequest,
-            SendPrivateMessageResponse>("send_private_message", request);
-
-    public Task<SendGroupMessageResponse> SendGroupMessageAsync(
-        SendGroupMessageRequest request) =>
-        ProtocolClient.RequestAsync<
-            SendGroupMessageRequest,
-            SendGroupMessageResponse>("send_group_message", request);
-
-    public Task RecallGroupMessageAsync(RecallGroupMessageRequest request) =>
-        ProtocolClient.RequestAsync("recall_group_message", request);
+    public async Task<SentMessage> SendMessageAsync(
+        Channel channel, IReadOnlyList<MessageSegment> segments)
+    {
+        // 按 channel.Type 选择协议目标，按顺序转换 segments。
+        var protocolMessageId = await SendToProtocolAsync(channel, segments);
+        return new SentMessage(protocolMessageId.ToString());
+    }
 }
 ```
 
-适配器负责把协议响应完整转换为 `ShiroBot.Model` 中对应的 Response 类型。不要把协议库自己的 DTO 暴露到 SDK 接口外。
+`SendToProtocolAsync` 代表适配器自己的协议调用，示例需替换为实际实现。`DeleteMessageAsync`、查询消息与历史消息使用同一套 ID 映射；收到平台事件时也要使用相同的 `MessageId` 和 `Channel.Id`。
 
-## 空服务
+## 映射时检查
 
-尚未支持某组能力时可以使用空实现：
+- **ID**：通用模型用字符串保存用户、会话和消息 ID。转换 QQ 的 `long`、Discord 的 `ulong` 等数字时保持原值，不要经浮点数中转。
+- **会话类型**：私聊用 `ChannelType.Direct`，群或频道用 `Group`，话题用 `Thread`；平台无法归类的会话用 `Other`。
+- **消息段**：保留顺序和资源 ID。无法无损转换的平台段可用 `RawSegment(platform, kind, payload)` 保留。
+- **时间**：把协议时间单位和时区转换为 `DateTimeOffset`。
+- **能力边界**：协议不支持的方法保留默认 `NotSupportedException`，不要返回伪造的成功结果。
 
-```csharp
-public sealed class ExampleGroupService : IGroupService { }
-public sealed class ExampleFriendService : IFriendService { }
-public sealed class ExampleFileService : IFileService { }
-```
-
-插件调用这些默认方法时会得到 `NotSupportedException`。这比返回伪造的成功结果更容易定位兼容性问题。
-
-::: warning 适配器版本规则
-适配器必须针对宿主使用的 SDK 版本重新编译。`IEventService` 只保留统一的 `EventReceived(Event)` 事件，SDK 不再承诺旧适配器二进制兼容；插件 API 与 Model ABI 兼容策略不受影响。
-:::
-
-## 系统服务最低建议
-
-建议至少实现：
-
-```csharp
-Task<GetLoginInfoResponse> GetLoginInfoAsync();
-Task<GetImplInfoResponse> GetImplInfoAsync();
-```
-
-它们用于确认机器人登录身份和底层实现版本。随后根据协议能力实现好友、群组和成员查询。
-
-## 模型映射原则
-
-1. **ID 不要损失精度**：用户、群、消息序号使用 `long` 或模型声明的类型。
-2. **时间语义一致**：明确协议返回的是 Unix 秒、毫秒还是本地时间。
-3. **消息段保持顺序**：文本、图片、Mention、回复等 Segment 顺序会影响实际消息。
-4. **未知类型可观测**：记录未知事件或消息段，不要静默吞掉。
-5. **取消与超时**：底层 HTTP/WebSocket 客户端应设置合理超时，并在断线后退避重连。
-6. **异常保留上下文**：错误信息应包含协议动作名称和响应错误码，但不能泄露 token。
-
-## 请求与响应模型
-
-统一模型按功能分布在：
-
-```text
-ShiroBot.Model.Common
-ShiroBot.Model.Message.Requests / Responses
-ShiroBot.Model.Group.Requests / Responses
-ShiroBot.Model.Friend.Requests / Responses
-ShiroBot.Model.File.Requests / Responses
-ShiroBot.Model.System.Requests / Responses
-```
-
-开发时优先让 IDE 根据接口方法签名导入准确命名空间，避免创建同名 DTO。
+具体的 QQ、Discord、Telegram 映射与 Model 依赖见[适配不同 Model](/adapter/models)。
