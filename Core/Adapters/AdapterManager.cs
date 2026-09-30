@@ -45,6 +45,14 @@ internal sealed class AdapterManager(
         finally { _gate.Release(); }
     }
 
+    /// <summary>The loaded adapter's assembly, or null when the adapter is not running.</summary>
+    public Assembly? GetLoadedAssembly(string id)
+    {
+        lock (_sync)
+            return _entries.Values.FirstOrDefault(item =>
+                string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase))?.Adapter?.GetType().Assembly;
+    }
+
     public bool IsLoaded
     {
         get { lock (_sync) return _entries.Count > 0; }
@@ -472,8 +480,23 @@ internal sealed class AdapterManager(
         var configurable = entry.Configurable;
         var adapter = entry.Adapter;
         if (configurable is null || adapter is null) return;
+        entry.CurrentConfig = await ApplyAdapterConfigAsync(adapter, configurable, entry.CurrentConfig, candidate)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Applies a config candidate to a running adapter and returns the config now in effect.
+    /// RestartComponent adapters are stopped, reconfigured and started; on failure the previous
+    /// config is restored and the adapter restarted before the original error is rethrown.
+    /// </summary>
+    internal static async Task<object?> ApplyAdapterConfigAsync(
+        IBotAdapter adapter,
+        IConfigurableAdapter configurable,
+        object? current,
+        object candidate)
+    {
         if (string.Equals(Fingerprint(candidate, configurable.ConfigType),
-                Fingerprint(entry.CurrentConfig, configurable.ConfigType), StringComparison.Ordinal)) return;
+                Fingerprint(current, configurable.ConfigType), StringComparison.Ordinal)) return current;
 
         if (configurable.ApplyMode == ConfigApplyMode.RestartComponent)
         {
@@ -485,9 +508,9 @@ internal sealed class AdapterManager(
             }
             catch
             {
-                if (entry.CurrentConfig is { } previous)
+                if (current is not null)
                 {
-                    await configurable.ApplyConfigAsync(previous).ConfigureAwait(false);
+                    await configurable.ApplyConfigAsync(current).ConfigureAwait(false);
                     await adapter.StartAsync().ConfigureAwait(false);
                 }
                 throw;
@@ -498,7 +521,7 @@ internal sealed class AdapterManager(
             await configurable.ApplyConfigAsync(candidate).ConfigureAwait(false);
         }
 
-        entry.CurrentConfig = candidate;
+        return candidate;
     }
 
     private static string Fingerprint(object? config, Type configType)

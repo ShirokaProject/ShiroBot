@@ -8,6 +8,7 @@ using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.SDK.Config;
+using System.Reflection;
 using System.Text.Json;
 using System.Runtime.CompilerServices;
 
@@ -89,6 +90,15 @@ internal sealed class LoadedPluginHandle
     public string? GithubRepo { get; }
     public IReadOnlyList<string> Dependencies { get; }
     public string AssemblyPath => _assemblyPath;
+
+    /// <summary>The plugin's loaded assembly, or null once unloading has started.</summary>
+    public Assembly? PluginAssembly
+    {
+        get
+        {
+            lock (_dispatchLock) return _isUnloading ? null : _plugin?.GetType().Assembly;
+        }
+    }
     public IReadOnlySet<Type> SubscribedEventTypes { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
     public IReadOnlyList<MessageRouteDescriptor> DirectMessageRoutes { get; }

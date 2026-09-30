@@ -13,7 +13,6 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
-using System.Runtime.Loader;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -104,72 +103,99 @@ internal sealed partial class HostHttpServer
         _ => value
     };
 
-    internal static object[] GetComponentConfigSchema(string assemblyPath)
-    {
-        if (!File.Exists(assemblyPath)) return [];
+    /// <summary>
+    /// Builds the config schema of an assembly that is loaded in the host, including the host itself.
+    /// Metadata is read from memory, so this also works for single-file publishes where
+    /// <see cref="Assembly.Location"/> is empty.
+    /// </summary>
+    internal static object[] GetComponentConfigSchema(Assembly loadedAssembly) =>
+        GetComponentConfigSchema(null, loadedAssembly);
 
+    /// <summary>
+    /// Builds the config schema of a component. Initialized property defaults are only read when
+    /// <paramref name="loadedAssembly"/> is supplied; unloaded component files are inspected as metadata only.
+    /// </summary>
+    internal static unsafe object[] GetComponentConfigSchema(string? assemblyPath, Assembly? loadedAssembly = null)
+    {
         try
         {
+            if (loadedAssembly is not null && loadedAssembly.TryGetRawMetadata(out var blob, out var length))
+            {
+                try
+                {
+                    return BuildComponentConfigSchema(new MetadataReader(blob, length), loadedAssembly);
+                }
+                finally
+                {
+                    GC.KeepAlive(loadedAssembly);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath)) return [];
+
             using var stream = File.OpenRead(assemblyPath);
             using var peReader = new PEReader(stream);
             if (!peReader.HasMetadata) return [];
-
-            var reader = peReader.GetMetadataReader();
-            TypeDefinitionHandle configTypeHandle = default;
-            foreach (var typeHandle in reader.TypeDefinitions)
-            {
-                var type = reader.GetTypeDefinition(typeHandle);
-                var explicitlyMarked = type.GetCustomAttributes().Any(attributeHandle =>
-                {
-                    var attribute = reader.GetCustomAttribute(attributeHandle);
-                    return GetCustomAttributeTypeName(reader, attribute.Constructor)
-                        .EndsWith("ConfigModelAttribute", StringComparison.Ordinal);
-                });
-                if (explicitlyMarked)
-                {
-                    configTypeHandle = typeHandle;
-                    break;
-                }
-
-                if (reader.GetString(type.Name).Equals("PluginConfig", StringComparison.OrdinalIgnoreCase))
-                {
-                    configTypeHandle = typeHandle;
-                    break;
-                }
-
-                if (configTypeHandle.IsNil && type.GetProperties().Any(propertyHandle =>
-                    ReadConfigFieldAttribute(reader, reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes()) is not null))
-                {
-                    configTypeHandle = typeHandle;
-                }
-            }
-
-            if (!configTypeHandle.IsNil)
-            {
-                var configType = reader.GetTypeDefinition(configTypeHandle);
-                var typeNamespace = reader.GetString(configType.Namespace);
-                var typeName = reader.GetString(configType.Name);
-                var configTypeName = string.IsNullOrEmpty(typeNamespace) ? typeName : $"{typeNamespace}.{typeName}";
-                var propertyHandles = configType.GetProperties().ToArray();
-                var needsRuntimeDefaults = propertyHandles.Any(propertyHandle =>
-                {
-                    var attributes = reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes();
-                    return ReadConfigFieldAttribute(reader, attributes)?.Default is null;
-                });
-                var runtimeDefaults = needsRuntimeDefaults
-                    ? ReadConfigModelDefaults(assemblyPath, configTypeName)
-                    : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-
-                return propertyHandles
-                    .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle), runtimeDefaults))
-                    .Where(item => item is not null)
-                    .Cast<object>()
-                    .ToArray();
-            }
+            return BuildComponentConfigSchema(peReader.GetMetadataReader(), loadedAssembly);
         }
         catch (Exception ex) when (ex is BadImageFormatException or IOException or UnauthorizedAccessException)
         {
             return [];
+        }
+    }
+
+    private static object[] BuildComponentConfigSchema(MetadataReader reader, Assembly? loadedAssembly)
+    {
+        TypeDefinitionHandle configTypeHandle = default;
+        foreach (var typeHandle in reader.TypeDefinitions)
+        {
+            var type = reader.GetTypeDefinition(typeHandle);
+            var explicitlyMarked = type.GetCustomAttributes().Any(attributeHandle =>
+            {
+                var attribute = reader.GetCustomAttribute(attributeHandle);
+                return GetCustomAttributeTypeName(reader, attribute.Constructor)
+                    .EndsWith("ConfigModelAttribute", StringComparison.Ordinal);
+            });
+            if (explicitlyMarked)
+            {
+                configTypeHandle = typeHandle;
+                break;
+            }
+
+            if (reader.GetString(type.Name).Equals("PluginConfig", StringComparison.OrdinalIgnoreCase))
+            {
+                configTypeHandle = typeHandle;
+                break;
+            }
+
+            if (configTypeHandle.IsNil && type.GetProperties().Any(propertyHandle =>
+                ReadConfigFieldAttribute(reader, reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes()) is not null))
+            {
+                configTypeHandle = typeHandle;
+            }
+        }
+
+        if (!configTypeHandle.IsNil)
+        {
+            var configType = reader.GetTypeDefinition(configTypeHandle);
+            var typeNamespace = reader.GetString(configType.Namespace);
+            var typeName = reader.GetString(configType.Name);
+            var configTypeName = string.IsNullOrEmpty(typeNamespace) ? typeName : $"{typeNamespace}.{typeName}";
+            var propertyHandles = configType.GetProperties().ToArray();
+            var needsRuntimeDefaults = propertyHandles.Any(propertyHandle =>
+            {
+                var attributes = reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes();
+                return ReadConfigFieldAttribute(reader, attributes)?.Default is null;
+            });
+            var runtimeDefaults = needsRuntimeDefaults
+                ? ReadConfigModelDefaults(loadedAssembly, configTypeName)
+                : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            return propertyHandles
+                .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle), runtimeDefaults))
+                .Where(item => item is not null)
+                .Cast<object>()
+                .ToArray();
         }
 
         return [];
@@ -262,35 +288,23 @@ internal sealed partial class HostHttpServer
         _ => JsonSerializer.SerializeToElement(value, value.GetType())
     };
 
-    private static Dictionary<string, object?> ReadConfigModelDefaults(string assemblyPath, string configTypeName)
+    /// <summary>
+    /// Reads initialized property values from a config model that is already loaded in the host.
+    /// Assemblies that are not loaded (disabled or not yet started components) are never loaded or
+    /// executed just to render a schema; their fields fall back to explicit or CLR defaults.
+    /// </summary>
+    private static Dictionary<string, object?> ReadConfigModelDefaults(Assembly? loadedAssembly, string configTypeName)
     {
         var defaults = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        var path = Path.GetFullPath(assemblyPath);
-        if (path.EndsWith(DisabledPluginSuffix, StringComparison.OrdinalIgnoreCase))
-            path = path[..^DisabledPluginSuffix.Length];
-        if (!File.Exists(path)) return defaults;
+        if (loadedAssembly is null) return defaults;
 
-        ConfigModelLoadContext? loadContext = null;
         try
         {
-            loadContext = new ConfigModelLoadContext(path);
-            var assembly = loadContext.LoadFromAssemblyPath(path);
-            var configType = assembly.GetType(configTypeName, throwOnError: false, ignoreCase: false);
-            if (configType is null) return defaults;
-
-            object instance;
-            try
-            {
-                instance = Activator.CreateInstance(configType)
-                    ?? System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(configType);
-            }
-            catch (MissingMethodException)
-            {
-                // A model without a public parameterless constructor has no initialized instance values.
-                // GetComponentConfigSchema will use CLR type defaults for its properties.
+            var configType = loadedAssembly.GetType(configTypeName, throwOnError: false, ignoreCase: false);
+            if (configType is null || configType.IsAbstract || configType.GetConstructor(Type.EmptyTypes) is null)
                 return defaults;
-            }
 
+            var instance = Activator.CreateInstance(configType)!;
             foreach (var property in configType.GetProperties(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (!property.CanRead || property.GetIndexParameters().Length != 0) continue;
@@ -306,44 +320,10 @@ internal sealed partial class HostHttpServer
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            return defaults;
-        }
-        finally
-        {
-            loadContext?.Unload();
+            defaults.Clear();
         }
 
         return defaults;
-    }
-
-    private sealed class ConfigModelLoadContext(string assemblyPath) : AssemblyLoadContext(isCollectible: true)
-    {
-        private readonly string _assemblyDirectory = Path.GetDirectoryName(Path.GetFullPath(assemblyPath))!;
-        private readonly AssemblyDependencyResolver? _resolver = TryCreateResolver(assemblyPath);
-
-        protected override Assembly? Load(AssemblyName assemblyName)
-        {
-            var sharedSdk = typeof(ConfigModelAttribute).Assembly;
-            if (string.Equals(assemblyName.Name, sharedSdk.GetName().Name, StringComparison.OrdinalIgnoreCase))
-                return sharedSdk;
-
-            var dependencyPath = _resolver?.ResolveAssemblyToPath(assemblyName);
-            if (dependencyPath is null && !string.IsNullOrWhiteSpace(assemblyName.Name))
-            {
-                var siblingPath = Path.Combine(_assemblyDirectory, assemblyName.Name + ".dll");
-                if (File.Exists(siblingPath)) dependencyPath = siblingPath;
-            }
-            return dependencyPath is null ? null : LoadFromAssemblyPath(dependencyPath);
-        }
-
-        private static AssemblyDependencyResolver? TryCreateResolver(string path)
-        {
-            try { return new AssemblyDependencyResolver(path); }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FileNotFoundException)
-            {
-                return null;
-            }
-        }
     }
 
     private static ConfigFieldConditionSchema[] ReadConfigFieldConditions(
@@ -667,8 +647,9 @@ internal sealed partial class HostHttpServer
         var valid = field.ValueType switch
         {
             "boolean" => value is bool,
-            "integer" => TryGetDouble(value, out var integer) && Math.Truncate(integer) == integer,
-            "number" => TryGetDouble(value, out _),
+            // Numeric strings are rejected: they would be saved as TOML strings and fail typed loading.
+            "integer" => value is not string && TryGetDouble(value, out var integer) && Math.Truncate(integer) == integer,
+            "number" => value is not string && TryGetDouble(value, out _),
             "array" => value is object?[],
             "string" => value is string,
             _ => true

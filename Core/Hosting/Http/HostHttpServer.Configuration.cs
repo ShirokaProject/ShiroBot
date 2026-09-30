@@ -66,7 +66,7 @@ internal sealed partial class HostHttpServer
                     {
                         ok = true,
                         msg = "配置更新成功",
-                        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly.Location)
+                        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly)
                     });
                 }
                 catch (InvalidOperationException ex)
@@ -79,7 +79,7 @@ internal sealed partial class HostHttpServer
 
     private static object CreateConfigResponse(CoreConfig config) => new
     {
-        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly.Location),
+        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly),
         protocol = config.Protocols.FirstOrDefault() ?? string.Empty,
         protocols = config.Protocols,
         enable_log = config.EnableLog,

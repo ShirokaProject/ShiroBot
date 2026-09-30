@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.IO.Compression;
 using System.Text.Json;
 using ShiroBot.Adapters;
@@ -118,6 +118,117 @@ AssertThrows<InvalidOperationException>(() =>
 AssertThrows<InvalidOperationException>(() =>
     ComponentApiCompatibility.EnsureCompatible("Plugin", "malformed", "preview", "0.8"));
 Console.WriteLine("Component API version verification passed.");
+
+{
+    var verificationAssembly = typeof(VerificationComponentConfig).Assembly;
+    var constructionsBefore = VerificationComponentConfig.Constructions;
+    var fileSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(verificationAssembly.Location));
+    if (VerificationComponentConfig.Constructions != constructionsBefore)
+        throw new InvalidOperationException("Config schema executed code from a component assembly that is not loaded.");
+    if (fileSchema["retry_count"].GetProperty("default_value").GetInt64() != 0 ||
+        fileSchema["mode"].GetProperty("default_value").GetString() != "safe" ||
+        fileSchema["retry_count"].GetProperty("group_id").GetString() != "network" ||
+        fileSchema["retry_count"].GetProperty("group_label").GetString() != "Network" ||
+        fileSchema["retry_count"].GetProperty("order").GetInt32() != 10 ||
+        fileSchema["tags"].GetProperty("type").GetString() != "array")
+    {
+        throw new InvalidOperationException("Metadata-only config schema did not use explicit or CLR defaults.");
+    }
+
+    var loadedSchemaItems = HostHttpServer.GetComponentConfigSchema(verificationAssembly.Location, verificationAssembly);
+    var loadedSchema = ReadConfigSchema(loadedSchemaItems);
+    if (VerificationComponentConfig.Constructions == constructionsBefore ||
+        loadedSchema["retry_count"].GetProperty("default_value").GetInt64() != 3 ||
+        loadedSchema["backoff_seconds"].GetProperty("default_value").GetDouble() != 1.5 ||
+        loadedSchema["mode"].GetProperty("default_value").GetString() != "safe" ||
+        loadedSchema["tags"].GetProperty("default_value").EnumerateArray().Single().GetString() != "a")
+    {
+        throw new InvalidOperationException("Loaded config schema did not read initialized defaults.");
+    }
+
+    var condition = loadedSchema["backoff_seconds"].GetProperty("conditions").EnumerateArray().Single();
+    if (condition.GetProperty("effect").GetString() != "visible" ||
+        condition.GetProperty("field").GetString() != "retry_count" ||
+        condition.GetProperty("operator").GetString() != "gt" ||
+        condition.GetProperty("value").GetString() != "0")
+    {
+        throw new InvalidOperationException("Config field visibility condition was not exposed in the schema.");
+    }
+
+    // Uses in-memory metadata, so the schema also works in single-file publishes where Location is empty.
+    var coreSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(typeof(CoreConfig).Assembly));
+    if (!coreSchema.ContainsKey("protocols") || !coreSchema.ContainsKey("owner_list") ||
+        coreSchema["avalonia_theme"].GetProperty("default_value").GetString() != "Light")
+    {
+        throw new InvalidOperationException("Core config schema could not be read from the loaded host assembly.");
+    }
+    Console.WriteLine("Component config schema verification passed.");
+
+    var schemaRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(schemaRoot);
+    try
+    {
+        var componentTomlPath = Path.Combine(schemaRoot, "config.toml");
+        File.WriteAllText(componentTomlPath, "retry_count = 3\nmode = \"safe\"\n");
+        var componentManager = new ConfigManager(componentTomlPath);
+        using (var validPatch = JsonDocument.Parse("{\"retry_count\":5,\"mode\":\"fast\",\"extra\":\"kept\"}"))
+            HostHttpServer.ApplyComponentConfigPatch(componentManager, componentTomlPath, validPatch.RootElement, loadedSchemaItems);
+        var patched = HostHttpServer.LoadTomlObject(componentTomlPath);
+        if (patched["retry_count"] is not 5L || patched["mode"] is not "fast" || patched["extra"] is not "kept")
+            throw new InvalidOperationException("Valid component config patch was not saved.");
+
+        foreach (var invalid in new[]
+                 {
+                     "{\"retry_count\":11}", "{\"retry_count\":1.5}", "{\"retry_count\":\"5\"}",
+                     "{\"mode\":\"turbo\"}", "{\"backoff_seconds\":true}"
+                 })
+        {
+            using var invalidPatch = JsonDocument.Parse(invalid);
+            AssertThrows<InvalidOperationException>(() => HostHttpServer.ApplyComponentConfigPatch(
+                componentManager, componentTomlPath, invalidPatch.RootElement, loadedSchemaItems));
+        }
+
+        var defaultsPath = Path.Combine(schemaRoot, "defaults", "config.toml");
+        var generated = new ConfigManager(defaultsPath).LoadConfig<VerificationComponentConfig>(defaultsPath, "verification")
+                        ?? throw new InvalidOperationException("Component config defaults were not generated.");
+        if (generated.Mode != "safe" || generated.RetryCount != 3 || !generated.Tags.SequenceEqual(["a"]))
+            throw new InvalidOperationException("Explicit ConfigField defaults did not override initializers in generated config.");
+    }
+    finally
+    {
+        Directory.Delete(schemaRoot, recursive: true);
+    }
+    Console.WriteLine("Component config patch validation verification passed.");
+}
+
+{
+    var restartAdapter = new ConfigurableVerificationAdapter(ConfigApplyMode.RestartComponent);
+    var initial = restartAdapter.CurrentConfigValue;
+    var unchanged = await AdapterManager.ApplyAdapterConfigAsync(
+        restartAdapter, restartAdapter, initial, new VerificationAdapterConfig { Endpoint = initial.Endpoint });
+    if (!ReferenceEquals(unchanged, initial) || restartAdapter.Stops != 0 || restartAdapter.Starts != 0)
+        throw new InvalidOperationException("Unchanged adapter config restarted the adapter.");
+
+    var good = new VerificationAdapterConfig { Endpoint = "https://good.invalid/" };
+    var applied = await AdapterManager.ApplyAdapterConfigAsync(restartAdapter, restartAdapter, initial, good);
+    if (!ReferenceEquals(applied, good) || restartAdapter.Stops != 1 || restartAdapter.Starts != 1 ||
+        restartAdapter.CurrentConfigValue.Endpoint != good.Endpoint || !restartAdapter.IsRunning)
+    {
+        throw new InvalidOperationException("RestartComponent adapter config was not applied with a restart.");
+    }
+
+    var bad = new VerificationAdapterConfig { Endpoint = ConfigurableVerificationAdapter.FailingEndpoint };
+    await AssertThrowsAsync<InvalidOperationException>(() =>
+        AdapterManager.ApplyAdapterConfigAsync(restartAdapter, restartAdapter, good, bad));
+    if (restartAdapter.CurrentConfigValue.Endpoint != good.Endpoint || !restartAdapter.IsRunning)
+        throw new InvalidOperationException("Failed adapter config was not rolled back to the previous running config.");
+
+    var liveAdapter = new ConfigurableVerificationAdapter(ConfigApplyMode.Live);
+    await AdapterManager.ApplyAdapterConfigAsync(liveAdapter, liveAdapter, liveAdapter.CurrentConfigValue, good);
+    if (liveAdapter.Stops != 0 || liveAdapter.Starts != 0 || liveAdapter.CurrentConfigValue.Endpoint != good.Endpoint)
+        throw new InvalidOperationException("Live adapter config was not applied in place.");
+}
+Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
     AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.1.0");
@@ -481,6 +592,34 @@ try
     await blockedUnloadPlugin.UnloadCompleted.Task.WaitAsync(TimeSpan.FromSeconds(1));
     Console.WriteLine("Blocked plugin OnUnload timeout verification passed.");
 
+    var configurablePlugin = new ConfigurableVerificationPlugin();
+    var configurableHandle = await CreatePluginHandleAsync(configurablePlugin, "configurable", eventLogHub);
+    if (!configurablePlugin.SettingsReadyBeforeLoad || configurablePlugin.CurrentSettings.RetryCount != 3)
+        throw new InvalidOperationException("PluginBase<TConfig> did not load settings before LoadAsync.");
+    if (!await configurableHandle.ApplyCurrentConfigAsync() || configurablePlugin.Changes.Count != 0)
+        throw new InvalidOperationException("Unchanged plugin config triggered a change callback.");
+
+    var pluginConfigPath = configurablePlugin.ConfigPath;
+    var pluginConfigManager = new ConfigManager(pluginConfigPath);
+    pluginConfigManager.SetConfigValue(pluginConfigPath, "retry_count", 7L);
+    await configurableHandle.ApplyCurrentConfigAsync();
+    if (configurablePlugin.Changes is not [(3, 7)] || configurablePlugin.CurrentSettings.RetryCount != 7)
+        throw new InvalidOperationException("Explicit plugin config apply did not reach OnConfigChangedAsync.");
+
+    // The file watcher sees the same write; the fingerprint must keep it from applying twice.
+    await Task.Delay(1200);
+    if (configurablePlugin.Changes.Count != 1)
+        throw new InvalidOperationException("Plugin config watcher re-applied an unchanged config.");
+
+    pluginConfigManager.SetConfigValue(pluginConfigPath, "retry_count", 9L);
+    for (var attempt = 0; attempt < 50 && configurablePlugin.CurrentSettings.RetryCount != 9; attempt++)
+        await Task.Delay(100);
+    if (configurablePlugin.Changes is not [(3, 7), (7, 9)])
+        throw new InvalidOperationException("Plugin config watcher did not hot-reload the changed config.");
+
+    await configurableHandle.UnloadAsync().WaitAsync(TimeSpan.FromSeconds(5));
+    Console.WriteLine("Plugin typed config hot reload verification passed.");
+
     var manager = new ConfigManager(configPath);
     var config = manager.LoadConfig<VerificationConfig>(configPath, "verification")
                  ?? throw new InvalidOperationException("Default TOML generation failed.");
@@ -742,6 +881,10 @@ finally
     if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
 }
 
+static Dictionary<string, JsonElement> ReadConfigSchema(object[] schema) =>
+    JsonSerializer.SerializeToElement(schema).EnumerateArray()
+        .ToDictionary(item => item.GetProperty("key").GetString()!, item => item, StringComparer.Ordinal);
+
 static void AssertBefore(string text, string comment, string key)
 {
     var commentIndex = text.IndexOf(comment, StringComparison.Ordinal);
@@ -845,6 +988,99 @@ internal sealed class VerificationConfig
 internal sealed class VerificationRetryConfig
 {
     public int Count { get; set; } = 3;
+}
+
+[ConfigModel]
+internal sealed class VerificationComponentConfig
+{
+    public static int Constructions;
+
+    public VerificationComponentConfig() => Interlocked.Increment(ref Constructions);
+
+    [ConfigField("Retry count", Min = 0, Max = 10, Group = "network", GroupLabel = "Network", GroupOrder = 10, Order = 10)]
+    public int RetryCount { get; set; } = 3;
+
+    [ConfigField("Mode", Options = ["fast", "safe"], Default = "safe")]
+    public string Mode { get; set; } = "fast";
+
+    [ConfigVisibleWhen("RetryCount", ConfigConditionOperator.GreaterThan, "0")]
+    [ConfigField("Backoff seconds")]
+    public double BackoffSeconds { get; set; } = 1.5;
+
+    public string[] Tags { get; set; } = ["a"];
+}
+
+internal sealed class ConfigurableVerificationPlugin : PluginBase<VerificationComponentConfig>
+{
+    public bool SettingsReadyBeforeLoad { get; private set; }
+    public VerificationComponentConfig CurrentSettings => Settings;
+    public string ConfigPath => Context.Config.ConfigPath;
+    public List<(int Previous, int Current)> Changes { get; } = [];
+
+    protected override Task LoadAsync()
+    {
+        SettingsReadyBeforeLoad = Settings.RetryCount == 3;
+        return Task.CompletedTask;
+    }
+
+    protected override Task OnConfigChangedAsync(
+        VerificationComponentConfig previous,
+        VerificationComponentConfig current,
+        CancellationToken cancellationToken)
+    {
+        lock (Changes) Changes.Add((previous.RetryCount, current.RetryCount));
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class VerificationAdapterConfig
+{
+    public string Endpoint { get; set; } = "https://initial.invalid/";
+}
+
+internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
+    : IBotAdapter, IConfigurableAdapter, IConfigurableComponent<VerificationAdapterConfig>
+{
+    public const string FailingEndpoint = "https://fail.invalid/";
+
+    public int Starts { get; private set; }
+    public int Stops { get; private set; }
+    public bool IsRunning { get; private set; } = true;
+    public VerificationAdapterConfig CurrentConfigValue { get; private set; } = new();
+    public ConfigApplyMode ApplyMode { get; } = applyMode;
+    public string Platform => "configurable-verification";
+    public IMessageService Message { get; } = new VerificationMessageService();
+    public IChannelService Channel { get; } = new VerificationChannelService();
+    public IUserService User { get; } = new VerificationUserService();
+    public IEventService Event { get; } = new VerificationEventService();
+    public IConfigContext Config { get; set; } = null!;
+    public IConsoleLogger Logger { get; set; } = null!;
+    public TService? GetExtension<TService>() where TService : class => this as TService;
+
+    public Task StartAsync()
+    {
+        Starts++;
+        if (CurrentConfigValue.Endpoint == FailingEndpoint)
+            throw new InvalidOperationException("Verification adapter rejected its endpoint.");
+        IsRunning = true;
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync()
+    {
+        Stops++;
+        IsRunning = false;
+        return Task.CompletedTask;
+    }
+
+    public Task OnConfigChangedAsync(
+        VerificationAdapterConfig previous,
+        VerificationAdapterConfig current,
+        CancellationToken cancellationToken)
+    {
+        CurrentConfigValue = current;
+        return Task.CompletedTask;
+    }
 }
 
 internal interface IVerificationService;

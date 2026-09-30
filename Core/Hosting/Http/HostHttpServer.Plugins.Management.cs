@@ -72,7 +72,7 @@ internal sealed partial class HostHttpServer
             {
                 plugin_id = plugin.Id,
                 config = LoadTomlObject(pluginConfigPath),
-                schema = GetComponentConfigSchema(plugin.AssemblyPath),
+                schema = GetComponentConfigSchema(plugin.AssemblyPath, FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly),
                 routes = CreatePluginRouteResponse(routePolicy, plugin.Id)
             });
         });
@@ -223,7 +223,7 @@ internal sealed partial class HostHttpServer
                     if (document.RootElement.TryGetProperty("config", out var configPatch))
                     {
                         ApplyComponentConfigPatch(configManager, pluginConfigPath, configPatch,
-                            GetComponentConfigSchema(plugin.AssemblyPath));
+                            GetComponentConfigSchema(plugin.AssemblyPath, FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly));
                         var applied = await pluginManager.ApplyConfigByIdAsync(plugin.Id).ConfigureAwait(false);
                         configApplyStatus = applied ? "applied" :
                             FindLoadedPlugin(pluginManager, plugin.Id) is null ? "pending_start" : "legacy_saved_only";
@@ -239,7 +239,7 @@ internal sealed partial class HostHttpServer
                         ok = true,
                         plugin_id = plugin.Id,
                         config = LoadTomlObject(pluginConfigPath),
-                        schema = GetComponentConfigSchema(plugin.AssemblyPath),
+                        schema = GetComponentConfigSchema(plugin.AssemblyPath, FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly),
                         config_apply_status = configApplyStatus,
                         routes = CreatePluginRouteResponse(routePolicy, plugin.Id)
                     });

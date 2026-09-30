@@ -49,7 +49,7 @@ internal sealed partial class HostHttpServer
             {
                 adapter_id = package.Id,
                 config = LoadTomlObject(configPath),
-                schema = GetComponentConfigSchema(package.AssemblyPath),
+                schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(package.Id)),
                 apply_status = adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
                     ? "loaded"
                     : "pending_start"
@@ -82,7 +82,7 @@ internal sealed partial class HostHttpServer
                 try
                 {
                     ApplyComponentConfigPatch(configManager, configPath, configPatch,
-                        GetComponentConfigSchema(package.AssemblyPath));
+                        GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(package.Id)));
                     var applied = await reloadCoordinator.ExecuteAdapterMutationAsync(
                         () => adapterManager.ApplyConfigByIdAsync(package.Id)).ConfigureAwait(false);
                     return Results.Ok(new
@@ -90,7 +90,7 @@ internal sealed partial class HostHttpServer
                         ok = true,
                         adapter_id = package.Id,
                         config = LoadTomlObject(configPath),
-                        schema = GetComponentConfigSchema(package.AssemblyPath),
+                        schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(package.Id)),
                         apply_status = applied ? "applied" :
                             adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
                                 ? "legacy_saved_only"

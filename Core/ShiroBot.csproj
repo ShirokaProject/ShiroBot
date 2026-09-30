@@ -7,6 +7,7 @@
         <InformationalVersion Condition="'$(ShiroBotStartupVersion)' != ''">$(ShiroBotStartupVersion)</InformationalVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Configurations>Debug;Release</Configurations>
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
     </PropertyGroup>
