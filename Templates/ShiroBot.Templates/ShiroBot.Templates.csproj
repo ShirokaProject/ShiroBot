@@ -16,11 +16,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <ContentTargetFolders>content</ContentTargetFolders>
-    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <!-- Generated projects need their dotfiles, including .gitignore. -->
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <!-- dev.ps1 is template content, not a NuGet installation script. -->
+    <NoWarn>$(NoWarn);NU5128;NU5110;NU5111</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="templates\**\*" Exclude="templates\**\bin\**;templates\**\obj\**" />
+    <Content Include="templates\**\*" Exclude="templates\**\bin\**;templates\**\obj\**;templates\**\.shirobot-dev\**;templates\**\.DS_Store" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <Compile Remove="templates\**\*.cs" />
   </ItemGroup>
