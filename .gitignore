@@ -13,3 +13,4 @@ Core/Assets/dashboard/
 MilkyModelGenerator.Net/output/
 MilkyModelGenerator.Net/QBotSharp.Model/
 .playwright-mcp/
+*.binlog
