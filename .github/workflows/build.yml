@@ -259,6 +259,7 @@ jobs:
           tag='${{ github.ref_name }}'
           repo='${{ github.repository }}'
           base_url="https://github.com/${repo}/releases/download/${tag}"
+          notes_file=".github/release-notes/${tag}.md"
           previous_tag="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
           range="$tag"
           if [ -n "$previous_tag" ]; then
@@ -310,12 +311,18 @@ jobs:
             echo
             echo "### 更新日志"
             echo
-            write_changes "新功能" "${features[@]}"
-            write_changes "修复问题" "${fixes[@]}"
-            write_changes "其他改进" "${improvements[@]}"
-            if [ "${#features[@]}" -eq 0 ] && [ "${#fixes[@]}" -eq 0 ] && [ "${#improvements[@]}" -eq 0 ]; then
-              echo "- 本次发布没有单独记录的代码改动。"
+            # A hand-written changelog in .github/release-notes/<tag>.md replaces the commit list.
+            if [ -f "$notes_file" ]; then
+              cat "$notes_file"
               echo
+            else
+              write_changes "新功能" "${features[@]}"
+              write_changes "修复问题" "${fixes[@]}"
+              write_changes "其他改进" "${improvements[@]}"
+              if [ "${#features[@]}" -eq 0 ] && [ "${#fixes[@]}" -eq 0 ] && [ "${#improvements[@]}" -eq 0 ]; then
+                echo "- 本次发布没有单独记录的代码改动。"
+                echo
+              fi
             fi
             echo "## 下载地址"
             echo
@@ -326,12 +333,15 @@ jobs:
             echo "- Linux: $(host_link linux-x64 self-contained x64) | $(host_link linux-arm64 self-contained ARM64)"
             echo "- Linux musl / Alpine: $(host_link linux-musl-x64 self-contained x64) | $(host_link linux-musl-arm64 self-contained ARM64)"
             echo
-            echo "#### 不自带运行时 framework-dependent（需要安装 .NET 10 Runtime）"
+            echo "#### 不自带运行时 framework-dependent（需要安装 ASP.NET Core 10 Runtime）"
             echo
             echo "- Windows: $(host_link win-x64 framework-dependent x64) | $(host_link win-arm64 framework-dependent ARM64)"
             echo "- macOS: $(host_link osx-arm64 framework-dependent Apple芯片) | $(host_link osx-x64 framework-dependent Intel芯片)"
             echo "- Linux: $(host_link linux-x64 framework-dependent x64) | $(host_link linux-arm64 framework-dependent ARM64)"
             echo "- Linux musl / Alpine: $(host_link linux-musl-x64 framework-dependent x64) | $(host_link linux-musl-arm64 framework-dependent ARM64)"
+            echo
+            echo "> Linux 渲染需要 fontconfig 和字体（Debian/Ubuntu: \`apt install libfontconfig1 fonts-noto-cjk\`）。"
+            echo "> Alpine 还需要 .NET 依赖：\`apk add libstdc++ libgcc icu-libs fontconfig font-noto-cjk\`。"
             echo
             owner="$(echo "${repo%%/*}" | tr '[:upper:]' '[:lower:]')"
             echo "### Docker 镜像（linux/amd64、linux/arm64）"

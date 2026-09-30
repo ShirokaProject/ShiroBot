@@ -17,7 +17,7 @@ RUN dotnet publish Core/ShiroBot.csproj \
 
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0 AS runtime-base
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y libfontconfig1 fonts-dejavu-core \
+    && apt-get install --no-install-recommends -y libfontconfig1 fonts-dejavu-core fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY docker/entrypoint.sh /usr/local/bin/shirobot-entrypoint
