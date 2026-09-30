@@ -48,12 +48,12 @@ jobs:
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
           dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
-          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.4.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
+          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
           test "$(find artifacts/nuget -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 2
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.4.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.4.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.4.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.4.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
@@ -66,7 +66,7 @@ jobs:
               <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
             </PropertyGroup>
             <ItemGroup>
-              <PackageReference Include="ShiroBot.SDK" Version="0.9.4" />
+              <PackageReference Include="ShiroBot.SDK" Version="0.9.5" />
             </ItemGroup>
           </Project>
           EOF
@@ -121,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           template_root="$RUNNER_TEMP/template-smoke"
-          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.4.nupkg --force
+          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.5.nupkg --force
           dotnet new shirobot-plugin -n TemplatePlugin --platform qq -o "$template_root/TemplatePlugin"
           dotnet new shirobot-adapter -n TemplateAdapter --platform discord -o "$template_root/TemplateAdapter"
           test -f "$template_root/TemplatePlugin/.github/workflows/release.yml"
@@ -200,7 +200,7 @@ jobs:
 
           jq -e '
             length == 3 and
-            all(.[]; .version == "0.9.4" and .path == null and .source == "built_in" and .reloadable == false) and
+            all(.[]; .version == "0.9.5" and .path == null and .source == "built_in" and .reloadable == false) and
             ([.[] | {id, assembly}] | sort_by(.id)) == [
               {id: "shirobot.model.discord", assembly: "ShiroBot.Model.Discord"},
               {id: "shirobot.model.qq", assembly: "ShiroBot.Model.QQ"},

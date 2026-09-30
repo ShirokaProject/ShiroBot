@@ -169,7 +169,7 @@ docker compose logs -f shirobot
 - 首次启动会在 `docker-data/config.toml` 生成容器配置和 API 鉴权密钥，密钥也会打印在日志里。
 - `docker-data/plugins/` 与 `docker-data/adapters/` 分别保存插件和适配器，重建容器不会删除。
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
-- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=0.9.4` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=0.9.5` 后再执行 `docker compose pull` 和 `docker compose up -d`。
 
 不使用 compose 时：
 

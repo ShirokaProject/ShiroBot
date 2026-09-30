@@ -15,7 +15,7 @@
     <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>0.9.4 adds host-managed typed configuration for plugins and adapters (PluginBase&lt;TConfig&gt;, IConfigurableComponent, grouped and conditional config fields with hot reload) and typed QQ official Embed and media messages. ABI: SDK $(ShiroBotSdkAbiVersion), QQ Model $(ShiroBotQqModelAbiVersion), Discord Model $(ShiroBotDiscordModelAbiVersion), Telegram Model $(ShiroBotTelegramModelAbiVersion); ShiroBot API 0.9.1.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.9.5 keeps a freshly installed adapter that fails its first start (for example missing credentials) installed and disabled so it can be configured first. No contract changes. ABI: SDK $(ShiroBotSdkAbiVersion), QQ Model $(ShiroBotQqModelAbiVersion), Discord Model $(ShiroBotDiscordModelAbiVersion), Telegram Model $(ShiroBotTelegramModelAbiVersion); ShiroBot API 0.9.1.</PackageReleaseNotes>
     <NoWarn>$(NoWarn);NU5104;NU5128</NoWarn>
   </PropertyGroup>
 

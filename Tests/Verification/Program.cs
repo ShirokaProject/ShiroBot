@@ -277,7 +277,7 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     if (builtInModels.Count != 3 ||
         !builtInModels.All(model => model is
         {
-            Version: "0.9.4",
+            Version: "0.9.5",
             Source: "built_in",
             Reloadable: false,
             AssemblyPath: null
