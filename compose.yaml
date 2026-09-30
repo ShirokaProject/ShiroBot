@@ -1,6 +1,6 @@
 services:
   shirobot:
-    image: registry.oeo.one/justme/shirobot:${SHIROBOT_IMAGE_TAG:-latest}
+    image: ghcr.io/shirokaproject/shirobot:${SHIROBOT_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
     ports:
