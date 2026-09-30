@@ -7,11 +7,17 @@
 1. 操作系统与架构：`win-x64`、`win-arm64`、`linux-x64`、`linux-arm64`、`linux-musl-x64`、`linux-musl-arm64`、`osx-x64` 或 `osx-arm64`。Alpine 等使用 musl 的 Linux 发行版选择 `linux-musl-*`。
 2. 运行时类型：
    - `self-contained`：自带 .NET 运行时，推荐普通用户使用。
-   - `framework-dependent`：体积更小，但系统需要预装 .NET 10 Runtime。
+   - `framework-dependent`：体积更小，但系统需要预装 ASP.NET Core 10 Runtime。
 
 ::: tip 不确定怎么选？
 大多数 Windows 电脑选择 `win-x64-self-contained`；Apple Silicon Mac 选择 `osx-arm64-self-contained`；常见 x64 Linux 服务器选择 `linux-x64-self-contained`；Alpine x64 服务器选择 `linux-musl-x64-self-contained`。
 :::
+
+::: warning Linux 系统依赖
+图片渲染需要 fontconfig 和中文字体，例如 Debian / Ubuntu 执行 `apt install libfontconfig1 fonts-noto-cjk`。Alpine 还需要 .NET 自身的依赖：`apk add libstdc++ libgcc icu-libs fontconfig font-noto-cjk`。缺少 fontconfig 时宿主仍能启动，但渲染服务不可用。
+:::
+
+也可以直接使用 [Docker 镜像](#docker-部署)。
 
 ## 准备目录
 
@@ -121,3 +127,28 @@ framework-dependent 发布包仍然直接运行 `ShiroBot` / `ShiroBot.exe`，�
 ```
 
 服务化部署时建议使用绝对路径，并通过 systemd、Docker 或进程守护器管理宿主生命周期。
+
+## Docker 部署
+
+每个版本都会发布 `linux/amd64` 与 `linux/arm64` 镜像：`ghcr.io/shirokaproject/shirobot:<版本>`、`:<主.次>` 与 `:latest`。镜像已包含渲染所需的 fontconfig 与中文字体。
+
+使用仓库根目录的 [`compose.yaml`](https://github.com/ShirokaProject/ShiroBot/blob/master/compose.yaml)：
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose logs -f shirobot
+```
+
+- 首次启动会在 `docker-data/config.toml` 生成容器配置和 API 鉴权密钥，密钥也会打印在日志里。
+- `docker-data/plugins/` 与 `docker-data/adapters/` 分别保存插件和适配器，重建容器不会删除。
+- Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
+- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=0.9.4` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+
+不使用 compose 时：
+
+```bash
+docker run -d --name shirobot --restart unless-stopped \
+  -p 127.0.0.1:7001:7001 -v "$PWD/docker-data:/data" \
+  ghcr.io/shirokaproject/shirobot:latest
+```

@@ -11,7 +11,9 @@ dotnet new install ShiroBot.Templates
 dotnet new shirobot-adapter -n MyQqAdapter --platform qq --creator "Your Name"
 ```
 
-`--platform` 可选 `generic`、`qq`、`discord`、`telegram`。模板生成 `IBotAdapter` 骨架、SDK 引用和对应的内置 Model 依赖声明。若手动创建项目，需引用与宿主版本匹配的 `ShiroBot.SDK`，并在适配器类上标注 `BotAdapterAttribute`。
+`--platform` 可选 `generic`、`qq`、`discord`、`telegram`。模板生成 `IBotAdapter` 骨架、SDK 引用和对应的内置 Model 依赖声明。若手动创建项目，需引用与宿主版本匹配的 `ShiroBot.SDK`，并在适配器类上标注 `BotAdapterAttribute`。示例仓库见 [DemoAdapter](https://github.com/ShirokaProject/Shirobot.Adapter.DemoAdapter)。
+
+模板附带 `dev.sh` / `dev.ps1`：编译后把适配器安装为已启用的 Adapter，并启动与 SDK 版本一致的本地宿主（位于 `.shirobot-dev/`），可以直接在 Dashboard 中修改它的配置。用法与[插件的本地调试](/plugin/#本地调试)相同。
 
 ## 必须提供的成员
 

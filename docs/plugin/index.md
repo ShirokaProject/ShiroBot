@@ -16,6 +16,8 @@ dotnet new shirobot-plugin -n HelloPlugin --creator "Your Name"
 cd HelloPlugin
 ```
 
+也可以参考示例仓库：[DemoPlugin](https://github.com/ShirokaProject/Shirobot.Plugin.DemoPlugin)、[AvaloniaDemo](https://github.com/ShirokaProject/Shirobot.Plugin.AvaloniaDemo)。
+
 模板生成 `HelloPlugin.csproj`、`Plugin.cs` 和 `Directory.Packages.props`，后者指定 SDK 包版本。默认的 `Plugin.cs` 已包含一个回复 `pong` 的 `ping` 命令。`ShiroBot.SDK` 包已经包含 QQ、Discord 和 Telegram 的 Model，使用它们不需要再安装 NuGet 包。`--platform qq`、`--platform discord` 或 `--platform telegram` 会在生成的 `Plugin.cs` 中声明对应的运行时 Model 依赖；省略时仍可使用通用 SDK 类型。
 
 ::: warning 使用 NuGet 引用
@@ -115,6 +117,20 @@ load HelloPlugin
 ```
 
 然后发送 `#ping` 或 `#hello ShiroBot` 验证插件。
+
+### 本地调试
+
+模板项目附带 `dev.sh`（macOS / Linux）与 `dev.ps1`（Windows）。脚本会编译插件，下载与 `ShiroBot.SDK` 版本一致的宿主到 `.shirobot-dev/`，安装编译结果后启动宿主：
+
+```bash
+sh dev.sh --no-console
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File dev.ps1
+```
+
+`.shirobot-dev/` 已被 `.gitignore` 忽略。升级 SDK 版本后只会替换宿主程序，配置、适配器和插件数据都会保留。修改插件后先停止宿主再重新运行脚本。
 
 使用 `dotnet new shirobot-plugin` 生成的项目会带 `.github/workflows/release.yml`。推送代码或提交 PR 时自动构建；将 `Plugin.cs` 中的 `Version` 改为目标版本后推送同版本 tag（如 `v1.0.0`），Action 会把 Release 构建输出的 ZIP 和入口 DLL 上传到 GitHub Release。
 

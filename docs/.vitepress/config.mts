@@ -32,7 +32,8 @@ export default defineConfig({
             { text: '认识 ShiroBot', link: '/guide/' },
             { text: '安装与启动', link: '/guide/installation' },
             { text: '配置文件', link: '/guide/configuration' },
-            { text: '运行与维护', link: '/guide/operations' }
+            { text: '运行与维护', link: '/guide/operations' },
+            { text: '从源码构建', link: '/guide/development' }
           ]
         }
       ],
@@ -49,7 +50,8 @@ export default defineConfig({
             { text: '接收消息与事件', link: '/plugin/routes-events' },
             { text: '调用 API', link: '/plugin/apis' },
             { text: '插件操作与控制台', link: '/plugin/actions' },
-            { text: '上下文、配置与日志', link: '/plugin/context-config' }
+            { text: '上下文、配置与日志', link: '/plugin/context-config' },
+            { text: 'API 兼容性与版本', link: '/plugin/api-compatibility' }
           ]
         },
         {
