@@ -23,17 +23,11 @@ curl -O https://raw.githubusercontent.com/ShirokaProject/ShiroBot/master/compose
 docker compose up -d
 ```
 
-启动后访问 Dashboard：`http://127.0.0.1:7001/dashboard/`，API 密钥见 `docker compose logs shirobot`。
+启动后访问 Web控制面板 ：`http://127.0.0.1:7001/dashboard/`，密钥见启动日志。
 
 ## 开发插件与适配器
 
-```bash
-dotnet new install ShiroBot.Templates
-dotnet new shirobot-plugin -n MyPlugin
-dotnet new shirobot-adapter -n MyAdapter --platform qq
-```
-
-生成的项目自带 `dev.sh` / `dev.ps1`，一条命令即可在本地宿主中运行。详见[创建第一个插件](https://docs.shiroka.org/plugin/)与[创建适配器](https://docs.shiroka.org/adapter/)。
+参考[文档](https://docs.shiroka.org/guide/development)
 
 欢迎到 [awesome-shirobot](https://github.com/ShirokaProject/awesome-shirobot) 提交 PR 收录你的插件或适配器。
 

@@ -2,22 +2,48 @@
 
 ## 选择发布包
 
-前往 ShiroBot 的 [GitHub Releases](https://github.com/ShirokaProject/ShiroBot/releases)，按照两个维度选择压缩包：
+前往 ShiroBot 的 [GitHub Releases](https://github.com/ShirokaProject/ShiroBot/releases)，压缩包名称格式为 `shirobot-host-<平台>-<运行时类型>.zip`。
 
-1. 操作系统与架构：`win-x64`、`win-arm64`、`linux-x64`、`linux-arm64`、`linux-musl-x64`、`linux-musl-arm64`、`osx-x64` 或 `osx-arm64`。Alpine 等使用 musl 的 Linux 发行版选择 `linux-musl-*`。
-2. 运行时类型：
-   - `self-contained`：自带 .NET 运行时，推荐普通用户使用。
-   - `framework-dependent`：体积更小，但系统需要预装 ASP.NET Core 10 Runtime。
+### 平台
+
+| 系统 | x64 | ARM64 |
+| --- | --- | --- |
+| Windows | `win-x64` | `win-arm64` |
+| macOS | `osx-x64`（Intel 芯片） | `osx-arm64`（Apple 芯片） |
+| Linux | `linux-x64` | `linux-arm64` |
+| Alpine 等 musl 发行版 | `linux-musl-x64` | `linux-musl-arm64` |
+
+### 运行时类型
+
+- `self-contained`：自带 .NET 运行时，**推荐**，下载即可运行。
+- `framework-dependent`：体积更小，但需要预装 [ASP.NET Core 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)。
 
 ::: tip 不确定怎么选？
-大多数 Windows 电脑选择 `win-x64-self-contained`；Apple Silicon Mac 选择 `osx-arm64-self-contained`；常见 x64 Linux 服务器选择 `linux-x64-self-contained`；Alpine x64 服务器选择 `linux-musl-x64-self-contained`。
+- Windows 电脑：`win-x64-self-contained`
+- Apple 芯片的 Mac：`osx-arm64-self-contained`
+- 常见 x64 Linux 服务器：`linux-x64-self-contained`
+- Alpine x64 服务器：`linux-musl-x64-self-contained`
 :::
 
-::: warning Linux 系统依赖
-图片渲染需要 fontconfig 和中文字体，例如 Debian / Ubuntu 执行 `apt install libfontconfig1 fonts-noto-cjk`。Alpine 还需要 .NET 自身的依赖：`apk add libstdc++ libgcc icu-libs fontconfig font-noto-cjk`。缺少 fontconfig 时宿主仍能启动，但渲染服务不可用。
-:::
+### Linux 系统依赖
 
-也可以直接使用 [Docker 镜像](#docker-部署)。
+图片渲染需要 fontconfig 和中文字体。缺少 fontconfig 时宿主仍能启动，但渲染服务不可用，依赖渲染的插件会加载失败。
+
+Debian / Ubuntu：
+
+```bash
+sudo apt install libfontconfig1 fonts-noto-cjk
+```
+
+Alpine（额外需要 .NET 自身的依赖）：
+
+```bash
+sudo apk add libstdc++ libgcc icu-libs fontconfig font-noto-cjk
+```
+
+::: tip
+不想处理依赖时可以直接使用 [Docker 镜像](#docker-部署)，镜像已包含上述依赖。
+:::
 
 ## 准备目录
 
