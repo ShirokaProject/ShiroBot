@@ -10,26 +10,36 @@ using Tomlyn.Syntax;
 namespace ShiroBot.Configuration;
 
 //总配置类
+[ConfigModel]
 public class CoreConfig
 {
     /// <summary>并行加载的 Adapter 名称或 DLL 路径。</summary>
+    [ConfigField("启动时加载的 Adapter 名称或 DLL 路径。", Label = "Adapters", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
+    [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 20)]
     public bool EnableLog { get; set; } = true;
 
+    [ConfigField("是否关闭交互式控制台输入；修改后重启生效。", Label = "禁用控制台输入", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 30)]
     public bool DisableConsoleInput { get; set; } = false;
 
+    [ConfigField("访问 GitHub 资源时使用的代理前缀。", Label = "GitHub 代理", Default = "", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 10)]
     public string? GithubProxy { get; set; }
 
+    [ConfigField("宿主更新仓库，格式为 owner/repository。", Label = "宿主更新仓库", Default = "ShirokaProject/ShiroBot", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 20)]
     public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
 
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
+    [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto。", Label = "宿主主题", Default = "Light", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
     public string AvaloniaTheme { get; set; } = "Light";
 
+    [ConfigField("所有者账号列表，供插件检查所有者权限。", Label = "Owner 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 10)]
     public string[] OwnerList { get; set; } = [];
 
+    [ConfigField("管理员账号列表，供插件检查管理员权限。", Label = "Admin 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
     public string[] AdminList { get; set; } = [];
 
+    [ConfigField("插件群消息路由策略。", Label = "插件路由", Type = "section", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 30)]
     public PluginRouteConfig PluginRoutes { get; set; } = new()
     {
         Default = new PluginRouteRuleConfig
@@ -39,6 +49,7 @@ public class CoreConfig
         }
     };
 
+    [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupOrder = 40, Order = 10)]
     public ApiHostConfig Api { get; set; } = new();
 }
 
@@ -152,7 +163,7 @@ public class ConfigManager(string? coreConfigPath = null)
         async Task<CoreConfig> CreateDefaultConfig()
         {
             BotLog.Info("未找到配置文件，正在创建默认配置...");
-            var defaultConfig = new CoreConfig();
+            var defaultConfig = CreateConfigDefaults<CoreConfig>();
             var tomlString = SerializeToml(defaultConfig, _options);
             Directory.CreateDirectory(Path.GetDirectoryName(_coreConfigPath)!);
             await File.WriteAllTextAsync(_coreConfigPath, tomlString);
@@ -181,14 +192,14 @@ public class ConfigManager(string? coreConfigPath = null)
             Directory.CreateDirectory(directory);
             if (!File.Exists(normalizedConfigPath))
             {
-                var newConfig = Activator.CreateInstance<T>();
+                var newConfig = CreateConfigDefaults<T>();
                 ConsoleOutput.Warning($"未找到{scopeName}配置文件 {normalizedConfigPath}，已生成默认配置，请前往配置。");
                 SaveToml(normalizedConfigPath, newConfig, _options);
                 return newConfig;
             }
 
             var toml = File.ReadAllText(normalizedConfigPath);
-            var defaults = SerializeToml(Activator.CreateInstance<T>(), _options);
+            var defaults = SerializeToml(CreateConfigDefaults<T>(), _options);
             var updatedToml = MergeToml(toml, defaults, overwriteExisting: false);
             if (updatedToml != toml)
             {
@@ -402,7 +413,8 @@ public class ConfigManager(string? coreConfigPath = null)
         var matchedTables = new HashSet<TableSyntaxBase>();
         MergeSection(original.KeyValues, replacement.KeyValues, original.Tables.ChildrenCount > 0
             ? original.Tables.GetChild(0)!.Span.Offset
-            : current.Length);
+            : current.Length,
+            isRoot: true);
 
         foreach (var newTable in replacement.Tables)
         {
@@ -425,7 +437,7 @@ public class ConfigManager(string? coreConfigPath = null)
             var insertion = oldTable.Items.ChildrenCount > 0
                 ? EndOfLine(oldTable.Items.GetChild(oldTable.Items.ChildrenCount - 1)!)
                 : EndOfTableHeader(oldTable);
-            MergeSection(oldTable.Items, newTable.Items, insertion);
+            MergeSection(oldTable.Items, newTable.Items, insertion, isRoot: false);
         }
 
         if (edits.Count == 0) return current;
@@ -440,13 +452,23 @@ public class ConfigManager(string? coreConfigPath = null)
         SyntaxParser.ParseStrict(updated);
         return updated;
 
-        void MergeSection(SyntaxList<KeyValueSyntax> oldItems, SyntaxList<KeyValueSyntax> newItems, int insertion)
+        void MergeSection(SyntaxList<KeyValueSyntax> oldItems, SyntaxList<KeyValueSyntax> newItems, int insertion, bool isRoot)
         {
             var additions = new System.Text.StringBuilder();
             foreach (var newItem in newItems)
             {
+                var key = newItem.Key!.ToString().Trim();
+                if (isRoot && original.Tables.Any(table =>
+                        string.Equals(table.Name!.ToString().Trim(), key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Empty collection defaults serialize as `providers = []`, but existing
+                    // configs may represent the same property with [[providers]] tables.
+                    // Keep the user's table representation and never emit both TOML forms.
+                    continue;
+                }
+
                 var oldItem = oldItems.FirstOrDefault(item =>
-                    string.Equals(item.Key!.ToString().Trim(), newItem.Key!.ToString().Trim(), StringComparison.OrdinalIgnoreCase));
+                    string.Equals(item.Key!.ToString().Trim(), key, StringComparison.OrdinalIgnoreCase));
                 if (oldItem is null)
                 {
                     additions.Append(ConvertNewlines(newItem.ToString(), newline));
@@ -521,6 +543,35 @@ public class ConfigManager(string? coreConfigPath = null)
         }
 
         return string.Join(Environment.NewLine, result).TrimEnd() + Environment.NewLine;
+    }
+
+    private static T CreateConfigDefaults<T>() where T : class, new()
+    {
+        var config = new T();
+        foreach (var property in typeof(T).GetProperties())
+        {
+            if (!property.CanWrite) continue;
+            var field = property.GetCustomAttributes(typeof(ConfigFieldAttribute), inherit: true)
+                .OfType<ConfigFieldAttribute>()
+                .FirstOrDefault();
+            if (field?.Default is not { } declaredDefault) continue;
+
+            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            object? value;
+            if (targetType.IsInstanceOfType(declaredDefault)) value = declaredDefault;
+            else if (targetType.IsEnum)
+                value = declaredDefault is string enumName
+                    ? Enum.Parse(targetType, enumName, ignoreCase: true)
+                    : Enum.ToObject(targetType, declaredDefault);
+            else if (targetType.IsArray)
+                value = declaredDefault is string json
+                    ? JsonSerializer.Deserialize(json, targetType)
+                    : JsonSerializer.Deserialize(JsonSerializer.Serialize(declaredDefault), targetType);
+            else value = Convert.ChangeType(declaredDefault, targetType, System.Globalization.CultureInfo.InvariantCulture);
+            property.SetValue(config, value);
+        }
+
+        return config;
     }
 
     private static IReadOnlyList<string> CreateConfigCommentLines(ConfigFieldAttribute field)

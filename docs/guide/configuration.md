@@ -95,13 +95,13 @@ key = ""
 
 ## 适配器和插件配置
 
-适配器与插件各自拥有独立配置上下文：
+适配器与插件各自拥有独立配置文件，路径由宿主根据组件位置解析并规范化：
 
-- 根目录适配器：`adapters/MyAdapter.toml`
-- 目录适配器：`adapters/MyAdapter/config.toml`
-- 插件：`plugins/MyPlugin/config.toml` 或插件稳定数据目录下的 `config.toml`
+- 单 DLL 直接放在 `adapters/` 时：`adapters/config.toml`
+- 安装包目录中的 Adapter：`adapters/{adapter-id}/config.toml`
+- 插件：`plugins/{plugin-id}/config.toml`，或插件包入口程序集所在目录的 `config.toml`
 
-具体字段由对应组件定义。缺少配置文件时，调用 `Config.Load<T>()` 会按配置类型默认值生成文件。
+具体字段由对应组件定义。缺少配置文件时，宿主按配置类型的属性默认值生成文件；Schema 中的 `default_value` 让配置界面在文件尚未生成时也能显示相同的初始值。`ConfigField` 可不填 `Default`：默认值优先级是显式 `Default`、配置类实例化后的属性值、最后按属性 CLR 类型取默认值（布尔 `false`、数值 `0`、字符串空值）。
 
 插件/适配器配置类型上的 `ConfigFieldAttribute` 会在首次生成和 `Config.Save<T>()` 时输出到顶层 snake_case 键上方，例如：
 
@@ -110,3 +110,19 @@ key = ""
 # Range: 1..120
 timeout_seconds = 15
 ```
+
+新插件可继承 `PluginBase<TConfig>`，由宿主在 `LoadAsync()` 前加载 `TConfig`。新 Adapter 实现 `IConfigurableAdapter` 和 `IConfigurableComponent<TConfig>`；宿主在调用 `StartAsync()` 前加载配置，并负责文件监听和热更新派发。组件只需在 `OnConfigChangedAsync` 中更新它缓存的运行资源。未迁移的旧组件仍可使用 `IConfigContext.Load<T>()` 和 `Watch<T>()`。
+
+配置字段可通过 `ConfigFieldAttribute` 声明分类和顺序：`Group` 是稳定分类 ID，`GroupLabel` 是界面显示名称；Dashboard Schema 会同时返回两者。Core、Plugin 和 Adapter 共用 TOML 读写器，但由宿主按各自生命周期加载：Core 在启动早期读取，Plugin/Adapter 在组件加载时读取。
+
+依赖字段可以用 `ConfigVisibleWhen` 控制显示，用 `ConfigEnabledWhen` 控制可编辑状态。条件引用同一配置模型中的属性名，比较操作支持 `Equal`、`NotEqual`、`GreaterThan`、`GreaterThanOrEqual`、`LessThan` 和 `LessThanOrEqual`；多个条件按 AND 组合。宿主把它们作为 `schema[].conditions` 返回，例如：
+
+```json
+{ "effect": "visible", "field": "protocol", "operator": "eq", "value": "webhook" }
+```
+
+`value` 使用字符串形式；数值比较按不变区域格式解析，布尔值写成 `true` / `false`。这样 `WebhookUrl` 可在 `Protocol == "webhook"` 时显示，`ReconnectDelaySeconds` 可在 `ReconnectEnabled == true` 时开放编辑。隐藏字段的值保留在配置中。
+
+宿主自己的 `CoreConfig` 也是显式配置模型，使用 `ConfigModel` / `ConfigField` 描述默认项和 Schema。Core 在服务启动前读取；启动后由 `CoreConfigWatcher` 按宿主运行时规则应用变更。它复用同一 TOML 存储和配置上下文，不包含按插件 ID 分支的默认值或字段校验。
+
+配置 API：`GET/PATCH /api/v1/config` 管理宿主配置；`GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和旧组件仅保存文件的情况。

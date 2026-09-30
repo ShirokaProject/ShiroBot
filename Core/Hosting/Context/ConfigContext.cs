@@ -1,10 +1,15 @@
 using ShiroBot.Configuration;
 using ShiroBot.Console;
 using ShiroBot.SDK.Config;
+using System.Reflection;
 namespace ShiroBot.Hosting.Context;
 
 internal sealed class ConfigContext : IConfigContext
 {
+    private static readonly MethodInfo LoadUntypedMethod = typeof(ConfigContext)
+        .GetMethod(nameof(LoadUntypedGeneric), BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly MethodInfo WatchUntypedMethod = typeof(ConfigContext)
+        .GetMethod(nameof(WatchUntypedGeneric), BindingFlags.Static | BindingFlags.NonPublic)!;
     private readonly ConfigManager _configManager = new();
     private readonly string _displayName;
     private readonly PluginContext? _pluginOwner;
@@ -56,6 +61,19 @@ internal sealed class ConfigContext : IConfigContext
     {
         return new ConfigContext(pluginConfigPath, "插件", pluginOwner);
     }
+
+    internal static object LoadUntyped(IConfigContext context, Type configType) =>
+        LoadUntypedMethod.MakeGenericMethod(configType).Invoke(null, [context])
+        ?? throw new InvalidOperationException($"无法加载配置类型: {configType.FullName}");
+
+    internal static IDisposable WatchUntyped(IConfigContext context, Type configType, Action<object> onChanged) =>
+        (IDisposable)(WatchUntypedMethod.MakeGenericMethod(configType).Invoke(null, [context, onChanged])
+        ?? throw new InvalidOperationException($"无法监听配置类型: {configType.FullName}"));
+
+    private static object LoadUntypedGeneric<T>(IConfigContext context) where T : class, new() => context.Load<T>();
+
+    private static IDisposable WatchUntypedGeneric<T>(IConfigContext context, Action<object> onChanged)
+        where T : class, new() => context.Watch<T>(value => onChanged(value));
 
     public T Load<T>() where T : class, new()
     {

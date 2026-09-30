@@ -314,8 +314,7 @@ internal sealed class HostEventDispatcher(
     }
 
     private static string Display(string? name, string id) =>
-        string.IsNullOrWhiteSpace(name) || string.Equals(name, id, StringComparison.Ordinal)
-            ? id : $"{name}({id})";
+        string.IsNullOrWhiteSpace(name) ? id : name;
 
     private static string GetMessageSegments(IReadOnlyList<MessageSegment> segments)
     {
