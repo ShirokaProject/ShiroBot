@@ -11,7 +11,9 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Reflection;
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Runtime.Loader;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -30,6 +32,7 @@ using ShiroBot.Update;
 using ShiroBot.Console;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.SDK.Abstractions;
+using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Plugin;
 using Tomlyn;
 using Tomlyn.Model;
@@ -74,27 +77,14 @@ internal sealed partial class HostHttpServer
         var pluginRoot = Path.GetFullPath(pluginManager.PluginRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var assemblyDirectory = Path.GetFullPath(Path.GetDirectoryName(fullAssemblyPath) ?? pluginRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var configDirectory = string.Equals(assemblyDirectory, pluginRoot, StringComparison.OrdinalIgnoreCase)
+        var pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var configDirectory = string.Equals(assemblyDirectory, pluginRoot, pathComparison)
             ? Path.Combine(pluginRoot, pluginId)
             : assemblyDirectory;
 
         return Path.Combine(configDirectory, "config.toml");
-    }
-
-    private static void EnsureKnownPluginConfig(string pluginId, string configPath)
-    {
-        if (File.Exists(configPath)) return;
-        if (!string.Equals(pluginId, "JmParser", StringComparison.OrdinalIgnoreCase)) return;
-
-        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
-        File.WriteAllText(configPath, string.Join(Environment.NewLine, [
-            "proxy = \"\"",
-            "output_mode = \"file\"",
-            "delete_after_minutes = 60",
-            "max_concurrency = 16",
-            "send_cover = true",
-            "cover_blur_radius = 12"
-        ]) + Environment.NewLine);
     }
 
     internal static IReadOnlyDictionary<string, object?> LoadTomlObject(string configPath)
@@ -114,7 +104,7 @@ internal sealed partial class HostHttpServer
         _ => value
     };
 
-    private static object[] GetPluginConfigSchema(string assemblyPath)
+    internal static object[] GetComponentConfigSchema(string assemblyPath)
     {
         if (!File.Exists(assemblyPath)) return [];
 
@@ -129,6 +119,18 @@ internal sealed partial class HostHttpServer
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var type = reader.GetTypeDefinition(typeHandle);
+                var explicitlyMarked = type.GetCustomAttributes().Any(attributeHandle =>
+                {
+                    var attribute = reader.GetCustomAttribute(attributeHandle);
+                    return GetCustomAttributeTypeName(reader, attribute.Constructor)
+                        .EndsWith("ConfigModelAttribute", StringComparison.Ordinal);
+                });
+                if (explicitlyMarked)
+                {
+                    configTypeHandle = typeHandle;
+                    break;
+                }
+
                 if (reader.GetString(type.Name).Equals("PluginConfig", StringComparison.OrdinalIgnoreCase))
                 {
                     configTypeHandle = typeHandle;
@@ -144,8 +146,22 @@ internal sealed partial class HostHttpServer
 
             if (!configTypeHandle.IsNil)
             {
-                return reader.GetTypeDefinition(configTypeHandle).GetProperties()
-                    .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle)))
+                var configType = reader.GetTypeDefinition(configTypeHandle);
+                var typeNamespace = reader.GetString(configType.Namespace);
+                var typeName = reader.GetString(configType.Name);
+                var configTypeName = string.IsNullOrEmpty(typeNamespace) ? typeName : $"{typeNamespace}.{typeName}";
+                var propertyHandles = configType.GetProperties().ToArray();
+                var needsRuntimeDefaults = propertyHandles.Any(propertyHandle =>
+                {
+                    var attributes = reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes();
+                    return ReadConfigFieldAttribute(reader, attributes)?.Default is null;
+                });
+                var runtimeDefaults = needsRuntimeDefaults
+                    ? ReadConfigModelDefaults(assemblyPath, configTypeName)
+                    : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+                return propertyHandles
+                    .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle), runtimeDefaults))
                     .Where(item => item is not null)
                     .Cast<object>()
                     .ToArray();
@@ -159,15 +175,20 @@ internal sealed partial class HostHttpServer
         return [];
     }
 
-    private static ConfigSchemaItem? CreateConfigSchemaItem(MetadataReader reader, PropertyDefinition property)
+    private static ConfigSchemaItem? CreateConfigSchemaItem(
+        MetadataReader reader,
+        PropertyDefinition property,
+        IReadOnlyDictionary<string, object?> runtimeDefaults)
     {
         var propertyName = reader.GetString(property.Name);
         if (string.IsNullOrWhiteSpace(propertyName)) return null;
 
         var field = ReadConfigFieldAttribute(reader, property.GetCustomAttributes());
         var key = NormalizeConfigKey(propertyName);
+        var valueType = InferConfigPropertyType(reader, property);
+        var enumOptions = IsEnumProperty(reader, property) ? field?.Options : null;
         var type = string.IsNullOrWhiteSpace(field?.Type)
-            ? InferConfigPropertyType(reader, property)
+            ? valueType
             : field.Type!;
 
         return new ConfigSchemaItem(
@@ -178,7 +199,196 @@ internal sealed partial class HostHttpServer
             field?.Placeholder,
             field?.Options ?? [],
             field is not null && !double.IsNaN(field.Min) ? field.Min : null,
-            field is not null && !double.IsNaN(field.Max) ? field.Max : null);
+            field is not null && !double.IsNaN(field.Max) ? field.Max : null,
+            field?.GroupLabel ?? field?.Group,
+            field?.Group,
+            field?.GroupLabel,
+            field?.Order,
+            field?.GroupOrder,
+            ReadConfigFieldConditions(reader, property.GetCustomAttributes()),
+            field?.Default is { } explicitDefault
+                ? ParseConfigDefaultValue(explicitDefault, valueType, enumOptions)
+                : runtimeDefaults.TryGetValue(key, out var initializedValue)
+                    ? initializedValue
+                    : GetTypeSystemDefault(valueType),
+            valueType);
+    }
+
+    private static object? ParseConfigDefaultValue(object value, string valueType, string[]? enumOptions = null)
+    {
+        if (value is not string text)
+        {
+            if (valueType == "string" && value is IConvertible)
+                return Convert.ToString(value, CultureInfo.InvariantCulture);
+            return ConvertSchemaDefault(value);
+        }
+        switch (valueType)
+        {
+            case "boolean":
+                return bool.Parse(text);
+            case "integer":
+                if (enumOptions is { Length: > 0 } &&
+                    Array.FindIndex(enumOptions, option => string.Equals(option, text, StringComparison.Ordinal)) is var enumIndex && enumIndex >= 0)
+                    return (long)enumIndex;
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integerValue)) return integerValue;
+                if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var unsignedValue)) return unsignedValue;
+                throw new InvalidOperationException($"配置字段默认值不是有效整数: {text}");
+            case "number":
+                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue)) return numberValue;
+                throw new InvalidOperationException($"配置字段默认值不是有效数字: {text}");
+            case "array":
+                return JsonSerializer.Deserialize<JsonElement>(text);
+            default:
+                return text;
+        }
+    }
+
+    private static object? GetTypeSystemDefault(string valueType) => valueType switch
+    {
+        "boolean" => false,
+        "integer" => 0L,
+        "number" => 0D,
+        "string" => string.Empty,
+        "array" => Array.Empty<object>(),
+        _ => null
+    };
+
+    private static object? ConvertSchemaDefault(object? value) => value switch
+    {
+        null => null,
+        Enum enumValue => enumValue.ToString(),
+        string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal => value,
+        System.Collections.IEnumerable values when value is not string => values.Cast<object?>().Select(ConvertSchemaDefault).ToArray(),
+        _ => JsonSerializer.SerializeToElement(value, value.GetType())
+    };
+
+    private static Dictionary<string, object?> ReadConfigModelDefaults(string assemblyPath, string configTypeName)
+    {
+        var defaults = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var path = Path.GetFullPath(assemblyPath);
+        if (path.EndsWith(DisabledPluginSuffix, StringComparison.OrdinalIgnoreCase))
+            path = path[..^DisabledPluginSuffix.Length];
+        if (!File.Exists(path)) return defaults;
+
+        ConfigModelLoadContext? loadContext = null;
+        try
+        {
+            loadContext = new ConfigModelLoadContext(path);
+            var assembly = loadContext.LoadFromAssemblyPath(path);
+            var configType = assembly.GetType(configTypeName, throwOnError: false, ignoreCase: false);
+            if (configType is null) return defaults;
+
+            object instance;
+            try
+            {
+                instance = Activator.CreateInstance(configType)
+                    ?? System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(configType);
+            }
+            catch (MissingMethodException)
+            {
+                // A model without a public parameterless constructor has no initialized instance values.
+                // GetComponentConfigSchema will use CLR type defaults for its properties.
+                return defaults;
+            }
+
+            foreach (var property in configType.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            {
+                if (!property.CanRead || property.GetIndexParameters().Length != 0) continue;
+                try
+                {
+                    defaults[NormalizeConfigKey(property.Name)] = ConvertSchemaDefault(property.GetValue(instance));
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // A computed property isn't a config default.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return defaults;
+        }
+        finally
+        {
+            loadContext?.Unload();
+        }
+
+        return defaults;
+    }
+
+    private sealed class ConfigModelLoadContext(string assemblyPath) : AssemblyLoadContext(isCollectible: true)
+    {
+        private readonly string _assemblyDirectory = Path.GetDirectoryName(Path.GetFullPath(assemblyPath))!;
+        private readonly AssemblyDependencyResolver? _resolver = TryCreateResolver(assemblyPath);
+
+        protected override Assembly? Load(AssemblyName assemblyName)
+        {
+            var sharedSdk = typeof(ConfigModelAttribute).Assembly;
+            if (string.Equals(assemblyName.Name, sharedSdk.GetName().Name, StringComparison.OrdinalIgnoreCase))
+                return sharedSdk;
+
+            var dependencyPath = _resolver?.ResolveAssemblyToPath(assemblyName);
+            if (dependencyPath is null && !string.IsNullOrWhiteSpace(assemblyName.Name))
+            {
+                var siblingPath = Path.Combine(_assemblyDirectory, assemblyName.Name + ".dll");
+                if (File.Exists(siblingPath)) dependencyPath = siblingPath;
+            }
+            return dependencyPath is null ? null : LoadFromAssemblyPath(dependencyPath);
+        }
+
+        private static AssemblyDependencyResolver? TryCreateResolver(string path)
+        {
+            try { return new AssemblyDependencyResolver(path); }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FileNotFoundException)
+            {
+                return null;
+            }
+        }
+    }
+
+    private static ConfigFieldConditionSchema[] ReadConfigFieldConditions(
+        MetadataReader reader,
+        CustomAttributeHandleCollection attributes)
+    {
+        var conditions = new List<ConfigFieldConditionSchema>();
+        foreach (var attributeHandle in attributes)
+        {
+            var attribute = reader.GetCustomAttribute(attributeHandle);
+            var attributeTypeName = GetCustomAttributeTypeName(reader, attribute.Constructor);
+            var effect = attributeTypeName.EndsWith("ConfigVisibleWhenAttribute", StringComparison.Ordinal)
+                ? "visible"
+                : attributeTypeName.EndsWith("ConfigEnabledWhenAttribute", StringComparison.Ordinal)
+                    ? "enabled"
+                    : null;
+            if (effect is null) continue;
+
+            var blob = reader.GetBlobReader(attribute.Value);
+            if (blob.ReadUInt16() != 1) continue;
+            var field = blob.ReadSerializedString();
+            var comparison = blob.ReadInt32();
+            var value = blob.ReadSerializedString();
+            var namedCount = blob.ReadUInt16();
+            if (namedCount != 0 || string.IsNullOrWhiteSpace(field) || value is null) continue;
+
+            var operation = comparison switch
+            {
+                0 => "eq",
+                1 => "ne",
+                2 => "gt",
+                3 => "gte",
+                4 => "lt",
+                5 => "lte",
+                _ => null
+            };
+            if (operation is null) continue;
+            conditions.Add(new ConfigFieldConditionSchema(
+                effect,
+                NormalizeConfigKey(field),
+                operation,
+                value));
+        }
+
+        return [.. conditions];
     }
 
     private static ConfigFieldMetadata? ReadConfigFieldAttribute(MetadataReader reader, CustomAttributeHandleCollection attributes)
@@ -217,6 +427,24 @@ internal sealed partial class HostHttpServer
                     case nameof(ConfigFieldMetadata.Placeholder) when typeCode == SerializedTypeString:
                         metadata.Placeholder = blob.ReadSerializedString();
                         break;
+                    case nameof(ConfigFieldMetadata.Group) when typeCode == SerializedTypeString:
+                        metadata.Group = blob.ReadSerializedString();
+                        break;
+                    case nameof(ConfigFieldMetadata.GroupLabel) when typeCode == SerializedTypeString:
+                        metadata.GroupLabel = blob.ReadSerializedString();
+                        break;
+                    case nameof(ConfigFieldMetadata.Order) when typeCode == SerializedTypeI4:
+                        metadata.Order = blob.ReadInt32();
+                        break;
+                    case nameof(ConfigFieldMetadata.GroupOrder) when typeCode == SerializedTypeI4:
+                        metadata.GroupOrder = blob.ReadInt32();
+                        break;
+                    case nameof(ConfigFieldMetadata.Default) when typeCode == SerializedTypeObject:
+                        metadata.Default = ReadConfigAttributeValue(ref blob, blob.ReadByte());
+                        break;
+                    case nameof(ConfigFieldMetadata.Default) when typeCode == SerializedTypeString:
+                        metadata.Default = blob.ReadSerializedString();
+                        break;
                     case nameof(ConfigFieldMetadata.Options) when typeCode == SerializedTypeSzArray && arrayElementType == SerializedTypeString:
                         metadata.Options = ReadStringArray(ref blob);
                         break;
@@ -236,6 +464,44 @@ internal sealed partial class HostHttpServer
         }
 
         return null;
+    }
+
+    private static object? ReadConfigAttributeValue(ref BlobReader blob, byte typeCode)
+    {
+        if (typeCode == SerializedTypeSzArray)
+        {
+            var elementType = blob.ReadByte();
+            var count = blob.ReadUInt32();
+            if (count == uint.MaxValue) return null;
+            var values = new object?[count];
+            for (var index = 0; index < values.Length; index++)
+                values[index] = ReadConfigAttributeValue(ref blob, elementType);
+            return values;
+        }
+
+        return typeCode switch
+        {
+            SerializedTypeBoolean => blob.ReadByte() != 0,
+            SerializedTypeI1 => blob.ReadSByte(),
+            SerializedTypeU1 => blob.ReadByte(),
+            SerializedTypeI2 => blob.ReadInt16(),
+            SerializedTypeU2 => blob.ReadUInt16(),
+            SerializedTypeI4 => blob.ReadInt32(),
+            SerializedTypeU4 => blob.ReadUInt32(),
+            SerializedTypeI8 => blob.ReadInt64(),
+            SerializedTypeU8 => blob.ReadUInt64(),
+            SerializedTypeR4 => blob.ReadSingle(),
+            SerializedTypeR8 => blob.ReadDouble(),
+            SerializedTypeString => blob.ReadSerializedString(),
+            SerializedTypeEnum => ReadConfigEnumAttributeValue(ref blob),
+            _ => null
+        };
+    }
+
+    private static object ReadConfigEnumAttributeValue(ref BlobReader blob)
+    {
+        _ = blob.ReadSerializedString();
+        return blob.ReadInt32();
     }
 
     private static string GetCustomAttributeTypeName(MetadataReader reader, EntityHandle constructor)
@@ -263,12 +529,46 @@ internal sealed partial class HostHttpServer
         var blob = reader.GetBlobReader(property.Signature);
         _ = blob.ReadByte();
         _ = blob.ReadCompressedInteger();
-        return blob.ReadByte() switch
+        var elementType = blob.ReadByte();
+        if (elementType == ElementTypeValueType && IsEnumType(reader, ReadTypeDefOrRefHandle(ref blob)))
+            return "integer";
+
+        return elementType switch
         {
             ElementTypeBoolean => "boolean",
-            ElementTypeI1 or ElementTypeU1 or ElementTypeI2 or ElementTypeU2 or ElementTypeI4 or ElementTypeU4 or ElementTypeI8 or ElementTypeU8 or ElementTypeR4 or ElementTypeR8 => "number",
+            ElementTypeI1 or ElementTypeU1 or ElementTypeI2 or ElementTypeU2 or ElementTypeI4 or ElementTypeU4 or ElementTypeI8 or ElementTypeU8 => "integer",
+            ElementTypeR4 or ElementTypeR8 => "number",
+            ElementTypeSzArray => "array",
             _ => "string"
         };
+    }
+
+    private static bool IsEnumProperty(MetadataReader reader, PropertyDefinition property)
+    {
+        var blob = reader.GetBlobReader(property.Signature);
+        _ = blob.ReadByte();
+        _ = blob.ReadCompressedInteger();
+        return blob.ReadByte() == ElementTypeValueType && IsEnumType(reader, ReadTypeDefOrRefHandle(ref blob));
+    }
+
+    private static EntityHandle ReadTypeDefOrRefHandle(ref BlobReader blob)
+    {
+        var encoded = blob.ReadCompressedInteger();
+        var rowId = encoded >> 2;
+        return (encoded & 0x3) switch
+        {
+            0 => MetadataTokens.TypeDefinitionHandle(rowId),
+            1 => MetadataTokens.TypeReferenceHandle(rowId),
+            2 => MetadataTokens.TypeSpecificationHandle(rowId),
+            _ => default
+        };
+    }
+
+    private static bool IsEnumType(MetadataReader reader, EntityHandle typeHandle)
+    {
+        if (typeHandle.Kind != HandleKind.TypeDefinition) return false;
+        return reader.GetTypeDefinition((TypeDefinitionHandle)typeHandle).GetFields()
+            .Any(field => string.Equals(reader.GetString(reader.GetFieldDefinition(field).Name), "value__", StringComparison.Ordinal));
     }
 
     private static string[] ReadStringArray(ref BlobReader blob)
@@ -322,18 +622,29 @@ internal sealed partial class HostHttpServer
         }
     }
 
-    internal static void ApplyPluginConfigPatch(ConfigManager configManager, string pluginConfigPath, string pluginId, JsonElement patch)
+    internal static void ApplyComponentConfigPatch(
+        ConfigManager configManager,
+        string configPath,
+        JsonElement patch,
+        IEnumerable<object> schema)
     {
         if (patch.ValueKind != JsonValueKind.Object)
         {
             throw new InvalidOperationException("config 必须是对象。");
         }
 
-        ApplyPluginConfigPatchEntries(configManager, pluginConfigPath, pluginId, patch, string.Empty);
+        var fields = schema.OfType<ConfigSchemaItem>()
+            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        ApplyComponentConfigPatchEntries(configManager, configPath, fields, patch, string.Empty);
     }
 
-    private static void ApplyPluginConfigPatchEntries(
-        ConfigManager configManager, string pluginConfigPath, string pluginId, JsonElement patch, string prefix)
+    private static void ApplyComponentConfigPatchEntries(
+        ConfigManager configManager,
+        string configPath,
+        IReadOnlyDictionary<string, ConfigSchemaItem> schema,
+        JsonElement patch,
+        string prefix)
     {
         foreach (var property in patch.EnumerateObject())
         {
@@ -341,43 +652,54 @@ internal sealed partial class HostHttpServer
             var key = prefix.Length == 0 ? segment : $"{prefix}.{segment}";
             if (property.Value.ValueKind == JsonValueKind.Object)
             {
-                ApplyPluginConfigPatchEntries(configManager, pluginConfigPath, pluginId, property.Value, key);
+                ApplyComponentConfigPatchEntries(configManager, configPath, schema, property.Value, key);
                 continue;
             }
 
             var value = ConvertJsonValue(property.Value);
-            ValidatePluginConfigValue(pluginId, key, value);
-            configManager.SetConfigValue(pluginConfigPath, key, value);
+            if (schema.TryGetValue(key, out var field)) ValidateConfigValue(field, key, value);
+            configManager.SetConfigValue(configPath, key, value);
         }
     }
 
-    private static void ValidatePluginConfigValue(string pluginId, string key, object? value)
+    private static void ValidateConfigValue(ConfigSchemaItem field, string key, object? value)
     {
-        if (!string.Equals(pluginId, "JmParser", StringComparison.OrdinalIgnoreCase)) return;
-
-        switch (key)
+        var valid = field.ValueType switch
         {
-            case "proxy":
-                if (value is not string) throw new InvalidOperationException("proxy 必须是字符串。");
-                break;
-            case "output_mode":
-                var mode = value as string;
-                if (mode is not ("file" or "url" or "both")) throw new InvalidOperationException("output_mode 只能是 file、url 或 both。");
-                break;
-            case "delete_after_minutes":
-                if (!TryGetLong(value, out var deleteAfterMinutes) || deleteAfterMinutes < 0) throw new InvalidOperationException("delete_after_minutes 必须是大于等于 0 的数字。");
-                break;
-            case "max_concurrency":
-                if (!TryGetLong(value, out var maxConcurrency) || maxConcurrency is < 1 or > 64) throw new InvalidOperationException("max_concurrency 必须在 1 到 64 之间。");
-                break;
-            case "send_cover":
-                if (value is not bool) throw new InvalidOperationException("send_cover 必须是布尔值。");
-                break;
-            case "cover_blur_radius":
-                if (!TryGetDouble(value, out var coverBlurRadius) || coverBlurRadius is < 0 or > 100) throw new InvalidOperationException("cover_blur_radius 必须在 0 到 100 之间。");
-                break;
-            default:
-                throw new InvalidOperationException($"JmParser 不支持配置项: {key}");
+            "boolean" => value is bool,
+            "integer" => TryGetDouble(value, out var integer) && Math.Truncate(integer) == integer,
+            "number" => TryGetDouble(value, out _),
+            "array" => value is object?[],
+            "string" => value is string,
+            _ => true
+        };
+        if (value is null && field.ValueType == "string") valid = true;
+        if (!valid)
+            throw new InvalidOperationException($"配置项 {key} 的值类型不符合 Schema ({field.ValueType})。");
+
+        if (field.Options.Length > 0 && value is not null)
+        {
+            var optionValue = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+            var optionMatches = field.Options.Contains(optionValue, StringComparer.Ordinal);
+            // For enum properties, ConfigField.Options contains member labels while the
+            // serialized config value is the enum's numeric ordinal (0, 1, ...).
+            if (!optionMatches && field.Type == "select" && field.ValueType == "integer" &&
+                TryGetDouble(value, out var enumValue) && Math.Truncate(enumValue) == enumValue &&
+                enumValue >= 0 && enumValue < field.Options.Length)
+            {
+                optionMatches = true;
+            }
+
+            if (!optionMatches)
+                throw new InvalidOperationException($"配置项 {key} 的值不在允许选项中。");
+        }
+
+        if (field.Min is not null || field.Max is not null)
+        {
+            if (value is null || !TryGetDouble(value, out var number))
+                throw new InvalidOperationException($"配置项 {key} 必须是数字。");
+            if (field.Min is { } lower && number < lower || field.Max is { } upper && number > upper)
+                throw new InvalidOperationException($"配置项 {key} 超出允许范围。");
         }
     }
 
@@ -470,25 +792,6 @@ internal sealed partial class HostHttpServer
         JsonValueKind.Null => null,
         _ => throw new InvalidOperationException("插件配置值只能是字符串、数字、布尔值、数组或 null。")
     };
-
-    private static bool TryGetLong(object? value, out long number)
-    {
-        switch (value)
-        {
-            case long longValue:
-                number = longValue;
-                return true;
-            case int intValue:
-                number = intValue;
-                return true;
-            case double doubleValue when Math.Abs(doubleValue % 1) < double.Epsilon:
-                number = (long)doubleValue;
-                return true;
-            default:
-                number = 0;
-                return false;
-        }
-    }
 
     private static bool TryGetDouble(object? value, out double number)
     {

@@ -76,7 +76,8 @@ internal sealed partial class HostHttpServer
                 string.IsNullOrWhiteSpace(plugin.Author) ? "Unknown" : plugin.Author,
                 plugin.GithubRepo,
                 plugin.Description ?? string.Empty,
-                plugin.Category.ToString()))
+                plugin.Category.ToString(),
+                "enabled"))
             .ToArray();
 
         var enabledIds = enabledPlugins.Select(plugin => plugin.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);

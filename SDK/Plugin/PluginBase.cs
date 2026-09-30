@@ -1,5 +1,6 @@
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
+using ShiroBot.SDK.Config;
 using System.Reflection;
 
 namespace ShiroBot.SDK.Plugin;
@@ -31,11 +32,15 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
         AllCommands = new AllMapCommands(GroupCommands, DirectCommands);
     }
 
-    public Task OnLoad(IBotContext context)
+    public async Task OnLoad(IBotContext context)
     {
         Context = context;
+        if (this is IConfigurableComponent configurable)
+        {
+            await configurable.InitializeConfigAsync(context.Config).ConfigureAwait(false);
+        }
         ConfigureRoutes();
-        return LoadAsync();
+        await LoadAsync().ConfigureAwait(false);
     }
 
     public async Task OnUnload()
@@ -127,5 +132,41 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
             modifiers: null);
 
         return method is not null && method.DeclaringType != method.GetBaseDefinition().DeclaringType;
+    }
+}
+
+/// <summary>
+/// Plugin base with an explicit configuration model. The host context loads this model before
+/// the plugin's LoadAsync hook; the host owns change watching and dispatch.
+/// </summary>
+public abstract class PluginBase<TConfig> : PluginBase, IConfigurableComponent<TConfig>
+    where TConfig : class, new()
+{
+    protected TConfig Settings { get; private set; } = new();
+
+    protected virtual Task OnConfigLoadedAsync(TConfig config, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    protected virtual Task OnConfigChangedAsync(TConfig previous, TConfig current, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    Type IConfigurableComponent.ConfigType => typeof(TConfig);
+
+    object? IConfigurableComponent.CurrentConfig => Settings;
+
+    TConfig IConfigurableComponent<TConfig>.CurrentConfigValue => Settings;
+
+    async Task<object> IConfigurableComponent.InitializeConfigAsync(IConfigContext context, CancellationToken cancellationToken)
+    {
+        Settings = context.Load<TConfig>();
+        await OnConfigLoadedAsync(Settings, cancellationToken).ConfigureAwait(false);
+        return Settings;
+    }
+
+    async Task IConfigurableComponent<TConfig>.OnConfigChangedAsync(
+        TConfig previous,
+        TConfig current,
+        CancellationToken cancellationToken)
+    {
+        await OnConfigChangedAsync(previous, current, cancellationToken).ConfigureAwait(false);
+        Settings = current;
     }
 }

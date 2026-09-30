@@ -62,7 +62,12 @@ internal sealed partial class HostHttpServer
                 try
                 {
                     ApplyConfigPatch(document.RootElement, config, configManager, configPath);
-                    return Results.Ok(new { ok = true, msg = "配置更新成功" });
+                    return Results.Ok(new
+                    {
+                        ok = true,
+                        msg = "配置更新成功",
+                        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly.Location)
+                    });
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -74,6 +79,7 @@ internal sealed partial class HostHttpServer
 
     private static object CreateConfigResponse(CoreConfig config) => new
     {
+        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly.Location),
         protocol = config.Protocols.FirstOrDefault() ?? string.Empty,
         protocols = config.Protocols,
         enable_log = config.EnableLog,

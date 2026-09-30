@@ -7,6 +7,9 @@ using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.SDK.Config;
+using System.Text.Json;
+using System.Runtime.CompilerServices;
 
 namespace ShiroBot.Plugins;
 
@@ -16,6 +19,7 @@ internal sealed class LoadedPluginHandle
     private static readonly TimeSpan DefaultPluginOnUnloadTimeout = TimeSpan.FromSeconds(30);
 
     private readonly Lock _dispatchLock = new();
+    private readonly SemaphoreSlim _configUpdateGate = new(1, 1);
     private readonly TimeSpan _activeDispatchDrainTimeout;
     private readonly TimeSpan _pluginOnUnloadTimeout;
     private int _activeDispatches;
@@ -28,6 +32,7 @@ internal sealed class LoadedPluginHandle
     private readonly Func<string, bool>? _groupRouteFilter;
     private readonly string _assemblyPath;
     private readonly HostLogHub _logHub;
+    private string? _configFingerprint;
 
     public LoadedPluginHandle(
         IBotPlugin plugin,
@@ -45,6 +50,13 @@ internal sealed class LoadedPluginHandle
         _loader = loader;
         _assemblyPath = assemblyPath;
         _logHub = logHub;
+
+        if (plugin is IConfigurableComponent configurable && context.Config is { ConfigPath.Length: > 0 })
+        {
+            _configFingerprint = Fingerprint(configurable.CurrentConfig, configurable.ConfigType);
+            ConfigContext.WatchUntyped(context.Config, configurable.ConfigType, updated =>
+                _ = QueueConfigCandidateAsync(updated));
+        }
         _groupRouteFilter = groupRouteFilter;
         _activeDispatchDrainTimeout = activeDispatchDrainTimeout ?? DefaultActiveDispatchDrainTimeout;
         _pluginOnUnloadTimeout = pluginOnUnloadTimeout ?? DefaultPluginOnUnloadTimeout;
@@ -150,6 +162,56 @@ internal sealed class LoadedPluginHandle
         {
             return !_isUnloading && _plugin is THandler;
         }
+    }
+
+    public async Task<bool> ApplyCurrentConfigAsync()
+    {
+        IConfigContext? configContext;
+        IConfigurableComponent? configurable;
+        lock (_dispatchLock)
+        {
+            configContext = _context?.Config;
+            configurable = _plugin as IConfigurableComponent;
+        }
+
+        if (configContext is null || configurable is null) return false;
+        var candidate = ConfigContext.LoadUntyped(configContext, configurable.ConfigType);
+        await ApplyConfigCandidateAsync(candidate).ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task ApplyConfigCandidateAsync(object candidate)
+    {
+        await _configUpdateGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            IConfigurableComponent? configurable;
+            lock (_dispatchLock) configurable = _plugin as IConfigurableComponent;
+            if (configurable is null) return;
+
+            var fingerprint = Fingerprint(candidate, configurable.ConfigType);
+            if (string.Equals(fingerprint, _configFingerprint, StringComparison.Ordinal)) return;
+
+            var dispatched = await DispatchAsync<IConfigurableComponent>(component =>
+                component.ApplyConfigAsync(candidate)).ConfigureAwait(false);
+            if (dispatched) _configFingerprint = fingerprint;
+        }
+        finally
+        {
+            _configUpdateGate.Release();
+        }
+    }
+
+    private async Task QueueConfigCandidateAsync(object candidate)
+    {
+        try { await ApplyConfigCandidateAsync(candidate).ConfigureAwait(false); }
+        catch (Exception ex) { BotLog.Error($"插件配置热重载失败: {Name} - {ex.Message}"); }
+    }
+
+    private static string Fingerprint(object? value, Type type)
+    {
+        try { return JsonSerializer.Serialize(value, type); }
+        catch { return RuntimeHelpers.GetHashCode(value ?? type).ToString(System.Globalization.CultureInfo.InvariantCulture); }
     }
 
     public async Task<bool> DispatchAsync<THandler>(Func<THandler, Task> dispatch)

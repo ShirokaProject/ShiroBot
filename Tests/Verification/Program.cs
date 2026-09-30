@@ -92,7 +92,8 @@ Console.WriteLine("Plugin ID directory discovery verification passed.");
         }
 
         using var patch = JsonDocument.Parse("{\"network\":{\"port\":8080,\"enabled\":true}}");
-        HostHttpServer.ApplyPluginConfigPatch(new ConfigManager(pluginTomlPath), pluginTomlPath, "test", patch.RootElement);
+        HostHttpServer.ApplyComponentConfigPatch(
+            new ConfigManager(pluginTomlPath), pluginTomlPath, patch.RootElement, Array.Empty<object>());
         var updated = HostHttpServer.LoadTomlObject(pluginTomlPath);
         if (updated["network"] is not Dictionary<string, object?> updatedNetwork ||
             updatedNetwork["port"] is not 8080L || updatedNetwork["enabled"] is not true)
