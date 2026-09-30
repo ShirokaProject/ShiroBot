@@ -61,11 +61,6 @@ internal sealed class CoreConfigWatcher : IDisposable
             changes.Add($"avalonia_theme={updated.AvaloniaTheme}");
         }
 
-        if (!string.Equals(active.Protocol, updated.Protocol, StringComparison.OrdinalIgnoreCase))
-        {
-            active.Protocol = updated.Protocol;
-            changes.Add("protocol(下次启动生效)");
-        }
         if (!active.Protocols.SequenceEqual(updated.Protocols, StringComparer.OrdinalIgnoreCase))
         {
             active.Protocols = updated.Protocols;

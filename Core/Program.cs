@@ -158,7 +158,7 @@ public static class Program
 
             // ─── BotContext + 基础设施 ───
             var webPublicBaseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
-                ? (coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? coreConfig.Api.ListenUrl)
+                ? coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? ApiHostConfig.DefaultListenUrl
                 : coreConfig.Api.PublicBaseUrl;
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
             botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
@@ -371,9 +371,7 @@ public static class Program
             return commandPaths;
         }
 
-        var configured = coreConfig.Protocols.Length > 0
-            ? coreConfig.Protocols
-            : string.IsNullOrWhiteSpace(coreConfig.Protocol) ? [] : [coreConfig.Protocol];
+        var configured = coreConfig.Protocols;
         var paths = new List<string>();
         foreach (var value in configured.Where(value => !string.IsNullOrWhiteSpace(value)))
         {

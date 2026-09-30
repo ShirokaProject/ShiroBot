@@ -108,3 +108,5 @@ if (mediaApi is not null && official is not null)
 ```
 
 `UploadAsync` returns a `QOfficialMedia` reference that can be wrapped with `QOfficialMessage.Media` and reused in a later reply. `IQOfficialMediaApi` also exposes lower-level upload methods. The QQPlatform adapter supports C2C and group uploads, with a 200 MB maximum file size.
+
+`IQOfficialMessageApi` also includes `SendTextAsync` and `SendArkAsync`. Adapters compiled against an older contract may rely on default interface implementations that throw `NotSupportedException`; plugins should handle that exception. Direct-message typing and streamed replies require the adapter to implement `IQOfficialDirectMessageApi` separately.

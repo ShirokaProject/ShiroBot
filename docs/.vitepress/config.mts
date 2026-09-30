@@ -81,6 +81,7 @@ export default defineConfig({
           items: [
             { text: '创建适配器', link: '/adapter/' },
             { text: '实现服务接口', link: '/adapter/services' },
+            { text: '适配不同 Model', link: '/adapter/models' },
             { text: '上报事件', link: '/adapter/events' },
             { text: '配置与部署', link: '/adapter/deployment' }
           ]

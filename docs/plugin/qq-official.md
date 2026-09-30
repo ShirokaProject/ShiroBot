@@ -68,6 +68,8 @@ Markdown 正文可以直接包含远程图片语法，再接正文与按钮。�
 
 Embed 卡片、Ark 模板和 Markdown/按钮都通过 `IQOfficialMessageApi` 发送。`SendEmbedAsync` 使用 QQ 官方 `msg_type=4`；Embed 的字段包含标题、提示、缩略图和字段名称。目标场景会路由到 C2C、群聊、文字子频道或频道私信接口；频道私信的目标 ID 是官方 `guild_id`。
 
+`IQOfficialMessageApi` 还声明了 `SendTextAsync` 和 `SendArkAsync`。旧适配器可能使用会抛出 `NotSupportedException` 的默认实现，插件调用时应处理该异常。私聊输入状态和流式回复由独立的 `IQOfficialDirectMessageApi` 提供，需要适配器显式实现。
+
 | 模型 | 用途 |
 | --- | --- |
 | `QOfficialMessageTarget` | 目标场景与开放平台 ID；频道私信使用 `guild_id` |

@@ -1,35 +1,32 @@
 # 创建适配器
 
-适配器把某个机器人协议的 API 与事件转换为 ShiroBot 统一接口。插件只依赖这些统一接口，因此同一插件可以运行在不同适配器上。
-
-使用 `dotnet new shirobot-adapter` 生成的项目包含 `.github/workflows/release.yml`：推送代码或提交 PR 时构建；将 `Adapter.cs` 中的 `Version` 改为目标版本并推送同版本 tag（如 `v1.0.0`）后，Action 会创建包含 Release 构建输出 ZIP 和入口 DLL 的 GitHub Release。
+适配器把平台 API 与事件映射到 `ShiroBot.SDK.Models` 的通用模型。插件优先使用通用接口；需要 QQ 等平台特有操作时，再通过可选扩展接口访问。[适配不同 Model](/adapter/models)说明了两层模型如何配合。
 
 ## 创建项目
 
+推荐从当前适配器模板开始，并选择平台：
+
 ```bash
-dotnet new classlib -n ExampleAdapter -f net10.0
-cd ExampleAdapter
-dotnet add package ShiroBot.SDK --version 0.9.3
+dotnet new install ShiroBot.Templates
+dotnet new shirobot-adapter -n MyQqAdapter --platform qq --creator "Your Name"
 ```
 
-SDK 会通过 `BotAdapterAttribute` 自动识别适配器，并生成与插件一致的单 DLL 产物。宿主会读取嵌入的 native 依赖清单、校验 NuGet 包并按当前 RID 准备 native 文件，因此不需要手写 ILRepack：
+`--platform` 可选 `generic`、`qq`、`discord`、`telegram`。模板生成 `IBotAdapter` 骨架、SDK 引用和对应的内置 Model 依赖声明。若手动创建项目，需引用与宿主版本匹配的 `ShiroBot.SDK`，并在适配器类上标注 `BotAdapterAttribute`。
 
-```xml
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
-  </PropertyGroup>
+## 必须提供的成员
 
-  <ItemGroup>
-    <PackageReference Include="ShiroBot.SDK" Version="0.9.3" />
-  </ItemGroup>
-</Project>
-```
+`IBotAdapter` 的接口形态如下：
 
-## 实现 IBotAdapter
+| 成员 | 要求 | 用途 |
+| --- | --- | --- |
+| `Config`、`Logger` | 必须有可写属性 | 宿主在启动前注入配置和日志 |
+| `Platform` | 必须返回稳定的平台 ID | 与上报事件的 `BotEvent.Platform` 一致，如 `qq` |
+| `Message`、`Channel`、`User` | 必须提供非空服务对象 | 分别实现 `IMessageService`、`IChannelService`、`IUserService` |
+| `Event` | 必须提供非空 `IEventService` | 通过 `EventReceived` 上报 `BotEvent` |
+| `GetExtension<TService>()` | 可选重写 | 暴露 QQ 等平台特有扩展；默认返回适配器自身实现的接口 |
+| `StartAsync()`、`StopAsync()` | 可选重写，由宿主调用 | 初始化连接和停止后台任务；默认实现为空操作 |
+
+服务对象可以先使用空类，因为通用服务方法有默认实现，未实现的方法会抛 `NotSupportedException`。实际要提供的功能和方法列表见[实现服务接口](/adapter/services)。
 
 ```csharp
 using ShiroBot.SDK.Adapter;
@@ -37,82 +34,34 @@ using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
 
-namespace ExampleAdapter;
-
-[BotAdapter(
-    "ExampleAdapter",
-    Name = "Example Adapter",
-    Version = "1.0.0",
-    Description = "Example 协议适配器",
-    Author = "YourName",
-    GithubRepo = "owner/example-adapter",
-    Protocol = "example",
-    ProtocolVersionRange = ">=1.0 <2.0",
-    IsSingleFile = true)]
-public sealed class ExampleAdapter : IBotAdapter
+[BotAdapter("MyQqAdapter", Name = "My QQ Adapter", Version = "1.0.0")]
+public sealed class MyQqAdapter : IBotAdapter
 {
-    private readonly ExampleEventService _events = new();
+    private readonly MyEventService _events = new();
 
-    // 由宿主在 StartAsync 前注入。
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
-
-    public IMessageService Message { get; } = new ExampleMessageService();
-    public IGroupService Group { get; } = new ExampleGroupService();
-    public IFriendService Friend { get; } = new ExampleFriendService();
-    public IFileService File { get; } = new ExampleFileService();
-    public ISystemService System { get; } = new ExampleSystemService();
+    public string Platform => "qq";
+    public IMessageService Message { get; } = new MyMessageService();
+    public IChannelService Channel { get; } = new MyChannelService();
+    public IUserService User { get; } = new MyUserService();
     public IEventService Event => _events;
 
-    public async Task StartAsync()
-    {
-        var config = Config.Load<ExampleAdapterConfig>();
-        Config.Save(config);
-
-        Logger.Info($"正在连接 {config.BaseUrl}");
-
-        await ProtocolClient.ConnectAsync(
-            config.BaseUrl,
-            config.AccessToken,
-            _events.PublishAsync);
-
-        Logger.Success("协议连接成功");
-    }
-
-    public Task StopAsync() => ProtocolClient.DisconnectAsync();
+    public Task StartAsync() => Task.CompletedTask;
+    public Task StopAsync() => Task.CompletedTask;
 }
+
+internal sealed class MyMessageService : IMessageService;
+internal sealed class MyChannelService : IChannelService;
+internal sealed class MyUserService : IUserService;
 ```
 
-宿主的加载顺序是：
+`MyEventService` 的实现见[上报事件](/adapter/events)。上述空服务仅用于搭好结构；至少实现消息发送、机器人身份查询，以及协议端实际能上报的事件后，再用于真实连接。
 
-1. 创建适配器程序集加载上下文。
-2. 查找并实例化第一个非抽象 `IBotAdapter` 实现。
-3. 注入 `Config` 和 `Logger`。
-4. 读取必须存在的 `BotAdapterAttribute`。
-5. 创建 Bot 上下文并订阅 `Event.EventReceived`。
-6. 等待 `StartAsync()` 完成。
-7. 开始加载插件。
+## 启动顺序
 
-因此 `StartAsync()` 返回前应完成必要的鉴权和基础连接验证。持续事件循环可以在后台运行，但必须把异常记录清楚并实现重连策略。
+宿主读取 `BotAdapterAttribute` 和 Model 依赖，实例化适配器，注入 `Config`、`Logger`，订阅 `Event.EventReceived`，然后调用 `StartAsync()`。因此可以在 `StartAsync()` 建立连接并开始接收事件。连接、鉴权或必要的初始化失败时应抛出异常；后台循环需要在 `StopAsync()` 中结束。
 
-`BotAdapterAttribute` 是唯一 metadata 来源。缺少 attribute 的适配器会拒绝加载；旧 `Name`、`Metadata` 和 metadata fallback 已移除。
+`StartAsync()` 和 `StopAsync()` 是宿主管理的生命周期入口。适配器作者按需**重写实现**它们，插件或其他业务代码通常不应主动调用，否则可能重复建立连接或绕过宿主的加载与卸载顺序。插件自己的初始化入口是 `PluginBase.LoadAsync()`，不是适配器的 `StartAsync()`。
 
-`StartAsync()` 与 `StopAsync()` 都有默认 no-op 实现。只提供同步服务或无需初始化的适配器可以省略；需要连接、事件循环或资源清理时再重写。
-
-## 配置类型
-
-```csharp
-public sealed class ExampleAdapterConfig
-{
-    public string BaseUrl { get; set; } = "http://127.0.0.1:3000";
-    public string AccessToken { get; set; } = string.Empty;
-    public string Transport { get; set; } = "websocket";
-}
-```
-
-不要在源代码中硬编码令牌。配置文件位置和部署方式见[配置与部署](/adapter/deployment)。
-
-## 参考实现
-
-- [Shirobot.Adapter.DemoAdapter](https://github.com/ShirokaProject/Shirobot.Adapter.DemoAdapter)
-- 仓库中的 `Shirobot.MilkyAdapter` 实现
+配置文件与发布目录见[配置与部署](/adapter/deployment)。
