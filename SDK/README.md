@@ -10,6 +10,19 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 <PackageReference Include="ShiroBot.SDK" Version="0.9.4" />
 ```
 
+## Version and ABI
+
+The package version follows the ShiroBot host release. Each contract assembly in the package has its
+own ABI version, which only increases when its public contracts change. A plugin built against this
+package requires a host whose ABI is the same or newer for every assembly it references.
+
+| ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
+| --- | --- | --- | --- | --- | --- |
+| 0.9.4 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.3 | 0.9 | 0.9.1.0 | 0.9.1.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.2 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.1 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
+
 `ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build
 support. Plugins only need this single package, including plugins that render Avalonia controls.
 

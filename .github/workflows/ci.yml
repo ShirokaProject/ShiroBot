@@ -20,6 +20,20 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Check SDK ABI version map
+        shell: bash
+        run: |
+          set -euo pipefail
+          prop() { sed -n "s/.*<$1>\([^<]*\)<.*/\1/p" Directory.Build.props | head -1; }
+          api_version="$(sed -n 's/.*CurrentVersion = "\([^"]*\)".*/\1/p' SDK/Core/ShiroBotApi.cs)"
+          row="| $(prop ShiroBotProductVersion) | ${api_version} | $(prop ShiroBotSdkAbiVersion) | $(prop ShiroBotQqModelAbiVersion) | $(prop ShiroBotDiscordModelAbiVersion) | $(prop ShiroBotTelegramModelAbiVersion) |"
+          for file in SDK/README.md docs/plugin/api-compatibility.md; do
+            if ! grep -Fqx -- "$row" "$file"; then
+              echo "::error file=$file::Missing SDK/ABI version map row: $row"
+              exit 1
+            fi
+          done
+
       - name: Build and verify core
         shell: bash
         run: |

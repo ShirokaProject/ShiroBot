@@ -38,6 +38,19 @@ plugins. A host never satisfies a reference to a newer ABI, so a plugin compiled
 contracts correctly requires that host version or later. ABI changes must remain additive: do not
 remove or change existing public contracts merely because `AssemblyVersion` increases.
 
+## Version map
+
+The NuGet package version follows the host release. ABI versions only increase when that assembly's
+public contracts change, so one ABI can span several SDK releases. A plugin built against an SDK
+package loads on any host whose ABI for every referenced assembly is the same or newer.
+
+| ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
+| --- | --- | --- | --- | --- | --- |
+| 0.9.4 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.3 | 0.9 | 0.9.1.0 | 0.9.1.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.2 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.1 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
+
 ## Multi-adapter background work
 
 Event handlers automatically use the adapter that produced the event. Timers, dashboard actions,

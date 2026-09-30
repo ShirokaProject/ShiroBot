@@ -342,6 +342,10 @@ jobs:
             echo
             echo "### NuGet 包"
             echo
+            prop() { sed -n "s/.*<$1>\([^<]*\)<.*/\1/p" Directory.Build.props | head -1; }
+            api_version="$(sed -n 's/.*CurrentVersion = "\([^"]*\)".*/\1/p' SDK/Core/ShiroBotApi.cs)"
+            echo "ShiroBot API ${api_version} · SDK ABI $(prop ShiroBotSdkAbiVersion) · QQ Model ABI $(prop ShiroBotQqModelAbiVersion) · Discord Model ABI $(prop ShiroBotDiscordModelAbiVersion) · Telegram Model ABI $(prop ShiroBotTelegramModelAbiVersion)"
+            echo
             for package in artifacts/nuget/*.nupkg; do
               [ -e "$package" ] || continue
               file_name="$(basename "$package")"
