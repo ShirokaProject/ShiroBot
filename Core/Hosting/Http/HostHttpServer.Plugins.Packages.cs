@@ -127,7 +127,8 @@ internal sealed partial class HostHttpServer
                     string.IsNullOrWhiteSpace(info.Author) ? "Unknown" : info.Author,
                     info.GithubRepo,
                     info.Description ?? string.Empty,
-                    info.Category.ToString());
+                    info.Category.ToString(),
+                    "disabled");
                 continue;
             }
 
@@ -144,7 +145,8 @@ internal sealed partial class HostHttpServer
                 "Unknown",
                 null,
                 string.Empty,
-                "Other");
+                "Other",
+                "disabled");
         }
     }
 
@@ -167,7 +169,9 @@ internal sealed partial class HostHttpServer
                 string.IsNullOrWhiteSpace(info.Author) ? "Unknown" : info.Author,
                 info.GithubRepo,
                 info.Description ?? string.Empty,
-                info.Category.ToString());
+                info.Category.ToString(),
+                pluginManager.GetPluginLoadError(info.Id) is { } error ? "error" : "disabled",
+                pluginManager.GetPluginLoadError(info.Id));
         }
     }
 

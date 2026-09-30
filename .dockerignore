@@ -1,0 +1,12 @@
+.git/
+.github/
+.idea/
+**/bin/
+**/obj/
+artifacts/release/
+docker-data/
+Core/Assets/dashboard/
+*.binlog
+*.user
+config.toml
+**/config.toml

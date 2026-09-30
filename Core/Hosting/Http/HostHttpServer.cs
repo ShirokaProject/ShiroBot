@@ -178,7 +178,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
             reloadable = model.Reloadable
         })));
 
-        MapAdapterEndpoints(api, runtimeState, adapterManager, reloadCoordinator, adapterPackages);
+        MapAdapterEndpoints(api, runtimeState, configManager, adapterManager, reloadCoordinator, adapterPackages);
 
         MapConfigurationEndpoints(api, config, configManager, configPath);
 
@@ -284,6 +284,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
     private const byte SerializedTypeR8 = 0x0D;
     private const byte SerializedTypeString = 0x0E;
     private const byte SerializedTypeSzArray = 0x1D;
+    private const byte SerializedTypeObject = 0x51;
+    private const byte SerializedTypeEnum = 0x55;
     private const byte ElementTypeBoolean = 0x02;
     private const byte ElementTypeI1 = 0x04;
     private const byte ElementTypeU1 = 0x05;
@@ -295,6 +297,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
     private const byte ElementTypeU8 = 0x0B;
     private const byte ElementTypeR4 = 0x0C;
     private const byte ElementTypeR8 = 0x0D;
+    private const byte ElementTypeValueType = 0x11;
+    private const byte ElementTypeSzArray = 0x1D;
 
     // ReSharper disable NotAccessedPositionalProperty.Local
     private sealed record ApiError(
@@ -331,7 +335,21 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         [property: JsonPropertyName("placeholder")] string? Placeholder,
         [property: JsonPropertyName("options")] string[] Options,
         [property: JsonPropertyName("min")] double? Min,
-        [property: JsonPropertyName("max")] double? Max);
+        [property: JsonPropertyName("max")] double? Max,
+        [property: JsonPropertyName("group")] string? Group,
+        [property: JsonPropertyName("group_id")] string? GroupId,
+        [property: JsonPropertyName("group_label")] string? GroupLabel,
+        [property: JsonPropertyName("order")] int? Order,
+        [property: JsonPropertyName("group_order")] int? GroupOrder,
+        [property: JsonPropertyName("conditions")] IReadOnlyList<ConfigFieldConditionSchema> Conditions,
+        [property: JsonPropertyName("default_value"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? DefaultValue,
+        [property: JsonIgnore] string ValueType);
+
+    private sealed record ConfigFieldConditionSchema(
+        [property: JsonPropertyName("effect")] string Effect,
+        [property: JsonPropertyName("field")] string Field,
+        [property: JsonPropertyName("operator")] string Operator,
+        [property: JsonPropertyName("value")] string Value);
 
     private sealed class ConfigFieldMetadata
     {
@@ -342,6 +360,11 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         public double Min { get; set; } = double.NaN;
         public double Max { get; set; } = double.NaN;
         public string? Placeholder { get; set; }
+        public string? Group { get; set; }
+        public string? GroupLabel { get; set; }
+        public int? Order { get; set; }
+        public int? GroupOrder { get; set; }
+        public object? Default { get; set; }
     }
 
     private sealed record PluginUploadPackage(
@@ -358,7 +381,9 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         [property: JsonPropertyName("author")] string Author,
         [property: JsonPropertyName("repo")] string? Repo,
         [property: JsonPropertyName("description")] string Description,
-        [property: JsonPropertyName("category")] string Category);
+        [property: JsonPropertyName("category")] string Category,
+        [property: JsonPropertyName("status")] string Status = "disabled",
+        [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null);
     // ReSharper restore NotAccessedPositionalProperty.Local
 
     public async ValueTask DisposeAsync()

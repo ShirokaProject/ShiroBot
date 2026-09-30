@@ -9,6 +9,8 @@ using ShiroBot.Plugins.Compatibility;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
+using ShiroBot.SDK.Config;
+using System.Text.Json;
 
 namespace ShiroBot.Adapters;
 
@@ -26,6 +28,22 @@ internal sealed class AdapterManager(
     private readonly Lock _sync = new();
     private readonly Dictionary<string, AdapterEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _errors = new(StringComparer.OrdinalIgnoreCase);
+
+    public async Task<bool> ApplyConfigByIdAsync(string id)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            AdapterEntry? entry;
+            lock (_sync) entry = _entries.Values.FirstOrDefault(item =>
+                string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (entry?.Configurable is null || entry.Adapter is null) return false;
+            var candidate = ConfigContext.LoadUntyped(entry.Adapter.Config, entry.Configurable.ConfigType);
+            await ApplyConfigCandidateAsync(entry, candidate).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
 
     public bool IsLoaded
     {
@@ -115,6 +133,14 @@ internal sealed class AdapterManager(
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (!string.IsNullOrWhiteSpace(expectedId))
+            {
+                lock (_sync)
+                {
+                    if (_entries.Values.Any(item => string.Equals(item.Metadata.Id, expectedId, StringComparison.OrdinalIgnoreCase)))
+                        return;
+                }
+            }
             await LoadCoreAsync(Path.GetFullPath(assemblyPath), expectedId).ConfigureAwait(false);
             UpdateRuntimeState();
         }
@@ -145,9 +171,9 @@ internal sealed class AdapterManager(
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            AdapterEntry entry;
-            lock (_sync) entry = _entries.Values.FirstOrDefault(item => string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase))
-                ?? throw new InvalidOperationException($"未加载 Adapter: {id}");
+            AdapterEntry? entry;
+            lock (_sync) entry = _entries.Values.FirstOrDefault(item => string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (entry is null) return;
             await StopAndRemoveAsync(entry).ConfigureAwait(false);
             UpdateRuntimeState();
         }
@@ -207,8 +233,20 @@ internal sealed class AdapterManager(
     private async Task ReloadEntryAsync(AdapterEntry entry)
     {
         var shadowPath = entry.ShadowAssemblyPath ?? CreateReloadShadow(entry.AssemblyPath);
-        await StopEntryAsync(entry).ConfigureAwait(false);
-        lock (_sync) _entries.Remove(entry.AssemblyPath);
+        try
+        {
+            await StopEntryAsync(entry).ConfigureAwait(false);
+        }
+        finally
+        {
+            // StopEntryAsync can fail after the adapter has stopped while the runtime checks
+            // collectible-context release. Do not leave a dead entry that blocks future retries.
+            if (entry.Adapter is null)
+            {
+                lock (_sync) _entries.Remove(entry.AssemblyPath);
+            }
+        }
+
         try
         {
             await LoadCoreAsync(entry.AssemblyPath, entry.Metadata.Id).ConfigureAwait(false);
@@ -272,6 +310,7 @@ internal sealed class AdapterManager(
             Path.GetDirectoryName(adapterPath) ?? adapterRoot).ConfigureAwait(false);
         var loader = new DllLoader<IBotAdapter>(collectible: true, shared: sharedAssemblies, dependencies: dependencies);
         IAsyncDisposable? subscription = null;
+        IDisposable? configWatch = null;
         IBotAdapter? adapter = null;
         var registered = false;
         try
@@ -285,26 +324,42 @@ internal sealed class AdapterManager(
                     throw new InvalidOperationException($"平台 {adapter.Platform} 已有 Adapter 加载，不能重复加载。");
             }
 
-            adapter.Config = ConfigContext.ForAdapter(Path.Combine(Path.GetDirectoryName(adapterPath) ?? adapterRoot, "config.toml"));
+            var configDirectory = Path.GetDirectoryName(logicalAssemblyPath ?? adapterPath) ?? adapterRoot;
+            adapter.Config = ConfigContext.ForAdapter(Path.Combine(configDirectory, "config.toml"));
             adapter.Logger = new ConsoleLogger($"[Adapter:{metadata.Id}]", logHub);
+            var configurable = adapter as IConfigurableAdapter;
+            object? initialConfig = null;
+            if (configurable is not null)
+            {
+                initialConfig = await configurable.InitializeConfigAsync(adapter.Config).ConfigureAwait(false);
+            }
             subscription = eventBridge.Bridge(adapter.Platform, adapter.Event, directMessageHandler);
             using (BotLog.BeginScope(adapter.Logger)) await adapter.StartAsync().ConfigureAwait(false);
+            if (configurable is not null)
+            {
+                configWatch = ConfigContext.WatchUntyped(adapter.Config, configurable.ConfigType,
+                    updated => _ = QueueConfigUpdateAsync(metadata.Id, updated));
+            }
             var fullPath = Path.GetFullPath(logicalAssemblyPath ?? adapterPath);
             var shadowAssemblyPath = CreateReloadShadow(adapterPath);
             botContext.RegisterAdapter(adapter);
             registered = true;
             lock (_sync)
             {
-                _entries[fullPath] = new AdapterEntry(fullPath, adapter, loader, metadata, subscription!, Path.GetDirectoryName(shadowAssemblyPath), shadowAssemblyPath);
+                _entries[fullPath] = new AdapterEntry(fullPath, adapter, loader, metadata, subscription!,
+                    configWatch, configurable, initialConfig,
+                    Path.GetDirectoryName(shadowAssemblyPath), shadowAssemblyPath);
                 _errors.Remove(metadata.Id);
             }
             subscription = null; // Entry owns it now.
+            configWatch = null;
             logHub.RegisterSource(metadata.Id, metadata.Description ?? $"{metadata.Name} Adapter logs", metadata.Name);
             runtimeState.RecordEvent($"{metadata.Name} Adapter loaded");
         }
         catch
         {
             if (subscription is not null) await subscription.DisposeAsync().ConfigureAwait(false);
+            configWatch?.Dispose();
             if (registered && adapter is not null) botContext.UnregisterAdapter(adapter);
             if (adapter is not null)
             {
@@ -317,11 +372,21 @@ internal sealed class AdapterManager(
 
     private async Task StopEntryAsync(AdapterEntry entry)
     {
-        var adapter = entry.Adapter;
-        var subscription = entry.EventSubscription;
-        var loader = entry.Loader;
-        if (adapter is null || subscription is null || loader is null)
-            throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
+        var adapter = entry.Adapter ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
+        var subscription = entry.EventSubscription ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
+        var loader = entry.Loader ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
+
+        var adapterId = entry.Metadata.Id;
+        var adapterName = entry.Metadata.Name;
+        var assemblyPath = entry.AssemblyPath;
+        var references = new AdapterUnloadReferences(
+            new WeakReference(adapter),
+            new WeakReference(subscription),
+            entry.ConfigWatch is null ? null : new WeakReference(entry.ConfigWatch),
+            entry.Configurable is null ? null : new WeakReference(entry.Configurable),
+            entry.CurrentConfig is null ? null : new WeakReference(entry.CurrentConfig));
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
+        RecordAdapterLifecycle(adapterId, "info", $"unload begin; assembly={assemblyPath}; adapter_ref={RuntimeHelpers.GetHashCode(adapter)}; subscription_ref={RuntimeHelpers.GetHashCode(subscription)}");
 
         try
         {
@@ -330,31 +395,117 @@ internal sealed class AdapterManager(
                 await adapter.StopAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Start unloading only after StopAsync succeeds so a failed stop remains retryable.
+            RecordAdapterLifecycle(adapterId, "error", $"unload aborted in StopAsync after {startedAt.ElapsedMilliseconds} ms: {ex}");
             throw;
         }
 
-        await subscription.DisposeAsync().ConfigureAwait(false);
+        RecordAdapterLifecycle(adapterId, "info", $"StopAsync completed in {startedAt.ElapsedMilliseconds} ms");
+        try
+        {
+            entry.ConfigWatch?.Dispose();
+            RecordAdapterLifecycle(adapterId, "info", "config watcher disposed");
+            await subscription.DisposeAsync().ConfigureAwait(false);
+            RecordAdapterLifecycle(adapterId, "info", $"event subscription drained in {startedAt.ElapsedMilliseconds} ms");
+        }
+        catch (Exception ex)
+        {
+            RecordAdapterLifecycle(adapterId, "error", $"unload cleanup failed after {startedAt.ElapsedMilliseconds} ms: {ex}");
+            throw;
+        }
+
         botContext.UnregisterAdapter(adapter);
+        RecordAdapterLifecycle(adapterId, "info", "adapter removed from BotContext");
         entry.ReleaseRuntimeReferences();
+        RecordAdapterLifecycle(adapterId, "info", "AdapterEntry runtime references cleared");
         adapter = null;
         subscription = null;
         var weakReference = loader.BeginUnload();
         loader = null;
+        RecordAdapterLifecycle(adapterId, "info", "collectible AssemblyLoadContext.Unload requested; waiting for collection");
         await Task.Delay(200).ConfigureAwait(false);
         if (!WaitForAdapterUnload(weakReference))
         {
-            RecordError(entry.Metadata.Id, new InvalidOperationException($"Adapter {entry.Metadata.Name} 已停止，但程序集仍被引用，需要重启宿主才能完成卸载。"));
-            throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已停止，但程序集仍被引用，需要重启宿主才能完成卸载。");
+            var survivors = references.GetAliveReferences();
+            var diagnostic = $"Adapter ALC unload timed out after {startedAt.ElapsedMilliseconds} ms; " +
+                             $"alc_alive={weakReference?.IsAlive == true}; surviving_refs=[{string.Join(", ", survivors)}]; " +
+                             $"assembly={assemblyPath}";
+            RecordAdapterLifecycle(adapterId, "error", diagnostic);
+            RecordError(adapterId, new InvalidOperationException($"Adapter {adapterName} 已停止，但程序集仍被引用，需要重启宿主才能完成卸载。诊断: {string.Join(", ", survivors)}"));
+            throw new InvalidOperationException($"Adapter {adapterName} 已停止，但程序集仍被引用，需要重启宿主才能完成卸载。诊断: {string.Join(", ", survivors)}");
         }
-        runtimeState.RecordEvent($"{entry.Metadata.Name} Adapter unloaded");
+        RecordAdapterLifecycle(adapterId, "info", $"Adapter ALC collected successfully after {startedAt.ElapsedMilliseconds} ms");
+        runtimeState.RecordEvent($"{adapterName} Adapter unloaded");
+    }
+
+    private void RecordAdapterLifecycle(string adapterId, string level, string message)
+    {
+        logHub.Record("system", level, $"Adapter lifecycle [{adapterId}]: {message}");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool WaitForAdapterUnload(WeakReference? weakReference) =>
         DllLoader<IBotAdapter>.WaitForUnload(weakReference);
+
+    private async Task QueueConfigUpdateAsync(string adapterId, object candidate)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            AdapterEntry? entry;
+            lock (_sync) entry = _entries.Values.FirstOrDefault(item =>
+                string.Equals(item.Metadata.Id, adapterId, StringComparison.OrdinalIgnoreCase));
+            if (entry is not null) await ApplyConfigCandidateAsync(entry, candidate).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logHub.Record("system", "error", $"Adapter 配置热重载失败: {adapterId} - {ex.Message}");
+            runtimeState.RecordEvent($"Adapter config reload failed: {adapterId} - {ex.Message}", "error");
+        }
+        finally { _gate.Release(); }
+    }
+
+    private static async Task ApplyConfigCandidateAsync(AdapterEntry entry, object candidate)
+    {
+        var configurable = entry.Configurable;
+        var adapter = entry.Adapter;
+        if (configurable is null || adapter is null) return;
+        if (string.Equals(Fingerprint(candidate, configurable.ConfigType),
+                Fingerprint(entry.CurrentConfig, configurable.ConfigType), StringComparison.Ordinal)) return;
+
+        if (configurable.ApplyMode == ConfigApplyMode.RestartComponent)
+        {
+            await adapter.StopAsync().ConfigureAwait(false);
+            try
+            {
+                await configurable.ApplyConfigAsync(candidate).ConfigureAwait(false);
+                await adapter.StartAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                if (entry.CurrentConfig is { } previous)
+                {
+                    await configurable.ApplyConfigAsync(previous).ConfigureAwait(false);
+                    await adapter.StartAsync().ConfigureAwait(false);
+                }
+                throw;
+            }
+        }
+        else
+        {
+            await configurable.ApplyConfigAsync(candidate).ConfigureAwait(false);
+        }
+
+        entry.CurrentConfig = candidate;
+    }
+
+    private static string Fingerprint(object? config, Type configType)
+    {
+        try { return JsonSerializer.Serialize(config, configType); }
+        catch { return RuntimeHelpers.GetHashCode(config ?? configType).ToString(System.Globalization.CultureInfo.InvariantCulture); }
+    }
 
     private void UpdateRuntimeState()
     {
@@ -381,6 +532,25 @@ internal sealed class AdapterManager(
         return Path.Combine(shadowRoot, Path.GetRelativePath(sourceRoot, assemblyPath));
     }
 
+    private sealed record AdapterUnloadReferences(
+        WeakReference Adapter,
+        WeakReference? Subscription,
+        WeakReference? ConfigWatch,
+        WeakReference? Configurable,
+        WeakReference? CurrentConfig)
+    {
+        public IReadOnlyList<string> GetAliveReferences()
+        {
+            var alive = new List<string>();
+            if (Adapter.IsAlive) alive.Add("adapter-instance");
+            if (Subscription?.IsAlive == true) alive.Add("event-subscription");
+            if (ConfigWatch?.IsAlive == true) alive.Add("config-watch");
+            if (Configurable?.IsAlive == true) alive.Add("configurable-interface");
+            if (CurrentConfig?.IsAlive == true) alive.Add("config-object");
+            return alive;
+        }
+    }
+
     private static void TryDeleteDirectory(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
@@ -393,6 +563,9 @@ internal sealed class AdapterManager(
         DllLoader<IBotAdapter> loader,
         BotAdapterAttribute metadata,
         IAsyncDisposable eventSubscription,
+        IDisposable? configWatch = null,
+        IConfigurableAdapter? configurable = null,
+        object? currentConfig = null,
         string? shadowRoot = null,
         string? shadowAssemblyPath = null)
     {
@@ -401,6 +574,9 @@ internal sealed class AdapterManager(
         public DllLoader<IBotAdapter>? Loader { get; private set; } = loader;
         public BotAdapterAttribute Metadata { get; } = metadata;
         public IAsyncDisposable? EventSubscription { get; private set; } = eventSubscription;
+        public IDisposable? ConfigWatch { get; private set; } = configWatch;
+        public IConfigurableAdapter? Configurable { get; private set; } = configurable;
+        public object? CurrentConfig { get; set; } = currentConfig;
         public string? ShadowRoot { get; } = shadowRoot;
         public string? ShadowAssemblyPath { get; } = shadowAssemblyPath;
 
@@ -409,6 +585,12 @@ internal sealed class AdapterManager(
             Adapter = null;
             Loader = null;
             EventSubscription = null;
+            // ConfigContext.Watch<T> captures the component's closed generic config type.
+            // Retaining the disposed subscription while verifying ALC collection can pin that
+            // type (and its collectible load context), preventing hot unload from completing.
+            ConfigWatch = null;
+            Configurable = null;
+            CurrentConfig = null;
         }
     }
 }

@@ -1,0 +1,11 @@
+protocol = ""
+protocols = []
+disable_console_input = true
+
+[api]
+enable = true
+listen_url = "http://0.0.0.0:7001"
+
+[api.auth]
+enable = true
+key = ""

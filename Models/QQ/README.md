@@ -20,6 +20,11 @@ probe the extension and the target before sending. Direct and group target IDs a
 Open Platform openids, not numeric QQ account or group IDs. A Milky adapter need not
 implement this interface.
 
+`QOfficialMessage` offers one send entry point for plain text, Markdown with an optional
+keyboard, and media with an optional text caption. The adapter selects the official message
+type. Local media is uploaded while sending; the caller owns the stream and should keep it
+open until the returned task completes.
+
 ```csharp
 var target = new QOfficialMessageTarget(QOfficialMessageScene.Group, groupOpenId);
 var markdown = new QCustomMarkdown("## 结果");
@@ -81,9 +86,28 @@ and handle a missing capability. `BeginStream` returns `IQOfficialMessageStream`
 finishes the response. These contracts belong to the host model; the adapter owns
 the OpenAPI transport and protocol details.
 
-`IQOfficialMessageApi` also declares `SendTextAsync` and `SendArkAsync` for official
-text and Ark template messages. Existing adapters may implement the interface without
-supporting these newer methods; their default implementations throw
-`NotSupportedException`. Plugins must handle that case. The optional
-`IQOfficialDirectMessageApi` likewise needs a separate adapter implementation before
-typing indicators or streamed replies are available.
+Ark template messages and Embed cards are available through `IQOfficialMessageApi.SendArkAsync`
+and `SendEmbedAsync`. The interface also declares `SendTextAsync` for official text messages.
+Adapters that do not support `SendTextAsync` or `SendArkAsync` use default implementations that
+throw `NotSupportedException`, so plugins should handle that case. The QQPlatform adapter routes
+supported rich messages to C2C, group, text-channel, and channel-DM endpoints. A channel-DM
+target's `Id` is the official `guild_id`.
+
+## QQ official media upload
+
+An adapter that supports local media can expose `IQOfficialMediaApi`. Plugins pass a readable stream and a file name; the adapter handles chunking and the platform upload protocol.
+
+```csharp
+var mediaApi = context.GetAdapterExtension<IQOfficialMediaApi>();
+var official = context.GetAdapterExtension<IQOfficialMessageApi>();
+if (mediaApi is not null && official is not null)
+{
+    await using var image = File.OpenRead(imagePath);
+    var messageId = await official.SendAsync(
+        new QOfficialMessageTarget(QOfficialMessageScene.Direct, userOpenId),
+        QOfficialMessage.Media(QOfficialMediaType.Image, image, Path.GetFileName(imagePath),
+            "图片说明第一行\n图片说明第二行"));
+}
+```
+
+`UploadAsync` returns a `QOfficialMedia` reference that can be wrapped with `QOfficialMessage.Media` and reused in a later reply. `IQOfficialMediaApi` also exposes lower-level upload methods. The QQPlatform adapter supports C2C and group uploads, with a 200 MB maximum file size.

@@ -68,12 +68,11 @@ internal sealed partial class HostHttpServer
             }
 
             var pluginConfigPath = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
-            EnsureKnownPluginConfig(id, pluginConfigPath);
             return Results.Ok(new
             {
                 plugin_id = plugin.Id,
                 config = LoadTomlObject(pluginConfigPath),
-                schema = GetPluginConfigSchema(plugin.AssemblyPath),
+                schema = GetComponentConfigSchema(plugin.AssemblyPath),
                 routes = CreatePluginRouteResponse(routePolicy, plugin.Id)
             });
         });
@@ -219,11 +218,15 @@ internal sealed partial class HostHttpServer
                 try
                 {
                     var pluginConfigPath = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
-                    EnsureKnownPluginConfig(id, pluginConfigPath);
+                    string? configApplyStatus = null;
 
                     if (document.RootElement.TryGetProperty("config", out var configPatch))
                     {
-                        ApplyPluginConfigPatch(configManager, pluginConfigPath, plugin.Id, configPatch);
+                        ApplyComponentConfigPatch(configManager, pluginConfigPath, configPatch,
+                            GetComponentConfigSchema(plugin.AssemblyPath));
+                        var applied = await pluginManager.ApplyConfigByIdAsync(plugin.Id).ConfigureAwait(false);
+                        configApplyStatus = applied ? "applied" :
+                            FindLoadedPlugin(pluginManager, plugin.Id) is null ? "pending_start" : "legacy_saved_only";
                     }
 
                     if (document.RootElement.TryGetProperty("routes", out var routePatch))
@@ -236,13 +239,18 @@ internal sealed partial class HostHttpServer
                         ok = true,
                         plugin_id = plugin.Id,
                         config = LoadTomlObject(pluginConfigPath),
-                        schema = GetPluginConfigSchema(plugin.AssemblyPath),
+                        schema = GetComponentConfigSchema(plugin.AssemblyPath),
+                        config_apply_status = configApplyStatus,
                         routes = CreatePluginRouteResponse(routePolicy, plugin.Id)
                     });
                 }
                 catch (InvalidOperationException ex)
                 {
                     return Results.BadRequest(new { error = "invalid_config", message = ex.Message });
+                }
+                catch (Exception ex)
+                {
+                    return Results.Conflict(new { error = "config_apply_failed", message = ex.Message, saved = document.RootElement.TryGetProperty("config", out _) });
                 }
             }
         });
@@ -267,7 +275,12 @@ internal sealed partial class HostHttpServer
                 }
 
                 await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
-                return Results.Ok(new { ok = true, message = $"插件 {id} 已启用" });
+                var loaded = FindLoadedPlugin(pluginManager, id);
+                if (loaded is null)
+                {
+                    return Results.Conflict(new { ok = false, error = "plugin_load_failed", message = $"插件 {id} 未能加载，请检查运行日志。" });
+                }
+                return Results.Ok(new { ok = true, message = $"插件 {loaded.Name} 已启用" });
             }
             finally
             {
@@ -322,22 +335,35 @@ internal sealed partial class HostHttpServer
 
         api.MapPost("/plugins/{id}/delete", async (string id) =>
         {
-            var plugin = FindLoadedPlugin(pluginManager, id);
-            var targetPath = plugin?.AssemblyPath
-                             ?? pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).FirstOrDefault()
-                             ?? FindDisabledPluginFile(pluginManager, id);
-            if (string.IsNullOrWhiteSpace(targetPath))
+            var gate = GetPluginOperationLock(id);
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
             {
-                return Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
-            }
+                var plugin = FindLoadedPlugin(pluginManager, id);
+                var targetPath = plugin?.AssemblyPath
+                                 ?? pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).FirstOrDefault()
+                                 ?? FindDisabledPluginFile(pluginManager, id);
+                if (string.IsNullOrWhiteSpace(targetPath))
+                {
+                    return Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
+                }
 
-            if (plugin is not null)
+                if (plugin is not null)
+                {
+                    await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name).ConfigureAwait(false);
+                }
+
+                DeletePluginPath(pluginManager.PluginRootPath, targetPath, plugin?.Name ?? id);
+                return Results.Ok(new { ok = true, message = $"插件 {id} 已删除" });
+            }
+            catch (Exception ex)
             {
-                await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name).ConfigureAwait(false);
+                return Results.Conflict(new { ok = false, error = "plugin_delete_failed", message = ex.Message });
             }
-
-            DeletePluginPath(pluginManager.PluginRootPath, targetPath, plugin?.Name ?? id);
-            return Results.Ok(new { ok = true, message = $"插件 {id} 已删除" });
+            finally
+            {
+                gate.Release();
+            }
         });
 
         api.MapPost("/plugins/{id}/update", async (string id, HttpContext context) =>

@@ -45,6 +45,7 @@ internal sealed class PluginManager(
     private readonly List<LoadedPluginHandle> _loadedPlugins = [];
     private readonly HashSet<string> _loadingPluginIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _loadErrors = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTime> _suppressedWatcherPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _watcherReloads = new(StringComparer.OrdinalIgnoreCase);
@@ -442,6 +443,17 @@ internal sealed class PluginManager(
         }
     }
 
+    public string? GetPluginLoadError(string pluginId) =>
+        _loadErrors.TryGetValue(pluginId, out var error) ? error : null;
+
+
+    public async Task<bool> ApplyConfigByIdAsync(string pluginId)
+    {
+        var plugin = GetLoadedPluginSnapshot().FirstOrDefault(item =>
+            string.Equals(item.Name, pluginId, StringComparison.OrdinalIgnoreCase));
+        return plugin is not null && await plugin.ApplyCurrentConfigAsync().ConfigureAwait(false);
+    }
+
     private static IEnumerable<string> EnumerateLoadableCandidateAssemblies(string pluginRoot)
     {
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -827,6 +839,7 @@ internal sealed class PluginManager(
                 }
                 catch (Exception e)
                 {
+                    _loadErrors[pluginInfo.Id] = e.Message;
                     BotLog.Error(e.Message);
                     runtimeState.RecordEvent(e.Message, "error");
                     await RollbackFailedPluginLoadAsync(
@@ -890,6 +903,7 @@ internal sealed class PluginManager(
         }
         catch (Exception ex)
         {
+            _loadErrors[loadingPluginId ?? Path.GetFileNameWithoutExtension(dll)] = ex.Message;
             CH.Error($"插件加载失败: {dll} - {ex.Message}");
             runtimeState.RecordEvent($"插件加载失败: {Path.GetFileNameWithoutExtension(dll)} - {ex.Message}", "error");
             await RollbackFailedPluginLoadAsync(
@@ -921,6 +935,7 @@ internal sealed class PluginManager(
         lock (PluginLifecycleLock)
         {
             _loadedPlugins.Add(pluginHandle);
+            _loadErrors.TryRemove(pluginHandle.Name, out _);
             try
             {
                 hostEventDispatcher.RegisterPlugin(pluginHandle);
@@ -1149,7 +1164,8 @@ internal sealed class PluginManager(
     {
         var normalizedInput = pluginNameOrPath.Trim();
 
-        if (Path.HasExtension(normalizedInput) || normalizedInput.Contains(Path.DirectorySeparatorChar) ||
+        var isDllPath = string.Equals(Path.GetExtension(normalizedInput), ".dll", StringComparison.OrdinalIgnoreCase);
+        if (isDllPath || normalizedInput.Contains(Path.DirectorySeparatorChar) ||
             normalizedInput.Contains(Path.AltDirectorySeparatorChar))
         {
             var fullPath = Path.IsPathRooted(normalizedInput)

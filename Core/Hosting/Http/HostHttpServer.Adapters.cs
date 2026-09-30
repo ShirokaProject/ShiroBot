@@ -36,9 +36,77 @@ namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapAdapterEndpoints(RouteGroupBuilder api, HostRuntimeState runtimeState, AdapterManager adapterManager, ComponentReloadCoordinator reloadCoordinator, AdapterPackageManager adapterPackages)
+    private static void MapAdapterEndpoints(RouteGroupBuilder api, HostRuntimeState runtimeState, ConfigManager configManager, AdapterManager adapterManager, ComponentReloadCoordinator reloadCoordinator, AdapterPackageManager adapterPackages)
     {
         api.MapGet("/adapter", () => Results.Ok(adapterManager.CreateStatus()));
+
+        api.MapGet("/adapters/{id}/config", (string id) =>
+        {
+            var package = adapterPackages.Get(id);
+            if (package is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+            var configPath = GetAdapterConfigPath(package);
+            return Results.Ok(new
+            {
+                adapter_id = package.Id,
+                config = LoadTomlObject(configPath),
+                schema = GetComponentConfigSchema(package.AssemblyPath),
+                apply_status = adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
+                    ? "loaded"
+                    : "pending_start"
+            });
+        });
+
+        api.MapPatch("/adapters/{id}/config", async (string id, HttpContext context) =>
+        {
+            var package = adapterPackages.Get(id);
+            if (package is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+
+            JsonDocument document;
+            try
+            {
+                document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
+                    .ConfigureAwait(false);
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "invalid_json", message = "Adapter 配置更新内容不是有效 JSON。" });
+            }
+
+            using (document)
+            {
+                if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                    !document.RootElement.TryGetProperty("config", out var configPatch))
+                    return Results.BadRequest(new { error = "invalid_request", message = "请求必须包含 config 对象。" });
+
+                var configPath = GetAdapterConfigPath(package);
+                try
+                {
+                    ApplyComponentConfigPatch(configManager, configPath, configPatch,
+                        GetComponentConfigSchema(package.AssemblyPath));
+                    var applied = await reloadCoordinator.ExecuteAdapterMutationAsync(
+                        () => adapterManager.ApplyConfigByIdAsync(package.Id)).ConfigureAwait(false);
+                    return Results.Ok(new
+                    {
+                        ok = true,
+                        adapter_id = package.Id,
+                        config = LoadTomlObject(configPath),
+                        schema = GetComponentConfigSchema(package.AssemblyPath),
+                        apply_status = applied ? "applied" :
+                            adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
+                                ? "legacy_saved_only"
+                                : "pending_start"
+                    });
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.BadRequest(new { error = "invalid_config", message = ex.Message });
+                }
+                catch (Exception ex)
+                {
+                    return Results.Conflict(new { error = "config_apply_failed", message = ex.Message, saved = true });
+                }
+            }
+        });
 
         api.MapPost("/adapter/reload", async (HttpContext context) =>
         {
@@ -214,6 +282,9 @@ internal sealed partial class HostHttpServer
         api.MapPost("/adapters/{id}/reload", async (string id) => { try { await reloadCoordinator.ReloadAdapterByIdAsync(id).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_reload_failed", ex); } });
         api.MapDelete("/adapters/{id}", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { if (adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)) await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.Uninstall(id); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_delete_failed", ex); } });
     }
+
+    private static string GetAdapterConfigPath(InstalledAdapterPackage package) =>
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(package.AssemblyPath))!, "config.toml");
 
     private static object CreateAdapterPreview(
         string uploadId,
