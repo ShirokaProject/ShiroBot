@@ -424,6 +424,22 @@ try
         }));
     if (!restoreCalled || adapterPackage.Get("verification") is not { Enabled: true })
         throw new InvalidOperationException("Adapter activation failure did not restore the prior package.");
+
+    // A fresh install that cannot start yet (e.g. missing credentials) is kept disabled so it can be configured.
+    adapterPackage.Uninstall("verification");
+    var freshInstall = await adapterPackage.InstallAndActivateAsync(
+        zipProbe,
+        enabled: true,
+        installed =>
+        {
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(installed.AssemblyPath)!, "config.toml"), "app_id = \"\"");
+            throw new InvalidOperationException("simulated missing credentials");
+        });
+    if (freshInstall.StartError != "simulated missing credentials" || freshInstall.Package.Enabled ||
+        adapterPackage.Get("verification") is not { Enabled: false } keptPackage ||
+        !File.Exists(keptPackage.AssemblyPath) ||
+        !File.Exists(Path.Combine(Path.GetDirectoryName(keptPackage.AssemblyPath)!, "config.toml")))
+        throw new InvalidOperationException("A fresh adapter install that failed to start was not kept disabled for configuration.");
     if (AdapterMarketplaceCache.MarketplaceUrl != "https://raw.githubusercontent.com/ShirokaProject/awesome-shirobot/automation/refresh-marketplace/dist/adapters.v1.json")
         throw new InvalidOperationException("Adapter marketplace URL contract changed.");
 

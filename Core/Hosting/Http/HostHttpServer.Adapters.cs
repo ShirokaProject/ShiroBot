@@ -220,7 +220,7 @@ internal sealed partial class HostHttpServer
                 var existing = adapterPackages.Get(probe.Id);
                 if (existing is not null && !request.Replace) return Results.Conflict(new { error = "adapter_exists", message = "Adapter 已存在，请确认替换。" });
                 var wasLoaded = adapterManager.LoadedIds.Contains(probe.Id, StringComparer.OrdinalIgnoreCase);
-                var installed = await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                var result = await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                 {
                     if (wasLoaded) await adapterManager.StopByIdAsync(probe.Id).ConfigureAwait(false);
                     return await adapterPackages.InstallAndActivateAsync(
@@ -230,7 +230,22 @@ internal sealed partial class HostHttpServer
                         wasLoaded ? restored => adapterManager.LoadByIdAsync(restored.Id, restored.AssemblyPath) : null).ConfigureAwait(false);
                 }).ConfigureAwait(false);
                 TryDeleteDirectory(root);
-                return Results.Ok(new { ok = true, adapter = new { id = installed.Id, enabled = request.Enable }, rollback = false, restarted = request.Enable || wasLoaded });
+                var installed = result.Package;
+                if (result.StartError is not null)
+                {
+                    // Installed but left disabled: configure it, then start it from the adapter page.
+                    return Results.Ok(new
+                    {
+                        ok = true,
+                        adapter = new { id = installed.Id, enabled = false },
+                        rollback = false,
+                        restarted = false,
+                        started = false,
+                        start_error = result.StartError,
+                        message = $"Adapter 已安装，但启动失败，已保持停用。请先完成配置再启动：{result.StartError}"
+                    });
+                }
+                return Results.Ok(new { ok = true, adapter = new { id = installed.Id, enabled = installed.Enabled }, rollback = false, restarted = request.Enable || wasLoaded, started = installed.Enabled });
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
             { return Results.Conflict(new { error = "install_failed", message = ex.Message, rollback = ex.Message.Contains("恢复", StringComparison.Ordinal), restarted = ex.Message.Contains("恢复", StringComparison.Ordinal) }); }

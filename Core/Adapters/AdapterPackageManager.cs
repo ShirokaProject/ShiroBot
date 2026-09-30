@@ -101,7 +101,13 @@ internal sealed class AdapterPackageManager(string adapterRoot)
         }
     }
 
-    public async Task<InstalledAdapterPackage> InstallAndActivateAsync(
+    /// <summary>
+    /// Installs a package and starts it when <paramref name="enabled"/> is set. If a replacement fails to
+    /// start, the previous version is restored. A fresh install that fails to start is kept, disabled, so
+    /// adapters that need configuration before their first start (credentials, endpoints) can be set up
+    /// from the config page and started afterwards.
+    /// </summary>
+    public async Task<AdapterInstallResult> InstallAndActivateAsync(
         AdapterPackageProbe package,
         bool enabled,
         Func<InstalledAdapterPackage, Task> activate,
@@ -132,7 +138,12 @@ internal sealed class AdapterPackageManager(string adapterRoot)
             {
                 if (enabled) await activate(installed).ConfigureAwait(false);
                 TryDeleteDirectory(backup);
-                return installed;
+                return new AdapterInstallResult(installed, null);
+            }
+            catch (Exception activationError) when (previous is null)
+            {
+                SetEnabled(package.Id, false);
+                return new AdapterInstallResult(installed with { Enabled = false }, activationError.Message);
             }
             catch (Exception activationError)
             {
@@ -156,11 +167,7 @@ internal sealed class AdapterPackageManager(string adapterRoot)
                     }
                 }
 
-                throw new InvalidOperationException(
-                    previous is null
-                        ? $"Adapter 启动失败，安装已回滚: {activationError.Message}"
-                        : $"Adapter 启动失败，已恢复旧版本: {activationError.Message}",
-                    activationError);
+                throw new InvalidOperationException($"Adapter 启动失败，已恢复旧版本: {activationError.Message}", activationError);
             }
         }
         finally
@@ -294,4 +301,7 @@ internal sealed class AdapterPackageManager(string adapterRoot)
 }
 
 internal sealed record AdapterPackageProbe(string Id, string MinimumApiVersion, string MaximumApiVersion, string EntryAssemblyPath, string Type, IReadOnlyList<string> SharedAssemblies, string Name, string Version, string? Description, string? Platform);
+/// <summary>Result of an install; <see cref="StartError"/> is set when a fresh install was kept but did not start.</summary>
+internal sealed record AdapterInstallResult(InstalledAdapterPackage Package, string? StartError);
+
 internal sealed record InstalledAdapterPackage(string Id, string AssemblyPath, bool Enabled, string Name, string Version, string? Description, string? Platform);
