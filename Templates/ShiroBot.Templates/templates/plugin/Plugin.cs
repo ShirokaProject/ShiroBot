@@ -5,13 +5,13 @@ using ShiroBot.SDK.Config;
 [assembly: ShiroBotApiCompatibility("0.9.1", "0.9.1")]
 
 #if (useQq)
-[assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.3")]
+[assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.4")]
 #endif
 #if (useDiscord)
-[assembly: RequiresShiroBotPackage("shirobot.model.discord", MinimumVersion = "0.9.3")]
+[assembly: RequiresShiroBotPackage("shirobot.model.discord", MinimumVersion = "0.9.4")]
 #endif
 #if (useTelegram)
-[assembly: RequiresShiroBotPackage("shirobot.model.telegram", MinimumVersion = "0.9.3")]
+[assembly: RequiresShiroBotPackage("shirobot.model.telegram", MinimumVersion = "0.9.4")]
 #endif
 
 namespace PluginTemplate;

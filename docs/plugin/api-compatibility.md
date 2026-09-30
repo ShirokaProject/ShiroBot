@@ -1,12 +1,12 @@
 # Plugin and Adapter API Compatibility
 
-ShiroBot API `0.9` is the current compatibility level. Existing components that do not declare API
+ShiroBot API `0.9.1` is the current compatibility level. It adds host-managed component configuration (`IConfigurableComponent`, `PluginBase<TConfig>`) on top of `0.9`. Existing components that do not declare API
 metadata are treated as requiring `0.8`, so newer hosts continue to load them without recompilation.
 
 Components may declare their supported range in metadata:
 
 ```csharp
-[assembly: ShiroBotApiCompatibility("0.9", "0.9")]
+[assembly: ShiroBotApiCompatibility("0.9.1", "0.9.1")]
 
 [BotPlugin("example")]
 public sealed class ExamplePlugin : PluginBase;

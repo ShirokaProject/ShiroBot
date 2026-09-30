@@ -72,7 +72,7 @@
 ```csharp
 using ShiroBot.SDK.Core;
 
-[assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.3")]
+[assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.4")]
 ```
 
 适配器和插件应引用与宿主匹配的 Model 类型；发布包中不要附带另一份同名 Model DLL。当前宿主不支持在运行时额外安装第三方 Model 包。

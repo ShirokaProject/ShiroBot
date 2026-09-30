@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: SDK package version, for example 0.9.3
+        description: SDK package version, for example 0.9.4
         required: true
         type: string
 

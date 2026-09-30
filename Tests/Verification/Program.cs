@@ -231,8 +231,8 @@ Console.WriteLine("Component API version verification passed.");
 Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.1.0");
-    AssertAssemblyVersion(typeof(QGroup).Assembly, "0.9.1.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.2.0");
+    AssertAssemblyVersion(typeof(QGroup).Assembly, "0.9.2.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "0.9.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "0.9.0.0");
 
@@ -277,7 +277,7 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     if (builtInModels.Count != 3 ||
         !builtInModels.All(model => model is
         {
-            Version: "0.9.3",
+            Version: "0.9.4",
             Source: "built_in",
             Reloadable: false,
             AssemblyPath: null

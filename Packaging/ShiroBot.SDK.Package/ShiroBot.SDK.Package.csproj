@@ -15,7 +15,7 @@
     <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>0.9.3 adds QQ official Markdown, button and interaction contracts; exposes plugin actions in the console; and improves plugin installation.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.9.4 adds host-managed typed configuration for plugins and adapters (PluginBase&lt;TConfig&gt;, IConfigurableComponent, grouped and conditional config fields with hot reload) and typed QQ official Embed and media messages.</PackageReleaseNotes>
     <NoWarn>$(NoWarn);NU5104;NU5128</NoWarn>
   </PropertyGroup>
 
