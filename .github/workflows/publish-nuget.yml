@@ -20,6 +20,9 @@ jobs:
       id-token: write
 
     steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v4
 
