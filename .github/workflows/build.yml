@@ -23,6 +23,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate release version
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/.*<ShiroBotProductVersion>\([^<]*\)<.*/\1/p' Directory.Build.props | head -1)"
+          test "${GITHUB_REF_NAME#v}" = "$version" || { echo "::error::Tag and ShiroBotProductVersion must match"; exit 1; }
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -141,6 +148,7 @@ jobs:
             --output "$output_dir" \
             /p:ContinuousIntegrationBuild=true \
             /p:RequireDashboard=true \
+            /p:DashboardDistPath="$GITHUB_WORKSPACE/Core/Assets/dashboard" \
             /p:PublishSingleFile=true \
             /p:IncludeNativeLibrariesForSelfExtract=true
 

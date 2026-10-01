@@ -1,3 +1,3 @@
 using ShiroBot.SDK.Core;
 
-[assembly: ShiroBotPackage("shirobot.model.discord", ShiroBotPackageKind.Model, "0.9.5")]
+[assembly: ShiroBotPackage("shirobot.model.discord", ShiroBotPackageKind.Model, "0.9.6")]

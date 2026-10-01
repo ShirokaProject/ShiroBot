@@ -62,6 +62,18 @@ internal static class UpdateIntegration
         Console.WriteLine($"Integration artifacts: {root}");
         try
         {
+            await Scenario("plugin-dll-upload", async host =>
+            {
+                await host.InstallOldAsync("plugins", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                host.AssertPluginVersion("1.0.0");
+                return new { dll_uploaded = true, preview_confirmed = true, running_version = "1.0.0" };
+            });
+            await Scenario("adapter-dll-upload", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                host.AssertAdapterVersion("1.0.0");
+                return new { dll_uploaded = true, preview_confirmed = true, running_version = "1.0.0" };
+            });
             await Scenario("plugin-http", async host =>
             {
                 await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));
@@ -360,7 +372,7 @@ internal static class UpdateIntegration
         public async Task InstallOldAsync(string component, string zip)
         {
             using var content = new MultipartFormDataContent();
-            content.Add(new ByteArrayContent(await File.ReadAllBytesAsync(zip)), "file", "v1.zip");
+            content.Add(new ByteArrayContent(await File.ReadAllBytesAsync(zip)), "file", Path.GetFileName(zip));
             var upload = await ReadAsync(await Client.PostAsync(component + "/upload", content));
             await PostAsync($"/{component}/upload/{upload.GetProperty("upload_id").GetString()}/confirm", new { replace = false, enable = true });
         }

@@ -411,14 +411,15 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     AssertThrows<InvalidOperationException>(() => sharedAssemblies.TryResolve(futureQqRequest));
 
     var builtInModels = modelRegistry.GetPackages();
+    var expectedModelVersion = typeof(QGroup).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!
+        .InformationalVersion.Split('+')[0];
     if (builtInModels.Count != 3 ||
         !builtInModels.All(model => model is
         {
-            Version: "0.9.5",
             Source: "built_in",
             Reloadable: false,
             AssemblyPath: null
-        }) ||
+        } && model.Version == expectedModelVersion) ||
         !builtInModels.Select(model => model.Id).Order().SequenceEqual(
             ["shirobot.model.discord", "shirobot.model.qq", "shirobot.model.telegram"]))
     {
