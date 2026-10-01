@@ -31,6 +31,7 @@ using ShiroBot.Console;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.Components.Updates;
 
 namespace ShiroBot.Hosting.Http;
 
@@ -220,16 +221,47 @@ internal sealed partial class HostHttpServer
                 var existing = adapterPackages.Get(probe.Id);
                 if (existing is not null && !request.Replace) return Results.Conflict(new { error = "adapter_exists", message = "Adapter 已存在，请确认替换。" });
                 var wasLoaded = adapterManager.LoadedIds.Contains(probe.Id, StringComparer.OrdinalIgnoreCase);
+                string? pendingReason = null;
                 var result = await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                 {
-                    if (wasLoaded) await adapterManager.StopByIdAsync(probe.Id).ConfigureAwait(false);
-                    return await adapterPackages.InstallAndActivateAsync(
-                        probe,
-                        request.Enable,
-                        installed => adapterManager.LoadByIdAsync(installed.Id, installed.AssemblyPath),
-                        wasLoaded ? restored => adapterManager.LoadByIdAsync(restored.Id, restored.AssemblyPath) : null).ConfigureAwait(false);
+                    try
+                    {
+                        if (wasLoaded) await adapterManager.StopByIdAsync(probe.Id).ConfigureAwait(false);
+                        return await adapterPackages.InstallAndActivateAsync(
+                            probe,
+                            request.Enable,
+                            installed => adapterManager.LoadByIdAsync(installed.Id, installed.AssemblyPath),
+                            wasLoaded ? restored => adapterManager.LoadByIdAsync(restored.Id, restored.AssemblyPath, forceFreshImage: true) : null).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (existing is not null &&
+                                               ex is ComponentUnloadPendingException or IOException or UnauthorizedAccessException)
+                    {
+                        // The running copy cannot be released (a referenced assembly, a locked file): hand the
+                        // new version to the next start and keep the current one serving until then.
+                        pendingReason = ex.Message;
+                        adapterPackages.StageUpdate(probe, request.Enable);
+                        if (wasLoaded && !adapterManager.LoadedIds.Contains(existing.Id, StringComparer.OrdinalIgnoreCase))
+                        {
+                            try { await adapterManager.LoadByIdAsync(existing.Id, existing.AssemblyPath).ConfigureAwait(false); }
+                            catch (Exception reloadError) { BotLog.Warning($"重新启动当前版本 Adapter {existing.Id} 失败: {reloadError.Message}"); }
+                        }
+                        return null;
+                    }
                 }).ConfigureAwait(false);
                 TryDeleteDirectory(root);
+                if (result is null)
+                {
+                    return Results.Ok(new
+                    {
+                        ok = true,
+                        adapter = new { id = probe.Id, enabled = request.Enable },
+                        rollback = false,
+                        restarted = false,
+                        pending_restart = true,
+                        reason = pendingReason,
+                        message = $"当前版本无法热替换，新版本 {probe.Version} 已暂存，将在下次重启宿主时替换。重启前当前版本继续运行。"
+                    });
+                }
                 var installed = result.Package;
                 if (result.StartError is not null)
                 {
@@ -295,7 +327,31 @@ internal sealed partial class HostHttpServer
         });
         api.MapPost("/adapters/{id}/stop", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.SetEnabled(id, false); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_stop_failed", ex); } });
         api.MapPost("/adapters/{id}/reload", async (string id) => { try { await reloadCoordinator.ReloadAdapterByIdAsync(id).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_reload_failed", ex); } });
-        api.MapDelete("/adapters/{id}", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { if (adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)) await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.Uninstall(id); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_delete_failed", ex); } });
+        api.MapDelete("/adapters/{id}", async (string id) =>
+        {
+            try
+            {
+                var restartRequired = adapterManager.GetSnapshot().Any(item =>
+                    string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase) && item.RestartRequired);
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                {
+                    if (adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase))
+                    {
+                        try { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); }
+                        catch (ComponentUnloadPendingException) { restartRequired = true; }
+                    }
+                    adapterPackages.Uninstall(id);
+                    adapterManager.ForgetRemovedAdapter(id);
+                }).ConfigureAwait(false);
+                return Results.Ok(new
+                {
+                    ok = true,
+                    restartRequired,
+                    message = restartRequired ? "适配器文件已删除，重启宿主后将释放残留程序集。" : "适配器已删除。"
+                });
+            }
+            catch (Exception ex) { return AdapterOperationError("adapter_delete_failed", ex); }
+        });
     }
 
     private static string GetAdapterConfigPath(InstalledAdapterPackage package) =>
@@ -320,7 +376,8 @@ internal sealed partial class HostHttpServer
 
     private static IResult AdapterOperationError(string error, Exception exception)
     {
-        var restartRequired = exception.Message.Contains("需要重启", StringComparison.OrdinalIgnoreCase);
+        var restartRequired = exception is ComponentUnloadPendingException ||
+                              exception.Message.Contains("需要重启", StringComparison.OrdinalIgnoreCase);
         return Results.Conflict(new { ok = false, error, message = exception.Message, restartRequired });
     }
 

@@ -23,6 +23,7 @@ using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
 using ShiroBot.SDK.Abstractions;
 using CH = ShiroBot.Console.ConsoleOutput;
+using ShiroBot.Components.Updates;
 
 namespace ShiroBot;
 
@@ -43,6 +44,8 @@ public static class Program
     public static async Task Main(string[] args)
     {
         if (await TryRunAdapterManagementCommandAsync(args).ConfigureAwait(false)) return;
+        await HostPowerControl.WaitForPredecessorAsync().ConfigureAwait(false);
+        HostSelfUpdater.CleanupPrevious();
 
         var logHub = new HostLogHub();
         BotLog.SetDefault(new ConsoleLogger(logHub: logHub));
@@ -73,6 +76,12 @@ public static class Program
         PosixSignalRegistration? sigtermRegistration = null;
 
         void RequestShutdown() => shutdownRequested.TrySetResult();
+        var powerControl = new HostPowerControl(RequestShutdown);
+        Updater.HostUpdateApplier = async (assetUrl, cancellationToken) =>
+        {
+            var result = await HostSelfUpdater.ApplyAsync(assetUrl, powerControl, cancellationToken).ConfigureAwait(false);
+            if (!result.Ok) throw new InvalidOperationException(result.Message);
+        };
 
         ConsoleCancelEventHandler cancelKeyPressHandler = (_, eventArgs) =>
         {
@@ -139,6 +148,13 @@ public static class Program
                 Directory.CreateDirectory(pluginRootPath);
             }
 
+            var deletedPlugins = StagedComponentUpdates.ApplyStagedDeletions(pluginRootPath);
+            foreach (var id in deletedPlugins.Applied) CH.Success($"已删除待卸载插件: {id}");
+            foreach (var (id, error) in deletedPlugins.Failed) CH.Warning($"删除插件 {id} 失败，下次启动将重试: {error}");
+
+            // Updates that could not replace a running plugin are applied now, before anything is loaded.
+            ReportStagedUpdates("插件", StagedComponentUpdates.ApplyStaged(pluginRootPath));
+
             // ─── 平台 Model 加载 ───
             modelPackages.RegisterBuiltIn(typeof(DiscordUser).Assembly);
             modelPackages.RegisterBuiltIn(typeof(QGroup).Assembly);
@@ -154,6 +170,7 @@ public static class Program
             }
 
             var adapterPackages = new AdapterPackageManager(adapterRoot);
+            ReportStagedUpdates("Adapter", adapterPackages.ApplyStagedUpdates());
             var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption), adapterPackages);
 
             // ─── BotContext + 基础设施 ───
@@ -169,6 +186,15 @@ public static class Program
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub);
             pluginManager = new PluginManager(botContext, sharedAssemblies, modelPackages, runtimeState, logHub);
+            Updater.PluginUpdateApplier = async (request, cancellationToken) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.AssetDownloadUrl))
+                    throw new InvalidOperationException("插件更新缺少下载地址。");
+                var assetName = Path.GetFileName(new Uri(request.AssetDownloadUrl).LocalPath);
+                var result = await PluginUpdateService.ApplyAsync(pluginManager, hostEventDispatcher, groupRoutePolicy,
+                    request.PluginName, request.AssetDownloadUrl, assetName, request.LatestVersion, cancellationToken).ConfigureAwait(false);
+                BotLog.Info(result.Message);
+            };
 
             // ─── Avalonia 渲染集成 ───
             try
@@ -228,6 +254,7 @@ public static class Program
                 hostEventDispatcher,
                 groupRoutePolicy);
             commandHandler.SetAdapterCommands(adapterManager, reloadCoordinator, adapterPackages);
+            commandHandler.SetPowerControl(powerControl);
             componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
             hostHttpServer = await HostHttpServer.StartAsync(
                 coreConfig.Api,
@@ -243,7 +270,8 @@ public static class Program
                 modelPackages,
                 adapterManager,
                 reloadCoordinator,
-                adapterPackages);
+                adapterPackages,
+                powerControl);
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
@@ -298,8 +326,7 @@ public static class Program
         catch (Exception ex)
         {
             CH.Error("程序启动失败: " + ex.Message);
-            CH.Warning("按任意键退出...");
-            if (CanReadInteractiveKey()) global::System.Console.ReadKey();
+            Environment.ExitCode = 1;
         }
         finally
         {
@@ -327,7 +354,7 @@ public static class Program
             {
                 try
                 {
-                    await adapterManager.StopAsync().ConfigureAwait(false);
+                    await adapterManager.StopForShutdownAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -346,11 +373,18 @@ public static class Program
 
             // Hot unload performs plugin cleanup and collectible ALC checks. Process teardown
             // releases the remaining plugin and adapter contexts directly.
+            if (powerControl.ExitCode != 0) Environment.ExitCode = powerControl.ExitCode;
+            powerControl.CompleteRestart();
         }
     }
 
-    private static bool CanReadInteractiveKey() =>
-        Environment.UserInteractive && !global::System.Console.IsInputRedirected && !global::System.Console.IsOutputRedirected;
+    private static void ReportStagedUpdates(
+        string kind,
+        (IReadOnlyList<string> Applied, IReadOnlyList<(string Id, string Error)> Failed) result)
+    {
+        foreach (var id in result.Applied) CH.Success($"已应用暂存的{kind}更新: {id}");
+        foreach (var (id, error) in result.Failed) CH.Error($"应用暂存的{kind}更新失败，将在下次启动时重试: {id} - {error}");
+    }
 
     private static void EnsureApiAuthKey(CoreConfig coreConfig, ConfigManager manager, string configPath)
     {
@@ -372,12 +406,20 @@ public static class Program
         }
 
         var configured = coreConfig.Protocols;
+        var installed = packages.List();
         var paths = new List<string>();
         foreach (var value in configured.Where(value => !string.IsNullOrWhiteSpace(value)))
         {
-            var path = ResolveAdapterPath(value);
+            // Accept a DLL name or path, or an installed adapter's id or display name.
+            var path = ResolveAdapterPath(value) ?? installed.FirstOrDefault(package =>
+                string.Equals(package.Id, value.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(package.Name, value.Trim(), StringComparison.OrdinalIgnoreCase))?.AssemblyPath;
             if (path is null)
-                throw new FileNotFoundException($"未找到配置的 Adapter: {value}");
+            {
+                // One stale entry must not keep the host (and its Dashboard) from starting.
+                BotLog.Error($"未找到配置的 Adapter: {value}，已跳过。请检查核心配置中的 protocols。");
+                continue;
+            }
             paths.Add(path);
         }
 

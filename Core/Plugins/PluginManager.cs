@@ -15,6 +15,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using CH = ShiroBot.Console.ConsoleOutput;
+using ShiroBot.Components.Updates;
 
 namespace ShiroBot.Plugins;
 
@@ -211,13 +212,15 @@ internal sealed class PluginManager(
             EnableRaisingEvents = true
         };
 
-        _pluginRootWatcher.Changed += (_, e) => SchedulePluginFileReload(e.FullPath);
-        _pluginRootWatcher.Created += (_, e) => HandleCreatedPluginPath(e.FullPath);
-        _pluginRootWatcher.Deleted += (_, e) => HandleDeletedPluginPath(e.FullPath);
+        // Packages staged for the next start live under .update and must never be loaded live.
+        bool IsStaged(string path) => StagedComponentUpdates.IsStagingPath(pluginRoot, path);
+        _pluginRootWatcher.Changed += (_, e) => { if (!IsStaged(e.FullPath)) SchedulePluginFileReload(e.FullPath); };
+        _pluginRootWatcher.Created += (_, e) => { if (!IsStaged(e.FullPath)) HandleCreatedPluginPath(e.FullPath); };
+        _pluginRootWatcher.Deleted += (_, e) => { if (!IsStaged(e.FullPath)) HandleDeletedPluginPath(e.FullPath); };
         _pluginRootWatcher.Renamed += (_, e) =>
         {
             RemoveProbeCache(e.OldFullPath);
-            HandleCreatedPluginPath(e.FullPath);
+            if (!IsStaged(e.FullPath)) HandleCreatedPluginPath(e.FullPath);
         };
     }
 
@@ -513,7 +516,20 @@ internal sealed class PluginManager(
         return task;
     }
 
-    public Task ScheduleUnloadPluginByName(
+    private Task<T>? TryQueuePluginBackgroundTask<T>(Func<Task<T>> taskFactory)
+    {
+        lock (PluginLifecycleLock)
+        {
+            return _isShuttingDown ? null : Task.Run(taskFactory);
+        }
+    }
+
+    /// <summary>
+    /// Unloads a plugin. The result is false when it could not be unloaded cleanly (dependents still use
+    /// it, OnUnload failed or timed out); an assembly that stays referenced afterwards still counts as
+    /// unloaded, because a replacement loads into a fresh context alongside it.
+    /// </summary>
+    public Task<bool> ScheduleUnloadPluginByName(
         HostEventDispatcher hostEventDispatcher,
         string pluginName)
     {
@@ -522,7 +538,7 @@ internal sealed class PluginManager(
             if (_isShuttingDown)
             {
                 CH.Warning($"程序正在退出，忽略热卸载请求: {pluginName}");
-                return Task.CompletedTask;
+                return Task.FromResult(false);
             }
         }
 
@@ -548,7 +564,7 @@ internal sealed class PluginManager(
                     CH.Warning(
                         $"无法卸载插件 {pluginHandle.Name}，以下已加载插件依赖或正在使用它: " +
                         string.Join(", ", consumers));
-                    return Task.CompletedTask;
+                    return Task.FromResult(false);
                 }
 
                 _loadedPlugins.Remove(pluginHandle);
@@ -560,7 +576,7 @@ internal sealed class PluginManager(
         if (pluginHandle is null)
         {
             CH.Warning($"未找到已加载插件: {pluginName}");
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
         CH.Info($"已加入热卸载队列: {pluginHandle.Name}");
@@ -568,13 +584,13 @@ internal sealed class PluginManager(
         if (task is null)
         {
             CH.Warning($"程序正在退出，取消热卸载任务: {pluginHandle.Name}");
-            return Task.CompletedTask;
+            return Task.FromResult(false);
         }
 
         return task;
     }
 
-    private async Task ProcessPluginUnloadAsync(
+    private async Task<bool> ProcessPluginUnloadAsync(
         LoadedPluginHandle pluginHandle)
     {
         await PluginLifecycleSemaphore.WaitAsync();
@@ -591,7 +607,7 @@ internal sealed class PluginManager(
                 var error = $"插件卸载失败: {unloadResult.Name} - {unloadResult.Error.Message}{restartRequired}";
                 CH.Error(error);
                 runtimeState.RecordEvent(error, "error");
-                return;
+                return false;
             }
 
             CH.Info($"插件逻辑已卸载，正在后台验证程序集释放: {unloadResult.Name}");
@@ -613,11 +629,12 @@ internal sealed class PluginManager(
                     CH.Warning($"热卸载诊断: {unloadResult.Name} 存活对象: {string.Join(", ", aliveObjects)}");
 
                 CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})");
-                return;
+                return true;
             }
 
             CH.Success($"插件热卸载成功: {unloadResult.Name}");
             runtimeState.RecordEvent($"{unloadResult.Name} 插件已卸载");
+            return true;
         }
         finally
         {
@@ -788,7 +805,8 @@ internal sealed class PluginManager(
                         logHub.RegisterSource(
                             pluginInfo.Id,
                             pluginInfo.Description ?? $"{pluginInfo.Name} 日志",
-                            pluginInfo.Name);
+                            pluginInfo.Name,
+                            HostLogHub.LogSourceKind.Plugin);
 
                         using (BotLog.BeginScope(pluginContext.Logger))
                         {
@@ -876,7 +894,8 @@ internal sealed class PluginManager(
                 logHub.RegisterSource(
                     pluginInfo.Id,
                     pluginInfo.Description ?? $"{pluginInfo.Name} 日志",
-                    pluginInfo.Name);
+                    pluginInfo.Name,
+                    HostLogHub.LogSourceKind.Plugin);
 
                 using (BotLog.BeginScope(pluginContext.Logger))
                 {

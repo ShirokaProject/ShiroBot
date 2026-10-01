@@ -31,6 +31,8 @@ using ShiroBot.Console;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.Components.Updates;
+using static ShiroBot.Update.PluginUpdateService;
 
 namespace ShiroBot.Hosting.Http;
 
@@ -207,7 +209,7 @@ internal sealed partial class HostHttpServer
         }
     }
 
-    private static void DeletePluginPath(string pluginRootPath, string targetPath, string pluginName)
+    private static (string Path, bool Directory) GetPluginDeleteTarget(string pluginRootPath, string targetPath, string pluginName)
     {
         var pluginRoot = Path.GetFullPath(pluginRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var fullTargetPath = Path.GetFullPath(targetPath);
@@ -232,51 +234,10 @@ internal sealed partial class HostHttpServer
 
         if (isPluginSubDirectory)
         {
-            Directory.Delete(normalizedParent, recursive: true);
-            return;
+            return (normalizedParent, true);
         }
 
-        File.Delete(fullTargetPath);
-    }
-
-    private static PluginUploadPackage PreparePluginUploadPackage(PluginManager pluginManager, string packagePath)
-    {
-        var extension = Path.GetExtension(packagePath);
-        if (extension.Equals(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            var info = pluginManager.TryProbePluginInfoFile(packagePath)
-                       ?? throw new InvalidOperationException("未找到 BotPluginAttribute，文件不是有效插件。");
-            return new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, packagePath, "dll", info);
-        }
-
-        if (!extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("只支持上传 .dll 或 .zip 插件。");
-        }
-
-        var extractRoot = Path.Combine(Path.GetDirectoryName(packagePath)!, "extract");
-        Directory.CreateDirectory(extractRoot);
-        ExtractZipSafely(packagePath, extractRoot);
-
-        var pluginDlls = Directory.EnumerateFiles(extractRoot, "*.dll", SearchOption.AllDirectories)
-            .Select(path => new { Path = path, Info = pluginManager.TryProbePluginInfoFile(path) })
-            .Where(item => item.Info is not null)
-            .ToArray();
-
-        var package = pluginDlls.Length switch
-        {
-            0 => throw new InvalidOperationException("压缩包中未找到有效插件 DLL。"),
-            > 1 => throw new InvalidOperationException("压缩包中包含多个插件入口 DLL，请一次只上传一个插件。"),
-            _ => new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, pluginDlls[0].Path, "zip", pluginDlls[0].Info!)
-        };
-        var sourceRoot = GetZipInstallSourceRoot(package.RootPath, package.EntryAssemblyPath);
-        var relativeEntry = Path.GetRelativePath(sourceRoot, package.EntryAssemblyPath);
-        if (relativeEntry.Contains(Path.DirectorySeparatorChar) || relativeEntry.Contains(Path.AltDirectorySeparatorChar))
-        {
-            throw new InvalidOperationException("压缩包的插件入口 DLL 必须位于包根目录或唯一的顶层文件夹中。");
-        }
-
-        return package;
+        return (fullTargetPath, false);
     }
 
     private static PluginUploadPackage LoadPreparedPluginUploadPackage(PluginManager pluginManager, string uploadId)
@@ -291,112 +252,6 @@ internal sealed partial class HostHttpServer
         }
 
         return PreparePluginUploadPackage(pluginManager, packagePath);
-    }
-
-    private static string InstallUploadedPlugin(PluginManager pluginManager, PluginUploadPackage package)
-    {
-        var pluginRootPath = pluginManager.PluginRootPath;
-        Directory.CreateDirectory(pluginRootPath);
-        var targetRoot = GetPluginInstallDirectory(pluginRootPath, package.Info.Id);
-        pluginManager.SuppressWatcherPath(targetRoot);
-        if (package.Type.Equals("dll", StringComparison.OrdinalIgnoreCase))
-        {
-            Directory.CreateDirectory(targetRoot);
-            var targetPath = Path.Combine(targetRoot, Path.GetFileName(package.EntryAssemblyPath));
-            // The caller loads the plugin itself; without this the file watcher
-            // would queue a second, redundant load for the same assembly.
-            pluginManager.SuppressWatcherPath(targetPath);
-            File.Copy(package.EntryAssemblyPath, targetPath, overwrite: true);
-            pluginManager.SuppressWatcherPath(targetPath);
-            pluginManager.SuppressWatcherPath(targetRoot);
-            return targetPath;
-        }
-
-        var sourceRoot = GetZipInstallSourceRoot(package.RootPath, package.EntryAssemblyPath);
-        CopyDirectory(sourceRoot, targetRoot);
-        // Restart the window so it is measured from the last write, not the first.
-        pluginManager.SuppressWatcherPath(targetRoot);
-        return Path.Combine(targetRoot, Path.GetRelativePath(sourceRoot, package.EntryAssemblyPath));
-    }
-
-    private static string GetPluginInstallDirectory(string pluginRootPath, string pluginId)
-    {
-        if (string.IsNullOrWhiteSpace(pluginId) || pluginId is "." or ".." ||
-            pluginId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-            pluginId.Contains(Path.DirectorySeparatorChar) || pluginId.Contains(Path.AltDirectorySeparatorChar))
-        {
-            throw new InvalidOperationException("插件 ID 不能用于安装目录名。");
-        }
-
-        return Path.Combine(pluginRootPath, pluginId);
-    }
-
-    private static string GetZipInstallSourceRoot(string uploadRoot, string entryAssemblyPath)
-    {
-        var extractRoot = Path.Combine(uploadRoot, "extract");
-        var relativeEntry = Path.GetRelativePath(extractRoot, entryAssemblyPath);
-        var firstSeparator = relativeEntry.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
-        if (firstSeparator <= 0) return extractRoot;
-
-        var firstSegment = relativeEntry[..firstSeparator];
-        var topLevelDirectories = Directory.EnumerateDirectories(extractRoot).Select(Path.GetFileName).ToArray();
-        var topLevelFiles = Directory.EnumerateFiles(extractRoot).ToArray();
-        return topLevelDirectories.Length == 1 && topLevelFiles.Length == 0 &&
-               string.Equals(topLevelDirectories[0], firstSegment, StringComparison.OrdinalIgnoreCase)
-            ? Path.Combine(extractRoot, firstSegment)
-            : extractRoot;
-    }
-
-    private static void ExtractZipSafely(string zipPath, string destinationRoot)
-    {
-        var normalizedDestination = Path.GetFullPath(destinationRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        using var archive = ZipFile.OpenRead(zipPath);
-        if (archive.Entries.Count > MaxPluginArchiveEntries)
-        {
-            throw new InvalidOperationException($"压缩包文件数量超过限制: {archive.Entries.Count} > {MaxPluginArchiveEntries}");
-        }
-
-        long totalUncompressedBytes = 0;
-        foreach (var entry in archive.Entries)
-        {
-            if (entry.Length > MaxPluginExtractedBytes - totalUncompressedBytes)
-            {
-                throw new InvalidOperationException($"压缩包解压后大小超过限制: {MaxPluginExtractedBytes}");
-            }
-            totalUncompressedBytes += entry.Length;
-
-            var destinationPath = Path.GetFullPath(Path.Combine(normalizedDestination, entry.FullName));
-            if (!destinationPath.StartsWith(normalizedDestination + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(destinationPath, normalizedDestination, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("压缩包包含非法路径。" );
-            }
-
-            if (string.IsNullOrEmpty(entry.Name))
-            {
-                Directory.CreateDirectory(destinationPath);
-                continue;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
-            entry.ExtractToFile(destinationPath, overwrite: true);
-        }
-    }
-
-    private static void CopyDirectory(string sourceRoot, string targetRoot)
-    {
-        foreach (var directory in Directory.EnumerateDirectories(sourceRoot, "*", SearchOption.AllDirectories))
-        {
-            Directory.CreateDirectory(Path.Combine(targetRoot, Path.GetRelativePath(sourceRoot, directory)));
-        }
-
-        Directory.CreateDirectory(targetRoot);
-        foreach (var file in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
-        {
-            var targetFile = Path.Combine(targetRoot, Path.GetRelativePath(sourceRoot, file));
-            Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
-            File.Copy(file, targetFile, overwrite: true);
-        }
     }
 
     private static string GetPluginUploadRoot(string uploadId)
@@ -534,7 +389,7 @@ internal sealed partial class HostHttpServer
     private static SemaphoreSlim GetPluginOperationLock(string id)
     {
         var key = string.IsNullOrWhiteSpace(id) ? string.Empty : id.Trim().ToUpperInvariant();
-        return PluginOperationLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        return PluginUpdateService.GetOperationLock(key);
     }
 
     private static void SchedulePluginUploadCleanup(string uploadRoot)

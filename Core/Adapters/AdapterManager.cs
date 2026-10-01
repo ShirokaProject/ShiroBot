@@ -10,6 +10,7 @@ using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Config;
+using ShiroBot.Components.Updates;
 using System.Text.Json;
 
 namespace ShiroBot.Adapters;
@@ -28,6 +29,7 @@ internal sealed class AdapterManager(
     private readonly Lock _sync = new();
     private readonly Dictionary<string, AdapterEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _errors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _restartRequiredErrors = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<bool> ApplyConfigByIdAsync(string id)
     {
@@ -67,6 +69,18 @@ internal sealed class AdapterManager(
         get { lock (_sync) return _entries.Values.Select(entry => entry.Metadata.Id).ToArray(); }
     }
 
+    /// <summary>Forget a removed adapter's stale lifecycle error after its package is deleted.</summary>
+    public void ForgetRemovedAdapter(string id)
+    {
+        lock (_sync)
+        {
+            if (_entries.Values.Any(entry => string.Equals(entry.Metadata.Id, id, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("无法清理仍在运行的 Adapter 状态。");
+            _errors.Remove(id);
+            _restartRequiredErrors.Remove(id);
+        }
+    }
+
     public IReadOnlyList<AdapterRuntimeSnapshot> GetSnapshot()
     {
         lock (_sync)
@@ -75,7 +89,7 @@ internal sealed class AdapterManager(
                     entry.Metadata.Id, entry.Metadata.Name, entry.Metadata.Version, entry.Adapter!.Platform,
                     entry.Metadata.Description, entry.AssemblyPath, true, null, false))
                 .Concat(_errors.Where(error => !_entries.Values.Any(entry => string.Equals(entry.Metadata.Id, error.Key, StringComparison.OrdinalIgnoreCase)))
-                    .Select(error => new AdapterRuntimeSnapshot(error.Key, error.Key, null, null, null, null, false, error.Value, false)))
+                    .Select(error => new AdapterRuntimeSnapshot(error.Key, error.Key, null, null, null, null, false, error.Value, _restartRequiredErrors.Contains(error.Key))))
                 .ToArray();
         }
     }
@@ -134,9 +148,10 @@ internal sealed class AdapterManager(
         }
     }
 
-    public Task LoadByIdAsync(string id, string assemblyPath) => LoadOneAsync(assemblyPath, id);
+    public Task LoadByIdAsync(string id, string assemblyPath, bool forceFreshImage = false) =>
+        LoadOneAsync(assemblyPath, id, forceFreshImage);
 
-    public async Task LoadOneAsync(string assemblyPath, string? expectedId = null)
+    public async Task LoadOneAsync(string assemblyPath, string? expectedId = null, bool forceFreshImage = false)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
         try
@@ -149,7 +164,7 @@ internal sealed class AdapterManager(
                         return;
                 }
             }
-            await LoadCoreAsync(Path.GetFullPath(assemblyPath), expectedId).ConfigureAwait(false);
+            await LoadCoreAsync(Path.GetFullPath(assemblyPath), expectedId, forceFreshImage: forceFreshImage).ConfigureAwait(false);
             UpdateRuntimeState();
         }
         catch (Exception ex)
@@ -214,7 +229,12 @@ internal sealed class AdapterManager(
         }
     }
 
-    public async Task StopAsync(string? assemblyPath = null)
+    public Task StopAsync(string? assemblyPath = null) => StopCoreAsync(assemblyPath, waitForAssemblyRelease: true);
+
+    /// <summary>Stops connections and subscriptions at process exit without waiting for collectible assemblies.</summary>
+    public Task StopForShutdownAsync() => StopCoreAsync(null, waitForAssemblyRelease: false);
+
+    private async Task StopCoreAsync(string? assemblyPath, bool waitForAssemblyRelease)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
         try
@@ -228,7 +248,7 @@ internal sealed class AdapterManager(
             }
             foreach (var current in entries)
             {
-                await StopAndRemoveAsync(current).ConfigureAwait(false);
+                await StopAndRemoveAsync(current, waitForAssemblyRelease).ConfigureAwait(false);
             }
             UpdateRuntimeState();
         }
@@ -274,11 +294,11 @@ internal sealed class AdapterManager(
         }
     }
 
-    private async Task StopAndRemoveAsync(AdapterEntry entry)
+    private async Task StopAndRemoveAsync(AdapterEntry entry, bool waitForAssemblyRelease = true)
     {
         try
         {
-            await StopEntryAsync(entry).ConfigureAwait(false);
+            await StopEntryAsync(entry, waitForAssemblyRelease).ConfigureAwait(false);
         }
         finally
         {
@@ -289,7 +309,7 @@ internal sealed class AdapterManager(
         }
     }
 
-    private async Task LoadCoreAsync(string adapterPath, string? expectedId = null, string? logicalAssemblyPath = null)
+    private async Task LoadCoreAsync(string adapterPath, string? expectedId = null, string? logicalAssemblyPath = null, bool forceFreshImage = false)
     {
         if (!File.Exists(adapterPath)) throw new FileNotFoundException("Adapter DLL 不存在。", adapterPath);
 
@@ -316,6 +336,9 @@ internal sealed class AdapterManager(
         var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
             adapterPath,
             Path.GetDirectoryName(adapterPath) ?? adapterRoot).ConfigureAwait(false);
+        // A failed new version can keep its image mapped through the exception stack. Loading the
+        // restored file at that same path may reuse the failed image despite disk rollback.
+        var loadAssemblyPath = forceFreshImage ? CreateReloadShadow(adapterPath) : adapterPath;
         var loader = new DllLoader<IBotAdapter>(collectible: true, shared: sharedAssemblies, dependencies: dependencies);
         IAsyncDisposable? subscription = null;
         IDisposable? configWatch = null;
@@ -323,7 +346,7 @@ internal sealed class AdapterManager(
         var registered = false;
         try
         {
-            adapter = loader.Load(adapterPath);
+            adapter = loader.Load(loadAssemblyPath);
             var metadata = adapter.GetType().GetCustomAttribute<BotAdapterAttribute>(inherit: false)
                 ?? throw new InvalidOperationException($"Adapter 未声明 {nameof(BotAdapterAttribute)}。");
             lock (_sync)
@@ -349,7 +372,7 @@ internal sealed class AdapterManager(
                     updated => _ = QueueConfigUpdateAsync(metadata.Id, updated));
             }
             var fullPath = Path.GetFullPath(logicalAssemblyPath ?? adapterPath);
-            var shadowAssemblyPath = CreateReloadShadow(adapterPath);
+            var shadowAssemblyPath = forceFreshImage ? loadAssemblyPath : CreateReloadShadow(adapterPath);
             botContext.RegisterAdapter(adapter);
             registered = true;
             lock (_sync)
@@ -358,10 +381,11 @@ internal sealed class AdapterManager(
                     configWatch, configurable, initialConfig,
                     Path.GetDirectoryName(shadowAssemblyPath), shadowAssemblyPath);
                 _errors.Remove(metadata.Id);
+                _restartRequiredErrors.Remove(metadata.Id);
             }
             subscription = null; // Entry owns it now.
             configWatch = null;
-            logHub.RegisterSource(metadata.Id, metadata.Description ?? $"{metadata.Name} Adapter logs", metadata.Name);
+            logHub.RegisterSource(metadata.Id, metadata.Description ?? $"{metadata.Name} Adapter logs", metadata.Name, HostLogHub.LogSourceKind.Adapter);
             runtimeState.RecordEvent($"{metadata.Name} Adapter loaded");
         }
         catch
@@ -374,11 +398,12 @@ internal sealed class AdapterManager(
                 try { await adapter.StopAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); } catch { }
             }
             loader.Unload();
+            if (forceFreshImage) TryDeleteDirectory(Path.GetDirectoryName(loadAssemblyPath));
             throw;
         }
     }
 
-    private async Task StopEntryAsync(AdapterEntry entry)
+    private async Task StopEntryAsync(AdapterEntry entry, bool waitForAssemblyRelease = true)
     {
         var adapter = entry.Adapter ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
         var subscription = entry.EventSubscription ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
@@ -432,6 +457,13 @@ internal sealed class AdapterManager(
         subscription = null;
         var weakReference = loader.BeginUnload();
         loader = null;
+        if (!waitForAssemblyRelease)
+        {
+            RecordAdapterLifecycle(adapterId, "info", "adapter stopped for process exit; assembly collection will be left to process teardown");
+            runtimeState.RecordEvent($"{adapterName} Adapter stopped");
+            return;
+        }
+
         RecordAdapterLifecycle(adapterId, "info", "collectible AssemblyLoadContext.Unload requested; waiting for collection");
         await Task.Delay(200).ConfigureAwait(false);
         if (!WaitForAdapterUnload(weakReference))
@@ -441,8 +473,13 @@ internal sealed class AdapterManager(
                              $"alc_alive={weakReference?.IsAlive == true}; surviving_refs=[{string.Join(", ", survivors)}]; " +
                              $"assembly={assemblyPath}";
             RecordAdapterLifecycle(adapterId, "error", diagnostic);
-            RecordError(adapterId, new InvalidOperationException($"Adapter {adapterName} 已停止，但程序集仍被引用，需要重启宿主才能完成卸载。诊断: {string.Join(", ", survivors)}"));
-            throw new InvalidOperationException($"Adapter {adapterName} 已停止，但程序集仍被引用，需要重启宿主才能完成卸载。诊断: {string.Join(", ", survivors)}");
+            var holder = survivors.Count > 0
+                ? $"仍存活的宿主侧引用: {string.Join(", ", survivors)}"
+                : "宿主侧没有发现残留引用，引用可能由组件自身持有（静态字段、计时器、未释放的连接等）";
+            var pending = new ComponentUnloadPendingException(
+                $"Adapter {adapterName} 已停止，但程序集仍被引用，重启宿主后才能完成卸载。{holder}。");
+            RecordError(adapterId, pending);
+            throw pending;
         }
         RecordAdapterLifecycle(adapterId, "info", $"Adapter ALC collected successfully after {startedAt.ElapsedMilliseconds} ms");
         runtimeState.RecordEvent($"{adapterName} Adapter unloaded");
@@ -539,7 +576,12 @@ internal sealed class AdapterManager(
 
     private void RecordError(string id, Exception exception)
     {
-        lock (_sync) _errors[id] = exception.Message;
+        lock (_sync)
+        {
+            _errors[id] = exception.Message;
+            if (exception is ComponentUnloadPendingException) _restartRequiredErrors.Add(id);
+            else _restartRequiredErrors.Remove(id);
+        }
     }
 
     private static string CreateReloadShadow(string assemblyPath)

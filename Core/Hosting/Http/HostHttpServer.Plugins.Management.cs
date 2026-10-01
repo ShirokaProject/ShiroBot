@@ -27,6 +27,7 @@ using ShiroBot.Plugins;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Marketplace;
 using ShiroBot.Update;
+using ShiroBot.Components.Updates;
 using ShiroBot.Console;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.SDK.Abstractions;
@@ -345,16 +346,44 @@ internal sealed partial class HostHttpServer
                                  ?? FindDisabledPluginFile(pluginManager, id);
                 if (string.IsNullOrWhiteSpace(targetPath))
                 {
+                    if (StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, id))
+                        return Results.Ok(new { ok = true, pending_restart = true, pending_delete = true, message = $"插件 {id} 已登记删除任务，将在下次重启宿主时删除。" });
                     return Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
                 }
 
-                if (plugin is not null)
-                {
-                    await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name).ConfigureAwait(false);
-                }
+                var canonicalId = plugin?.Name ?? pluginManager.TryProbePluginInfoFile(targetPath)?.Id ?? id;
+                var deletion = GetPluginDeleteTarget(pluginManager.PluginRootPath, targetPath, canonicalId);
+                // Persist intent before unloading, so interruption cannot resurrect a staged package.
+                StagedComponentUpdates.StageDeletion(pluginManager.PluginRootPath, canonicalId, deletion.Path, deletion.Directory);
+                foreach (var request in Updater.GetPendingUpdates().Where(request => request.Target == UpdateTarget.Plugin &&
+                             string.Equals(request.Name, canonicalId, StringComparison.OrdinalIgnoreCase)))
+                    Updater.CancelUpdate(request.Id);
 
-                DeletePluginPath(pluginManager.PluginRootPath, targetPath, plugin?.Name ?? id);
-                return Results.Ok(new { ok = true, message = $"插件 {id} 已删除" });
+                if (plugin is not null && !await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name).ConfigureAwait(false))
+                    return PendingDeletion("当前版本无法卸载，可能仍被其他插件依赖或 OnUnload 执行失败。");
+
+                pluginManager.SuppressWatcherPath(deletion.Path);
+                try
+                {
+                    if (deletion.Directory) Directory.Delete(deletion.Path, recursive: true);
+                    else File.Delete(deletion.Path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    return PendingDeletion(ex.Message);
+                }
+                try { StagedComponentUpdates.DiscardStaged(pluginManager.PluginRootPath, canonicalId); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return PendingDeletion(ex.Message); }
+                return Results.Ok(new { ok = true, message = $"插件 {canonicalId} 已删除" });
+
+                IResult PendingDeletion(string reason) => Results.Ok(new
+                {
+                    ok = true,
+                    pending_restart = true,
+                    pending_delete = true,
+                    reason,
+                    message = $"插件 {canonicalId} 暂时无法删除，已登记删除任务，将在下次重启宿主时删除。"
+                });
             }
             catch (Exception ex)
             {
@@ -393,22 +422,25 @@ internal sealed partial class HostHttpServer
                 return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 有新版本，但 release 中没有可用的 zip 或 dll 插件包" });
             }
 
-            await Updater.ApplyPluginUpdateAsync(
-                plugin.Name,
-                update.AssetDownloadUrl,
-                plugin.AssemblyPath,
-                () => pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name),
-                () => pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, plugin.Name),
-                context.RequestAborted).ConfigureAwait(false);
-
-            return Results.Ok(new
+            try
             {
-                ok = true,
-                message = $"插件 {plugin.Name} 已更新到 {update.LatestVersion}",
-                current_version = update.CurrentVersion,
-                latest_version = update.LatestVersion,
-                release_url = update.ReleaseUrl
-            });
+                var result = await PluginUpdateService.ApplyAsync(pluginManager, eventDispatcher, routePolicy,
+                    plugin.Name, update.AssetDownloadUrl, update.AssetName, update.LatestVersion, context.RequestAborted).ConfigureAwait(false);
+                return Results.Ok(new
+                {
+                    ok = true,
+                    pending_restart = result.PendingRestart,
+                    reason = result.Reason,
+                    message = result.Message,
+                    current_version = update.CurrentVersion,
+                    latest_version = update.LatestVersion,
+                    release_url = update.ReleaseUrl
+                });
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or HttpRequestException)
+            {
+                return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 更新失败: {ex.Message}" });
+            }
         });
     }
 

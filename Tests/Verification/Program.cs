@@ -4,6 +4,8 @@ using System.Text.Json;
 using ShiroBot.Adapters;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Configuration;
+using ShiroBot.Components.Updates;
+using ShiroBot.Update;
 using ShiroBot.SDK.Config;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
@@ -25,6 +27,37 @@ using ShiroBot.Plugins.Compatibility;
 using ShiroBot.SharedContractPluginProbe;
 
 [assembly: ShiroBotApiCompatibility("0.9", "0.9")]
+if (args is ["--update-integration", var fixtureDirectory])
+{
+    await UpdateIntegration.RunAsync(fixtureDirectory);
+    return;
+}
+
+{
+    var deletionRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
+    var pluginRoot = Path.Combine(deletionRoot, "plugins");
+    var installed = Path.Combine(pluginRoot, "Sample");
+    Directory.CreateDirectory(installed);
+    File.WriteAllText(Path.Combine(installed, "Sample.dll"), "old");
+    try
+    {
+        // Deliberately fail a deletion, then retry from the retained marker.
+        StagedComponentUpdates.StageDeletion(pluginRoot, "Sample", installed, directory: false);
+        var failed = StagedComponentUpdates.ApplyStagedDeletions(pluginRoot);
+        if (failed.Failed.Count != 1 || !StagedComponentUpdates.HasStagedDeletion(pluginRoot, "Sample") ||
+            StagedComponentUpdates.ApplyStaged(pluginRoot).Applied.Count != 0)
+            throw new InvalidOperationException("A failed deferred deletion was discarded or treated as an update.");
+        StagedComponentUpdates.StageDeletion(pluginRoot, "Sample", installed, directory: true);
+        var retried = StagedComponentUpdates.ApplyStagedDeletions(pluginRoot);
+        if (retried.Applied.Count != 1 || Directory.Exists(installed))
+            throw new InvalidOperationException("A deferred deletion could not be retried.");
+        AssertThrows<InvalidOperationException>(() => StagedComponentUpdates.StageDeletion(pluginRoot, "Outside", deletionRoot, directory: true));
+        AssertThrows<InvalidOperationException>(() => StagedComponentUpdates.StageDeletion(pluginRoot, "Staging", Path.Combine(pluginRoot, ".update"), directory: true));
+    }
+    finally { Directory.Delete(deletionRoot, recursive: true); }
+    Console.WriteLine("Deferred plugin deletion retry and path validation verification passed.");
+}
+
 var serviceRegistry = new PluginServiceRegistry();
 using var providerServices = new PluginServiceScope(serviceRegistry, "provider");
 using var consumerServices = new PluginServiceScope(serviceRegistry, "consumer");
@@ -199,6 +232,110 @@ Console.WriteLine("Component API version verification passed.");
         Directory.Delete(schemaRoot, recursive: true);
     }
     Console.WriteLine("Component config patch validation verification passed.");
+
+    var nestedSchema = ReadConfigSchema(loadedSchemaItems);
+    var network = nestedSchema["network"];
+    var networkFields = network.GetProperty("fields").EnumerateArray().ToDictionary(item => item.GetProperty("key").GetString()!);
+    var providers = nestedSchema["providers"];
+    var recursiveChild = nestedSchema["recursive"].GetProperty("fields").EnumerateArray()
+        .Single(item => item.GetProperty("key").GetString() == "child");
+    if (network.GetProperty("type").GetString() != "section" ||
+        networkFields["host"].GetProperty("label").GetString() != "Host" ||
+        networkFields["host"].GetProperty("default_value").GetString() != "localhost" ||
+        networkFields["port"].GetProperty("type").GetString() != "integer" ||
+        networkFields["port"].GetProperty("default_value").GetInt64() != 8080 ||
+        providers.GetProperty("type").GetString() != "array" ||
+        providers.GetProperty("item_type").GetString() != "section" ||
+        !providers.GetProperty("item_fields").EnumerateArray().Select(item => item.GetProperty("key").GetString()).SequenceEqual(["name", "weight"]) ||
+        nestedSchema["tags"].GetProperty("item_type").GetString() != "string" ||
+        nestedSchema["labels"].GetProperty("type").GetString() != "object" ||
+        nestedSchema["optional_limit"].GetProperty("type").GetString() != "integer" ||
+        recursiveChild.GetProperty("type").GetString() != "section" ||
+        recursiveChild.GetProperty("fields").GetArrayLength() != 0)
+    {
+        throw new InvalidOperationException("Nested config schema did not describe sections, lists, maps or nullable values.");
+    }
+    Console.WriteLine("Nested component config schema verification passed.");
+
+    var nestedRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(nestedRoot);
+    try
+    {
+        var nestedToml = Path.Combine(nestedRoot, "config.toml");
+        const string original = """
+            # Component settings
+            retry_count = 3
+            mode = "safe"
+
+            [network]
+            # Where to connect
+            host = "a"
+            port = 1
+
+            [[providers]]
+            name = "one"
+            weight = 1
+
+            # Labels follow
+            [labels]
+            x = "1"
+
+            """;
+        File.WriteAllText(nestedToml, original);
+        var nestedManager = new ConfigManager(nestedToml);
+        void Patch(string json)
+        {
+            using var document = JsonDocument.Parse(json);
+            HostHttpServer.ApplyComponentConfigPatch(nestedManager, nestedToml, document.RootElement, loadedSchemaItems);
+        }
+        string CurrentConfigJson() => JsonSerializer.Serialize(HostHttpServer.LoadTomlObject(nestedToml));
+
+        Patch(CurrentConfigJson());
+        if (File.ReadAllText(nestedToml) != original)
+            throw new InvalidOperationException("Saving an unchanged config rewrote the TOML file.");
+
+        Patch("""{"network":{"host":"a","port":2}}""");
+        if (File.ReadAllText(nestedToml) != original.Replace("port = 1", "port = 2"))
+            throw new InvalidOperationException("A nested field edit changed more than its own line.");
+
+        Patch("""{"providers":[{"name":"one","weight":1},{"name":"two","weight":5}]}""");
+        var twoProviders = File.ReadAllText(nestedToml);
+        if (twoProviders.Split("[[providers]]").Length != 3 || !twoProviders.Contains("# Labels follow") ||
+            !twoProviders.Contains("# Where to connect") ||
+            HostHttpServer.LoadTomlObject(nestedToml)["providers"] is not object?[] { Length: 2 })
+            throw new InvalidOperationException("Appending to a list of tables did not rewrite [[providers]] in place.");
+
+        Patch("""{"providers":[{"name":"one","weight":1}]}""");
+        if (File.ReadAllText(nestedToml) != original.Replace("port = 1", "port = 2"))
+            throw new InvalidOperationException("Restoring a list of tables did not reproduce the original text.");
+
+        Patch("""{"providers":[]}""");
+        var noProviders = File.ReadAllText(nestedToml);
+        if (noProviders.Contains("[[providers]]") || !noProviders.Contains("providers = []") || !noProviders.Contains("# Labels follow"))
+            throw new InvalidOperationException("Clearing a list of tables did not remove its [[providers]] blocks.");
+
+        Patch("""{"labels":{"y":"2"}}""");
+        if (HostHttpServer.LoadTomlObject(nestedToml)["labels"] is not Dictionary<string, object?> labels ||
+            labels.ContainsKey("x") || labels["y"] is not "2")
+            throw new InvalidOperationException("Replacing a free-form table kept removed keys.");
+
+        var beforeRejected = File.ReadAllText(nestedToml);
+        foreach (var invalid in new[]
+                 {
+                     """{"network":"oops"}""", """{"network":{"port":"2"}}""", """{"providers":["one"]}""",
+                     """{"retry_count":{"value":1}}""", """{"providers":[{"name":"x"}],"retry_count":99}"""
+                 })
+        {
+            AssertThrows<InvalidOperationException>(() => Patch(invalid));
+            if (File.ReadAllText(nestedToml) != beforeRejected)
+                throw new InvalidOperationException($"A rejected config patch changed the file: {invalid}");
+        }
+    }
+    finally
+    {
+        Directory.Delete(nestedRoot, recursive: true);
+    }
+    Console.WriteLine("Nested component config patch verification passed.");
 }
 
 {
@@ -291,6 +428,57 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     Console.WriteLine("Shared contract ABI and built-in Model package verification passed.");
 }
 
+{
+    var updateRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(updateRoot);
+    try
+    {
+        var executable = Path.Combine(updateRoot, "ShiroBot");
+        var replacement = Path.Combine(updateRoot, "replacement");
+        File.WriteAllText(executable, "old-host");
+        File.WriteAllText(replacement, "new-host");
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        HostSelfUpdater.ReplaceExecutable(replacement, executable);
+        if (File.ReadAllText(executable) != "new-host" || File.ReadAllText(executable + ".old") != "old-host" ||
+            (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(executable) & UnixFileMode.UserExecute) == 0))
+            throw new InvalidOperationException("Host executable replacement lost the backup or execute permission.");
+        AssertThrows<IOException>(() => HostSelfUpdater.ReplaceExecutable(Path.Combine(updateRoot, "missing"), executable));
+        if (File.ReadAllText(executable) != "new-host")
+            throw new InvalidOperationException("A failed host replacement did not restore the original executable.");
+        var emptyRepository = await HostSelfUpdater.CheckAsync("");
+        if (emptyRepository.UpdateAvailable || emptyRepository.CanApply || string.IsNullOrEmpty(emptyRepository.Reason) ||
+            HostSelfUpdater.BlockedReason() is null)
+            throw new InvalidOperationException("Host update checks allowed an unconfigured repository or a development build to self-update.");
+    }
+    finally { Directory.Delete(updateRoot, recursive: true); }
+    Console.WriteLine("Host executable update and rollback verification passed.");
+}
+
+{
+    var attempts = 0;
+    var request = new PluginUpdateRequest("Verification", "1.0.0", "2.0.0");
+    var requestId = await Updater.RequestPluginUpdateAsync(request, token =>
+    {
+        token.ThrowIfCancellationRequested();
+        if (++attempts == 1) throw new IOException("Simulated download failure");
+        return Task.CompletedTask;
+    });
+    try { await Updater.ConfirmUpdateAsync(requestId); throw new InvalidOperationException("A failing update reported success."); }
+    catch (IOException) { }
+    if (!Updater.GetPendingUpdates().Any(entry => entry.Id == requestId) || !await Updater.ConfirmUpdateAsync(requestId) ||
+        attempts != 2 || Updater.GetPendingUpdates().Any(entry => entry.Id == requestId))
+        throw new InvalidOperationException("A failed update could not be retried or a successful request stayed pending.");
+
+    using var requestLifetime = new CancellationTokenSource();
+    var confirmToken = CancellationToken.None;
+    var executionId = await Updater.RequestPluginUpdateAsync(request, token => { confirmToken = token; return Task.CompletedTask; }, requestLifetime.Token);
+    requestLifetime.Cancel();
+    using var confirmLifetime = new CancellationTokenSource();
+    if (!await Updater.ConfirmUpdateAsync(executionId, confirmLifetime.Token) || confirmToken != confirmLifetime.Token)
+        throw new InvalidOperationException("Update execution used the expired check token instead of the confirmation token.");
+    Console.WriteLine("Pending update retry and cancellation verification passed.");
+}
+
 var qqAdapter = new VerificationAdapter("qq");
 var discordAdapter = new VerificationAdapter("discord");
 var botContext = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
@@ -321,6 +509,35 @@ botContext.RegisterAdapter(discordAdapter);
         {
             throw new InvalidOperationException("Plugin detail lookup did not return installed plugin metadata or reject a missing plugin.");
         }
+        var packageRoot = Path.Combine(Path.GetDirectoryName(pluginRoot)!, "package");
+        Directory.CreateDirectory(packageRoot);
+        var zipPath = Path.Combine(packageRoot, "plugin.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            archive.CreateEntryFromFile(renamedDll, "payload/Probe.dll");
+            using (var writer = new StreamWriter(archive.CreateEntry("payload/runtimes/native.bin").Open())) writer.Write("native-v2");
+            using (var writer = new StreamWriter(archive.CreateEntry("payload/config.toml").Open())) writer.Write("seed = 1");
+        }
+        File.WriteAllText(Path.Combine(configDirectory, "config.toml"), "user = 42");
+        File.WriteAllText(Path.Combine(configDirectory, "data.json"), "keep");
+        var package = PluginUpdateService.PreparePluginUploadPackage(pluginManager, zipPath);
+        var dispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions,
+            new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
+        var replaced = await PluginUpdateService.ReplaceInstalledPluginAsync(pluginManager, dispatcher, new PluginRouteConfig(),
+            package, new PluginUpdateService.InstalledPluginInfo(renamedDll, "0.9.1"), null);
+        if (replaced.PendingReason is not null || replaced.EntryPath is null || File.Exists(renamedDll) ||
+            !File.Exists(Path.Combine(configDirectory, "runtimes", "native.bin")) ||
+            File.ReadAllText(Path.Combine(configDirectory, "config.toml")) != "user = 42" ||
+            File.ReadAllText(Path.Combine(configDirectory, "data.json")) != "keep")
+            throw new InvalidOperationException("The shared plugin updater did not replace the full zip or preserve user files.");
+        var dllPackage = PluginUpdateService.PreparePluginUploadPackage(pluginManager, typeof(SharedContractPluginProbe).Assembly.Location);
+        var nextReplacement = await PluginUpdateService.ReplaceInstalledPluginAsync(pluginManager, dispatcher, new PluginRouteConfig(),
+            dllPackage, new PluginUpdateService.InstalledPluginInfo(replaced.EntryPath, "0.9.2"), null);
+        if (nextReplacement.PendingReason is not null || File.Exists(replaced.EntryPath) ||
+            File.Exists(Path.Combine(configDirectory, "runtimes", "native.bin")) ||
+            File.ReadAllText(Path.Combine(configDirectory, "data.json")) != "keep")
+            throw new InvalidOperationException("The shared plugin updater retained removed package files or deleted user data.");
+        Console.WriteLine("Shared plugin zip replacement and DLL update verification passed.");
     }
     finally
     {
@@ -448,6 +665,92 @@ try
         archive.CreateEntry("../escape.dll");
     AssertThrows<InvalidOperationException>(() => adapterPackage.Prepare(traversalZip, Path.Combine(tempRoot, "traversal-work")));
     Console.WriteLine("Adapter package ZIP, traversal, config preservation, and replacement verification passed.");
+
+    // Staged updates: an adapter that cannot be released gets its new package at the next start.
+    adapterPackage.StageUpdate(zipProbe, enabled: true);
+    if (!adapterPackage.HasStagedUpdate("verification"))
+        throw new InvalidOperationException("Adapter update was not staged.");
+    var stagedAdapter = adapterPackage.ApplyStagedUpdates();
+    if (!stagedAdapter.Applied.SequenceEqual(["verification"]) || stagedAdapter.Failed.Count != 0 ||
+        adapterPackage.HasStagedUpdate("verification") ||
+        adapterPackage.Get("verification") is not { Enabled: true } appliedAdapter ||
+        File.ReadAllText(Path.Combine(Path.GetDirectoryName(appliedAdapter.AssemblyPath)!, "config.toml")) != "app_id = \"\"")
+        throw new InvalidOperationException("Staged adapter update was not applied at startup, or replaced the user's config.toml.");
+    adapterPackage.StageUpdate(zipProbe, enabled: true);
+    adapterPackage.Uninstall("verification");
+    if (adapterPackage.HasStagedUpdate("verification"))
+        throw new InvalidOperationException("Uninstalling an adapter kept its staged update.");
+    Console.WriteLine("Adapter staged update verification passed.");
+
+    {
+        var componentRoot = Path.Combine(tempRoot, "staged-components");
+        var installedDir = Path.Combine(componentRoot, "Sample");
+        var v1 = Path.Combine(tempRoot, "staged-v1");
+        var v2 = Path.Combine(tempRoot, "staged-v2");
+        foreach (var dir in new[] { installedDir, v1, Path.Combine(v2, "runtimes") }) Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(v1, "Sample.dll"), "v1");
+        File.WriteAllText(Path.Combine(v1, "Old.dll"), "v1-only");
+        File.WriteAllText(Path.Combine(v1, "config.toml"), "seed = 1");
+        StagedComponentUpdates.ApplyPackage(v1, installedDir);
+        if (File.ReadAllText(Path.Combine(installedDir, "config.toml")) != "seed = 1")
+            throw new InvalidOperationException("A package config.toml did not seed a fresh install.");
+
+        // The plugin's own state appears next to the package files.
+        File.WriteAllText(Path.Combine(installedDir, "config.toml"), "seed = 2 # user edit");
+        Directory.CreateDirectory(Path.Combine(installedDir, "data"));
+        File.WriteAllText(Path.Combine(installedDir, "data", "history.jsonl"), "keep");
+
+        File.WriteAllText(Path.Combine(v2, "Sample.dll"), "v2");
+        File.WriteAllText(Path.Combine(v2, "runtimes", "native.so"), "v2-native");
+        File.WriteAllText(Path.Combine(v2, "config.toml"), "seed = 1");
+        StagedComponentUpdates.ApplyPackage(v2, installedDir);
+        if (File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v2" ||
+            File.Exists(Path.Combine(installedDir, "Old.dll")) ||
+            !File.Exists(Path.Combine(installedDir, "runtimes", "native.so")) ||
+            File.ReadAllText(Path.Combine(installedDir, "config.toml")) != "seed = 2 # user edit" ||
+            File.ReadAllText(Path.Combine(installedDir, "data", "history.jsonl")) != "keep")
+            throw new InvalidOperationException("Package replacement touched plugin data, config, or kept a dropped file.");
+
+        // A failing replacement leaves the installed files exactly as they were.
+        var v3 = Path.Combine(tempRoot, "staged-v3");
+        Directory.CreateDirectory(v3);
+        File.WriteAllText(Path.Combine(v3, "Sample.dll"), "v3");
+        File.WriteAllText(Path.Combine(v3, "blocked"), "file");
+        Directory.CreateDirectory(Path.Combine(installedDir, "blocked"));
+        AssertThrows<IOException>(() => StagedComponentUpdates.ApplyPackage(v3, installedDir));
+        if (File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v2" ||
+            !File.Exists(Path.Combine(installedDir, "runtimes", "native.so")))
+            throw new InvalidOperationException("A failed package replacement did not roll back.");
+        Directory.Delete(Path.Combine(installedDir, "blocked"));
+
+        // Staged at runtime, applied at the next start, staging removed.
+        var staging = StagedComponentUpdates.GetStagingDirectory(componentRoot, "Sample");
+        Directory.CreateDirectory(staging);
+        File.WriteAllText(Path.Combine(staging, "Sample.dll"), "v4");
+        StagedComponentUpdates.WriteTarget(staging, installedDir);
+        if (!StagedComponentUpdates.IsStagingPath(componentRoot, Path.Combine(staging, "Sample.dll")))
+            throw new InvalidOperationException("Staged package paths were not recognised.");
+        // A failed startup attempt must retain its destination and old root DLL for the next restart.
+        var legacyEntry = Path.Combine(componentRoot, "legacy.dll");
+        File.WriteAllText(legacyEntry, "old-root-entry");
+        StagedComponentUpdates.WriteLegacyEntry(staging, legacyEntry);
+        File.WriteAllText(Path.Combine(staging, "blocked"), "new-file");
+        Directory.CreateDirectory(Path.Combine(installedDir, "blocked"));
+        var failedAttempt = StagedComponentUpdates.ApplyStaged(componentRoot);
+        if (failedAttempt.Failed.Count != 1 || failedAttempt.Applied.Count != 0 ||
+            File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v2" ||
+            File.ReadAllText(legacyEntry) != "old-root-entry")
+            throw new InvalidOperationException("A failed staged update changed the installed package or legacy entry.");
+        Directory.Delete(Path.Combine(installedDir, "blocked"));
+        var applied = StagedComponentUpdates.ApplyStaged(componentRoot);
+        if (File.Exists(legacyEntry) || !applied.Applied.SequenceEqual(["Sample"]) || applied.Failed.Count != 0 ||
+            File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v4" ||
+            File.Exists(Path.Combine(installedDir, "runtimes", "native.so")) ||
+            File.ReadAllText(Path.Combine(installedDir, "data", "history.jsonl")) != "keep" ||
+            Directory.Exists(Path.Combine(componentRoot, StagedComponentUpdates.DirectoryName)))
+            throw new InvalidOperationException("Staged component update was not applied and cleaned up.");
+    }
+    Console.WriteLine("Staged component package replacement verification passed.");
 
     var pluginUpdateRoot = Path.Combine(tempRoot, "plugin-update");
     Directory.CreateDirectory(pluginUpdateRoot);
@@ -1024,6 +1327,38 @@ internal sealed class VerificationComponentConfig
     public double BackoffSeconds { get; set; } = 1.5;
 
     public string[] Tags { get; set; } = ["a"];
+
+    public VerificationNetworkSection Network { get; set; } = new();
+
+    public List<VerificationProvider> Providers { get; set; } = [];
+
+    public Dictionary<string, string> Labels { get; set; } = new() { ["env"] = "test" };
+
+    public int? OptionalLimit { get; set; }
+
+    public VerificationRecursiveSection Recursive { get; set; } = new();
+}
+
+internal sealed class VerificationNetworkSection
+{
+    [ConfigField("Host name", Label = "Host")]
+    public string Host { get; set; } = "localhost";
+
+    public int Port { get; set; } = 8080;
+}
+
+internal sealed class VerificationProvider
+{
+    public string Name { get; set; } = string.Empty;
+
+    public int Weight { get; set; } = 1;
+}
+
+internal sealed class VerificationRecursiveSection
+{
+    public string Label { get; set; } = "root";
+
+    public VerificationRecursiveSection? Child { get; set; }
 }
 
 internal sealed class ConfigurableVerificationPlugin : PluginBase<VerificationComponentConfig>

@@ -90,6 +90,7 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
             var events = _events.Reverse().ToArray();
             return new
             {
+                runtime = HostEnvironmentInfo.Create(),
                 bot_version = BotVersion,
                 uptime_seconds = (long)(DateTimeOffset.UtcNow - StartedAt).TotalSeconds,
                 plugins_count = PluginsCount,

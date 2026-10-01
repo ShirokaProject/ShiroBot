@@ -181,19 +181,8 @@ internal sealed partial class HostHttpServer
             var typeNamespace = reader.GetString(configType.Namespace);
             var typeName = reader.GetString(configType.Name);
             var configTypeName = string.IsNullOrEmpty(typeNamespace) ? typeName : $"{typeNamespace}.{typeName}";
-            var propertyHandles = configType.GetProperties().ToArray();
-            var needsRuntimeDefaults = propertyHandles.Any(propertyHandle =>
-            {
-                var attributes = reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes();
-                return ReadConfigFieldAttribute(reader, attributes)?.Default is null;
-            });
-            var runtimeDefaults = needsRuntimeDefaults
-                ? ReadConfigModelDefaults(loadedAssembly, configTypeName)
-                : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-
-            return propertyHandles
-                .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle), runtimeDefaults))
-                .Where(item => item is not null)
+            var runtimeDefaults = ReadConfigModelDefaults(loadedAssembly, configTypeName);
+            return BuildConfigSchemaFields(reader, configTypeHandle, runtimeDefaults, [configTypeHandle])
                 .Cast<object>()
                 .ToArray();
         }
@@ -201,21 +190,44 @@ internal sealed partial class HostHttpServer
         return [];
     }
 
+    private const int MaxConfigSectionDepth = 6;
+
+    private static ConfigSchemaItem[] BuildConfigSchemaFields(
+        MetadataReader reader,
+        TypeDefinitionHandle typeHandle,
+        IReadOnlyDictionary<string, object?> defaults,
+        IReadOnlyList<TypeDefinitionHandle> path)
+    {
+        var type = reader.GetTypeDefinition(typeHandle);
+        return type.GetProperties()
+            .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle), defaults, path))
+            .Where(item => item is not null)
+            .Cast<ConfigSchemaItem>()
+            .ToArray();
+    }
+
     private static ConfigSchemaItem? CreateConfigSchemaItem(
         MetadataReader reader,
         PropertyDefinition property,
-        IReadOnlyDictionary<string, object?> runtimeDefaults)
+        IReadOnlyDictionary<string, object?> runtimeDefaults,
+        IReadOnlyList<TypeDefinitionHandle> path)
     {
         var propertyName = reader.GetString(property.Name);
         if (string.IsNullOrWhiteSpace(propertyName)) return null;
 
         var field = ReadConfigFieldAttribute(reader, property.GetCustomAttributes());
         var key = NormalizeConfigKey(propertyName);
-        var valueType = InferConfigPropertyType(reader, property);
-        var enumOptions = IsEnumProperty(reader, property) ? field?.Options : null;
+        var shape = ReadConfigPropertyShape(reader, property);
+        var valueType = shape.Kind;
+        var enumOptions = shape.IsEnum ? field?.Options : null;
         var type = string.IsNullOrWhiteSpace(field?.Type)
             ? valueType
             : field.Type!;
+        var defaultValue = field?.Default is { } explicitDefault
+            ? ParseConfigDefaultValue(explicitDefault, valueType, enumOptions)
+            : runtimeDefaults.TryGetValue(key, out var initializedValue)
+                ? initializedValue
+                : GetTypeSystemDefault(valueType);
 
         return new ConfigSchemaItem(
             key,
@@ -232,12 +244,25 @@ internal sealed partial class HostHttpServer
             field?.Order,
             field?.GroupOrder,
             ReadConfigFieldConditions(reader, property.GetCustomAttributes()),
-            field?.Default is { } explicitDefault
-                ? ParseConfigDefaultValue(explicitDefault, valueType, enumOptions)
-                : runtimeDefaults.TryGetValue(key, out var initializedValue)
-                    ? initializedValue
-                    : GetTypeSystemDefault(valueType),
-            valueType);
+            defaultValue,
+            valueType)
+        {
+            Fields = ReadSectionFields(shape, defaultValue as IReadOnlyDictionary<string, object?>),
+            ItemType = shape.Kind == "array" ? shape.Item?.Kind ?? "string" : null,
+            ItemFields = shape.Kind == "array" && shape.Item is { } item ? ReadSectionFields(item, null) : null
+        };
+
+        ConfigSchemaItem[]? ReadSectionFields(ConfigTypeShape section, IReadOnlyDictionary<string, object?>? sectionDefaults)
+        {
+            if (section.Kind != "section" || section.Section.IsNil) return null;
+            // A model that references itself would recurse forever; stop and let the editor fall back to JSON.
+            if (path.Count >= MaxConfigSectionDepth || path.Contains(section.Section)) return [];
+            return BuildConfigSchemaFields(
+                reader,
+                section.Section,
+                sectionDefaults ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase),
+                [.. path, section.Section]);
+        }
     }
 
     private static object? ParseConfigDefaultValue(object value, string valueType, string[]? enumOptions = null)
@@ -279,13 +304,30 @@ internal sealed partial class HostHttpServer
         _ => null
     };
 
-    private static object? ConvertSchemaDefault(object? value) => value switch
+    /// <summary>
+    /// Converts an initialized config value into the JSON shape the API uses: config objects become
+    /// dictionaries keyed by their TOML (snake_case) names, so nested defaults line up with nested fields.
+    /// </summary>
+    private static object? ConvertSchemaDefault(object? value) => ConvertSchemaDefault(value, 0);
+
+    private static object? ConvertSchemaDefault(object? value, int depth) => value switch
     {
         null => null,
         Enum enumValue => enumValue.ToString(),
         string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal => value,
-        System.Collections.IEnumerable values when value is not string => values.Cast<object?>().Select(ConvertSchemaDefault).ToArray(),
-        _ => JsonSerializer.SerializeToElement(value, value.GetType())
+        _ when depth >= MaxConfigSectionDepth => null,
+        System.Collections.IDictionary map => map.Keys.Cast<object>().ToDictionary(
+            key => Convert.ToString(key, CultureInfo.InvariantCulture) ?? string.Empty,
+            key => ConvertSchemaDefault(map[key], depth + 1),
+            StringComparer.OrdinalIgnoreCase),
+        System.Collections.IEnumerable values => values.Cast<object?>().Select(item => ConvertSchemaDefault(item, depth + 1)).ToArray(),
+        DateTime or DateTimeOffset or TimeSpan or Guid or Uri or Version => Convert.ToString(value, CultureInfo.InvariantCulture),
+        _ => value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(property => property.CanRead && property.GetIndexParameters().Length == 0)
+            .ToDictionary(
+                property => NormalizeConfigKey(property.Name),
+                property => ConvertSchemaDefault(property.GetValue(value), depth + 1),
+                StringComparer.OrdinalIgnoreCase)
     };
 
     /// <summary>
@@ -504,45 +546,104 @@ internal sealed partial class HostHttpServer
         };
     }
 
-    private static string InferConfigPropertyType(MetadataReader reader, PropertyDefinition property)
+    /// <summary>
+    /// Shape of a config property for the editor: <c>section</c> is a nested config class with known
+    /// fields, <c>object</c> a free-form table (dictionary), <c>array</c> a list of <see cref="Item"/>.
+    /// </summary>
+    private sealed record ConfigTypeShape(string Kind, TypeDefinitionHandle Section = default, ConfigTypeShape? Item = null, bool IsEnum = false);
+
+    private static readonly HashSet<string> ConfigListTypeNames = new(StringComparer.Ordinal)
+    {
+        "List`1", "IList`1", "IReadOnlyList`1", "ICollection`1", "IReadOnlyCollection`1", "IEnumerable`1",
+        "HashSet`1", "ISet`1", "IReadOnlySet`1", "SortedSet`1", "Collection`1", "ImmutableArray`1", "ImmutableList`1"
+    };
+
+    private static readonly HashSet<string> ConfigTextTypeNames = new(StringComparer.Ordinal)
+    {
+        "System.Uri", "System.Version", "System.DateTime", "System.DateTimeOffset", "System.TimeSpan",
+        "System.Guid", "System.DateOnly", "System.TimeOnly", "System.Char", "System.String"
+    };
+
+    private static ConfigTypeShape ReadConfigPropertyShape(MetadataReader reader, PropertyDefinition property)
     {
         var blob = reader.GetBlobReader(property.Signature);
         _ = blob.ReadByte();
         _ = blob.ReadCompressedInteger();
-        var elementType = blob.ReadByte();
-        if (elementType == ElementTypeValueType && IsEnumType(reader, ReadTypeDefOrRefHandle(ref blob)))
-            return "integer";
-
-        return elementType switch
+        try
         {
-            ElementTypeBoolean => "boolean",
-            ElementTypeI1 or ElementTypeU1 or ElementTypeI2 or ElementTypeU2 or ElementTypeI4 or ElementTypeU4 or ElementTypeI8 or ElementTypeU8 => "integer",
-            ElementTypeR4 or ElementTypeR8 => "number",
-            ElementTypeSzArray => "array",
-            _ => "string"
-        };
-    }
-
-    private static bool IsEnumProperty(MetadataReader reader, PropertyDefinition property)
-    {
-        var blob = reader.GetBlobReader(property.Signature);
-        _ = blob.ReadByte();
-        _ = blob.ReadCompressedInteger();
-        return blob.ReadByte() == ElementTypeValueType && IsEnumType(reader, ReadTypeDefOrRefHandle(ref blob));
-    }
-
-    private static EntityHandle ReadTypeDefOrRefHandle(ref BlobReader blob)
-    {
-        var encoded = blob.ReadCompressedInteger();
-        var rowId = encoded >> 2;
-        return (encoded & 0x3) switch
+            return ReadConfigTypeShape(reader, ref blob);
+        }
+        catch (BadImageFormatException)
         {
-            0 => MetadataTokens.TypeDefinitionHandle(rowId),
-            1 => MetadataTokens.TypeReferenceHandle(rowId),
-            2 => MetadataTokens.TypeSpecificationHandle(rowId),
-            _ => default
-        };
+            return new ConfigTypeShape("string");
+        }
     }
+
+    private static ConfigTypeShape ReadConfigTypeShape(MetadataReader reader, ref BlobReader blob)
+    {
+        while (true)
+        {
+            var code = blob.ReadSignatureTypeCode();
+            switch (code)
+            {
+                case SignatureTypeCode.RequiredModifier:
+                case SignatureTypeCode.OptionalModifier:
+                    _ = blob.ReadTypeHandle();
+                    continue;
+                case SignatureTypeCode.Boolean:
+                    return new ConfigTypeShape("boolean");
+                case SignatureTypeCode.SByte or SignatureTypeCode.Byte or SignatureTypeCode.Int16 or SignatureTypeCode.UInt16 or
+                    SignatureTypeCode.Int32 or SignatureTypeCode.UInt32 or SignatureTypeCode.Int64 or SignatureTypeCode.UInt64 or
+                    SignatureTypeCode.IntPtr or SignatureTypeCode.UIntPtr:
+                    return new ConfigTypeShape("integer");
+                case SignatureTypeCode.Single or SignatureTypeCode.Double:
+                    return new ConfigTypeShape("number");
+                case SignatureTypeCode.String or SignatureTypeCode.Char:
+                    return new ConfigTypeShape("string");
+                case SignatureTypeCode.Object:
+                    return new ConfigTypeShape("object");
+                case SignatureTypeCode.SZArray:
+                    return new ConfigTypeShape("array", Item: ReadConfigTypeShape(reader, ref blob));
+                case SignatureTypeCode.TypeHandle:
+                    return ShapeOfNamedType(reader, blob.ReadTypeHandle());
+                case SignatureTypeCode.GenericTypeInstance:
+                {
+                    _ = blob.ReadSignatureTypeCode();
+                    var genericType = blob.ReadTypeHandle();
+                    var count = blob.ReadCompressedInteger();
+                    var arguments = new ConfigTypeShape[count];
+                    for (var index = 0; index < count; index++) arguments[index] = ReadConfigTypeShape(reader, ref blob);
+                    var (_, name) = GetConfigTypeName(reader, genericType);
+                    if (name == "Nullable`1" && count == 1) return arguments[0];
+                    if (ConfigListTypeNames.Contains(name) && count == 1) return new ConfigTypeShape("array", Item: arguments[0]);
+                    return new ConfigTypeShape("object");
+                }
+                default:
+                    return new ConfigTypeShape("string");
+            }
+        }
+    }
+
+    private static ConfigTypeShape ShapeOfNamedType(MetadataReader reader, EntityHandle handle)
+    {
+        if (IsEnumType(reader, handle)) return new ConfigTypeShape("integer", IsEnum: true);
+        var (ns, name) = GetConfigTypeName(reader, handle);
+        var fullName = ns.Length == 0 ? name : $"{ns}.{name}";
+        if (fullName == "System.Decimal") return new ConfigTypeShape("number");
+        if (ConfigTextTypeNames.Contains(fullName)) return new ConfigTypeShape("string");
+        if (handle.Kind == HandleKind.TypeDefinition) return new ConfigTypeShape("section", (TypeDefinitionHandle)handle);
+        // A type from another assembly: its fields are unknown here, so edit it as a free-form table.
+        return new ConfigTypeShape("object");
+    }
+
+    private static (string Namespace, string Name) GetConfigTypeName(MetadataReader reader, EntityHandle handle) => handle.Kind switch
+    {
+        HandleKind.TypeDefinition => (reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)handle).Namespace),
+            reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)handle).Name)),
+        HandleKind.TypeReference => (reader.GetString(reader.GetTypeReference((TypeReferenceHandle)handle).Namespace),
+            reader.GetString(reader.GetTypeReference((TypeReferenceHandle)handle).Name)),
+        _ => (string.Empty, string.Empty)
+    };
 
     private static bool IsEnumType(MetadataReader reader, EntityHandle typeHandle)
     {
@@ -613,34 +714,119 @@ internal sealed partial class HostHttpServer
             throw new InvalidOperationException("config 必须是对象。");
         }
 
-        var fields = schema.OfType<ConfigSchemaItem>()
-            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-        ApplyComponentConfigPatchEntries(configManager, configPath, fields, patch, string.Empty);
+        var fields = new Dictionary<string, ConfigSchemaItem>(StringComparer.OrdinalIgnoreCase);
+        AddSchemaFields(fields, schema.OfType<ConfigSchemaItem>(), string.Empty);
+
+        // Validate everything before writing anything, so a rejected save never leaves a half-written file.
+        var writes = new List<(string Key, object? Value)>();
+        CollectComponentConfigPatch(fields, patch, string.Empty, writes);
+
+        var current = LoadTomlObject(configPath);
+        foreach (var (key, value) in writes)
+        {
+            // The dashboard submits the whole config; unchanged values are skipped so untouched
+            // tables, [[arrays]] and their formatting stay exactly as the user wrote them.
+            var exists = TryGetConfigValue(current, key, out var existing);
+            if (exists && ConfigValuesEqual(existing, value)) continue;
+            // Tables and lists of tables have several TOML forms ([key], [[key]], inline) and must be
+            // replaced as a whole; plain values and plain lists are updated in place.
+            if (ContainsConfigTable(value) || exists && ContainsConfigTable(existing))
+                configManager.ReplaceConfigValue(configPath, key, value);
+            else
+                configManager.SetConfigValue(configPath, key, value);
+        }
     }
 
-    private static void ApplyComponentConfigPatchEntries(
-        ConfigManager configManager,
-        string configPath,
+    private static void AddSchemaFields(Dictionary<string, ConfigSchemaItem> map, IEnumerable<ConfigSchemaItem> items, string prefix)
+    {
+        foreach (var item in items)
+        {
+            var key = prefix + item.Key;
+            map.TryAdd(key, item);
+            if (item.Fields is { } fields) AddSchemaFields(map, fields, key + ".");
+        }
+    }
+
+    private static void CollectComponentConfigPatch(
         IReadOnlyDictionary<string, ConfigSchemaItem> schema,
         JsonElement patch,
-        string prefix)
+        string prefix,
+        List<(string Key, object? Value)> writes)
     {
         foreach (var property in patch.EnumerateObject())
         {
             var segment = NormalizeConfigKey(property.Name);
             var key = prefix.Length == 0 ? segment : $"{prefix}.{segment}";
-            if (property.Value.ValueKind == JsonValueKind.Object)
+            schema.TryGetValue(key, out var field);
+            if (property.Value.ValueKind == JsonValueKind.Object && field?.ValueType != "object")
             {
-                ApplyComponentConfigPatchEntries(configManager, configPath, schema, property.Value, key);
+                if (field is not null && field.ValueType != "section")
+                    throw new InvalidOperationException($"配置项 {key} 的值类型不符合 Schema ({field.ValueType})。");
+                // A known section is written field by field, keeping keys that the submitted object omits.
+                CollectComponentConfigPatch(schema, property.Value, key, writes);
                 continue;
             }
 
             var value = ConvertJsonValue(property.Value);
-            if (schema.TryGetValue(key, out var field)) ValidateConfigValue(field, key, value);
-            configManager.SetConfigValue(configPath, key, value);
+            if (field is not null) ValidateConfigValue(field, key, value);
+            writes.Add((key, value));
         }
     }
+
+    private static bool TryGetConfigValue(IReadOnlyDictionary<string, object?> config, string keyPath, out object? value)
+    {
+        value = null;
+        object? node = config;
+        foreach (var part in keyPath.Split('.'))
+        {
+            if (node is not IReadOnlyDictionary<string, object?> table && node is not IDictionary<string, object?>)
+                return false;
+            var found = node switch
+            {
+                IReadOnlyDictionary<string, object?> readOnly => readOnly.FirstOrDefault(pair => string.Equals(pair.Key, part, StringComparison.OrdinalIgnoreCase)),
+                IDictionary<string, object?> writable => writable.FirstOrDefault(pair => string.Equals(pair.Key, part, StringComparison.OrdinalIgnoreCase)),
+                _ => default
+            };
+            if (found.Key is null) return false;
+            node = found.Value;
+        }
+
+        value = node;
+        return true;
+    }
+
+    private static bool ConfigValuesEqual(object? left, object? right)
+    {
+        if (left is null || right is null) return left is null && right is null;
+        if (left is string || right is string)
+            return string.Equals(Convert.ToString(left, CultureInfo.InvariantCulture), Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.Ordinal) &&
+                   left is string == right is string;
+        if (left is bool leftBool || right is bool) return left is bool && right is bool rightBool && (bool)left == rightBool;
+        if (IsConfigNumber(left) && IsConfigNumber(right))
+            return Convert.ToDecimal(left, CultureInfo.InvariantCulture) == Convert.ToDecimal(right, CultureInfo.InvariantCulture);
+        if (left is IEnumerable<KeyValuePair<string, object?>> leftTable && right is IEnumerable<KeyValuePair<string, object?>> rightTable)
+        {
+            var a = leftTable.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            var b = rightTable.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            return a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var other) && ConfigValuesEqual(pair.Value, other));
+        }
+        if (left is System.Collections.IEnumerable leftItems && right is System.Collections.IEnumerable rightItems)
+        {
+            var a = leftItems.Cast<object?>().ToArray();
+            var b = rightItems.Cast<object?>().ToArray();
+            return a.Length == b.Length && a.Zip(b).All(pair => ConfigValuesEqual(pair.First, pair.Second));
+        }
+
+        return string.Equals(Convert.ToString(left, CultureInfo.InvariantCulture), Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.Ordinal);
+    }
+
+    private static bool ContainsConfigTable(object? value) =>
+        value is IEnumerable<KeyValuePair<string, object?>> ||
+        value is System.Collections.IEnumerable items and not string &&
+        items.Cast<object?>().Any(item => item is IEnumerable<KeyValuePair<string, object?>>);
+
+    private static bool IsConfigNumber(object value) =>
+        value is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal;
 
     private static void ValidateConfigValue(ConfigSchemaItem field, string key, object? value)
     {
@@ -650,13 +836,16 @@ internal sealed partial class HostHttpServer
             // Numeric strings are rejected: they would be saved as TOML strings and fail typed loading.
             "integer" => value is not string && TryGetDouble(value, out var integer) && Math.Truncate(integer) == integer,
             "number" => value is not string && TryGetDouble(value, out _),
-            "array" => value is object?[],
+            "array" => value is object?[] items && items.All(item => IsValidConfigItem(field.ItemType, item)),
             "string" => value is string,
+            "section" or "object" => value is IDictionary<string, object?>,
             _ => true
         };
         if (value is null && field.ValueType == "string") valid = true;
         if (!valid)
-            throw new InvalidOperationException($"配置项 {key} 的值类型不符合 Schema ({field.ValueType})。");
+            throw new InvalidOperationException(field.ValueType == "array"
+                ? $"配置项 {key} 必须是元素类型为 {field.ItemType ?? "string"} 的列表。"
+                : $"配置项 {key} 的值类型不符合 Schema ({field.ValueType})。");
 
         if (field.Options.Length > 0 && value is not null)
         {
@@ -762,6 +951,16 @@ internal sealed partial class HostHttpServer
         return new string(chars.ToArray());
     }
 
+    private static bool IsValidConfigItem(string? itemType, object? item) => itemType switch
+    {
+        "boolean" => item is bool,
+        "integer" => item is not string && TryGetDouble(item, out var integer) && Math.Truncate(integer) == integer,
+        "number" => item is not string && TryGetDouble(item, out _),
+        "string" => item is string,
+        "section" or "object" => item is IDictionary<string, object?>,
+        _ => true
+    };
+
     private static object? ConvertJsonValue(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => value.GetString() ?? string.Empty,
@@ -770,8 +969,16 @@ internal sealed partial class HostHttpServer
         JsonValueKind.Number when value.TryGetInt64(out var integer) => integer,
         JsonValueKind.Number => value.GetDouble(),
         JsonValueKind.Array => value.EnumerateArray().Select(ConvertJsonValue).ToArray(),
+        // Tables keep their submitted key order so a rewritten [[array]] reads like the original.
+        JsonValueKind.Object => value.EnumerateObject().Aggregate(
+            new OrderedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase),
+            (table, property) =>
+            {
+                table[property.Name] = ConvertJsonValue(property.Value);
+                return table;
+            }),
         JsonValueKind.Null => null,
-        _ => throw new InvalidOperationException("插件配置值只能是字符串、数字、布尔值、数组或 null。")
+        _ => throw new InvalidOperationException("配置值只能是字符串、数字、布尔值、数组、对象或 null。")
     };
 
     private static bool TryGetDouble(object? value, out double number)

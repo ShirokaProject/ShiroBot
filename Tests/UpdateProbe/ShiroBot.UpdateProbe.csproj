@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants Condition="'$(ProbeVersion)' == '2'">$(DefineConstants);PROBE_V2</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../SDK/ShiroBot.SDK.csproj" Private="false" />
+  </ItemGroup>
+</Project>

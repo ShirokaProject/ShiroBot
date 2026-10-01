@@ -19,7 +19,7 @@ internal sealed class HostLogHub
 
     public HostLogHub()
     {
-        RegisterSource("system", "系统日志", "system");
+        RegisterSource("system", "系统日志", "System", LogSourceKind.System);
     }
 
     public void Record(string source, string level, string message)
@@ -52,7 +52,7 @@ internal sealed class HostLogHub
         }
     }
 
-    public void RegisterSource(string source, string description, string? displayName = null)
+    public void RegisterSource(string source, string description, string? displayName = null, string kind = LogSourceKind.System)
     {
         if (string.IsNullOrWhiteSpace(source)) return;
 
@@ -62,7 +62,8 @@ internal sealed class HostLogHub
         {
             Source = normalizedSource,
             Description = string.IsNullOrWhiteSpace(description) ? GetDefaultDescription(normalizedSource) : description,
-            PluginName = normalizedDisplayName
+            PluginName = normalizedDisplayName,
+            Kind = kind
         };
     }
 
@@ -154,8 +155,20 @@ internal sealed class HostLogHub
     private static string GetDefaultDescription(string source) =>
         source.Equals("system", StringComparison.OrdinalIgnoreCase) ? "系统日志" : $"{source} 日志";
 
+    /// <summary>What produced a log source, so the Dashboard can group adapters and plugins apart.</summary>
+    internal static class LogSourceKind
+    {
+        public const string System = "system";
+        public const string Adapter = "adapter";
+        public const string Plugin = "plugin";
+    }
+
     internal sealed class LogSourceInfo
     {
+        /// <summary>system, adapter or plugin.</summary>
+        [JsonPropertyName("kind")]
+        public string Kind { get; init; } = LogSourceKind.System;
+
         [JsonPropertyName("source")]
         public string Source { get; init; } = string.Empty;
 

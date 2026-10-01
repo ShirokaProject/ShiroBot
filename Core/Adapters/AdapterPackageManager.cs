@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text.Json;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Plugins.Compatibility;
+using ShiroBot.Components.Updates;
 
 namespace ShiroBot.Adapters;
 
@@ -77,7 +78,7 @@ internal sealed class AdapterPackageManager(string adapterRoot)
                 package.Type == "zip" ? FindExtractRoot(package.EntryAssemblyPath) : Path.GetDirectoryName(package.EntryAssemblyPath)!,
                 package.EntryAssemblyPath);
             if (package.Type == "dll") entryRelativePath = Path.GetFileName(package.EntryAssemblyPath);
-            PreserveUserConfig(target, staging);
+            PreserveUserFiles(target, staging);
             var manifest = new AdapterManifest(package.Id, entryRelativePath, enabled, package.Name, package.Version, package.Description, package.Platform);
             File.WriteAllText(Path.Combine(staging, "adapter.json"), JsonSerializer.Serialize(manifest));
 
@@ -126,7 +127,7 @@ internal sealed class AdapterPackageManager(string adapterRoot)
                 package.Type == "zip" ? FindExtractRoot(package.EntryAssemblyPath) : Path.GetDirectoryName(package.EntryAssemblyPath)!,
                 package.EntryAssemblyPath);
             if (package.Type == "dll") entryRelativePath = Path.GetFileName(package.EntryAssemblyPath);
-            PreserveUserConfig(target, staging);
+            PreserveUserFiles(target, staging);
             File.WriteAllText(
                 Path.Combine(staging, "adapter.json"),
                 JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, enabled, package.Name, package.Version, package.Description, package.Platform)));
@@ -184,14 +185,39 @@ internal sealed class AdapterPackageManager(string adapterRoot)
             JsonSerializer.Serialize(new AdapterManifest(installed.Id, Path.GetRelativePath(GetAdapterDirectory(installed.Id), installed.AssemblyPath), enabled, installed.Name, installed.Version, installed.Description, installed.Platform)));
     }
 
+    /// <summary>
+    /// Stages a package in <c>.update/&lt;id&gt;/</c> when the running version cannot be released; the next
+    /// start applies it before any adapter is loaded. A newer staged package replaces an older one.
+    /// </summary>
+    public void StageUpdate(AdapterPackageProbe package, bool enabled)
+    {
+        ValidateId(package.Id);
+        var staging = StagedComponentUpdates.GetStagingDirectory(_root, package.Id);
+        TryDeleteDirectory(staging);
+        CopyPackageFiles(package, staging);
+        var entryRelativePath = package.Type == "dll"
+            ? Path.GetFileName(package.EntryAssemblyPath)
+            : Path.GetRelativePath(FindExtractRoot(package.EntryAssemblyPath), package.EntryAssemblyPath);
+        File.WriteAllText(
+            Path.Combine(staging, "adapter.json"),
+            JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, enabled, package.Name, package.Version, package.Description, package.Platform)));
+        StagedComponentUpdates.WriteTarget(staging, GetAdapterDirectory(package.Id));
+    }
+
+    public bool HasStagedUpdate(string id) => StagedComponentUpdates.HasStaged(_root, id);
+
+    /// <summary>Applies staged packages; call at startup before adapters are loaded.</summary>
+    public (IReadOnlyList<string> Applied, IReadOnlyList<(string Id, string Error)> Failed) ApplyStagedUpdates() =>
+        StagedComponentUpdates.ApplyStaged(_root);
+
     public InstalledAdapterPackage? Get(string id) => List().FirstOrDefault(package => string.Equals(package.Id, id, StringComparison.OrdinalIgnoreCase));
 
     public void Uninstall(string id)
     {
         var path = GetAdapterDirectory(id);
-        if (!Directory.Exists(path)) throw new InvalidOperationException($"未安装 Adapter: {id}");
         if (!IsStrictChild(_root, path)) throw new InvalidOperationException("拒绝删除 Adapter 根目录之外的路径。");
-        Directory.Delete(path, recursive: true);
+        StagedComponentUpdates.DiscardStaged(_root, id);
+        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
     }
 
     private InstalledAdapterPackage? ReadInstalled(string directory)
@@ -245,19 +271,29 @@ internal sealed class AdapterPackageManager(string adapterRoot)
 
     private static void CopyPackageFiles(AdapterPackageProbe package, string target)
     {
+        var files = new List<string>();
         if (package.Type == "dll")
         {
             Directory.CreateDirectory(target);
-            File.Copy(package.EntryAssemblyPath, Path.Combine(target, Path.GetFileName(package.EntryAssemblyPath)));
-            return;
+            var fileName = Path.GetFileName(package.EntryAssemblyPath);
+            File.Copy(package.EntryAssemblyPath, Path.Combine(target, fileName));
+            files.Add(fileName);
         }
-        var sourceRoot = package.Type == "zip" ? FindExtractRoot(package.EntryAssemblyPath) : Path.GetDirectoryName(package.EntryAssemblyPath)!;
-        foreach (var source in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        else
         {
-            var destination = Path.Combine(target, Path.GetRelativePath(sourceRoot, source));
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(source, destination);
+            var sourceRoot = FindExtractRoot(package.EntryAssemblyPath);
+            foreach (var source in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+            {
+                var relative = Path.GetRelativePath(sourceRoot, source);
+                // Package ownership is recorded by the host, never taken from an uploaded manifest.
+                if (relative == StagedComponentUpdates.PackageFilesName) continue;
+                var destination = Path.Combine(target, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(source, destination);
+                files.Add(relative);
+            }
         }
+        File.WriteAllLines(Path.Combine(target, StagedComponentUpdates.PackageFilesName), files);
     }
 
     private static string FindExtractRoot(string entryPath)
@@ -286,10 +322,26 @@ internal sealed class AdapterPackageManager(string adapterRoot)
 
     private static bool IsStrictChild(string root, string path) => IsUnder(root, path) && !string.Equals(Path.GetFullPath(root), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
 
-    private static void PreserveUserConfig(string target, string staging)
+    private static void PreserveUserFiles(string target, string staging)
     {
-        var config = Path.Combine(target, "config.toml");
-        if (File.Exists(config)) File.Copy(config, Path.Combine(staging, "config.toml"), overwrite: true);
+        if (!Directory.Exists(target)) return;
+        var manifest = Path.Combine(target, StagedComponentUpdates.PackageFilesName);
+        // Older installs have no ownership list; retain unknown files rather than deleting user data.
+        var oldPackageFiles = File.Exists(manifest)
+            ? File.ReadAllLines(manifest).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(target, source);
+            if (relative.Equals("adapter.json", StringComparison.OrdinalIgnoreCase) ||
+                relative.Equals(StagedComponentUpdates.PackageFilesName, StringComparison.OrdinalIgnoreCase)) continue;
+            var isConfig = Path.GetFileName(source).Equals("config.toml", StringComparison.OrdinalIgnoreCase);
+            if (!isConfig && oldPackageFiles.Contains(relative)) continue;
+            var destination = Path.Combine(staging, relative);
+            if (!isConfig && File.Exists(destination)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(source, destination, overwrite: isConfig);
+        }
     }
 
     private static void TryDeleteDirectory(string path)

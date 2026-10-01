@@ -1,9 +1,6 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.IO.Compression;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using ShiroBot.SDK.Plugin;
 
@@ -21,7 +18,7 @@ public sealed record GitHubPluginPackage(
 
 public static class Updater
 {
-    private static readonly HttpClient HttpClient = new();
+    internal static HttpClient HttpClient { get; set; } = new();
     private static readonly ConcurrentDictionary<string, PendingUpdateEntry> PendingUpdates = new(StringComparer.OrdinalIgnoreCase);
     private static Func<IReadOnlyList<string>> _getOwnerIds = () => [];
     private static Func<string, string, Task> _sendPrivateMessageAsync = (_, _) => Task.CompletedTask;
@@ -167,6 +164,12 @@ public static class Updater
             Path.GetExtension(asset.Name).TrimStart('.').ToLowerInvariant());
     }
 
+    /// <summary>
+    /// Installs a host release and restarts. Set at startup so console, plugin and Dashboard requests all
+    /// replace the executable the same way.
+    /// </summary>
+    internal static Func<string, CancellationToken, Task>? HostUpdateApplier { get; set; }
+
     public static async Task<string> RequestHostUpdateAsync(
         GitHubReleaseUpdate update,
         CancellationToken cancellationToken = default)
@@ -177,7 +180,13 @@ public static class Updater
             update.CurrentVersion,
             update.LatestVersion,
             update.ReleaseUrl,
-            async () => await UpdateSelfAsync(update.AssetDownloadUrl, cancellationToken));
+            async token =>
+            {
+                if (HostUpdateApplier is { } apply && !string.IsNullOrWhiteSpace(update.AssetDownloadUrl))
+                    await apply(update.AssetDownloadUrl, token).ConfigureAwait(false);
+                else
+                    throw new InvalidOperationException("宿主更新服务尚未初始化或缺少下载地址。");
+            });
 
         await NotifyOwnersAsync(
             $"检测到宿主更新: {update.CurrentVersion} -> {update.LatestVersion}\n" +
@@ -190,12 +199,16 @@ public static class Updater
         return id;
     }
 
+    internal static Func<PluginUpdateRequest, CancellationToken, Task>? PluginUpdateApplier { get; set; }
+
     public static async Task<string> RequestPluginUpdateAsync(
         PluginUpdateRequest request,
         CancellationToken cancellationToken = default)
         => await RequestPluginUpdateAsync(
             request,
-            token => UpdatePluginAsync(request.PluginName, request.AssetDownloadUrl, request.TargetPath, token),
+            token => PluginUpdateApplier is { } apply
+                ? apply(request, token)
+                : throw new InvalidOperationException("插件更新服务尚未初始化。"),
             cancellationToken).ConfigureAwait(false);
 
     internal static async Task<string> RequestPluginUpdateAsync(
@@ -210,7 +223,7 @@ public static class Updater
             request.CurrentVersion,
             request.LatestVersion,
             request.ReleaseUrl,
-            async () => await executeAsync(cancellationToken).ConfigureAwait(false));
+            executeAsync);
 
         await NotifyOwnersAsync(
             $"检测到插件更新: {request.PluginName} {request.CurrentVersion} -> {request.LatestVersion}\n" +
@@ -221,41 +234,6 @@ public static class Updater
             cancellationToken);
 
         return id;
-    }
-
-    internal static async Task ApplyPluginUpdateAsync(
-        string pluginName,
-        string? assetDownloadUrl,
-        string targetPath,
-        Func<Task> unloadAsync,
-        Func<Task> loadAsync,
-        CancellationToken cancellationToken = default)
-    {
-        var fullTargetPath = Path.GetFullPath(targetPath);
-        var backupPath = fullTargetPath + ".update-backup-" + Guid.NewGuid().ToString("N");
-        File.Copy(fullTargetPath, backupPath, overwrite: true);
-        var unloaded = false;
-        try
-        {
-            await unloadAsync().ConfigureAwait(false);
-            unloaded = true;
-            await UpdatePluginAsync(pluginName, assetDownloadUrl, fullTargetPath, cancellationToken).ConfigureAwait(false);
-            await loadAsync().ConfigureAwait(false);
-        }
-        catch
-        {
-            if (File.Exists(backupPath)) File.Copy(backupPath, fullTargetPath, overwrite: true);
-            if (unloaded)
-            {
-                try { await loadAsync().ConfigureAwait(false); }
-                catch { /* Preserve the original update failure. */ }
-            }
-            throw;
-        }
-        finally
-        {
-            if (File.Exists(backupPath)) File.Delete(backupPath);
-        }
     }
 
     public static IReadOnlyList<PendingUpdateInfo> GetPendingUpdates()
@@ -279,14 +257,19 @@ public static class Updater
             return false;
         }
 
-        if (entry.Target == UpdateTarget.Host)
+        try
         {
-            await NotifyOwnersAsync($"宿主更新即将执行并重启: {entry.Name} ({entry.Id})", cancellationToken);
-            await entry.ExecuteAsync(cancellationToken);
-            return true;
+            if (entry.Target == UpdateTarget.Host)
+                await NotifyOwnersAsync($"宿主更新即将执行并重启: {entry.Name} ({entry.Id})", cancellationToken);
+            await entry.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch
+        {
+            PendingUpdates.TryAdd(requestId, entry);
+            throw;
+        }
+        if (entry.Target == UpdateTarget.Host) return true;
 
-        await entry.ExecuteAsync(cancellationToken);
         await NotifyOwnersAsync($"更新任务已执行: {entry.Name} ({entry.Id})", cancellationToken);
         return true;
     }
@@ -297,62 +280,7 @@ public static class Updater
     }
 
     public static Task UpdateSelfAsync(CancellationToken cancellationToken = default) =>
-        UpdateSelfAsync(assetDownloadUrl: null, cancellationToken);
-
-    private static async Task UpdateSelfAsync(string? assetDownloadUrl, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(assetDownloadUrl))
-        {
-            throw new InvalidOperationException("宿主更新缺少下载地址。");
-        }
-
-        var processPath = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(processPath))
-        {
-            throw new InvalidOperationException("无法确定当前宿主可执行文件路径。");
-        }
-
-        var installDirectory = Path.GetFullPath(AppContext.BaseDirectory);
-        var tempRoot = Path.Combine(installDirectory, ".tmp", "ShiroBot.Update", Guid.NewGuid().ToString("N"));
-        var assetFileName = GetDownloadFileName(assetDownloadUrl);
-        var packagePath = Path.Combine(tempRoot, assetFileName);
-        var extractRoot = Path.Combine(tempRoot, "extract");
-
-        Directory.CreateDirectory(tempRoot);
-
-        try
-        {
-            await DownloadFileAsync(assetDownloadUrl, packagePath, cancellationToken);
-            if (!IsZipPackage(packagePath))
-            {
-                throw new InvalidOperationException($"宿主更新包必须是 zip 文件: {assetFileName}");
-            }
-
-            var replacementExecutable = FindReplacementExecutableInZipPackage(packagePath, extractRoot, processPath)
-                                        ?? throw new InvalidOperationException($"更新包中未找到宿主可执行文件: {Path.GetFileName(processPath)}");
-            var restartArguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
-            var scriptPath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                ? CreateWindowsSelfUpdateScript(tempRoot, replacementExecutable, processPath, restartArguments)
-                : CreateUnixSelfUpdateScript(tempRoot, replacementExecutable, processPath, restartArguments);
-
-            StartSelfUpdateScript(scriptPath);
-        }
-        catch
-        {
-            try
-            {
-                if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
-            }
-            catch
-            {
-                // ignored: best-effort cleanup
-            }
-
-            throw;
-        }
-
-        Environment.Exit(0);
-    }
+        Task.FromException(new InvalidOperationException("请先检查宿主版本，再确认包含下载地址的更新请求。"));
 
     public static async Task DownloadFileAsync(
         string url,
@@ -402,21 +330,6 @@ public static class Updater
         }
     }
 
-    private static string GetDownloadFileName(string downloadUrl)
-    {
-        var uri = Uri.TryCreate(downloadUrl, UriKind.Absolute, out var parsed)
-            ? parsed
-            : null;
-
-        var fileName = uri is null
-            ? Path.GetFileName(downloadUrl)
-            : Path.GetFileName(uri.LocalPath);
-
-        return string.IsNullOrWhiteSpace(fileName)
-            ? "host-update.bin"
-            : fileName;
-    }
-
     private static bool IsZipPackage(string path)
     {
         if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return true;
@@ -433,201 +346,6 @@ public static class Updater
         {
             return false;
         }
-    }
-
-    private static string? FindReplacementExecutableInZipPackage(string packagePath, string extractRoot, string processPath)
-    {
-        Directory.CreateDirectory(extractRoot);
-        ZipFile.ExtractToDirectory(packagePath, extractRoot, overwriteFiles: true);
-
-        var fileName = Path.GetFileName(processPath);
-        if (string.IsNullOrWhiteSpace(fileName)) return null;
-
-        return Directory.EnumerateFiles(extractRoot, fileName, SearchOption.AllDirectories)
-            .OrderBy(path => path.Count(ch => ch == Path.DirectorySeparatorChar || ch == Path.AltDirectorySeparatorChar))
-            .FirstOrDefault();
-    }
-
-    private static string CreateWindowsSelfUpdateScript(
-        string tempRoot,
-        string sourceExecutable,
-        string processPath,
-        IReadOnlyList<string> restartArguments)
-    {
-        var scriptPath = Path.Combine(tempRoot, "apply-update.cmd");
-        var currentPid = Environment.ProcessId;
-        var arguments = string.Join(" ", restartArguments.Select(WindowsArgumentQuote));
-        var executableDirectory = Path.GetDirectoryName(processPath) ?? AppContext.BaseDirectory;
-        var logPath = Path.Combine(executableDirectory, "ShiroBot.update.log");
-        var script = $$"""
-@echo off
-setlocal
-set "PID={{currentPid}}"
-set "SRC={{sourceExecutable}}"
-set "EXE={{processPath}}"
-set "EXEDIR={{executableDirectory}}"
-set "UPDATE_TMP={{tempRoot}}"
-set "RUNTIME_TMP=%EXEDIR%\.tmp\runtime"
-set "ARGS={{arguments}}"
-set "LOG={{logPath}}"
-
-(
-  echo [%date% %time%] waiting process %PID%
-) >> "%LOG%" 2>&1
-
-:wait_process
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Get-Process -Id %PID% -ErrorAction Stop ^| Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    timeout /t 1 /nobreak >nul
-    goto wait_process
-)
-
-(
-  echo [%date% %time%] copying "%SRC%" to "%EXE%"
-  copy /Y "%SRC%" "%EXE%"
-) >> "%LOG%" 2>&1
-if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-
-if not exist "%RUNTIME_TMP%" mkdir "%RUNTIME_TMP%" >nul 2>nul
-set "TMP=%RUNTIME_TMP%"
-set "TEMP=%RUNTIME_TMP%"
-
-(
-  echo [%date% %time%] runtime temp dir "%RUNTIME_TMP%"
-  echo [%date% %time%] starting new cmd: "%EXE%" %ARGS%
-  start "ShiroBot" /D "%EXEDIR%" cmd.exe /k ""%EXE%" %ARGS%"
-  echo [%date% %time%] start command returned %ERRORLEVEL%
-) >> "%LOG%" 2>&1
-
-cd /d "%TEMP%"
-rmdir /s /q "%UPDATE_TMP%" >nul 2>nul
-rmdir "%EXEDIR%\.tmp\ShiroBot.Update" >nul 2>nul
-exit /b 0
-""";
-        File.WriteAllText(scriptPath, script, Encoding.UTF8);
-        return scriptPath;
-    }
-
-    private static string CreateUnixSelfUpdateScript(
-        string tempRoot,
-        string sourceExecutable,
-        string processPath,
-        IReadOnlyList<string> restartArguments)
-    {
-        var scriptPath = Path.Combine(tempRoot, "apply-update.sh");
-        var currentPid = Environment.ProcessId;
-        var arguments = string.Join(" ", restartArguments.Select(ShellQuote));
-        var executableDirectory = Path.GetDirectoryName(processPath) ?? AppContext.BaseDirectory;
-        var logPath = Path.Combine(executableDirectory, "ShiroBot.update.log");
-        var script = $$"""
-#!/bin/sh
-PID={{currentPid}}
-SRC={{ShellQuote(sourceExecutable)}}
-EXE={{ShellQuote(processPath)}}
-EXEDIR={{ShellQuote(executableDirectory)}}
-UPDATE_TMP={{ShellQuote(tempRoot)}}
-RUNTIME_TMP="$EXEDIR/.tmp/runtime"
-ARGS="{{arguments}}"
-LOG={{ShellQuote(logPath)}}
-
-echo "[$(date)] waiting process $PID" >> "$LOG" 2>&1
-while kill -0 "$PID" 2>/dev/null; do
-  sleep 1
-done
-
-echo "[$(date)] copying $SRC to $EXE" >> "$LOG" 2>&1
-cp -f "$SRC" "$EXE" >> "$LOG" 2>&1
-chmod +x "$EXE" 2>/dev/null || true
-
-mkdir -p "$RUNTIME_TMP"
-export TMPDIR="$RUNTIME_TMP"
-export TMP="$RUNTIME_TMP"
-export TEMP="$RUNTIME_TMP"
-echo "[$(date)] runtime temp dir $RUNTIME_TMP" >> "$LOG" 2>&1
-echo "[$(date)] starting $EXE $ARGS" >> "$LOG" 2>&1
-cd "$EXEDIR" || exit 1
-# shellcheck disable=SC2086
-nohup "$EXE" $ARGS >/dev/null 2>&1 &
-echo "[$(date)] started pid $!" >> "$LOG" 2>&1
-rm -rf "$UPDATE_TMP"
-rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
-""";
-        File.WriteAllText(scriptPath, script, Encoding.UTF8);
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            try
-            {
-                File.SetUnixFileMode(scriptPath,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-            }
-            catch
-            {
-                // chmod through /bin/sh is enough on platforms that do not support File.SetUnixFileMode.
-            }
-        }
-
-        return scriptPath;
-    }
-
-    private static void StartSelfUpdateScript(string scriptPath)
-    {
-        var startInfo = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? new ProcessStartInfo
-            {
-                FileName = "cmd.exe",
-                Arguments = "/c \"\"" + scriptPath + "\"\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            }
-            : new ProcessStartInfo
-            {
-                FileName = "/bin/sh",
-                Arguments = ShellQuote(scriptPath),
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-        Process.Start(startInfo);
-    }
-
-    private static string ShellQuote(string value) =>
-        "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
-
-    private static string WindowsArgumentQuote(string value)
-    {
-        if (value.Length == 0) return "\"\"";
-        if (!value.Any(char.IsWhiteSpace) && value.IndexOfAny(['\"', '\\']) < 0) return value;
-
-        var builder = new StringBuilder();
-        builder.Append('\"');
-        var backslashes = 0;
-        foreach (var c in value)
-        {
-            if (c == '\\')
-            {
-                backslashes++;
-                continue;
-            }
-
-            if (c == '\"')
-            {
-                builder.Append('\\', backslashes * 2 + 1);
-                builder.Append(c);
-                backslashes = 0;
-                continue;
-            }
-
-            builder.Append('\\', backslashes);
-            builder.Append(c);
-            backslashes = 0;
-        }
-
-        builder.Append('\\', backslashes * 2);
-        builder.Append('\"');
-        return builder.ToString();
     }
 
     public static async Task UpdatePluginAsync(string pluginName, string? assetDownloadUrl, string? targetPath, CancellationToken cancellationToken = default)
@@ -728,7 +446,7 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
         string currentVersion,
         string latestVersion,
         string? releaseUrl,
-        Func<Task> action)
+        Func<CancellationToken, Task> action)
     {
         var id = Guid.NewGuid().ToString("N")[..8];
         PendingUpdates[id] = new PendingUpdateEntry(
@@ -856,14 +574,14 @@ rmdir "$EXEDIR/.tmp/ShiroBot.Update" 2>/dev/null || true
         string CurrentVersion,
         string LatestVersion,
         string? ReleaseUrl,
-        Func<Task> Execute)
+        Func<CancellationToken, Task> Execute)
     {
         public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
 
         public Task ExecuteAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Execute();
+            return Execute(cancellationToken);
         }
     }
 

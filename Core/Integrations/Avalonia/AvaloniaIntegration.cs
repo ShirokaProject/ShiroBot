@@ -140,7 +140,8 @@ public static class AvaloniaIntegration
         return value.ToLowerInvariant() switch
         {
             "dark" => "dark",
-            "auto" => "auto",
+            // "system" was written by older dashboards for the clock-based Auto mode.
+            "auto" or "system" => "auto",
             _ => "light"
         };
     }

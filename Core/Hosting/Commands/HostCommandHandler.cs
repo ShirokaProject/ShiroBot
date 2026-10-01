@@ -14,6 +14,7 @@ using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 using CH = ShiroBot.Console.ConsoleOutput;
+using ShiroBot.Hosting.Runtime;
 
 namespace ShiroBot.Hosting.Commands;
 
@@ -46,6 +47,10 @@ internal sealed class HostCommandHandler(
     ];
 
     private AdapterManager? _adapterManager;
+    private HostPowerControl? _powerControl;
+
+    public void SetPowerControl(HostPowerControl powerControl) => _powerControl = powerControl;
+
     private ComponentReloadCoordinator? _reloadCoordinator;
     private AdapterPackageManager? _adapterPackages;
 
@@ -115,13 +120,23 @@ internal sealed class HostCommandHandler(
                             splitInput[1]).GetAwaiter().GetResult();
                         break;
                     case "restart":
-                        if (TryStartReplacementProcess())
+                    {
+                        if (_powerControl is null)
                         {
-                            exitRequested.TrySetResult(true);
+                            CH.Error("宿主尚未启动完成，暂时无法重启。");
+                            break;
+                        }
+
+                        var result = _powerControl.Restart();
+                        if (result.Ok)
+                        {
+                            CH.Info(result.Message);
                             return;
                         }
 
+                        CH.Error(result.Message);
                         break;
+                    }
                     case "api":
                         CH.Info(HandleApiCommand(splitInput));
                         break;
@@ -295,21 +310,8 @@ internal sealed class HostCommandHandler(
 
                 try
                 {
-                    var pending = Updater.GetPendingUpdates()
-                        .FirstOrDefault(item => string.Equals(item.Id, splitInput[2], StringComparison.OrdinalIgnoreCase));
-                    if (pending is { Target: UpdateTarget.Plugin })
-                    {
-                        await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, pending.Name);
-                    }
-
                     var ok = await Updater.ConfirmUpdateAsync(splitInput[2]);
                     if (!ok) return "未找到该更新请求。";
-
-                    if (pending is { Target: UpdateTarget.Plugin })
-                    {
-                        await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, pending.Name);
-                        return $"已执行更新任务并重新加载插件: {pending.Name}";
-                    }
 
                     return "已执行更新任务。";
                 }
@@ -344,50 +346,13 @@ internal sealed class HostCommandHandler(
             return "宿主没有配置 HostUpdateRepository。";
         }
 
-        var currentVersion = GetCurrentHostVersion();
-        var assetName = GetCurrentHostAssetName();
-        var update = await Updater.CheckGitHubReleaseAssetAsync(coreConfig.HostUpdateRepository, currentVersion, assetName);
-        if (update is null)
-        {
-            return $"宿主: 已是最新版本 ({currentVersion})";
-        }
-
-        if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl))
-        {
-            return $"宿主: 发现 {update.LatestVersion}，但 release 中没有当前运行形态对应的文件: {assetName}";
-        }
-
+        var check = await HostSelfUpdater.CheckAsync(coreConfig.HostUpdateRepository).ConfigureAwait(false);
+        if (!check.UpdateAvailable) return check.Reason ?? $"宿主: 已是最新版本 ({check.CurrentVersion})";
+        if (!check.CanApply) return $"宿主: 发现 {check.LatestVersion}。{check.Reason}";
+        var update = new GitHubReleaseUpdate(coreConfig.HostUpdateRepository, check.CurrentVersion, check.LatestVersion!,
+            null, check.ReleaseUrl, check.ReleaseNotes, check.AssetDownloadUrl, check.AssetName);
         var id = await Updater.RequestHostUpdateAsync(update);
-        return $"宿主: {update.CurrentVersion} -> {update.LatestVersion} ({assetName})，更新任务 {id}";
-    }
-
-    private static string GetCurrentHostVersion()
-    {
-        return Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0";
-    }
-
-    private static string GetCurrentHostAssetName()
-    {
-        var assembly = Assembly.GetEntryAssembly();
-        var runtime = GetAssemblyMetadata(assembly, "ShiroBot.RuntimeIdentifier");
-        if (string.IsNullOrWhiteSpace(runtime))
-        {
-            runtime = RuntimeInformation.RuntimeIdentifier;
-        }
-
-        var publishKind = string.Equals(GetAssemblyMetadata(assembly, "ShiroBot.SelfContained"), "true", StringComparison.OrdinalIgnoreCase)
-            ? "self-contained"
-            : "framework-dependent";
-
-        return $"shirobot-host-{runtime}-{publishKind}.zip";
-    }
-
-    private static string? GetAssemblyMetadata(Assembly? assembly, string key)
-    {
-        return assembly?
-            .GetCustomAttributes<AssemblyMetadataAttribute>()
-            .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.OrdinalIgnoreCase))
-            ?.Value;
+        return $"宿主: {check.CurrentVersion} -> {check.LatestVersion} ({check.AssetName})，更新任务 {id}";
     }
 
     private async Task<string> CheckPluginUpdatesAsync()
@@ -427,15 +392,7 @@ internal sealed class HostCommandHandler(
                     update.ReleaseNotes,
                     update.AssetDownloadUrl,
                     plugin.AssemblyPath);
-                var id = await Updater.RequestPluginUpdateAsync(
-                    request,
-                    cancellationToken => Updater.ApplyPluginUpdateAsync(
-                        plugin.Name,
-                        update.AssetDownloadUrl,
-                        plugin.AssemblyPath,
-                        () => pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name),
-                        () => pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, plugin.Name),
-                        cancellationToken));
+                var id = await Updater.RequestPluginUpdateAsync(request);
 
                 builder.AppendLine($"{plugin.Name}: {update.CurrentVersion} -> {update.LatestVersion} ({update.AssetName})，更新任务 {id}");
             }
@@ -667,43 +624,5 @@ internal sealed class HostCommandHandler(
         return unitIndex == 0
             ? $"{bytes} {units[unitIndex]}"
             : $"{value:0.##} {units[unitIndex]}";
-    }
-
-    private static bool TryStartReplacementProcess()
-    {
-        var processPath = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(processPath))
-        {
-            CH.Error("无法确定当前进程路径，重启失败。");
-            return false;
-        }
-
-        try
-        {
-            var args = Environment.GetCommandLineArgs().Skip(1).ToArray();
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = processPath,
-                WorkingDirectory = AppContext.BaseDirectory,
-                UseShellExecute = false,
-                Arguments = string.Join(" ", args.Select(QuoteArgument))
-            });
-            CH.Info("已启动新进程，当前进程即将退出。");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            CH.Error("重启失败: " + ex.Message);
-            return false;
-        }
-    }
-
-    private static string QuoteArgument(string argument)
-    {
-        if (argument.Length == 0) return "\"\"";
-
-        return argument.Any(char.IsWhiteSpace) || argument.Contains('"')
-            ? "\"" + argument.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""
-            : argument;
     }
 }

@@ -34,6 +34,10 @@ ENTRYPOINT ["/usr/local/bin/shirobot-entrypoint"]
 
 FROM runtime-base AS prebuilt
 ARG TARGETARCH
+# Shown by the Dashboard as the image tag and image build time.
+ARG VERSION_TAG=""
+ARG BUILD_TIME=""
+ENV SHIROBOT_VERSION_TAG=${VERSION_TAG} SHIROBOT_BUILD_TIME=${BUILD_TIME}
 COPY artifacts/docker/${TARGETARCH}/ /app/
 
 FROM runtime-base AS final

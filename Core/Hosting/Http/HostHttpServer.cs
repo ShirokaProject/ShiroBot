@@ -49,7 +49,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         ModelPackageRegistry modelPackages,
         AdapterManager adapterManager,
         ComponentReloadCoordinator reloadCoordinator,
-        AdapterPackageManager adapterPackages)
+        AdapterPackageManager adapterPackages,
+        HostPowerControl powerControl)
     {
         if (!config.Enable) return null;
 
@@ -81,7 +82,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         MapDashboardAssets(app);
         MapApiEndpoints(
             app, config, configManager, configPath, pluginManager, eventDispatcher,
-            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator, adapterPackages);
+            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator, adapterPackages, powerControl);
         MapDebugEndpoints(app, config, botContext, eventDispatcher);
 
         app.MapFallback((HttpContext context, WebHostContext registry) => registry.HandleRequest(context));
@@ -107,19 +108,14 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
                 "Assets",
                 "dashboard",
                 path.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(physicalPath))
-            {
-                if (!contentTypeProvider.TryGetContentType(path, out var physicalContentType))
-                {
-                    physicalContentType = "application/octet-stream";
-                }
-
-                return Results.File(physicalPath, physicalContentType, enableRangeProcessing: true);
-            }
-
             var stream = assembly.GetManifestResourceStream(resourcePrefix + resourcePath)
                          ?? assembly.GetManifestResourceStream(resourcePrefix + path.Replace('\\', '/'));
-            if (stream is null) return Results.NotFound();
+            if (stream is null)
+            {
+                if (!File.Exists(physicalPath)) return Results.NotFound();
+                if (!contentTypeProvider.TryGetContentType(path, out var physicalContentType)) physicalContentType = "application/octet-stream";
+                return Results.File(physicalPath, physicalContentType, enableRangeProcessing: true);
+            }
 
             if (!contentTypeProvider.TryGetContentType(path, out var contentType))
             {
@@ -149,7 +145,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         ModelPackageRegistry modelPackages,
         AdapterManager adapterManager,
         ComponentReloadCoordinator reloadCoordinator,
-        AdapterPackageManager adapterPackages)
+        AdapterPackageManager adapterPackages,
+        HostPowerControl powerControl)
     {
         var api = app.MapGroup("/api/v1");
         api.AddEndpointFilter(async (context, next) =>
@@ -168,6 +165,21 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         //概览
         api.MapGet("/overview", () => Results.Ok(runtimeState.CreateOverview()));
 
+        // 重启 / 关机
+        api.MapPost("/system/{action}", (string action) =>
+        {
+            var result = action.ToLowerInvariant() switch
+            {
+                "restart" => powerControl.Restart(),
+                "shutdown" => powerControl.Shutdown(),
+                _ => null
+            };
+            if (result is null) return Results.NotFound(new { ok = false, message = $"不支持的操作: {action}" });
+            return result.Ok
+                ? Results.Ok(new { ok = true, message = result.Message })
+                : Results.Conflict(new { ok = false, message = result.Message });
+        });
+
         api.MapGet("/models/list", () => Results.Ok(modelPackages.GetPackages().Select(model => new
         {
             id = model.Id,
@@ -177,6 +189,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
             source = model.Source,
             reloadable = model.Reloadable
         })));
+
+        MapHostUpdateEndpoints(api, configManager, powerControl);
 
         MapAdapterEndpoints(api, runtimeState, configManager, adapterManager, reloadCoordinator, adapterPackages);
 
@@ -262,7 +276,6 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
     }
 
     private static readonly DateTimeOffset AppStartedAt = DateTimeOffset.UtcNow;
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> PluginOperationLocks = new(StringComparer.OrdinalIgnoreCase);
     private static readonly PluginMarketplaceCache MarketplaceCache = new();
     private static readonly AdapterMarketplaceCache AdapterMarketplaceCache = new();
     private const string ApiCorsPolicyName = "ShiroBotApiCors";
@@ -321,7 +334,6 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         string? AssetName = null,
         string? AssetSha256 = null);
 
-    private sealed record InstalledPluginInfo(string AssemblyPath, string Version);
 
     private sealed record PluginConfigTarget(string Id, string AssemblyPath);
 
@@ -343,7 +355,20 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         [property: JsonPropertyName("group_order")] int? GroupOrder,
         [property: JsonPropertyName("conditions")] IReadOnlyList<ConfigFieldConditionSchema> Conditions,
         [property: JsonPropertyName("default_value"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? DefaultValue,
-        [property: JsonIgnore] string ValueType);
+        [property: JsonIgnore] string ValueType)
+    {
+        /// <summary>Fields of a <c>section</c> value; keys are relative to this item.</summary>
+        [JsonPropertyName("fields"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public IReadOnlyList<ConfigSchemaItem>? Fields { get; init; }
+
+        /// <summary>Element kind of an <c>array</c> value: boolean, integer, number, string, section or object.</summary>
+        [JsonPropertyName("item_type"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ItemType { get; init; }
+
+        /// <summary>Fields of each element when <see cref="ItemType"/> is <c>section</c>.</summary>
+        [JsonPropertyName("item_fields"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public IReadOnlyList<ConfigSchemaItem>? ItemFields { get; init; }
+    }
 
     private sealed record ConfigFieldConditionSchema(
         [property: JsonPropertyName("effect")] string Effect,
@@ -366,12 +391,6 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         public int? GroupOrder { get; set; }
         public object? Default { get; set; }
     }
-
-    private sealed record PluginUploadPackage(
-        string RootPath,
-        string EntryAssemblyPath,
-        string Type,
-        PluginProbeInfo Info);
 
     internal sealed record PluginListItem(
         [property: JsonPropertyName("id")] string Id,

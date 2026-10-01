@@ -106,14 +106,29 @@ internal sealed partial class HostHttpServer
         ConfigManager configManager,
         string configPath)
     {
+        // Validated before anything is written, so a rejected value leaves the file untouched.
+        // Auto switches by the clock (dark 18:00–06:00); older dashboards sent "System" for it.
+        string? avaloniaTheme = TryGetString(patch, "avalonia_theme", out var requestedTheme)
+            ? requestedTheme.Trim().ToLowerInvariant() switch
+            {
+                "light" => "Light",
+                "dark" => "Dark",
+                "auto" or "system" => "Auto",
+                _ => throw new InvalidOperationException("avalonia_theme 只能是 Light、Dark 或 Auto。")
+            }
+            : null;
+
+        // Legacy single value: an empty one means "no extra adapter", not a list holding "".
         if (TryGetString(patch, "protocol", out var protocol))
         {
-            configManager.SetConfigValue(configPath, "protocols", new[] { protocol });
+            configManager.SetConfigValue(configPath, "protocols",
+                string.IsNullOrWhiteSpace(protocol) ? Array.Empty<string>() : [protocol.Trim()]);
         }
 
         if (TryGetStringArray(patch, "protocols", out var protocols))
         {
-            configManager.SetConfigValue(configPath, "protocols", protocols);
+            configManager.SetConfigValue(configPath, "protocols",
+                protocols.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
         if (TryGetBool(patch, "enable_log", out var enableLog))
@@ -137,7 +152,7 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "host_update_repository", hostUpdateRepository);
         }
 
-        if (TryGetString(patch, "avalonia_theme", out var avaloniaTheme))
+        if (avaloniaTheme is not null)
         {
             AvaloniaIntegration.SetThemeMode(avaloniaTheme);
             configManager.SetConfigValue(configPath, "avalonia_theme", avaloniaTheme);

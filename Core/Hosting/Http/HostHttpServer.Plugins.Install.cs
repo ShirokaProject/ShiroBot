@@ -32,6 +32,8 @@ using ShiroBot.Integrations.Avalonia;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Plugin;
 
+using static ShiroBot.Update.PluginUpdateService;
+
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
@@ -137,71 +139,70 @@ internal sealed partial class HostHttpServer
             try
             {
                 var package = LoadPreparedPluginUploadPackage(pluginManager, uploadId);
-                var pluginDirectory = GetPluginInstallDirectory(pluginManager.PluginRootPath, package.Info.Id);
-                var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
-                if (installed is not null && !request.Replace)
+                var gate = GetPluginOperationLock(package.Info.Id);
+                await gate.WaitAsync(context.RequestAborted).ConfigureAwait(false);
+                try
                 {
-                    return Results.Conflict(new { error = "plugin_exists", message = "插件已存在，请确认替换。" });
-                }
-
-                var loaded = FindLoadedPlugin(pluginManager, package.Info.Id);
-                if (loaded is not null)
-                {
-                    await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, loaded.Name).ConfigureAwait(false);
-                }
-
-                string? preservedConfigPath = null;
-                if (installed is not null)
-                {
-                    var installedConfigPath = GetPluginConfigPath(pluginManager, installed.AssemblyPath, package.Info.Id);
-                    if (File.Exists(installedConfigPath))
+                    if (ShiroBot.Components.Updates.StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, package.Info.Id))
+                        return Results.Conflict(new { error = "plugin_pending_delete", message = "插件已登记删除任务，请先重启宿主完成删除，再重新安装。" });
+                    var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
+                    if (installed is not null && !request.Replace)
                     {
-                        preservedConfigPath = Path.Combine(uploadRoot, "preserved-config.toml");
-                        File.Copy(installedConfigPath, preservedConfigPath, overwrite: true);
+                        return Results.Conflict(new { error = "plugin_exists", message = "插件已存在，请确认替换。" });
                     }
 
-                    var installedDirectory = Path.GetFullPath(Path.GetDirectoryName(installed.AssemblyPath)!);
-                    if (package.Type.Equals("dll", StringComparison.OrdinalIgnoreCase) &&
-                        string.Equals(installedDirectory, Path.GetFullPath(pluginDirectory), StringComparison.OrdinalIgnoreCase))
-                    {
-                        // A single-file plugin may keep its configuration beside the DLL.
-                        // Replacing it must not remove the whole plugin directory.
-                        pluginManager.SuppressWatcherPath(installed.AssemblyPath);
-                        File.Delete(installed.AssemblyPath);
-                    }
-                    else
-                    {
-                        DeletePluginPath(pluginManager.PluginRootPath, installed.AssemblyPath, package.Info.Id);
-                    }
-                }
+                    var loaded = FindLoadedPlugin(pluginManager, package.Info.Id);
 
-                var installedAssemblyPath = InstallUploadedPlugin(pluginManager, package);
-                if (preservedConfigPath is not null)
-                {
-                    var configPath = GetPluginConfigPath(pluginManager, installedAssemblyPath, package.Info.Id);
-                    Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
-                    File.Copy(preservedConfigPath, configPath, overwrite: true);
-                }
-                if (request.Enable)
-                {
-                    await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id).ConfigureAwait(false);
-                }
-                else
-                {
-                    pluginManager.SuppressWatcherPath(installedAssemblyPath);
-                    DisablePluginFile(installedAssemblyPath);
-                }
-
-                TryDeleteDirectory(uploadRoot);
-                return Results.Ok(new
-                {
-                    success = true,
-                    plugin = new
+                    async Task FinishPluginInstallAsync(string entryPath)
                     {
-                        id = package.Info.Id,
-                        enable = request.Enable
+                        if (request.Enable)
+                        {
+                            await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            pluginManager.SuppressWatcherPath(entryPath);
+                            DisablePluginFile(entryPath);
+                        }
                     }
-                });
+
+                    if (installed is not null)
+                    {
+                        var replacement = await ReplaceInstalledPluginAsync(
+                            pluginManager, eventDispatcher, routePolicy, package, installed, loaded).ConfigureAwait(false);
+                        if (replacement.PendingReason is not null)
+                        {
+                            TryDeleteDirectory(uploadRoot);
+                            return Results.Ok(new
+                            {
+                                success = true,
+                                pending_restart = true,
+                                reason = replacement.PendingReason,
+                                message = $"当前版本无法热替换，新版本 {package.Info.Version} 已暂存，将在下次重启宿主时替换。重启前当前版本继续运行。",
+                                plugin = new { id = package.Info.Id, enable = request.Enable }
+                            });
+                        }
+
+                        await FinishPluginInstallAsync(replacement.EntryPath!).ConfigureAwait(false);
+                        TryDeleteDirectory(uploadRoot);
+                        return Results.Ok(new { success = true, plugin = new { id = package.Info.Id, enable = request.Enable } });
+                    }
+
+                    var installedAssemblyPath = InstallUploadedPlugin(pluginManager, package);
+                    await FinishPluginInstallAsync(installedAssemblyPath).ConfigureAwait(false);
+
+                    TryDeleteDirectory(uploadRoot);
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        plugin = new
+                        {
+                            id = package.Info.Id,
+                            enable = request.Enable
+                        }
+                    });
+                }
+                finally { gate.Release(); }
             }
             catch (InvalidOperationException ex)
             {

@@ -30,7 +30,7 @@ public class CoreConfig
     public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
 
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
-    [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto。", Label = "宿主主题", Default = "Light", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
+    [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Light", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
     public string AvaloniaTheme { get; set; } = "Light";
 
     [ConfigField("所有者账号列表，供插件检查所有者权限。", Label = "Owner 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 10)]
@@ -638,6 +638,123 @@ public class ConfigManager(string? coreConfigPath = null)
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Replaces the whole value at <paramref name="keyPath"/>, whatever TOML form it currently uses.
+    /// Lists and tables cannot be merged key by key: a list may be stored as <c>key = [...]</c> or as
+    /// <c>[[key]]</c> blocks, and a removed table key must disappear. All existing forms of the key,
+    /// including sub-tables, are removed first; a list of tables is then written as <c>[[key]]</c> blocks,
+    /// a table as a <c>[key]</c> block and anything else as <c>key = value</c>. Unrelated content and
+    /// comments are preserved.
+    /// </summary>
+    public void ReplaceConfigValue(string configPath, string keyPath, object? value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
+        var normalizedConfigPath = Path.GetFullPath(configPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(normalizedConfigPath)!);
+
+        var pathParts = keyPath.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pathParts.Length == 0) throw new ArgumentException("配置键路径不能为空。", nameof(keyPath));
+        var fullName = string.Join('.', pathParts);
+        var parentName = string.Join('.', pathParts[..^1]);
+        var leaf = pathParts[^1];
+
+        var current = File.Exists(normalizedConfigPath) ? File.ReadAllText(normalizedConfigPath) : string.Empty;
+        var newline = current.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var document = SyntaxParser.ParseStrict(current);
+        var removals = new List<(int Start, int End)>();
+
+        var parentItems = parentName.Length == 0
+            ? document.KeyValues
+            : document.Tables.OfType<TableSyntax>()
+                .FirstOrDefault(table => SameTomlName(table.Name!.ToString(), parentName))?.Items;
+        if (parentItems is not null)
+        {
+            foreach (var item in parentItems)
+            {
+                if (!SameTomlName(item.Key!.ToString(), leaf)) continue;
+                var end = item.EndOfLineToken is { } eol ? eol.Span.Offset + eol.Span.Length : item.Span.Offset + item.Span.Length;
+                removals.Add((item.Span.Offset, end));
+            }
+        }
+
+        var tables = document.Tables.ToList();
+        var tableRanges = new List<(int Start, int End)>();
+        foreach (var table in tables)
+        {
+            var name = table.Name!.ToString().Trim();
+            if (!SameTomlName(name, fullName) && !name.StartsWith(fullName + ".", StringComparison.OrdinalIgnoreCase)) continue;
+            // Stop at the table's last key: comments and blank lines after it introduce what follows.
+            var end = table.Items.ChildrenCount > 0
+                ? table.Items.GetChild(table.Items.ChildrenCount - 1) is { } last && last.EndOfLineToken is { } eol
+                    ? eol.Span.Offset + eol.Span.Length
+                    : table.Items.GetChild(table.Items.ChildrenCount - 1)!.Span.Offset + table.Items.GetChild(table.Items.ChildrenCount - 1)!.Span.Length
+                : table.EndOfLineToken is { } headerEol
+                    ? headerEol.Span.Offset + headerEol.Span.Length
+                    : table.CloseBracket!.Span.Offset + table.CloseBracket.Span.Length;
+            tableRanges.Add((table.Span.Offset, end));
+        }
+
+        // Blank lines separating the removed tables from each other go with them, so rewriting a list
+        // does not leave a growing gap behind.
+        var firstRemovedTable = tableRanges.Count == 0 ? (int?)null : tableRanges.Min(range => range.Start);
+        foreach (var (start, end) in tableRanges)
+        {
+            var extendedStart = start;
+            if (start != firstRemovedTable)
+            {
+                var scan = start;
+                while (scan > 0 && current[scan - 1] is ' ' or '\t' or '\r' or '\n') scan--;
+                var lineEnd = current.IndexOf('\n', scan);
+                if (lineEnd >= 0 && lineEnd < start) extendedStart = lineEnd + 1;
+            }
+            removals.Add((extendedStart, end));
+        }
+
+        var updated = current;
+        foreach (var (start, end) in removals.OrderByDescending(range => range.Start))
+            updated = updated.Remove(start, end - start);
+
+        string? block = null;
+        if (value is System.Collections.IDictionary tableValue)
+            block = $"[{fullName}]{newline}{FormatTomlTableBody(tableValue, newline)}";
+        else if (value is System.Collections.IList { Count: > 0 } list && list.Cast<object?>().All(item => item is System.Collections.IDictionary))
+            block = string.Concat(list.Cast<System.Collections.IDictionary>()
+                .Select(element => $"[[{fullName}]]{newline}{FormatTomlTableBody(element, newline)}{newline}"));
+
+        if (block is null)
+        {
+            var patch = (parentName.Length == 0 ? string.Empty : $"[{parentName}]\n") + $"{FormatTomlKey(leaf)} = {FormatTomlValue(value)}\n";
+            updated = MergeToml(updated, patch, overwriteExisting: true);
+        }
+        else
+        {
+            // Blocks go where the old tables were, else at the end; a table must not precede root keys it could capture.
+            var shift = removals.Where(range => firstRemovedTable is { } first && range.Start < first).Sum(range => range.End - range.Start);
+            var insertAt = firstRemovedTable is { } offset ? offset - shift : updated.Length;
+            var prefix = insertAt > 0 && updated[insertAt - 1] != '\n' ? newline + newline
+                : insertAt > 1 && updated[insertAt - 2] != '\n' ? newline : string.Empty;
+            // Keep exactly one blank line after the block: reuse the one already there.
+            var suffix = insertAt < updated.Length && updated[insertAt] is not ('\n' or '\r') ? newline : string.Empty;
+            updated = updated.Insert(insertAt, prefix + block.TrimEnd('\r', '\n') + newline + suffix);
+        }
+
+        SyntaxParser.ParseStrict(updated);
+        if (updated != current) File.WriteAllText(normalizedConfigPath, updated);
+    }
+
+    private static bool SameTomlName(string left, string right) =>
+        string.Equals(
+            string.Join('.', left.Split('.', StringSplitOptions.TrimEntries).Select(part => part.Trim('"'))),
+            string.Join('.', right.Split('.', StringSplitOptions.TrimEntries).Select(part => part.Trim('"'))),
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatTomlTableBody(System.Collections.IDictionary table, string newline) =>
+        string.Concat(table.Keys.Cast<object>().Select(key =>
+            $"{FormatTomlKey(Convert.ToString(key, System.Globalization.CultureInfo.InvariantCulture)!)} = {FormatTomlValue(table[key])}{newline}"));
+
+    private static string FormatTomlKey(string key) =>
+        key.Length > 0 && key.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-') ? key : QuoteTomlString(key);
+
     private static string FormatTomlValue(object? value)
     {
         return value switch
@@ -646,12 +763,22 @@ public class ConfigManager(string? coreConfigPath = null)
             string text => QuoteTomlString(text),
             bool boolean => boolean ? "true" : "false",
             sbyte or byte or short or ushort or int or uint or long or ulong => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
-            float or double or decimal => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
+            float or double or decimal => FormatTomlFloat(Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture)),
             Enum enumValue => QuoteTomlString(enumValue.ToString()),
+            System.Collections.IDictionary table => "{ " + string.Join(", ", table.Keys.Cast<object>().Select(key =>
+                $"{FormatTomlKey(Convert.ToString(key, System.Globalization.CultureInfo.InvariantCulture)!)} = {FormatTomlValue(table[key])}")) + " }",
             System.Collections.IEnumerable items when value is not string => FormatTomlArray(items),
             _ => QuoteTomlString(value.ToString() ?? string.Empty)
         };
     }
+
+    // A whole number written as "1" would turn a float setting into an integer on the next load.
+    private static string FormatTomlFloat(double value) =>
+        double.IsNaN(value) ? "nan"
+        : double.IsPositiveInfinity(value) ? "inf"
+        : double.IsNegativeInfinity(value) ? "-inf"
+        : value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) is var text &&
+          text.IndexOfAny(['.', 'E', 'e']) < 0 ? text + ".0" : value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 
     private static string FormatTomlArray(System.Collections.IEnumerable items)
     {

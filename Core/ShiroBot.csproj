@@ -70,6 +70,11 @@
             <_Parameter1>ShiroBot.RuntimeIdentifier</_Parameter1>
             <_Parameter2>$(RuntimeIdentifier)</_Parameter2>
         </AssemblyAttribute>
+        <!-- Release builds record when they were built; local builds skip it so they stay incremental. -->
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(ContinuousIntegrationBuild)' == 'true'">
+            <_Parameter1>ShiroBot.BuildTimeUtc</_Parameter1>
+            <_Parameter2>$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))</_Parameter2>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <Target Name="AcquireDashboardAssets" BeforeTargets="PrepareForBuild">
