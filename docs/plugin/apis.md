@@ -52,11 +52,15 @@ if (groupApi is not null && long.TryParse(groupId, out var qqGroupId))
 
 事件处理期间，`Context` 自动指向事件来源适配器。定时任务或 Dashboard Action 没有事件上下文时，可显式指定：
 
+`groupId` 和 `userId` 只指定会话，不用于选择适配器。Milky 的平台 ID 为 `qq`，官方 QQ 为 `qq-official`；后台主动发送时应选择对应平台，否则使用宿主默认适配器。
+
 ```csharp
 using (Context.UsePlatform("qq"))
 {
     await Context.Message.SendGroupMessageAsync(groupId, "定时提醒");
 }
 ```
+
+宿主 master 分支（v0.9.6 之后）中，`ReplyAsync(message, ...)` 和 `QuoteReplyAsync(message, ...)` 自动使用 `message.Platform` 对应的适配器，也适用于后台回复保存的消息。来源适配器未加载时抛出异常，不会改用默认适配器。宿主 v0.9.6 及更早版本仍需先使用 `Context.UsePlatform(message.Platform)`。仅传入 Channel 和消息 ID 的删除操作也需自行选择原发送平台。
 
 `Context.Platform` 可读取当前平台 ID。调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。

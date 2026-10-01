@@ -560,6 +560,73 @@ if (!qqAdapter.MessageService.Messages.SequenceEqual(["qq-message"]) ||
 
 Console.WriteLine("Multi-adapter message routing verification passed.");
 
+{
+    var replies = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
+    var milky = new VerificationAdapter("qq");
+    var official = new VerificationAdapter("qq-official");
+    replies.RegisterAdapter(milky);
+    replies.RegisterAdapter(official);
+    var messageContext = replies.CreatePluginMessageContext("reply-routing");
+    MessageEvent Incoming(string platform, Channel channel) => new()
+    {
+        Platform = platform, MessageId = "same-message-id", Channel = channel,
+        Sender = new User("sender"), Segments = []
+    };
+    var group = Incoming("qq-official", Channel.Group("same-channel-id"));
+    var direct = Incoming("qq", Channel.Direct("same-channel-id"));
+    var image = new ImageSegment("https://example.com/a.png");
+    milky.MessageService.BeforeSend = () => CheckReplyScopeAsync("qq");
+    official.MessageService.BeforeSend = () => CheckReplyScopeAsync("qq-official");
+    async Task CheckReplyScopeAsync(string platform)
+    {
+        await Task.Yield();
+        if (AdapterExecutionContext.Current != platform)
+            throw new InvalidOperationException("Reply lost its source adapter scope across an await.");
+    }
+
+    await messageContext.ReplyAsync(group, "background-reply", image);
+    using (replies.UsePlatform("qq"))
+    {
+        await messageContext.ReplyAsync(group, new TextSegment("segments-reply"));
+        await messageContext.QuoteReplyAsync(group, "quoted-text", image);
+        await messageContext.QuoteReplyAsync(group, new TextSegment("quoted-segments"));
+        if (replies.Platform != "qq") throw new InvalidOperationException("Reply changed the caller's adapter scope.");
+    }
+    await Task.WhenAll(
+        messageContext.ReplyAsync(direct, "milky-direct"),
+        messageContext.ReplyAsync(group, "official-group"));
+    if (!official.MessageService.Messages.SequenceEqual(
+            ["background-reply", "segments-reply", "quoted-text", "quoted-segments", "official-group"]) ||
+        !milky.MessageService.Messages.SequenceEqual(["milky-direct"]) ||
+        official.MessageService.Sent.Any(sent => sent.Channel != group.Channel) ||
+        milky.MessageService.Sent.Single().Channel != direct.Channel ||
+        !official.MessageService.Sent[0].Segments.SequenceEqual([new TextSegment("background-reply"), image]) ||
+        !official.MessageService.Sent[2].Segments.SequenceEqual(
+            [new QuoteSegment(group.MessageId), new TextSegment("quoted-text"), image]) ||
+        !official.MessageService.Sent[3].Segments.SequenceEqual(
+            [new QuoteSegment(group.MessageId), new TextSegment("quoted-segments")]))
+        throw new InvalidOperationException("Automatic reply routing changed the target, quote or message segments.");
+
+    try
+    {
+        await messageContext.ReplyAsync(group with { Platform = "missing" }, "must-not-send");
+        throw new InvalidOperationException("Missing source adapter silently used the default adapter.");
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("not loaded")) { }
+    official.MessageService.BeforeSend = () => Task.FromException(new IOException("send failed"));
+    using (replies.UsePlatform("qq"))
+    {
+        try { await messageContext.QuoteReplyAsync(group, "failed-reply"); throw new InvalidOperationException("Send failure was swallowed."); }
+        catch (IOException) { }
+        if (replies.Platform != "qq") throw new InvalidOperationException("Failed reply leaked its adapter scope.");
+        await messageContext.SendGroupMessageAsync("same-channel-id", "explicit-send");
+    }
+    if (!milky.MessageService.Messages.SequenceEqual(["milky-direct", "explicit-send"]) ||
+        official.MessageService.Messages.Count != 5 || AdapterExecutionContext.Current is not null)
+        throw new InvalidOperationException("Reply routing affected later sends or sent through a missing adapter.");
+    Console.WriteLine("Automatic source-platform reply and quote routing verification passed.");
+}
+
 var explicitPlatformDirectory = Path.Combine(
     Path.GetTempPath(),
     "ShiroBot.Verification",
@@ -1564,10 +1631,17 @@ internal sealed class VerificationAdapter(string platform) : IBotAdapter
 internal sealed class VerificationMessageService : IMessageService
 {
     public List<string> Messages { get; } = [];
-    public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)
+    public List<(Channel Channel, IReadOnlyList<MessageSegment> Segments)> Sent { get; } = [];
+    public Func<Task>? BeforeSend { get; set; }
+    public async Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)
     {
-        Messages.Add(string.Concat(segments.OfType<TextSegment>().Select(segment => segment.Text)));
-        return Task.FromResult(new SentMessage("sent"));
+        if (BeforeSend is { } beforeSend) await beforeSend();
+        lock (Messages)
+        {
+            Messages.Add(string.Concat(segments.OfType<TextSegment>().Select(segment => segment.Text)));
+            Sent.Add((channel, segments.ToArray()));
+        }
+        return new SentMessage("sent");
     }
 }
 

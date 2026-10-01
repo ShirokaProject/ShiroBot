@@ -20,7 +20,7 @@ internal sealed class BotContext
         Channel = new SwitchableChannelService(this);
         User = new SwitchableUserService(this);
         ReplySubscriptions = new ReplySubscriptionManager();
-        Message = new MessageContext(GetMessageService, () => Platform, ReplySubscriptions, "__host");
+        Message = new MessageContext(GetMessageService, () => Platform, UsePlatform, ReplySubscriptions, "__host");
         Updater = new UpdaterContext();
         WebHost = webHost;
         _ownerList = ownerList;
@@ -47,7 +47,7 @@ internal sealed class BotContext
     internal ReplySubscriptionManager ReplySubscriptions { get; }
 
     internal IMessageContext CreatePluginMessageContext(string pluginName) =>
-        new MessageContext(GetMessageService, () => Platform, ReplySubscriptions, pluginName);
+        new MessageContext(GetMessageService, () => Platform, UsePlatform, ReplySubscriptions, pluginName);
 
     internal TService? GetAdapterExtension<TService>() where TService : class =>
         CurrentAdapter?.GetExtension<TService>();
