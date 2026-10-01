@@ -26,9 +26,10 @@ jobs:
           set -euo pipefail
           prop() { sed -n "s/.*<$1>\([^<]*\)<.*/\1/p" Directory.Build.props | head -1; }
           api_version="$(sed -n 's/.*CurrentVersion = "\([^"]*\)".*/\1/p' SDK/Core/ShiroBotApi.cs)"
-          row="| $(prop ShiroBotProductVersion) | ${api_version} | $(prop ShiroBotSdkAbiVersion) | $(prop ShiroBotQqModelAbiVersion) | $(prop ShiroBotDiscordModelAbiVersion) | $(prop ShiroBotTelegramModelAbiVersion) |"
+          echo "SHIROBOT_PRODUCT_VERSION=$(prop ShiroBotProductVersion)" >> "$GITHUB_ENV"
+          row="| ${api_version} | $(prop ShiroBotSdkAbiVersion) | $(prop ShiroBotQqModelAbiVersion) | $(prop ShiroBotDiscordModelAbiVersion) | $(prop ShiroBotTelegramModelAbiVersion) |"
           for file in SDK/README.md docs/plugin/api-compatibility.md; do
-            if ! grep -Fqx -- "$row" "$file"; then
+            if ! grep -F -- "$row" "$file" > /dev/null; then
               echo "::error file=$file::Missing SDK/ABI version map row: $row"
               exit 1
             fi
@@ -48,12 +49,12 @@ jobs:
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
           dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
-          unzip -p artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
+          unzip -p artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
           test "$(find artifacts/nuget -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 2
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.0.9.5.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
@@ -66,10 +67,11 @@ jobs:
               <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
             </PropertyGroup>
             <ItemGroup>
-              <PackageReference Include="ShiroBot.SDK" Version="0.9.5" />
+              <PackageReference Include="ShiroBot.SDK" Version="__SHIROBOT_VERSION__" />
             </ItemGroup>
           </Project>
           EOF
+          sed -i "s/__SHIROBOT_VERSION__/${SHIROBOT_PRODUCT_VERSION}/g" "$RUNNER_TEMP/package-smoke/Smoke.csproj"
           cat > "$RUNNER_TEMP/package-smoke/Smoke.cs" <<'EOF'
           using ShiroBot.SDK.Core;
           using ShiroBot.SDK.Plugin;
@@ -121,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           template_root="$RUNNER_TEMP/template-smoke"
-          dotnet new install artifacts/nuget/ShiroBot.Templates.0.9.5.nupkg --force
+          dotnet new install artifacts/nuget/ShiroBot.Templates.${SHIROBOT_PRODUCT_VERSION}.nupkg --force
           dotnet new shirobot-plugin -n TemplatePlugin --platform qq -o "$template_root/TemplatePlugin"
           dotnet new shirobot-adapter -n TemplateAdapter --platform discord -o "$template_root/TemplateAdapter"
           test -f "$template_root/TemplatePlugin/.github/workflows/release.yml"
@@ -198,9 +200,9 @@ jobs:
             http://127.0.0.1:17081/api/v1/models/list \
             -o "$response_path"
 
-          jq -e '
+          jq -e --arg version "$SHIROBOT_PRODUCT_VERSION" '
             length == 3 and
-            all(.[]; .version == "0.9.5" and .path == null and .source == "built_in" and .reloadable == false) and
+            all(.[]; .version == $version and .path == null and .source == "built_in" and .reloadable == false) and
             ([.[] | {id, assembly}] | sort_by(.id)) == [
               {id: "shirobot.model.discord", assembly: "ShiroBot.Model.Discord"},
               {id: "shirobot.model.qq", assembly: "ShiroBot.Model.QQ"},
