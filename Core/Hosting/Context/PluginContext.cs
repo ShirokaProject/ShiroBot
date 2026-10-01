@@ -16,6 +16,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
     private bool _configWatchesDisposed;
 
     public string Platform => BotContext.Platform;
+    public string? AdapterId => BotContext.AdapterId;
     public IMessageContext Message { get; }
     public IChannelService Channel => BotContext.Channel;
     public IUserService User => BotContext.User;
@@ -33,6 +34,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
         BotContext.GetAdapterExtension<TService>();
 
     public IDisposable UsePlatform(string platform) => BotContext.UsePlatform(platform);
+    public IDisposable UseAdapter(string adapterId) => BotContext.UseAdapter(adapterId);
 
     private BotContext BotContext { get; }
 

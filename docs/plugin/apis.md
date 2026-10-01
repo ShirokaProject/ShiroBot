@@ -48,19 +48,25 @@ if (groupApi is not null && long.TryParse(groupId, out var qqGroupId))
 
 可选扩展未实现时返回 `null`。例如 Milky 可以实现 `IQGroupApi`，QQ 官方适配器可以实现 `IQOfficialMessageApi`。分别参见 [QQ 特有能力](/plugin/qq-model)与[官方 Markdown 与按钮](/plugin/qq-official)。
 
-## 后台任务选择平台
+## 适配器实例与后台发送
 
-事件处理期间，`Context` 自动指向事件来源适配器。定时任务或 Dashboard Action 没有事件上下文时，可显式指定：
+事件处理期间，`Context` 自动绑定来源适配器实例，绑定跨 `await` 保留。`Context.Platform` 是平台类型，`Context.AdapterId` 是当前实例 ID；`message.SelfId` 是平台账号 ID。这三个值含义不同，即使两个实例的平台和账号相同，也按实例 ID 分别路由。
 
-`groupId` 和 `userId` 只指定会话，不用于选择适配器。Milky 的平台 ID 为 `qq`，官方 QQ 为 `qq-official`；后台主动发送时应选择对应平台，否则使用宿主默认适配器。
+`groupId` 和 `userId` 只指定会话，不用于选择适配器。定时任务或 Dashboard Action 没有事件上下文时，用实例 ID 指定目标，否则使用宿主默认适配器：
 
 ```csharp
-using (Context.UsePlatform("qq"))
+using (Context.UseAdapter("milky"))
 {
     await Context.Message.SendGroupMessageAsync(groupId, "定时提醒");
 }
 ```
 
-宿主 master 分支（v0.9.6 之后）中，`ReplyAsync(message, ...)` 和 `QuoteReplyAsync(message, ...)` 自动使用 `message.Platform` 对应的适配器，也适用于后台回复保存的消息。来源适配器未加载时抛出异常，不会改用默认适配器。宿主 v0.9.6 及更早版本仍需先使用 `Context.UsePlatform(message.Platform)`。仅传入 Channel 和消息 ID 的删除操作也需自行选择原发送平台。
+当前每个适配器包对应一个实例，实例 ID 使用其 `BotAdapter` 声明的 ID，也是 Dashboard 中的适配器 ID，例如 `milky`、`qq-official`。不同 ID 的适配器可以使用相同 Platform；相同 ID 不允许重复加载。这次改动不包含同一个适配器包的多配置实例安装。
 
-`Context.Platform` 可读取当前平台 ID。调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。
+宿主 master 分支（v0.9.6 之后）中，入站事件的 `AdapterId` 由宿主写入。`ReplyAsync(message, ...)` 和 `QuoteReplyAsync(message, ...)` 自动使用这个来源实例，也适用于后台回复保存的消息。来源实例已卸载时抛出异常，不会切换到其他实例；回复订阅同样按实例隔离。
+
+`UsePlatform("qq")` 仍可用于该平台只有一个运行实例的情况；多个实例时抛出异常，需使用 `UseAdapter(id)`。自行构造或旧事件没有 `AdapterId` 时，自动回复也按这个规则回退到 Platform。仅传入 Channel 和消息 ID 的发送、删除操作需自行选择目标实例。
+
+这些实例选择接口尚未包含在宿主和 SDK v0.9.6 的发布包中。使用 v0.9.6 时，后台发送或回复仍需先使用 `Context.UsePlatform(message.Platform)`。
+
+调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。

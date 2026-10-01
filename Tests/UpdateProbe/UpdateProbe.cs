@@ -9,6 +9,11 @@ namespace ShiroBot.UpdateProbe;
 
 internal static class BuildInfo
 {
+#if PROBE_SECOND_INSTANCE
+    public const string AdapterId = "update-probe.second-adapter";
+#else
+    public const string AdapterId = "update-probe.adapter";
+#endif
 #if PROBE_V2
     public const string Version = "2.0.0";
 #else
@@ -29,7 +34,7 @@ public sealed class ProbePlugin : PluginBase
     }
 }
 
-[BotAdapter("update-probe.adapter", Name = "Update integration adapter", Version = BuildInfo.Version,
+[BotAdapter(BuildInfo.AdapterId, Name = "Update integration adapter", Version = BuildInfo.Version,
     GithubRepo = "update-integration/adapter", Protocol = "update-probe")]
 public sealed class ProbeAdapter : IBotAdapter
 {

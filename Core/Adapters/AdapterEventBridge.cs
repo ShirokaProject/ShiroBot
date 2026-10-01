@@ -12,11 +12,13 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
     private const int DefaultQueueCapacity = 256;
 
     public IAsyncDisposable Bridge(
+        string adapterId,
         string platform,
         IEventService eventService,
         Func<MessageEvent, Task> directMessageHandler)
     {
         var subscription = new Subscription(
+            adapterId,
             platform,
             eventDispatcher,
             directMessageHandler,
@@ -31,6 +33,7 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
     {
         private const int MaxConcurrentDispatches = 8;
 
+        private readonly string _adapterId;
         private readonly string _platform;
         private readonly HostEventDispatcher _eventDispatcher;
         private readonly Func<MessageEvent, Task> _directMessageHandler;
@@ -44,11 +47,13 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
         private bool _accepting = true;
 
         public Subscription(
+            string adapterId,
             string platform,
             HostEventDispatcher eventDispatcher,
             Func<MessageEvent, Task> directMessageHandler,
             int capacity)
         {
+            _adapterId = adapterId;
             _platform = platform;
             _eventDispatcher = eventDispatcher;
             _directMessageHandler = directMessageHandler;
@@ -132,7 +137,9 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
         {
             try
             {
-                using var _ = AdapterExecutionContext.Enter(_platform);
+                // Routing identity belongs to the host, not adapter-supplied event data.
+                botEvent = botEvent with { AdapterId = _adapterId, Platform = _platform };
+                using var _ = AdapterExecutionContext.Enter(_adapterId);
                 await (botEvent is MessageEvent { IsDirect: true } directMessage
                     ? _directMessageHandler(directMessage)
                     : _eventDispatcher.PublishAsync(botEvent)).ConfigureAwait(false);

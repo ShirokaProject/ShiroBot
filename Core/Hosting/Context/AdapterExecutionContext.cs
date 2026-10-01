@@ -2,14 +2,14 @@ namespace ShiroBot.Hosting.Context;
 
 internal static class AdapterExecutionContext
 {
-    private static readonly AsyncLocal<string?> CurrentPlatform = new();
+    private static readonly AsyncLocal<string?> CurrentAdapterId = new();
 
-    public static string? Current => CurrentPlatform.Value;
+    public static string? Current => CurrentAdapterId.Value;
 
-    public static IDisposable Enter(string platform)
+    public static IDisposable Enter(string adapterId)
     {
-        var previous = CurrentPlatform.Value;
-        CurrentPlatform.Value = platform;
+        var previous = CurrentAdapterId.Value;
+        CurrentAdapterId.Value = adapterId;
         return new Scope(previous);
     }
 
@@ -21,7 +21,7 @@ internal static class AdapterExecutionContext
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            CurrentPlatform.Value = _previous;
+            CurrentAdapterId.Value = _previous;
             _previous = null;
         }
     }

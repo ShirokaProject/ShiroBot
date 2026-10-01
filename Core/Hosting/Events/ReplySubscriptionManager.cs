@@ -16,7 +16,8 @@ internal sealed class ReplySubscriptionManager
         string messageId,
         TimeSpan duration,
         ReplyMessageHandler handler,
-        bool disposeOnReply = true)
+        bool disposeOnReply = true,
+        string? adapterId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
@@ -26,7 +27,7 @@ internal sealed class ReplySubscriptionManager
         var expiresAt = duration == Timeout.InfiniteTimeSpan
             ? (DateTimeOffset?)null
             : DateTimeOffset.UtcNow.Add(duration);
-        var subscription = new ReplySubscription(id, ownerId, platform, messageId, expiresAt, handler, disposeOnReply, Remove);
+        var subscription = new ReplySubscription(id, ownerId, platform, adapterId, messageId, expiresAt, handler, disposeOnReply, Remove);
         _subscriptions[id] = subscription;
         return subscription;
     }
@@ -60,7 +61,8 @@ internal sealed class ReplySubscriptionManager
             }
 
             if (subscription.MessageId == quote.MessageId &&
-                string.Equals(subscription.Platform, message.Platform, StringComparison.OrdinalIgnoreCase))
+                string.Equals(subscription.Platform, message.Platform, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(subscription.AdapterId, message.AdapterId, StringComparison.OrdinalIgnoreCase))
             {
                 matches.Add(subscription);
             }
@@ -90,6 +92,7 @@ internal sealed class ReplySubscriptionManager
         Guid id,
         string ownerId,
         string platform,
+        string? adapterId,
         string messageId,
         DateTimeOffset? expiresAt,
         ReplyMessageHandler handler,
@@ -100,6 +103,7 @@ internal sealed class ReplySubscriptionManager
 
         public string OwnerId { get; } = ownerId;
         public string Platform { get; } = platform;
+        public string? AdapterId { get; } = adapterId;
         public string MessageId { get; } = messageId;
         public DateTimeOffset? ExpiresAt { get; } = expiresAt;
         public ReplyMessageHandler Handler { get; } = handler;

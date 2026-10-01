@@ -12,22 +12,25 @@ internal sealed class BotContext
     private IReadOnlyList<string> _adminList;
     private IRenderContext? _renderer;
     private readonly Lock _adapterLock = new();
-    private IBotAdapter[] _adapters = [];
+    private AdapterRegistration[] _adapters = [];
+    private sealed record AdapterRegistration(string Id, IBotAdapter Adapter);
 
     public BotContext(IBotAdapter? adapter, IReadOnlyList<string> ownerList, IReadOnlyList<string> adminList, IWebHostContext webHost)
     {
-        if (adapter is not null) _adapters = [adapter];
+        if (adapter is not null) _adapters = [new(adapter.Platform, adapter)];
         Channel = new SwitchableChannelService(this);
         User = new SwitchableUserService(this);
         ReplySubscriptions = new ReplySubscriptionManager();
-        Message = new MessageContext(GetMessageService, () => Platform, UsePlatform, ReplySubscriptions, "__host");
+        Message = new MessageContext(GetMessageService, () => Platform, () => AdapterId, UseMessageSource, ReplySubscriptions, "__host");
         Updater = new UpdaterContext();
         WebHost = webHost;
         _ownerList = ownerList;
         _adminList = adminList;
     }
 
-    public string Platform => CurrentAdapter?.Platform ?? "none";
+    public string Platform => CurrentRegistration?.Adapter.Platform ?? "none";
+    public string? AdapterId => CurrentRegistration?.Id;
+    private IBotAdapter? CurrentAdapter => CurrentRegistration?.Adapter;
     // ReSharper disable once InconsistentlySynchronizedField
     public bool HasAdapter => Volatile.Read(ref _adapters).Length > 0;
     public IMessageContext Message { get; }
@@ -47,7 +50,7 @@ internal sealed class BotContext
     internal ReplySubscriptionManager ReplySubscriptions { get; }
 
     internal IMessageContext CreatePluginMessageContext(string pluginName) =>
-        new MessageContext(GetMessageService, () => Platform, UsePlatform, ReplySubscriptions, pluginName);
+        new MessageContext(GetMessageService, () => Platform, () => AdapterId, UseMessageSource, ReplySubscriptions, pluginName);
 
     internal TService? GetAdapterExtension<TService>() where TService : class =>
         CurrentAdapter?.GetExtension<TService>();
@@ -55,25 +58,37 @@ internal sealed class BotContext
     internal IDisposable UsePlatform(string platform)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(platform);
-        var adapters = Volatile.Read(ref _adapters);
-        if (!adapters.Any(adapter => string.Equals(
-                adapter.Platform,
-                platform,
-                StringComparison.OrdinalIgnoreCase)))
-        {
+        var matches = Volatile.Read(ref _adapters).Where(entry => string.Equals(
+            entry.Adapter.Platform, platform, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (matches.Length == 0)
             throw new InvalidOperationException($"Adapter platform '{platform}' is not loaded.");
-        }
-
-        return AdapterExecutionContext.Enter(platform);
+        if (matches.Length > 1)
+            throw new InvalidOperationException($"Adapter platform '{platform}' has multiple instances; select one with UseAdapter(id).");
+        return AdapterExecutionContext.Enter(matches[0].Id);
     }
 
-    internal void RegisterAdapter(IBotAdapter adapter)
+    internal IDisposable UseAdapter(string adapterId)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(adapterId);
+        if (!Volatile.Read(ref _adapters).Any(entry => string.Equals(entry.Id, adapterId, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"Adapter instance '{adapterId}' is not loaded.");
+        return AdapterExecutionContext.Enter(adapterId);
+    }
+
+    private IDisposable UseMessageSource(MessageEvent message) =>
+        message.AdapterId is { } id ? UseAdapter(id) : UsePlatform(message.Platform);
+
+    internal void RegisterAdapter(IBotAdapter adapter, string? adapterId = null)
+    {
+        adapterId ??= adapter.Platform;
+        ArgumentException.ThrowIfNullOrWhiteSpace(adapterId);
         lock (_adapterLock)
         {
             var adapters = Volatile.Read(ref _adapters);
-            if (adapters.Contains(adapter)) return;
-            Volatile.Write(ref _adapters, [.. adapters, adapter]);
+            if (adapters.Any(entry => ReferenceEquals(entry.Adapter, adapter))) return;
+            if (adapters.Any(entry => string.Equals(entry.Id, adapterId, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException($"Adapter instance '{adapterId}' is already loaded.");
+            Volatile.Write(ref _adapters, [.. adapters, new AdapterRegistration(adapterId, adapter)]);
         }
     }
 
@@ -82,20 +97,19 @@ internal sealed class BotContext
         lock (_adapterLock)
         {
             var adapters = Volatile.Read(ref _adapters);
-            Volatile.Write(ref _adapters, adapters.Where(candidate => !ReferenceEquals(candidate, adapter)).ToArray());
+            Volatile.Write(ref _adapters, adapters.Where(entry => !ReferenceEquals(entry.Adapter, adapter)).ToArray());
         }
     }
 
-    private IBotAdapter? CurrentAdapter
+    private AdapterRegistration? CurrentRegistration
     {
         get
         {
-            // ReSharper disable once InconsistentlySynchronizedField
             var adapters = Volatile.Read(ref _adapters);
-            var platform = AdapterExecutionContext.Current;
-            return platform is null
-                ? adapters.FirstOrDefault()
-                : adapters.FirstOrDefault(adapter => string.Equals(adapter.Platform, platform, StringComparison.OrdinalIgnoreCase));
+            var id = AdapterExecutionContext.Current;
+            return id is null ? adapters.FirstOrDefault()
+                : adapters.FirstOrDefault(entry => string.Equals(entry.Id, id, StringComparison.OrdinalIgnoreCase))
+                  ?? throw new InvalidOperationException($"Adapter instance '{id}' is not loaded.");
         }
     }
 

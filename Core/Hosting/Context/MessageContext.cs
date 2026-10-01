@@ -8,7 +8,8 @@ namespace ShiroBot.Hosting.Context;
 internal sealed class MessageContext(
     Func<IMessageService> getMessageService,
     Func<string> getPlatform,
-    Func<string, IDisposable> usePlatform,
+    Func<string?> getAdapterId,
+    Func<MessageEvent, IDisposable> useMessageSource,
     ReplySubscriptionManager replySubscriptions,
     string ownerId) : IMessageContext
 {
@@ -17,7 +18,7 @@ internal sealed class MessageContext(
         TimeSpan duration,
         ReplyMessageHandler handler,
         bool disposeOnReply = true) =>
-        replySubscriptions.Subscribe(ownerId, getPlatform(), messageId, duration, handler, disposeOnReply);
+        replySubscriptions.Subscribe(ownerId, getPlatform(), messageId, duration, handler, disposeOnReply, getAdapterId());
 
     public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments) =>
         getMessageService().SendMessageAsync(channel, segments);
@@ -37,7 +38,7 @@ internal sealed class MessageContext(
     private async Task<SentMessage> SendReplyAsync(MessageEvent message, IReadOnlyList<MessageSegment> segments)
     {
         ArgumentNullException.ThrowIfNull(message);
-        using var scope = usePlatform(message.Platform);
+        using var scope = useMessageSource(message);
         return await getMessageService().SendMessageAsync(message.Channel, segments).ConfigureAwait(false);
     }
 

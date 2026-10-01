@@ -627,6 +627,91 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     Console.WriteLine("Automatic source-platform reply and quote routing verification passed.");
 }
 
+{
+    var instances = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
+    var first = new VerificationAdapter("qq");
+    var second = new VerificationAdapter("qq");
+    instances.RegisterAdapter(first, "first-qq");
+    instances.RegisterAdapter(second, "second-qq");
+    AssertThrows<InvalidOperationException>(() => instances.UsePlatform("qq"));
+    AssertThrows<InvalidOperationException>(() => instances.UseAdapter("missing"));
+    AssertThrows<InvalidOperationException>(() => instances.RegisterAdapter(new VerificationAdapter("discord"), "first-qq"));
+    var directory = Path.Combine(Path.GetTempPath(), "ShiroBot.InstanceVerification", Guid.NewGuid().ToString("N"));
+    using var plugin = new PluginContext(instances, "instance-routing", directory, new HostLogHub(), new PluginServiceRegistry());
+    IBotContext context = plugin;
+    var message = new MessageEvent
+    {
+        Platform = "qq", SelfId = "same-account", AdapterId = "second-qq", MessageId = "same-message",
+        Channel = Channel.Direct("same-channel"), Sender = new User("sender"), Segments = []
+    };
+    async Task InInstanceAsync(string id, string text)
+    {
+        using var scope = context.UseAdapter(id);
+        await Task.Yield();
+        if (context.AdapterId != id || context.Platform != "qq")
+            throw new InvalidOperationException("Concurrent instance selection leaked across async calls.");
+        await context.Message.SendDirectMessageAsync("same-channel", text);
+    }
+    await Task.WhenAll(InInstanceAsync("first-qq", "first-send"), InInstanceAsync("second-qq", "second-send"));
+    await context.Message.ReplyAsync(message, "background-second-reply");
+    using (context.UseAdapter("first-qq"))
+    {
+        await context.Message.QuoteReplyAsync(message, "second-quote");
+        if (context.AdapterId != "first-qq") throw new InvalidOperationException("Reply did not restore the original instance.");
+    }
+    try { await context.Message.ReplyAsync(message with { AdapterId = null }, "ambiguous"); throw new Exception("Ambiguous reply was sent."); }
+    catch (InvalidOperationException) { }
+
+    var firstReplies = 0;
+    var secondReplies = 0;
+    using (context.UseAdapter("first-qq"))
+        context.Message.SubscribeReply("same-message", TimeSpan.FromMinutes(1), _ => { firstReplies++; return Task.CompletedTask; });
+    using (context.UseAdapter("second-qq"))
+        context.Message.SubscribeReply("same-message", TimeSpan.FromMinutes(1), _ => { secondReplies++; return Task.CompletedTask; });
+    await instances.ReplySubscriptions.PublishAsync(message with { Segments = [new QuoteSegment("same-message")] });
+    if (firstReplies != 0 || secondReplies != 1) throw new InvalidOperationException("Reply subscription crossed adapter instances.");
+
+    var dispatcher = new HostEventDispatcher(new Lock(), instances.ReplySubscriptions,
+        new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
+    var bridge = new AdapterEventBridge(dispatcher);
+    MessageEvent? received = null;
+    await using (var subscription = bridge.Bridge("first-qq", "qq", first.Event, async incoming =>
+    {
+        received = incoming;
+        if (context.AdapterId != "first-qq") throw new InvalidOperationException("Event scope did not select its source instance.");
+        await context.Message.ReplyAsync(incoming, "first-event-reply");
+        await instances.ReplySubscriptions.PublishAsync(incoming);
+    }))
+    {
+        await ((VerificationEventService)first.Event).RaiseAsync(message with
+        {
+            Platform = "forged", AdapterId = "second-qq", Segments = [new QuoteSegment("same-message")]
+        });
+    }
+    if (received is not { AdapterId: "first-qq", Platform: "qq", SelfId: "same-account" } || firstReplies != 1 || secondReplies != 1)
+        throw new InvalidOperationException("Event ingress trusted adapter-supplied identity or crossed reply subscriptions.");
+    instances.UnregisterAdapter(second);
+    try { await context.Message.ReplyAsync(message, "must-not-fallback"); throw new Exception("Unloaded source fell back to another instance."); }
+    catch (InvalidOperationException) { }
+    using (context.UsePlatform("qq")) await context.Message.SendDirectMessageAsync("same-channel", "single-instance-send");
+    if (!first.MessageService.Messages.SequenceEqual(["first-send", "first-event-reply", "single-instance-send"]) ||
+        !second.MessageService.Messages.SequenceEqual(["second-send", "background-second-reply", "second-quote"]) ||
+        AdapterExecutionContext.Current is not null)
+        throw new InvalidOperationException("Identical-platform/account instances routed messages incorrectly.");
+    using (context.UseAdapter("first-qq"))
+    {
+        instances.UnregisterAdapter(first);
+        await AssertMissingBoundInstanceAsync();
+    }
+    async Task AssertMissingBoundInstanceAsync()
+    {
+        try { await context.Message.SendDirectMessageAsync("same-channel", "removed"); throw new Exception("Stale scope sent a message."); }
+        catch (InvalidOperationException) { }
+    }
+    Directory.Delete(directory, recursive: true);
+    Console.WriteLine("Same-platform/account instance routing, event identity and reply isolation verification passed.");
+}
+
 var explicitPlatformDirectory = Path.Combine(
     Path.GetTempPath(),
     "ShiroBot.Verification",
@@ -918,7 +1003,7 @@ try
         "concurrent-dispatch",
         eventLogHub);
     eventDispatcher.RegisterPlugin(concurrentDispatchHandle);
-    var bridgeSubscription = eventBridge.Bridge("verification", queuedEventService, _ => Task.CompletedTask);
+    var bridgeSubscription = eventBridge.Bridge("verification", "verification", queuedEventService, _ => Task.CompletedTask);
     await queuedEventService.RaiseAsync(CreateMemberJoinedEvent("first"));
     await concurrentDispatchPlugin.FirstDispatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
     await queuedEventService.RaiseAsync(CreateMemberJoinedEvent("second"));

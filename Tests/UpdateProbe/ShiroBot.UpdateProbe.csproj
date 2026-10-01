@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <DefineConstants Condition="'$(ProbeVersion)' == '2'">$(DefineConstants);PROBE_V2</DefineConstants>
+    <DefineConstants Condition="'$(ProbeInstance)' == 'second'">$(DefineConstants);PROBE_SECOND_INSTANCE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../SDK/ShiroBot.SDK.csproj" Private="false" />

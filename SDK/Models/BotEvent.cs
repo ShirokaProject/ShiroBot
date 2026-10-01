@@ -8,6 +8,9 @@ public abstract record BotEvent
     /// <summary>产生事件的平台 ID（如 "qq"、"discord"、"telegram"），与适配器的 Platform 一致。</summary>
     public required string Platform { get; init; }
 
+    /// <summary>来源适配器实例 ID，由宿主在事件入站时写入。旧宿主或自行构造的事件可能为空。</summary>
+    public string? AdapterId { get; init; }
+
     /// <summary>收到事件的机器人自身账号 ID。</summary>
     public string? SelfId { get; init; }
 

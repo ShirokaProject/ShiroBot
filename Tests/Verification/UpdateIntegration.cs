@@ -74,6 +74,17 @@ internal static class UpdateIntegration
                 host.AssertAdapterVersion("1.0.0");
                 return new { dll_uploaded = true, preview_confirmed = true, running_version = "1.0.0" };
             });
+            await Scenario("same-platform-adapters", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "second", "ShiroBot.UpdateProbe.dll"));
+                var loaded = host.Adapters.GetSnapshot();
+                Check(loaded.Count == 2 && loaded.All(adapter => adapter.Loaded && adapter.Platform == "update-probe"),
+                    "Two different adapter IDs on the same platform did not load simultaneously");
+                await host.Adapters.StopByIdAsync("update-probe.second-adapter");
+                Check(host.Adapters.LoadedIds.SequenceEqual([AdapterId]), "Stopping one adapter affected the other instance");
+                return new { same_platform_loaded = true, separate_ids = true, independent_stop = true };
+            });
             await Scenario("plugin-http", async host =>
             {
                 await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));

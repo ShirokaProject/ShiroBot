@@ -66,6 +66,6 @@ QQ 事件详见 [QQ Model](/plugin/qq-model)，官方按钮事件详见[官方 M
 
 ## 并发与范围
 
-- 事件处理时 `Context.Platform` 指向事件来源适配器；后台任务需要用 `Context.UsePlatform(platform)` 指定目标。
+- 事件处理时 `Context.Platform` 和 `Context.AdapterId` 指向事件来源平台及实例；后台任务用 `Context.UseAdapter(id)` 指定目标。同平台仅一个运行实例时也可用 `UsePlatform(platform)`。实例接口见[通用 API](/plugin/apis)。
 - 不同插件可并发处理同一个事件，同一个插件也可能同时收到多条事件；共享状态应自行同步。
 - 群路由限制由宿主配置 `plugin_routes` 控制。收到事件后不要长时间同步阻塞。

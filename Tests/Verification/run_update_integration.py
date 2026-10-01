@@ -9,11 +9,11 @@ parser.add_argument("--dashboard-dist", type=Path, help="Optional local Dashboar
 args = parser.parse_args()
 repository = Path(__file__).resolve().parents[2]
 fixtures = Path(tempfile.mkdtemp(prefix="shiro-update-fixtures-"))
-for version in (1, 2):
+for name, version, instance in (("v1", 1, "first"), ("v2", 2, "first"), ("second", 1, "second")):
     subprocess.run([
         "dotnet", "build", str(repository / "Tests/UpdateProbe/ShiroBot.UpdateProbe.csproj"),
         "--disable-build-servers", "-m:1", "-p:UseSharedCompilation=false",
-        f"-p:ProbeVersion={version}", "-o", str(fixtures / f"v{version}"),
+        f"-p:ProbeVersion={version}", f"-p:ProbeInstance={instance}", "-o", str(fixtures / name),
     ], cwd=repository, check=True)
 command = [
     "dotnet", "build", str(repository / "Tests/Verification/ShiroBot.Verification.csproj"),

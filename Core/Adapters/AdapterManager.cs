@@ -351,8 +351,8 @@ internal sealed class AdapterManager(
                 ?? throw new InvalidOperationException($"Adapter 未声明 {nameof(BotAdapterAttribute)}。");
             lock (_sync)
             {
-                if (_entries.Values.Any(entry => string.Equals(entry.Adapter?.Platform, adapter.Platform, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidOperationException($"平台 {adapter.Platform} 已有 Adapter 加载，不能重复加载。");
+                if (_entries.Values.Any(entry => string.Equals(entry.Metadata.Id, metadata.Id, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException($"适配器实例 {metadata.Id} 已加载，不能重复加载。");
             }
 
             var configDirectory = Path.GetDirectoryName(logicalAssemblyPath ?? adapterPath) ?? adapterRoot;
@@ -364,7 +364,9 @@ internal sealed class AdapterManager(
             {
                 initialConfig = await configurable.InitializeConfigAsync(adapter.Config).ConfigureAwait(false);
             }
-            subscription = eventBridge.Bridge(adapter.Platform, adapter.Event, directMessageHandler);
+            botContext.RegisterAdapter(adapter, metadata.Id);
+            registered = true;
+            subscription = eventBridge.Bridge(metadata.Id, adapter.Platform, adapter.Event, directMessageHandler);
             using (BotLog.BeginScope(adapter.Logger)) await adapter.StartAsync().ConfigureAwait(false);
             if (configurable is not null)
             {
@@ -373,8 +375,6 @@ internal sealed class AdapterManager(
             }
             var fullPath = Path.GetFullPath(logicalAssemblyPath ?? adapterPath);
             var shadowAssemblyPath = forceFreshImage ? loadAssemblyPath : CreateReloadShadow(adapterPath);
-            botContext.RegisterAdapter(adapter);
-            registered = true;
             lock (_sync)
             {
                 _entries[fullPath] = new AdapterEntry(fullPath, adapter, loader, metadata, subscription!,
