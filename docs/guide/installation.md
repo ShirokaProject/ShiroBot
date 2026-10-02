@@ -149,15 +149,49 @@ docker compose up -d
 docker compose logs -f shirobot
 ```
 
-- 首次启动会在 `docker-data/config.toml` 生成容器配置和 API 鉴权密钥，密钥也会打印在日志里。
-- `docker-data/plugins/` 与 `docker-data/adapters/` 分别保存插件和适配器，重建容器不会删除。
+- 数据保存在命名卷 `shirobot_shirobot-data` 中，挂载到容器的 `/data`：`config.toml`、`plugins/`、`adapters/` 都在这里，重建或升级容器不会删除。`compose.yaml` 固定了项目名 `shirobot`，在哪个目录启动都使用同一个卷。
+- 首次启动会生成 `/data/config.toml` 和 API 鉴权密钥，密钥也会打印在日志里。
+- 插件和适配器建议在 Dashboard 中安装、配置。需要手动修改配置文件时，在容器内编辑（以容器用户身份写入，宿主保存配置时不会遇到权限问题）：
+
+  ```bash
+  docker compose exec shirobot vi /data/config.toml
+  ```
+
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
-- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=0.9.5` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=0.9.7` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+
+备份数据卷：
+
+```bash
+docker run --rm -v shirobot_shirobot-data:/data:ro -v "$PWD":/backup alpine \
+  tar czf /backup/shirobot-data.tgz -C /data .
+```
+
+### 从 `./docker-data` 迁移
+
+0.9.7 之前的 `compose.yaml` 把数据挂载在本机的 `./docker-data` 目录。换用新的 `compose.yaml` 后会以全新数据启动，按下面步骤把旧数据拷进数据卷：
+
+```bash
+# 在旧的部署目录中停止旧容器
+docker compose down
+
+# 下载新的 compose.yaml 并创建数据卷（不启动）
+curl -O https://raw.githubusercontent.com/ShirokaProject/ShiroBot/master/compose.yaml
+docker compose up --no-start
+
+# 拷贝旧数据并交给容器用户（UID 1654）
+docker run --rm -v "$PWD/docker-data:/old:ro" -v shirobot_shirobot-data:/data alpine \
+  sh -c 'cp -a /old/. /data/ && chown -R 1654:1654 /data'
+
+docker compose up -d
+```
+
+确认运行正常后，可以删除 `./docker-data`。
 
 不使用 compose 时：
 
 ```bash
 docker run -d --name shirobot --restart unless-stopped \
-  -p 127.0.0.1:7001:7001 -v "$PWD/docker-data:/data" \
+  -p 127.0.0.1:7001:7001 -v shirobot-data:/data \
   ghcr.io/shirokaproject/shirobot:latest
 ```

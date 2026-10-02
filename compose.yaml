@@ -1,3 +1,5 @@
+name: shirobot
+
 services:
   shirobot:
     image: ghcr.io/shirokaproject/shirobot:${SHIROBOT_IMAGE_TAG:-latest}
@@ -6,4 +8,7 @@ services:
     ports:
       - "127.0.0.1:7001:7001"
     volumes:
-      - ./docker-data:/data
+      - shirobot-data:/data
+
+volumes:
+  shirobot-data:
