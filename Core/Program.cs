@@ -169,7 +169,7 @@ public static class Program
                 Directory.CreateDirectory(adapterRoot);
             }
 
-            var adapterPackages = new AdapterPackageManager(adapterRoot);
+            var adapterPackages = new AdapterPackageManager(adapterRoot, coreConfigPath);
             ReportStagedUpdates("Adapter", adapterPackages.ApplyStagedUpdates());
             adapterPackages.InitializeInstances(coreConfig.Protocols.Concat(parserResult.GetValue(adapterOption) ?? []));
             var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption), adapterPackages);
@@ -458,7 +458,7 @@ public static class Program
         var adapterRoot = GetOptionValue(args, "--adapter-dir") is { Length: > 0 } configuredRoot
             ? Path.GetFullPath(configuredRoot)
             : Path.Combine(BasePath, "adapters");
-        var packages = new AdapterPackageManager(adapterRoot);
+        var packages = new AdapterPackageManager(adapterRoot, GetOptionValue(args, "--config"));
         var action = args.Length > 1 ? args[1].ToLowerInvariant() : "help";
         try
         {

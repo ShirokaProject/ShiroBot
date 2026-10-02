@@ -755,6 +755,21 @@ try
     if (adapterPackage.Get("verification") is not { Enabled: true } || !File.Exists(firstInstall.AssemblyPath))
         throw new InvalidOperationException("Adapter DLL install verification failed.");
 
+    // Docker keeps configuration in /data while the adapter directory is linked from /app.
+    var externalCorePath = Path.Combine(tempRoot, "data", "custom.toml");
+    Directory.CreateDirectory(Path.GetDirectoryName(externalCorePath)!);
+    File.WriteAllText(externalCorePath, "[[adapter_instances]]\nid = \"verification\"\npackage_id = \"verification\"\nenabled = false\n");
+    var defaultCoreContents = File.ReadAllText(configPath);
+    var externalPackages = new AdapterPackageManager(adapterPackageRoot, externalCorePath);
+    if (externalPackages.ListInstances().Single().Enabled)
+        throw new InvalidOperationException("Adapter registry ignored the explicit core config path.");
+    externalPackages.CreateInstance("verification", "external-instance", null);
+    externalPackages.SetInstanceEnabled("external-instance", true);
+    if (!new AdapterPackageManager(adapterPackageRoot, externalCorePath).GetInstance("external-instance")!.Enabled ||
+        File.ReadAllText(configPath) != defaultCoreContents)
+        throw new InvalidOperationException("Adapter mutation wrote to the default core config instead of the explicit path.");
+    externalPackages.DeleteInstance("external-instance");
+
     var zipPath = Path.Combine(adapterWorkRoot, "adapter.zip");
     using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
         archive.CreateEntryFromFile(adapterDll, "adapter.dll");

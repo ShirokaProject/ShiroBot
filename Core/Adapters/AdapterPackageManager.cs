@@ -8,7 +8,7 @@ using Tomlyn;
 
 namespace ShiroBot.Adapters;
 
-internal sealed class AdapterPackageManager(string adapterRoot)
+internal sealed class AdapterPackageManager(string adapterRoot, string? coreConfigPath = null)
 {
     private const long MaxPackageBytes = 100L * 1024L * 1024L;
     private const long MaxExtractedBytes = 500L * 1024L * 1024L;
@@ -29,7 +29,9 @@ internal sealed class AdapterPackageManager(string adapterRoot)
     // Package files are shared; descriptors/configs are host-owned and survive DLL updates.
     private string InstanceRoot => Path.Combine(_root, ".instances");
 
-    private string CoreConfigPath => Path.Combine(Path.GetDirectoryName(_root)!, "config.toml");
+    private string CoreConfigPath => coreConfigPath is null
+        ? Path.Combine(Path.GetDirectoryName(_root)!, "config.toml")
+        : Path.GetFullPath(coreConfigPath);
     public bool HasDeclaredInstances => ReadDeclaredInstances() is not null;
 
     public void InitializeInstances(IEnumerable<string>? requestedAdapters = null)

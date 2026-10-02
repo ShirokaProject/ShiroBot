@@ -179,10 +179,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download Linux self-contained hosts
+      - name: Download Alpine framework-dependent hosts
         uses: actions/download-artifact@v4
         with:
-          pattern: shirobot-host-linux-*64-self-contained
+          pattern: shirobot-host-linux-musl-*64-framework-dependent
           path: artifacts/archives
           merge-multiple: true
 
@@ -194,7 +194,7 @@ jobs:
             runtime="${pair%%:*}"
             arch="${pair##*:}"
             mkdir -p "artifacts/docker/${arch}"
-            unzip -q -o "artifacts/archives/shirobot-host-linux-${runtime}-self-contained.zip" -d "artifacts/docker/${arch}"
+            unzip -q -o "artifacts/archives/shirobot-host-linux-musl-${runtime}-framework-dependent.zip" -d "artifacts/docker/${arch}"
             chmod +x "artifacts/docker/${arch}/ShiroBot"
           done
 

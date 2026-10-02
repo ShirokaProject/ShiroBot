@@ -7,18 +7,22 @@ WORKDIR /src
 COPY . .
 RUN dotnet publish Core/ShiroBot.csproj \
     --configuration Release \
-    --runtime "linux-$([ "$TARGETARCH" = "arm64" ] && echo arm64 || echo x64)" \
-    --self-contained true \
+    --runtime "linux-musl-$([ "$TARGETARCH" = "arm64" ] && echo arm64 || echo x64)" \
+    --self-contained false \
     --output /out \
     -p:PublishSingleFile=true \
     -p:PublishAot=false \
     -p:IncludeNativeLibrariesForSelfExtract=true \
     -p:RequireDashboard=true
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:10.0 AS runtime-base
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y libfontconfig1 fonts-dejavu-core fonts-noto-cjk \
-    && rm -rf /var/lib/apt/lists/*
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime-base
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+RUN apk add --no-cache libstdc++ libgcc icu-libs icu-data-full tzdata fontconfig font-noto-cjk
+RUN apk add --no-cache font-noto-emoji
+ENV SHIROBOT_DEFAULT_FONT_FAMILY="Noto Sans CJK SC" \
+    SHIROBOT_EMOJI_FONT_FAMILY="Noto Color Emoji"
+COPY docker/fonts.conf /etc/fonts/conf.d/99-shirobot-fonts.conf
+RUN fc-cache -f
 WORKDIR /app
 COPY docker/entrypoint.sh /usr/local/bin/shirobot-entrypoint
 COPY docker/config.container.toml /app/config.container.toml

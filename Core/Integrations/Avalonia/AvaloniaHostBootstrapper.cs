@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Headless;
+using Avalonia.Media;
 using Avalonia.Threading;
 
 namespace ShiroBot.Integrations.Avalonia;
@@ -48,8 +49,19 @@ internal sealed class AvaloniaHostBootstrapper : IDisposable
     {
         try
         {
-            AppBuilder.Configure<HeadlessHostApp>()
-                .UseSkia()
+            var builder = AppBuilder.Configure<HeadlessHostApp>().UseSkia();
+            var defaultFamily = Environment.GetEnvironmentVariable("SHIROBOT_DEFAULT_FONT_FAMILY");
+            var emojiFamily = Environment.GetEnvironmentVariable("SHIROBOT_EMOJI_FONT_FAMILY");
+            if (!string.IsNullOrWhiteSpace(defaultFamily) || !string.IsNullOrWhiteSpace(emojiFamily))
+            {
+                builder.With(new FontManagerOptions
+                {
+                    DefaultFamilyName = string.IsNullOrWhiteSpace(defaultFamily) ? null : defaultFamily,
+                    FontFallbacks = string.IsNullOrWhiteSpace(emojiFamily) ? null :
+                        [new FontFallback { FontFamily = new FontFamily(emojiFamily) }]
+                });
+            }
+            builder
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions
                 {
                     UseHeadlessDrawing = false
