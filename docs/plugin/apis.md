@@ -153,7 +153,7 @@ using (Context.UseInstance("qq-work"))
 新增上下文成员有默认实现，未调用 `UsePlatform` 的旧插件 DLL 可直接加载。已用公开发布的 DemoPlugin v0.6.1 DLL 验证加载和双实例回复。`UsePlatform` 已移除：调用它的旧插件 DLL 仍可加载，但执行到该调用时抛出 `MissingMethodException`，需改用 `UseInstance` 并引用新版 SDK 重新编译。旧插件若自行按平台缓存状态，也需按上述规则调整；并未逐一测试全部第三方插件。
 
 ::: info 版本范围
-实例接口、自动回复和同 DLL 多配置管理属于 v0.9.6 之后的开发版本，目前尚未发布。已发布的宿主/SDK v0.9.6 仍使用原平台作用域，后台回复需先 `Context.UsePlatform(message.Platform)`；开发版本移除了 `UsePlatform`，编写调用 UseInstance 的新代码要引用包含该接口的新版 SDK。
+实例接口、自动回复和同 DLL 多配置管理从宿主/SDK v0.9.7 开始提供，同时移除了 `UsePlatform`。v0.9.6 及更早版本仍使用平台作用域，后台回复需先 `Context.UsePlatform(message.Platform)`；面向 v0.9.7 及以后的插件请引用 SDK v0.9.7 并改用 `UseInstance`。
 :::
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。

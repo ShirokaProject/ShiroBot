@@ -15,7 +15,7 @@
     <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>0.9.5 keeps a freshly installed adapter that fails its first start (for example missing credentials) installed and disabled so it can be configured first. No contract changes. ABI: SDK $(ShiroBotSdkAbiVersion), QQ Model $(ShiroBotQqModelAbiVersion), Discord Model $(ShiroBotDiscordModelAbiVersion), Telegram Model $(ShiroBotTelegramModelAbiVersion); ShiroBot API 0.9.1.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.9.7 adds adapter instance selection and information: Context.UseInstance, Context.InstanceId, BotEvent.InstanceId, Context.AdapterInstance and Context.GetAdapterInstances(). UsePlatform is removed; select instances by ID. ABI: SDK $(ShiroBotSdkAbiVersion), QQ Model $(ShiroBotQqModelAbiVersion), Discord Model $(ShiroBotDiscordModelAbiVersion), Telegram Model $(ShiroBotTelegramModelAbiVersion); ShiroBot API 0.9.2.</PackageReleaseNotes>
     <NoWarn>$(NoWarn);NU5104;NU5128</NoWarn>
   </PropertyGroup>
 

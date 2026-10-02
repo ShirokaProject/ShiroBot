@@ -2,7 +2,7 @@ using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.SDK.Config;
 
-[assembly: ShiroBotApiCompatibility("0.9.1", "0.9.1")]
+[assembly: ShiroBotApiCompatibility("0.9.2", "0.9.2")]
 
 #if (useQq)
 [assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.4")]

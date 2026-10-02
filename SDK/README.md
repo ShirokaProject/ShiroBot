@@ -7,7 +7,7 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="0.9.5" />
+<PackageReference Include="ShiroBot.SDK" Version="0.9.7" />
 ```
 
 ## Version and ABI
@@ -18,6 +18,8 @@ package requires a host whose ABI is the same or newer for every assembly it ref
 
 | ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
+| 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.6 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.5 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.4 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.3 | 0.9 | 0.9.1.0 | 0.9.1.0 | 0.9.0.0 | 0.9.0.0 |

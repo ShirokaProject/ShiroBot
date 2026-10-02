@@ -30,7 +30,7 @@ private Task HandleEchoAsync(MessageEvent message) =>
 
 ## 只处理指定适配器实例
 
-默认命令路由可以接收所有实例的消息，服务调用自动绑定每条消息的来源。如果插件只服务某个机器人，在开发版本按 InstanceId 过滤：
+默认命令路由可以接收所有实例的消息，服务调用自动绑定每条消息的来源。如果插件只服务某个机器人，在 v0.9.7 起可按 InstanceId 过滤：
 
 ```csharp
 GroupCommands.MapWhen(

@@ -42,7 +42,7 @@ await Context.Message.SendMessageAsync(
 
 ## 事件
 
-所有事件继承 `BotEvent`，包含 `Platform`、`SelfId` 和可选 `Raw`；开发版本增加 `InstanceId`：
+所有事件继承 `BotEvent`，包含 `Platform`、`SelfId` 和可选 `Raw`；v0.9.7 起增加 `InstanceId`：
 
 | 字段 | 含义 |
 | --- | --- |
