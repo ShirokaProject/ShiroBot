@@ -138,7 +138,7 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
             try
             {
                 // Routing identity belongs to the host, not adapter-supplied event data.
-                botEvent = botEvent with { AdapterId = _adapterId, Platform = _platform };
+                botEvent = botEvent with { InstanceId = _adapterId, Platform = _platform };
                 using var _ = AdapterExecutionContext.Enter(_adapterId);
                 await (botEvent is MessageEvent { IsDirect: true } directMessage
                     ? _directMessageHandler(directMessage)

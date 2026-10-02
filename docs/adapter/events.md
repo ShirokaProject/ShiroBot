@@ -23,7 +23,7 @@ public sealed class MyEventService : IEventService
 }
 ```
 
-适配器将协议事件映射为通用事件，再调用 `PublishAsync`。每个事件的 `Platform` 必须与 `IBotAdapter.Platform` 相同；`SelfId` 是当前机器人账号 ID。宿主转发时以实际适配器 Platform 覆盖该字段，并填入当前实例的 `AdapterId`，适配器不用自行填写实例 ID。同 DLL 多个对象上报的事件，即使 Platform 和 SelfId 相同，也按实例区分。
+适配器将协议事件映射为通用事件，再调用 `PublishAsync`。每个事件的 `Platform` 必须与 `IBotAdapter.Platform` 相同；`SelfId` 是当前机器人账号 ID。宿主转发时以实际适配器 Platform 覆盖该字段，并填入当前实例的 `InstanceId`，适配器不用自行填写实例 ID。同 DLL 多个对象上报的事件，即使 Platform 和 SelfId 相同，也按实例区分。
 
 ```csharp
 await _events.PublishAsync(new MessageEvent

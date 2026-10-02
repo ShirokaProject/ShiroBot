@@ -30,15 +30,15 @@ private Task HandleEchoAsync(MessageEvent message) =>
 
 ## 只处理指定适配器实例
 
-默认命令路由可以接收所有实例的消息，服务调用自动绑定每条消息的来源。如果插件只服务某个机器人，在开发版本按 AdapterId 过滤：
+默认命令路由可以接收所有实例的消息，服务调用自动绑定每条消息的来源。如果插件只服务某个机器人，在开发版本按 InstanceId 过滤：
 
 ```csharp
 GroupCommands.MapWhen(
-    message => message.AdapterId == "qq-work" && message.GetPlainText() == "#ping",
+    message => message.InstanceId == "qq-work" && message.GetPlainText() == "#ping",
     message => Context.Message.ReplyAsync(message, "工作机器人在线"));
 ```
 
-也可在通用事件处理器中检查 `evt.AdapterId`。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
+也可在通用事件处理器中检查 `evt.InstanceId`。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
 
 ## 接收通用事件
 
@@ -78,6 +78,6 @@ QQ 事件详见 [QQ Model](/plugin/qq-model)，官方按钮事件详见[官方 M
 
 ## 并发与范围
 
-- 事件处理时 `Context.Platform` 和 `Context.AdapterId` 指向事件来源平台及实例；后台任务用 `Context.UseAdapter(id)` 指定目标。同平台仅一个运行实例时也可用 `UsePlatform(platform)`。实例接口见[通用 API](/plugin/apis)。
+- 事件处理时 `Context.Platform` 和 `Context.InstanceId` 指向事件来源平台及实例；后台任务用 `Context.UseInstance(id)` 按实例 ID 指定目标。实例接口见[通用 API](/plugin/apis)。
 - 不同插件可并发处理同一个事件，同一个插件也可能同时收到多条事件；共享状态应自行同步。
 - 群路由限制由宿主配置 `plugin_routes` 控制。收到事件后不要长时间同步阻塞。

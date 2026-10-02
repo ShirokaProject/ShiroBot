@@ -9,7 +9,7 @@ public abstract record BotEvent
     public required string Platform { get; init; }
 
     /// <summary>来源适配器实例 ID，由宿主在事件入站时写入。旧宿主或自行构造的事件可能为空。</summary>
-    public string? AdapterId { get; init; }
+    public string? InstanceId { get; init; }
 
     /// <summary>收到事件的机器人自身账号 ID。</summary>
     public string? SelfId { get; init; }

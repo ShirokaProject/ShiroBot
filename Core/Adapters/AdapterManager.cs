@@ -399,7 +399,7 @@ internal sealed class AdapterManager(
             {
                 initialConfig = await configurable.InitializeConfigAsync(adapter.Config).ConfigureAwait(false);
             }
-            botContext.RegisterAdapter(adapter, instanceId);
+            botContext.RegisterAdapter(adapter, instanceId, instanceName ?? metadata.Name);
             registered = true;
             subscription = eventBridge.Bridge(instanceId, adapter.Platform, adapter.Event, directMessageHandler);
             using (BotLog.BeginScope(adapter.Logger)) await adapter.StartAsync().ConfigureAwait(false);

@@ -7,12 +7,21 @@ public interface IBotContext
 {
     /// <summary>
     /// 当前适配器的平台 ID（如 "qq"、"discord"、"telegram"）。事件处理期间为事件来源；
-    /// 后台调用未使用 <see cref="UseAdapter"/> 或 <see cref="UsePlatform"/> 时为宿主默认适配器。
+    /// 后台调用未使用 <see cref="UseInstance"/> 时为宿主默认适配器。
     /// </summary>
     public string Platform { get; }
 
     /// <summary>当前适配器实例 ID，与平台账号 ID 不同；未加载适配器或旧宿主返回 null。</summary>
-    public string? AdapterId => null;
+    public string? InstanceId => null;
+
+    /// <summary>
+    /// 当前作用域的适配器实例：事件处理期间为事件来源，<see cref="UseInstance"/> 内为所选实例，
+    /// 否则为宿主默认适配器。未加载适配器或旧宿主返回 null。
+    /// </summary>
+    public AdapterInstanceInfo? AdapterInstance => null;
+
+    /// <summary>当前已加载、可用 <see cref="UseInstance"/> 选择的全部适配器实例；每次调用返回新的快照。旧宿主返回空列表。</summary>
+    public IReadOnlyList<AdapterInstanceInfo> GetAdapterInstances() => [];
 
     public IMessageContext Message { get; }
     public IChannelService Channel { get; }
@@ -30,16 +39,8 @@ public interface IBotContext
     /// </summary>
     public TService? GetAdapterExtension<TService>() where TService : class;
 
-    /// <summary>
-    /// Selects the only loaded adapter for a platform; ambiguous platforms throw.
-    /// Used for calls made outside an adapter event scope, such as timers
-    /// and dashboard actions. The returned scope flows across awaits and must be disposed.
-    /// </summary>
-    public IDisposable UsePlatform(string platform) =>
-        throw new NotSupportedException("This host does not support explicit adapter platform selection.");
-
     /// <summary>选择适配器实例，作用域跨 await 传递，Dispose 后恢复原选择。</summary>
-    public IDisposable UseAdapter(string adapterId) =>
+    public IDisposable UseInstance(string instanceId) =>
         throw new NotSupportedException("This host does not support adapter instance selection.");
 
     /// <summary>

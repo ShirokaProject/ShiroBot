@@ -7,9 +7,9 @@
 | 属性 | 用途 |
 | --- | --- |
 | `Context.Platform` | 当前实例的平台类型，例如 qq 或 qq-official |
-| `Context.AdapterId` | 当前适配器运行实例 ID（开发版本） |
-| `Context.UseAdapter(id)` | 临时选择指定实例，作用域结束后恢复（开发版本） |
-| `Context.UsePlatform(platform)` | 临时选择该平台唯一运行实例，多实例时需用 UseAdapter |
+| `Context.InstanceId` | 当前适配器运行实例 ID（开发版本） |
+| `Context.UseInstance(id)` | 临时选择指定实例，作用域结束后恢复（开发版本） |
+| `Context.AdapterInstance` / `Context.GetAdapterInstances()` | 当前实例与全部运行实例的信息（开发版本） |
 | `Context.Message` | 发送、回复、撤回、查询消息 |
 | `Context.Channel` | 群或频道信息与成员管理 |
 | `Context.User` | 机器人、用户和好友信息与请求 |

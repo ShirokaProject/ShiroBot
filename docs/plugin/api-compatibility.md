@@ -64,10 +64,10 @@ Event handlers automatically use the adapter that produced the event. Timers, da
 and other background work must select an instance explicitly when more than one adapter is loaded (development version):
 
 ```csharp
-using (Context.UseAdapter("discord-work"))
+using (Context.UseInstance("discord-work"))
 {
     await Context.Message.SendMessageAsync(channel, segments);
 }
 ```
 
-The scope flows through asynchronous calls and restores the previous instance when disposed. UsePlatform remains available only when that platform has one loaded instance. See [instance routing](/plugin/apis#适配器实例与后台发送).
+The scope flows through asynchronous calls and restores the previous instance when disposed. Instances are selected by instance ID only: UsePlatform has been removed (development version), and plugins built against SDK v0.9.6 or earlier that call it fail at that call on newer hosts until rebuilt with UseInstance. See [instance routing](/plugin/apis#适配器实例与后台发送).

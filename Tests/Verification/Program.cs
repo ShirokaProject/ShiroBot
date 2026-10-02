@@ -585,7 +585,7 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     }
 
     await messageContext.ReplyAsync(group, "background-reply", image);
-    using (replies.UsePlatform("qq"))
+    using (replies.UseInstance("qq"))
     {
         await messageContext.ReplyAsync(group, new TextSegment("segments-reply"));
         await messageContext.QuoteReplyAsync(group, "quoted-text", image);
@@ -614,7 +614,7 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     }
     catch (InvalidOperationException ex) when (ex.Message.Contains("not loaded")) { }
     official.MessageService.BeforeSend = () => Task.FromException(new IOException("send failed"));
-    using (replies.UsePlatform("qq"))
+    using (replies.UseInstance("qq"))
     {
         try { await messageContext.QuoteReplyAsync(group, "failed-reply"); throw new InvalidOperationException("Send failure was swallowed."); }
         catch (IOException) { }
@@ -631,42 +631,48 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     var instances = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
     var first = new VerificationAdapter("qq");
     var second = new VerificationAdapter("qq");
-    instances.RegisterAdapter(first, "first-qq");
+    instances.RegisterAdapter(first, "first-qq", "Main account");
     instances.RegisterAdapter(second, "second-qq");
-    AssertThrows<InvalidOperationException>(() => instances.UsePlatform("qq"));
-    AssertThrows<InvalidOperationException>(() => instances.UseAdapter("missing"));
+    AssertThrows<InvalidOperationException>(() => instances.UseInstance("missing"));
     AssertThrows<InvalidOperationException>(() => instances.RegisterAdapter(new VerificationAdapter("discord"), "first-qq"));
     var directory = Path.Combine(Path.GetTempPath(), "ShiroBot.InstanceVerification", Guid.NewGuid().ToString("N"));
     using var plugin = new PluginContext(instances, "instance-routing", directory, new HostLogHub(), new PluginServiceRegistry());
     IBotContext context = plugin;
     var message = new MessageEvent
     {
-        Platform = "qq", SelfId = "same-account", AdapterId = "second-qq", MessageId = "same-message",
+        Platform = "qq", SelfId = "same-account", InstanceId = "second-qq", MessageId = "same-message",
         Channel = Channel.Direct("same-channel"), Sender = new User("sender"), Segments = []
     };
     async Task InInstanceAsync(string id, string text)
     {
-        using var scope = context.UseAdapter(id);
+        using var scope = context.UseInstance(id);
         await Task.Yield();
-        if (context.AdapterId != id || context.Platform != "qq")
+        if (context.InstanceId != id || context.Platform != "qq")
             throw new InvalidOperationException("Concurrent instance selection leaked across async calls.");
         await context.Message.SendDirectMessageAsync("same-channel", text);
     }
     await Task.WhenAll(InInstanceAsync("first-qq", "first-send"), InInstanceAsync("second-qq", "second-send"));
+    var loadedInstances = context.GetAdapterInstances();
+    if (loadedInstances.Select(item => item.Id).SequenceEqual(["first-qq", "second-qq"]) is false ||
+        loadedInstances[0] is not { Name: "Main account", PackageId: "verification", Platform: "qq" } ||
+        loadedInstances[1].Name != "second-qq")
+        throw new InvalidOperationException("Plugins cannot list loaded adapter instances with their package and names.");
+    using (context.UseInstance("second-qq"))
+        if (context.AdapterInstance?.Id != "second-qq") throw new InvalidOperationException("The current adapter instance does not follow UseInstance.");
     await context.Message.ReplyAsync(message, "background-second-reply");
-    using (context.UseAdapter("first-qq"))
+    using (context.UseInstance("first-qq"))
     {
         await context.Message.QuoteReplyAsync(message, "second-quote");
-        if (context.AdapterId != "first-qq") throw new InvalidOperationException("Reply did not restore the original instance.");
+        if (context.InstanceId != "first-qq") throw new InvalidOperationException("Reply did not restore the original instance.");
     }
-    try { await context.Message.ReplyAsync(message with { AdapterId = null }, "ambiguous"); throw new Exception("Ambiguous reply was sent."); }
+    try { await context.Message.ReplyAsync(message with { InstanceId = null }, "ambiguous"); throw new Exception("Ambiguous reply was sent."); }
     catch (InvalidOperationException) { }
 
     var firstReplies = 0;
     var secondReplies = 0;
-    using (context.UseAdapter("first-qq"))
+    using (context.UseInstance("first-qq"))
         context.Message.SubscribeReply("same-message", TimeSpan.FromMinutes(1), _ => { firstReplies++; return Task.CompletedTask; });
-    using (context.UseAdapter("second-qq"))
+    using (context.UseInstance("second-qq"))
         context.Message.SubscribeReply("same-message", TimeSpan.FromMinutes(1), _ => { secondReplies++; return Task.CompletedTask; });
     await instances.ReplySubscriptions.PublishAsync(message with { Segments = [new QuoteSegment("same-message")] });
     if (firstReplies != 0 || secondReplies != 1) throw new InvalidOperationException("Reply subscription crossed adapter instances.");
@@ -678,27 +684,27 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     await using (var subscription = bridge.Bridge("first-qq", "qq", first.Event, async incoming =>
     {
         received = incoming;
-        if (context.AdapterId != "first-qq") throw new InvalidOperationException("Event scope did not select its source instance.");
+        if (context.InstanceId != "first-qq") throw new InvalidOperationException("Event scope did not select its source instance.");
         await context.Message.ReplyAsync(incoming, "first-event-reply");
         await instances.ReplySubscriptions.PublishAsync(incoming);
     }))
     {
         await ((VerificationEventService)first.Event).RaiseAsync(message with
         {
-            Platform = "forged", AdapterId = "second-qq", Segments = [new QuoteSegment("same-message")]
+            Platform = "forged", InstanceId = "second-qq", Segments = [new QuoteSegment("same-message")]
         });
     }
-    if (received is not { AdapterId: "first-qq", Platform: "qq", SelfId: "same-account" } || firstReplies != 1 || secondReplies != 1)
+    if (received is not { InstanceId: "first-qq", Platform: "qq", SelfId: "same-account" } || firstReplies != 1 || secondReplies != 1)
         throw new InvalidOperationException("Event ingress trusted adapter-supplied identity or crossed reply subscriptions.");
     instances.UnregisterAdapter(second);
     try { await context.Message.ReplyAsync(message, "must-not-fallback"); throw new Exception("Unloaded source fell back to another instance."); }
     catch (InvalidOperationException) { }
-    using (context.UsePlatform("qq")) await context.Message.SendDirectMessageAsync("same-channel", "single-instance-send");
+    using (context.UseInstance("first-qq")) await context.Message.SendDirectMessageAsync("same-channel", "single-instance-send");
     if (!first.MessageService.Messages.SequenceEqual(["first-send", "first-event-reply", "single-instance-send"]) ||
         !second.MessageService.Messages.SequenceEqual(["second-send", "background-second-reply", "second-quote"]) ||
         AdapterExecutionContext.Current is not null)
         throw new InvalidOperationException("Identical-platform/account instances routed messages incorrectly.");
-    using (context.UseAdapter("first-qq"))
+    using (context.UseInstance("first-qq"))
     {
         instances.UnregisterAdapter(first);
         await AssertMissingBoundInstanceAsync();
@@ -722,23 +728,23 @@ var explicitPlatformContext = new PluginContext(
     explicitPlatformDirectory,
     new HostLogHub(),
     new PluginServiceRegistry());
-using (explicitPlatformContext.UsePlatform("discord"))
+using (explicitPlatformContext.UseInstance("discord"))
 {
     await explicitPlatformContext.Message.SendMessageAsync(
         Channel.Group("channel"),
         [new TextSegment("explicit-discord")]);
 }
 
-AssertThrows<InvalidOperationException>(() => explicitPlatformContext.UsePlatform("missing"));
+AssertThrows<InvalidOperationException>(() => explicitPlatformContext.UseInstance("missing"));
 explicitPlatformContext.Dispose();
 if (Directory.Exists(explicitPlatformDirectory)) Directory.Delete(explicitPlatformDirectory, recursive: true);
 if (!discordAdapter.MessageService.Messages.Contains("explicit-discord") ||
     qqAdapter.MessageService.Messages.Contains("explicit-discord"))
 {
-    throw new InvalidOperationException("Explicit adapter platform selection routed to the wrong adapter.");
+    throw new InvalidOperationException("Explicit adapter instance selection routed to the wrong adapter.");
 }
 
-Console.WriteLine("Explicit adapter platform selection verification passed.");
+Console.WriteLine("Explicit adapter instance selection verification passed.");
 
 var namedGroupMessage = new MessageEvent
 {

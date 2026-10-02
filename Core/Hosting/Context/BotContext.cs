@@ -1,3 +1,4 @@
+using System.Reflection;
 using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
@@ -13,15 +14,24 @@ internal sealed class BotContext
     private IRenderContext? _renderer;
     private readonly Lock _adapterLock = new();
     private AdapterRegistration[] _adapters = [];
-    private sealed record AdapterRegistration(string Id, IBotAdapter Adapter);
+    private sealed record AdapterRegistration(string Id, IBotAdapter Adapter, AdapterInstanceInfo Info);
+
+    // Package, name and version come from the adapter's own [BotAdapter] metadata.
+    private static AdapterRegistration CreateRegistration(IBotAdapter adapter, string id, string? instanceName)
+    {
+        var metadata = adapter.GetType().GetCustomAttribute<BotAdapterAttribute>(inherit: false);
+        return new(id, adapter, new AdapterInstanceInfo(
+            id, string.IsNullOrWhiteSpace(instanceName) ? id : instanceName, metadata?.Id ?? id,
+            metadata?.Name ?? adapter.GetType().Name, metadata?.Version ?? string.Empty, adapter.Platform, metadata?.Protocol));
+    }
 
     public BotContext(IBotAdapter? adapter, IReadOnlyList<string> ownerList, IReadOnlyList<string> adminList, IWebHostContext webHost)
     {
-        if (adapter is not null) _adapters = [new(adapter.Platform, adapter)];
+        if (adapter is not null) _adapters = [CreateRegistration(adapter, adapter.Platform, null)];
         Channel = new SwitchableChannelService(this);
         User = new SwitchableUserService(this);
         ReplySubscriptions = new ReplySubscriptionManager();
-        Message = new MessageContext(GetMessageService, () => Platform, () => AdapterId, UseMessageSource, ReplySubscriptions, "__host");
+        Message = new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, "__host");
         Updater = new UpdaterContext();
         WebHost = webHost;
         _ownerList = ownerList;
@@ -29,7 +39,10 @@ internal sealed class BotContext
     }
 
     public string Platform => CurrentRegistration?.Adapter.Platform ?? "none";
-    public string? AdapterId => CurrentRegistration?.Id;
+    public string? InstanceId => CurrentRegistration?.Id;
+    public AdapterInstanceInfo? AdapterInstance => CurrentRegistration?.Info;
+    // ReSharper disable once InconsistentlySynchronizedField
+    public IReadOnlyList<AdapterInstanceInfo> GetAdapterInstances() => Volatile.Read(ref _adapters).Select(entry => entry.Info).ToArray();
     private IBotAdapter? CurrentAdapter => CurrentRegistration?.Adapter;
     // ReSharper disable once InconsistentlySynchronizedField
     public bool HasAdapter => Volatile.Read(ref _adapters).Length > 0;
@@ -50,12 +63,13 @@ internal sealed class BotContext
     internal ReplySubscriptionManager ReplySubscriptions { get; }
 
     internal IMessageContext CreatePluginMessageContext(string pluginName) =>
-        new MessageContext(GetMessageService, () => Platform, () => AdapterId, UseMessageSource, ReplySubscriptions, pluginName);
+        new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, pluginName);
 
     internal TService? GetAdapterExtension<TService>() where TService : class =>
         CurrentAdapter?.GetExtension<TService>();
 
-    internal IDisposable UsePlatform(string platform)
+    // Only for messages built without an InstanceId (inbound events always carry one): the platform's sole instance.
+    private IDisposable UseOnlyInstanceOf(string platform)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(platform);
         var matches = Volatile.Read(ref _adapters).Where(entry => string.Equals(
@@ -63,22 +77,22 @@ internal sealed class BotContext
         if (matches.Length == 0)
             throw new InvalidOperationException($"Adapter platform '{platform}' is not loaded.");
         if (matches.Length > 1)
-            throw new InvalidOperationException($"Adapter platform '{platform}' has multiple instances; select one with UseAdapter(id).");
+            throw new InvalidOperationException($"Adapter platform '{platform}' has multiple instances; set the message's InstanceId or select one with UseInstance(id).");
         return AdapterExecutionContext.Enter(matches[0].Id);
     }
 
-    internal IDisposable UseAdapter(string adapterId)
+    internal IDisposable UseInstance(string instanceId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(adapterId);
-        if (!Volatile.Read(ref _adapters).Any(entry => string.Equals(entry.Id, adapterId, StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException($"Adapter instance '{adapterId}' is not loaded.");
-        return AdapterExecutionContext.Enter(adapterId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
+        if (!Volatile.Read(ref _adapters).Any(entry => string.Equals(entry.Id, instanceId, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"Adapter instance '{instanceId}' is not loaded.");
+        return AdapterExecutionContext.Enter(instanceId);
     }
 
     private IDisposable UseMessageSource(MessageEvent message) =>
-        message.AdapterId is { } id ? UseAdapter(id) : UsePlatform(message.Platform);
+        message.InstanceId is { } id ? UseInstance(id) : UseOnlyInstanceOf(message.Platform);
 
-    internal void RegisterAdapter(IBotAdapter adapter, string? adapterId = null)
+    internal void RegisterAdapter(IBotAdapter adapter, string? adapterId = null, string? instanceName = null)
     {
         adapterId ??= adapter.Platform;
         ArgumentException.ThrowIfNullOrWhiteSpace(adapterId);
@@ -88,7 +102,7 @@ internal sealed class BotContext
             if (adapters.Any(entry => ReferenceEquals(entry.Adapter, adapter))) return;
             if (adapters.Any(entry => string.Equals(entry.Id, adapterId, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException($"Adapter instance '{adapterId}' is already loaded.");
-            Volatile.Write(ref _adapters, [.. adapters, new AdapterRegistration(adapterId, adapter)]);
+            Volatile.Write(ref _adapters, [.. adapters, CreateRegistration(adapter, adapterId, instanceName)]);
         }
     }
 
