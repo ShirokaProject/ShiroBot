@@ -238,9 +238,11 @@ internal sealed partial class HostHttpServer
             field?.Options ?? [],
             field is not null && !double.IsNaN(field.Min) ? field.Min : null,
             field is not null && !double.IsNaN(field.Max) ? field.Max : null,
-            field?.GroupLabel ?? field?.Group,
-            field?.Group,
-            field?.GroupLabel,
+            field?.GroupLabel ?? field?.Group ?? string.Empty,
+            field?.Group ?? string.Empty,
+            field?.GroupLabel ?? string.Empty,
+            field?.GroupIcon ?? string.Empty,
+            field?.GroupDescription ?? string.Empty,
             field?.Order,
             field?.GroupOrder,
             ReadConfigFieldConditions(reader, property.GetCustomAttributes()),
@@ -454,6 +456,12 @@ internal sealed partial class HostHttpServer
                         break;
                     case nameof(ConfigFieldMetadata.GroupLabel) when typeCode == SerializedTypeString:
                         metadata.GroupLabel = blob.ReadSerializedString();
+                        break;
+                    case nameof(ConfigFieldMetadata.GroupIcon) when typeCode == SerializedTypeString:
+                        metadata.GroupIcon = blob.ReadSerializedString();
+                        break;
+                    case nameof(ConfigFieldMetadata.GroupDescription) when typeCode == SerializedTypeString:
+                        metadata.GroupDescription = blob.ReadSerializedString();
                         break;
                     case nameof(ConfigFieldMetadata.Order) when typeCode == SerializedTypeI4:
                         metadata.Order = blob.ReadInt32();

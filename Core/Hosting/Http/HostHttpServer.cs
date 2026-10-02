@@ -348,9 +348,11 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         [property: JsonPropertyName("options")] string[] Options,
         [property: JsonPropertyName("min")] double? Min,
         [property: JsonPropertyName("max")] double? Max,
-        [property: JsonPropertyName("group")] string? Group,
-        [property: JsonPropertyName("group_id")] string? GroupId,
-        [property: JsonPropertyName("group_label")] string? GroupLabel,
+        [property: JsonPropertyName("group")] string Group,
+        [property: JsonPropertyName("group_id")] string GroupId,
+        [property: JsonPropertyName("group_label")] string GroupLabel,
+        [property: JsonPropertyName("group_icon")] string GroupIcon,
+        [property: JsonPropertyName("group_description")] string GroupDescription,
         [property: JsonPropertyName("order")] int? Order,
         [property: JsonPropertyName("group_order")] int? GroupOrder,
         [property: JsonPropertyName("conditions")] IReadOnlyList<ConfigFieldConditionSchema> Conditions,
@@ -387,6 +389,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         public string? Placeholder { get; set; }
         public string? Group { get; set; }
         public string? GroupLabel { get; set; }
+        public string? GroupIcon { get; set; }
+        public string? GroupDescription { get; set; }
         public int? Order { get; set; }
         public int? GroupOrder { get; set; }
         public object? Default { get; set; }

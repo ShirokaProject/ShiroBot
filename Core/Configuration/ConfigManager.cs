@@ -17,7 +17,7 @@ public class CoreConfig
     [ConfigField("仅用于开发：额外加载未安装成包的独立 Adapter DLL 名称或路径。已安装的适配器在 Dashboard 适配器页管理。", Label = "Adapters", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
-    [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 20)]
+    [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupIcon = "settings", GroupDescription = "运行时行为与日志设置。", GroupOrder = 10, Order = 20)]
     public bool EnableLog { get; set; } = true;
 
     [ConfigField("在消息日志中显示群 ID 和用户 ID；修改后即时生效。", Label = "显示群与用户 ID", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 25)]
@@ -26,7 +26,7 @@ public class CoreConfig
     [ConfigField("是否关闭交互式控制台输入；修改后重启生效。", Label = "禁用控制台输入", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 30)]
     public bool DisableConsoleInput { get; set; } = false;
 
-    [ConfigField("访问 GitHub 资源时使用的代理前缀。", Label = "GitHub 代理", Default = "", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 10)]
+    [ConfigField("访问 GitHub 资源时使用的代理前缀。", Label = "GitHub 代理", Default = "", Group = "updates", GroupLabel = "更新与主题", GroupIcon = "download", GroupDescription = "主程序更新来源和主题设置。", GroupOrder = 20, Order = 10)]
     public string? GithubProxy { get; set; }
 
     [ConfigField("宿主更新仓库，格式为 owner/repository。", Label = "宿主更新仓库", Default = "ShirokaProject/ShiroBot", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 20)]
@@ -36,7 +36,7 @@ public class CoreConfig
     [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Auto", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
     public string AvaloniaTheme { get; set; } = "Auto";
 
-    [ConfigField("所有者账号列表，供插件检查所有者权限。", Label = "Owner 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 10)]
+    [ConfigField("所有者账号列表，供插件检查所有者权限。", Label = "Owner 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupIcon = "shield", GroupDescription = "定义供插件权限检查使用的账号列表。", GroupOrder = 30, Order = 10)]
     public string[] OwnerList { get; set; } = [];
 
     [ConfigField("管理员账号列表，供插件检查管理员权限。", Label = "Admin 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
@@ -52,7 +52,7 @@ public class CoreConfig
         }
     };
 
-    [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupOrder = 40, Order = 10)]
+    [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupIcon = "code", GroupDescription = "Dashboard 和外部工具访问主程序的 HTTP API。", GroupOrder = 40, Order = 10)]
     public ApiHostConfig Api { get; set; } = new();
 }
 
@@ -60,19 +60,25 @@ public class ApiHostConfig
 {
     public const string DefaultListenUrl = "http://127.0.0.1:7001";
 
+    [ConfigField("启用 Dashboard 和外部工具访问主程序的 HTTP API。")]
     public bool Enable { get; set; } = true;
 
+    [ConfigField("API 服务监听的地址列表。", Type = "array")]
     public string[] ListenUrls { get; set; } = [DefaultListenUrl];
 
+    [ConfigField("反向代理后的外部基础 URL；留空表示不设置。")]
     public string? PublicBaseUrl { get; set; }
 
+    [ConfigField("HTTP API 身份验证设置。", Type = "section")]
     public ApiAuthConfig Auth { get; set; } = new();
 }
 
 public class ApiAuthConfig
 {
+    [ConfigField("访问 API 时是否要求 Bearer 令牌。")]
     public bool Enable { get; set; } = true;
 
+    [ConfigField("客户端登录和访问 API 使用的密钥。", Type = "password")]
     public string Key { get; set; } = string.Empty;
 }
 

@@ -61,12 +61,18 @@ internal sealed partial class HostHttpServer
 
                 try
                 {
-                    ApplyConfigPatch(document.RootElement, config, configManager, configPath);
+                    if (!document.RootElement.TryGetProperty("config", out var configPatch) ||
+                        configPatch.ValueKind != JsonValueKind.Object)
+                    {
+                        return Results.BadRequest(new { ok = false, msg = "请求必须包含 config 对象。" });
+                    }
+
+                    ApplyConfigPatch(configPatch, config, configManager, configPath);
                     return Results.Ok(new
                     {
                         ok = true,
                         msg = "配置更新成功",
-                        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly)
+                        schema = GetCoreConfigSchema()
                     });
                 }
                 catch (InvalidOperationException ex)
@@ -77,28 +83,22 @@ internal sealed partial class HostHttpServer
         });
     }
 
+    private static readonly JsonSerializerOptions CoreConfigJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    private static object[] GetCoreConfigSchema() => GetComponentConfigSchema(typeof(CoreConfig).Assembly)
+        .OfType<ConfigSchemaItem>()
+        .Where(item => item.Key is not "protocols" and not "plugin_routes")
+        .Cast<object>()
+        .ToArray();
+
     private static object CreateConfigResponse(CoreConfig config) => new
     {
-        schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly),
-        protocol = config.Protocols.FirstOrDefault() ?? string.Empty,
-        protocols = config.Protocols,
-        enable_log = config.EnableLog,
-        showid = config.Showid,
-        disable_console_input = config.DisableConsoleInput,
-        github_proxy = config.GithubProxy,
-        host_update_repository = config.HostUpdateRepository,
-        avalonia_theme = config.AvaloniaTheme,
-        owner_list = config.OwnerList,
-        admin_list = config.AdminList,
-        api = new
-        {
-            enable = config.Api.Enable,
-            listen_url = config.Api.ListenUrls.FirstOrDefault() ?? ApiHostConfig.DefaultListenUrl,
-            listen_urls = config.Api.ListenUrls,
-            public_base_url = config.Api.PublicBaseUrl,
-            auth_enable = config.Api.Auth.Enable,
-            token = config.Api.Auth.Key
-        }
+        schema = GetCoreConfigSchema(),
+        config = JsonSerializer.SerializeToElement(config, CoreConfigJsonOptions)
     };
 
     private static void ApplyConfigPatch(
@@ -121,13 +121,6 @@ internal sealed partial class HostHttpServer
             : null;
 
         if (hasShowid) configManager.SetConfigValue(configPath, "showid", showid);
-
-        // Legacy single value: an empty one means "no extra adapter", not a list holding "".
-        if (TryGetString(patch, "protocol", out var protocol))
-        {
-            configManager.SetConfigValue(configPath, "protocols",
-                string.IsNullOrWhiteSpace(protocol) ? Array.Empty<string>() : [protocol.Trim()]);
-        }
 
         if (TryGetStringArray(patch, "protocols", out var protocols))
         {
@@ -184,12 +177,6 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "api.enable", apiEnable);
         }
 
-        if (TryGetString(apiPatch, "listen_url", out var listenUrl))
-        {
-            currentApiConfig.ListenUrls = [listenUrl];
-            configManager.SetConfigValue(configPath, "api.listen_urls", currentApiConfig.ListenUrls);
-        }
-
         if (TryGetStringArray(apiPatch, "listen_urls", out var listenUrls))
         {
             currentApiConfig.ListenUrls = listenUrls;
@@ -202,16 +189,22 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "api.public_base_url", publicBaseUrl ?? string.Empty);
         }
 
-        if (TryGetBool(apiPatch, "auth_enable", out var authEnable))
+        if (apiPatch.TryGetProperty("auth", out var authPatch))
         {
-            currentApiConfig.Auth.Enable = authEnable;
-            configManager.SetConfigValue(configPath, "api.auth.enable", authEnable);
-        }
+            if (authPatch.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("api.auth 配置必须是对象");
 
-        if (TryGetString(apiPatch, "token", out var token))
-        {
-            currentApiConfig.Auth.Key = token;
-            configManager.SetConfigValue(configPath, "api.auth.key", token);
+            if (TryGetBool(authPatch, "enable", out var authEnable))
+            {
+                currentApiConfig.Auth.Enable = authEnable;
+                configManager.SetConfigValue(configPath, "api.auth.enable", authEnable);
+            }
+
+            if (TryGetString(authPatch, "key", out var token))
+            {
+                currentApiConfig.Auth.Key = token;
+                configManager.SetConfigValue(configPath, "api.auth.key", token);
+            }
         }
     }
 

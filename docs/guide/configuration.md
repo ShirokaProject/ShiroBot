@@ -158,7 +158,7 @@ timeout_seconds = 15
 
 新插件可继承 `PluginBase<TConfig>`，由宿主在 `LoadAsync()` 前加载 `TConfig`。新 Adapter 实现 `IConfigurableAdapter` 和 `IConfigurableComponent<TConfig>`；宿主在调用 `StartAsync()` 前加载配置，并负责文件监听和热更新派发。组件只需在 `OnConfigChangedAsync` 中更新它缓存的运行资源。未迁移的旧组件仍可使用 `IConfigContext.Load<T>()` 和 `Watch<T>()`。
 
-配置字段可通过 `ConfigFieldAttribute` 声明分类和顺序：`Group` 是稳定分类 ID，`GroupLabel` 是界面显示名称；Dashboard Schema 会同时返回两者。Core、Plugin 和 Adapter 共用 TOML 读写器，但由宿主按各自生命周期加载：Core 在启动早期读取，Plugin/Adapter 在组件加载时读取。
+配置字段可通过 `ConfigFieldAttribute` 声明分类和顺序：`Group` 是稳定分类 ID，`GroupLabel` 是界面显示名称，`GroupIcon` 和 `GroupDescription` 提供分类图标与说明；Dashboard Schema 会返回这些分类元数据。Core、Plugin 和 Adapter 共用 TOML 读写器，但由宿主按各自生命周期加载：Core 在启动早期读取，Plugin/Adapter 在组件加载时读取。
 
 依赖字段可以用 `ConfigVisibleWhen` 控制显示，用 `ConfigEnabledWhen` 控制可编辑状态。条件引用同一配置模型中的属性名，比较操作支持 `Equal`、`NotEqual`、`GreaterThan`、`GreaterThanOrEqual`、`LessThan` 和 `LessThanOrEqual`；多个条件按 AND 组合。宿主把它们作为 `schema[].conditions` 返回，例如：
 
@@ -170,4 +170,6 @@ timeout_seconds = 15
 
 宿主自己的 `CoreConfig` 也是显式配置模型，使用 `ConfigModel` / `ConfigField` 描述默认项和 Schema。Core 在服务启动前读取；启动后由 `CoreConfigWatcher` 按宿主运行时规则应用变更。它复用同一 TOML 存储和配置上下文，不包含按插件 ID 分支的默认值或字段校验。
 
-配置 API：`GET/PATCH /api/v1/config` 管理宿主配置；`GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和旧组件仅保存文件的情况。
+配置 API：`GET/PATCH /api/v1/config` 管理宿主配置。GET 返回 `{ schema, config }`：`config` 使用 CoreConfig 对应的 snake_case 嵌套结构，`schema` 提供可编辑字段、默认值和分类元数据（稳定 ID、名称、图标、说明与顺序）。PATCH 请求使用 `{ "config": { ... } }`，字段键与 Schema 一致；Dashboard 按该 Schema 展示和生成更新内容，不维护另一份宿主配置字段表。开发用 `protocols` 和由专门路由 API 管理的 `plugin_routes` 不包含在可编辑 Schema 中。
+
+`GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和旧组件仅保存文件的情况。

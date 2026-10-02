@@ -21,6 +21,10 @@ public sealed class ConfigFieldAttribute(string description = "") : Attribute
 
     public string? GroupLabel { get; init; }
 
+    public string? GroupIcon { get; init; }
+
+    public string? GroupDescription { get; init; }
+
     public int Order { get; init; } = int.MaxValue;
 
     public int GroupOrder { get; init; } = int.MaxValue;
