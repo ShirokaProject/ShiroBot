@@ -5,17 +5,14 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 ## 完整示例
 
 ```toml
-# adapters/MyAdapter.dll 或 adapters/MyAdapter/MyAdapter.dll
-protocols = ["MyAdapter"]
-
 enable_log = true
 disable_console_input = false
 github_proxy = ""
 host_update_repository = "ShirokaProject/ShiroBot"
-avalonia_theme = "Light"
+avalonia_theme = "Auto"
 
-owner_list = [123456789]
-admin_list = [987654321]
+owner_list = ["123456789"]
+admin_list = ["06E88C1E2090950724B8D9E8A4E097E3"]
 
 [plugin_routes.default]
 mode = "blacklist"
@@ -39,16 +36,31 @@ key = ""
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `protocols` | `[]` | 适配器程序集名称或路径列表；只用一个适配器时也写成单元素数组 |
 | `enable_log` | `true` | 是否显示普通日志 |
 | `disable_console_input` | `false` | 是否禁用交互式控制台命令 |
 | `github_proxy` | 空 | GitHub 下载代理前缀 |
 | `host_update_repository` | `ShirokaProject/ShiroBot` | 宿主更新仓库 |
-| `avalonia_theme` | `Light` | `Light`、`Dark` 或 `Auto` |
+| `avalonia_theme` | `Auto` | `Light`、`Dark` 或 `Auto`（按时间切换，18:00–6:00 为深色） |
 | `owner_list` | `[]` | 所有者账号列表，供插件通过 `Context.IsOwner` / `Context.IsAdmin` 判断 |
 | `admin_list` | `[]` | 管理员账号列表，插件可通过 `Context.IsAdmin` 判断 |
+| `protocols` | `[]` | 仅用于开发：额外加载未安装成适配器包的独立 DLL（名称或路径），见下文 |
+
+账号 ID 按平台原样填写，写成字符串：QQ 号、开放平台 OpenID、Telegram 用户名等都可以，不要求是数字。
 
 `owner_list` 和 `admin_list` 供插件判断权限，不开放宿主控制台命令的私聊入口。禁用控制台输入后，仍可使用受鉴权保护的 Dashboard API 管理宿主。
+
+### 开发时加载独立适配器 DLL
+
+已安装的适配器及其实例在 Dashboard「适配器」页或 [CLI](/adapter/deployment) 管理，是否启动由实例开关和适配器总开关决定，不需要也不应写进 `protocols`；Dashboard 的配置中心不显示此项。
+
+开发适配器时，可以不打包安装，直接加载一个 DLL：
+
+```toml
+# 依次查找 adapters/MyAdapter.dll、adapters/MyAdapter/MyAdapter.dll，也可以写绝对路径
+protocols = ["MyAdapter"]
+```
+
+或在启动时指定：`./ShiroBot --adapter /path/to/MyAdapter.dll`。找不到的条目会记录错误并跳过，不影响宿主启动。
 
 ## 适配器实例清单
 

@@ -92,9 +92,9 @@ ID 在所有适配器包之间唯一，忽略大小写，最多 64 个字符，�
 
 离线命令修改文件，应在宿主停止时使用。也可直接编辑上述 `[[instances]]` TOML，无需 WebUI。`adapter remove <实例 ID>` 只删除实例；`adapter remove-package <包 ID>` 删除包及全部实例。运行中的交互式控制台支持 `adapter create`、`adapter config`、`adapter start`、`adapter stop` 和 `adapter remove`。
 
-主配置的 `protocols` 和 `--adapter` 保留用于直接加载未安装的独立 DLL，不必重复声明已安装包的实例。
+主配置的 `protocols` 和 `--adapter` 只用于开发时直接加载未安装的独立 DLL；已安装包的实例由实例开关控制，不要在这里重复声明。Dashboard 配置中心不显示 `protocols`，需要时直接编辑 `config.toml`。
 
-## 宿主选择适配器
+## 开发时加载独立 DLL
 
 核心配置：
 

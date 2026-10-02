@@ -14,7 +14,7 @@ namespace ShiroBot.Configuration;
 public class CoreConfig
 {
     /// <summary>并行加载的 Adapter 名称或 DLL 路径。</summary>
-    [ConfigField("启动时加载的 Adapter 名称或 DLL 路径。", Label = "Adapters", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
+    [ConfigField("仅用于开发：额外加载未安装成包的独立 Adapter DLL 名称或路径。已安装的适配器在 Dashboard 适配器页管理。", Label = "Adapters", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
     [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 20)]
@@ -33,8 +33,8 @@ public class CoreConfig
     public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
 
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
-    [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Light", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
-    public string AvaloniaTheme { get; set; } = "Light";
+    [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Auto", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
+    public string AvaloniaTheme { get; set; } = "Auto";
 
     [ConfigField("所有者账号列表，供插件检查所有者权限。", Label = "Owner 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 10)]
     public string[] OwnerList { get; set; } = [];
@@ -721,10 +721,10 @@ public class ConfigManager(string? coreConfigPath = null)
 
         string? block = null;
         if (value is System.Collections.IDictionary tableValue)
-            block = $"[{fullName}]{newline}{FormatTomlTableBody(tableValue, newline)}";
+            block = $"[{fullName}]{newline}{FormatTomlTableBody(tableValue, newline, fullName)}";
         else if (value is System.Collections.IList { Count: > 0 } list && list.Cast<object?>().All(item => item is System.Collections.IDictionary))
             block = string.Concat(list.Cast<System.Collections.IDictionary>()
-                .Select(element => $"[[{fullName}]]{newline}{FormatTomlTableBody(element, newline)}{newline}"));
+                .Select(element => $"[[{fullName}]]{newline}{FormatTomlTableBody(element, newline, fullName)}{newline}"));
 
         if (remove) { }
         else if (block is null)
@@ -754,9 +754,29 @@ public class ConfigManager(string? coreConfigPath = null)
             string.Join('.', right.Split('.', StringSplitOptions.TrimEntries).Select(part => part.Trim('"'))),
             StringComparison.OrdinalIgnoreCase);
 
-    private static string FormatTomlTableBody(System.Collections.IDictionary table, string newline) =>
-        string.Concat(table.Keys.Cast<object>().Select(key =>
-            $"{FormatTomlKey(Convert.ToString(key, System.Globalization.CultureInfo.InvariantCulture)!)} = {FormatTomlValue(table[key])}{newline}"));
+    /// <summary>
+    /// Plain keys first, then nested tables as their own <c>[path.key]</c> sections and arrays of tables as
+    /// <c>[[path.key]]</c>, recursively, so nested config stays one key per line instead of a long inline table.
+    /// </summary>
+    private static string FormatTomlTableBody(System.Collections.IDictionary table, string newline, string path)
+    {
+        var body = new System.Text.StringBuilder();
+        var sections = new System.Text.StringBuilder();
+        foreach (var key in table.Keys.Cast<object>())
+        {
+            var name = FormatTomlKey(Convert.ToString(key, System.Globalization.CultureInfo.InvariantCulture)!);
+            var value = table[key];
+            var child = $"{path}.{name}";
+            if (value is System.Collections.IDictionary nested)
+                sections.Append(newline).Append($"[{child}]{newline}").Append(FormatTomlTableBody(nested, newline, child));
+            else if (value is System.Collections.IList { Count: > 0 } list && list.Cast<object?>().All(item => item is System.Collections.IDictionary))
+                foreach (var element in list.Cast<System.Collections.IDictionary>())
+                    sections.Append(newline).Append($"[[{child}]]{newline}").Append(FormatTomlTableBody(element, newline, child));
+            else
+                body.Append($"{name} = {FormatTomlValue(value)}{newline}");
+        }
+        return body.Append(sections).ToString();
+    }
 
     private static string FormatTomlKey(string key) =>
         key.Length > 0 && key.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-') ? key : QuoteTomlString(key);
@@ -793,9 +813,29 @@ public class ConfigManager(string? coreConfigPath = null)
         return "[" + string.Join(", ", values) + "]";
     }
 
+    // TOML basic string: escape only quotes, backslashes and control characters. Non-ASCII text such as
+    // Chinese names is written as-is (JSON serialization escaped it to \uXXXX).
     private static string QuoteTomlString(string value)
     {
-        return JsonSerializer.Serialize(value);
+        var builder = new System.Text.StringBuilder(value.Length + 2).Append('"');
+        foreach (var ch in value)
+        {
+            switch (ch)
+            {
+                case '"': builder.Append("\\\""); break;
+                case '\\': builder.Append("\\\\"); break;
+                case '\b': builder.Append("\\b"); break;
+                case '\t': builder.Append("\\t"); break;
+                case '\n': builder.Append("\\n"); break;
+                case '\f': builder.Append("\\f"); break;
+                case '\r': builder.Append("\\r"); break;
+                default:
+                    if (char.IsControl(ch)) builder.Append("\\u").Append(((int)ch).ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
+                    else builder.Append(ch);
+                    break;
+            }
+        }
+        return builder.Append('"').ToString();
     }
 
 }

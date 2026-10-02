@@ -191,7 +191,7 @@ Console.WriteLine("Component API version verification passed.");
     // Uses in-memory metadata, so the schema also works in single-file publishes where Location is empty.
     var coreSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(typeof(CoreConfig).Assembly));
     if (!coreSchema.ContainsKey("protocols") || !coreSchema.ContainsKey("owner_list") ||
-        coreSchema["avalonia_theme"].GetProperty("default_value").GetString() != "Light")
+        coreSchema["avalonia_theme"].GetProperty("default_value").GetString() != "Auto")
     {
         throw new InvalidOperationException("Core config schema could not be read from the loaded host assembly.");
     }
@@ -842,6 +842,28 @@ try
         throw new InvalidOperationException("Adding a second instance did not convert the implicit config with its settings.");
     File.WriteAllText(packageConfigPath, declaredConfig);
     File.Delete(packageConfigPath + ".pre-instances.bak");
+
+    // Instance configs are written as readable sections with UTF-8 text, not one inline table of \u escapes.
+    var readablePath = Path.Combine(adapterWorkRoot, "readable-instances.toml");
+    AdapterInstanceStore.Write(readablePath, [new PackageAdapterInstance
+    {
+        Id = "cn-bot", Name = "格瑞普的机器人 \"引号\"", Enabled = true,
+        Config = new Dictionary<string, object?>
+        {
+            ["app_id"] = "102605036",
+            ["sandbox"] = new Dictionary<string, object?> { ["enabled"] = true },
+            ["routes"] = new List<object?> { new Dictionary<string, object?> { ["group"] = "群<1>" } }
+        }
+    }], replaceLegacy: true);
+    var readableText = File.ReadAllText(readablePath);
+    var readable = AdapterInstanceStore.Read(readablePath).Single();
+    if (readableText.Contains("\\u") || readableText.Contains("config = {") || !readableText.Contains("格瑞普的机器人") ||
+        !readableText.Contains("[instances.config]") || !readableText.Contains("[instances.config.sandbox]") ||
+        !readableText.Contains("[[instances.config.routes]]") || readable.Name != "格瑞普的机器人 \"引号\"" ||
+        readable.Config["app_id"]?.ToString() != "102605036" ||
+        (readable.Config["sandbox"] as Dictionary<string, object?>)?["enabled"] is not true ||
+        ((readable.Config["routes"] as List<object?>)?.SingleOrDefault() as Dictionary<string, object?>)?["group"]?.ToString() != "群<1>")
+        throw new InvalidOperationException("Instance config was not written as readable TOML sections:\n" + readableText);
 
     var zipPath = Path.Combine(adapterWorkRoot, "adapter.zip");
     using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))

@@ -70,26 +70,9 @@ ShiroBot/
 
 从 [awesome-shirobot](https://github.com/ShirokaProject/awesome-shirobot) 选择与你的机器人实现端匹配的适配器。
 
-适配器支持两种放置方式：
+在 Dashboard「适配器」页点击「从文件安装」上传 `.dll` / `.zip`，或在「发现」中直接安装；安装后展开适配器，点击「添加实例」并在「配置」中填写连接信息，再打开实例开关。每个实例对应一个机器人账号，同一个适配器可以添加多个实例。也可以使用 [CLI](/adapter/deployment) 完成同样的操作。
 
-```text
-adapters/MyAdapter.dll
-```
-
-或带依赖的目录形式：
-
-```text
-adapters/MyAdapter/MyAdapter.dll
-adapters/MyAdapter/其他依赖文件
-```
-
-然后在 `config.toml` 中设置：
-
-```toml
-protocols = ["MyAdapter"]
-```
-
-根目录单 DLL 适配器的配置位于 `adapters/config.toml`；目录适配器的配置位于 `adapters/MyAdapter/config.toml`。多个根目录单 DLL 适配器会共用同一配置文件，建议用目录形式部署。
+开发时想直接加载未打包的 DLL，见[配置文件](/guide/configuration#开发时加载独立适配器-dll)中的 `protocols` 与 `--adapter`。
 
 ## 安装插件
 
@@ -137,7 +120,7 @@ framework-dependent 发布包仍然直接运行 `ShiroBot` / `ShiroBot.exe`，�
 
 ```text
 --config, -c <path>    指定核心配置文件
---adapter <path>       指定适配器 DLL
+--adapter <path>       额外加载未安装的适配器 DLL（开发用）
 --plugin-dir <path>    指定插件目录
 --no-console           禁用控制台交互输入
 ```
