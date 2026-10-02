@@ -93,11 +93,38 @@ runtimes/osx-arm64/native/libexample.dylib
 运行时宿主会：
 
 - 优先匹配完整 RID，例如 `osx-arm64`。
-- 再尝试系统级 RID，例如 `osx`、`linux` 或 `win`。
+- 再尝试系统级 RID，例如 `osx`、`linux`、`linux-musl` 或 `win`。
 - 最后尝试 `any`。
 - 使用 HTTPS 下载 `.nupkg` 并校验 SHA512。
 - 只释放匹配平台的文件。
 - 删除临时 `.nupkg` 并缓存释放结果。
+
+## 八个平台的兼容要求
+
+ShiroBot 发布以下 8 个运行平台。插件若声明支持全部宿主平台，其直接和传递引用的 native NuGet 依赖也必须兼容全部 8 个 RID：
+
+| 平台 | 架构 | RID | 标准 native 资产目录 |
+| --- | --- | --- | --- |
+| Windows | x64 | `win-x64` | `runtimes/win-x64/native/` |
+| Windows | ARM64 | `win-arm64` | `runtimes/win-arm64/native/` |
+| Linux（glibc） | x64 | `linux-x64` | `runtimes/linux-x64/native/` |
+| Linux（glibc） | ARM64 | `linux-arm64` | `runtimes/linux-arm64/native/` |
+| Alpine / Linux（musl） | x64 | `linux-musl-x64` | `runtimes/linux-musl-x64/native/` |
+| Alpine / Linux（musl） | ARM64 | `linux-musl-arm64` | `runtimes/linux-musl-arm64/native/` |
+| macOS | Intel x64 | `osx-x64` | `runtimes/osx-x64/native/` |
+| macOS | Apple Silicon ARM64 | `osx-arm64` | `runtimes/osx-arm64/native/` |
+
+自动打包和下载只负责收集、选择及加载包内已有的资产，不会重新编译原生库，也不会把 x64 库转换成 ARM64 库。单份插件 DLL 可以包含这 8 个平台的依赖清单；运行时仅下载当前平台的资产，无需为此分发 8 份插件 DLL。纯 managed 依赖也应确认没有隐藏的原生依赖或平台专用 API。
+
+### Alpine 与普通 Linux
+
+当前官方 Docker 镜像使用 Alpine，分别需要 `linux-musl-x64` 和 `linux-musl-arm64` 的原生资产。普通 Linux 的 `linux-x64` / `linux-arm64` 资产通常面向 glibc，不能视为兼容 musl；安装 .NET 或常用系统库也不会自动解决两种 libc 的二进制兼容问题。
+
+宿主对 musl 的选择顺序为完整 RID → `linux-musl` → `any`，不会回退到 `linux-x64`、`linux-arm64` 或 `linux`。系统级 RID 和 `any` 仅适用于资产确实兼容对应环境及架构的情况，不能用来给不兼容的原生二进制兜底。
+
+选用 native NuGet 包前，请核对其直接及传递依赖的资产目录、CPU 架构、libc 和系统库要求，并在目标平台验证实际调用；编译成功、下载成功或只在一个平台加载成功，都不能证明支持全部 8 个平台。额外系统库需由部署环境提供，宿主不会自动安装。
+
+若某个依赖无法覆盖全部平台，应更换依赖、提供对应原生资产或实现可用的 managed 替代方案；仅支持部分平台的插件须在 README 和 Release 中明确列出支持的 RID，尤其说明是否支持 Alpine Docker。本文中的 SQLite 引用及清单仅演示机制，不代表所示版本已经验证覆盖全部 8 个平台。
 
 ## 限制
 

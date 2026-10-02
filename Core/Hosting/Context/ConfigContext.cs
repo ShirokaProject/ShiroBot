@@ -1,4 +1,5 @@
 using ShiroBot.Configuration;
+using ShiroBot.Adapters;
 using ShiroBot.Console;
 using ShiroBot.SDK.Config;
 using System.Reflection;
@@ -12,15 +13,17 @@ internal sealed class ConfigContext : IConfigContext
         .GetMethod(nameof(WatchUntypedGeneric), BindingFlags.Static | BindingFlags.NonPublic)!;
     private readonly ConfigManager _configManager = new();
     private readonly string _displayName;
+    private readonly string? _instanceId;
     private readonly PluginContext? _pluginOwner;
 
     public string ConfigPath { get; }
 
-    private ConfigContext(string configPath, string displayName, PluginContext? pluginOwner = null)
+    private ConfigContext(string configPath, string displayName, PluginContext? pluginOwner = null, string? instanceId = null)
     {
         ConfigPath = Path.GetFullPath(configPath);
         _displayName = displayName;
         _pluginOwner = pluginOwner;
+        _instanceId = instanceId;
     }
 
     private sealed class NullConfigContext : IConfigContext
@@ -52,9 +55,9 @@ internal sealed class ConfigContext : IConfigContext
         return new ConfigContext(coreConfigPath, "核心");
     }
 
-    public static IConfigContext ForAdapter(string adapterConfigPath)
+    public static IConfigContext ForAdapter(string adapterConfigPath, string? instanceId = null)
     {
-        return new ConfigContext(adapterConfigPath, "适配器");
+        return new ConfigContext(adapterConfigPath, "适配器", instanceId: AdapterInstanceStore.IsDeclared(adapterConfigPath) ? instanceId : null);
     }
 
     public static IConfigContext ForPlugin(string pluginConfigPath, PluginContext pluginOwner)
@@ -77,17 +80,20 @@ internal sealed class ConfigContext : IConfigContext
 
     public T Load<T>() where T : class, new()
     {
+        if (_instanceId is not null) return AdapterInstanceStore.Load<T>(ConfigPath, _instanceId);
         return _configManager.LoadConfig<T>(ConfigPath, _displayName) ?? new();
     }
 
     public void Save<T>(T config) where T : class
     {
-        _configManager.SaveConfig(ConfigPath, config);
+        if (_instanceId is not null) AdapterInstanceStore.Save(ConfigPath, _instanceId, config);
+        else _configManager.SaveConfig(ConfigPath, config);
     }
 
     public void SetValue(string keyPath, object? value)
     {
-        _configManager.SetConfigValue(ConfigPath, keyPath, value);
+        if (_instanceId is not null) AdapterInstanceStore.Patch(ConfigPath, _instanceId, path => _configManager.SetConfigValue(path, keyPath, value));
+        else _configManager.SetConfigValue(ConfigPath, keyPath, value);
     }
 
     public IDisposable Watch<T>(Action<T> onChanged, int debounceMs = 500) where T : class, new()
@@ -99,6 +105,7 @@ internal sealed class ConfigContext : IConfigContext
         Directory.CreateDirectory(directory);
 
         var effectiveDebounce = Math.Max(50, debounceMs);
+        var lastInstanceConfig = _instanceId is null ? null : System.Text.Json.JsonSerializer.Serialize(AdapterInstanceStore.GetConfig(ConfigPath, _instanceId));
 
         var watcher = new FileSystemWatcher(directory, Path.GetFileName(ConfigPath))
         {
@@ -210,6 +217,13 @@ internal sealed class ConfigContext : IConfigContext
                 if (loaded is null)
                 {
                     return;
+                }
+
+                if (_instanceId is not null)
+                {
+                    var currentConfig = System.Text.Json.JsonSerializer.Serialize(AdapterInstanceStore.GetConfig(ConfigPath, _instanceId));
+                    if (currentConfig == lastInstanceConfig) return;
+                    lastInstanceConfig = currentConfig;
                 }
 
                 try

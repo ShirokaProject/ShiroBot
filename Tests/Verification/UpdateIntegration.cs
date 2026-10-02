@@ -94,8 +94,8 @@ internal static class UpdateIntegration
                 var instances = host.AdapterPackages.ListInstances();
                 Check(instances.Count == 2 && instances.Select(item => item.AssemblyPath).Distinct().Count() == 1,
                     "Instances must share exactly one installed DLL");
-                Check(instances.Select(item => item.ConfigPath).Distinct().Count() == 2, "Instance config paths overlap");
-                foreach (var instance in instances) File.WriteAllText(instance.ConfigPath, $"bot = \"{instance.Id}\"\n");
+                Check(instances.Select(item => item.ConfigPath).Distinct().Count() == 1, "Instances must use one package config");
+                foreach (var instance in instances) AdapterInstanceStore.Update(instance.ConfigPath, instance.Id, item => item.Config["bot"] = instance.Id);
                 await host.PostAsync("/adapters/probe-work/start", new { });
                 Check(host.Adapters.LoadedIds.Count == 2, "Same DLL instances did not load together");
                 var workAssembly = host.Adapters.GetLoadedAssembly("probe-work");
@@ -119,67 +119,61 @@ internal static class UpdateIntegration
                 var reloadedRegistry = new AdapterPackageManager(Path.Combine(host.Root, "adapters"));
                 Check(reloadedRegistry.ListInstances().Single().Id == "probe-work", "Restart revived deleted default instance");
                 using var deleteLast = await host.Client.DeleteAsync("adapters/probe-work");
-                Check(deleteLast.IsSuccessStatusCode && host.AdapterPackages.List().Count == 0 && host.AdapterPackages.ListInstances().Count == 0,
-                    "Deleting final instance did not remove package/registry");
+                Check(deleteLast.IsSuccessStatusCode && host.AdapterPackages.List().Count == 1 && host.AdapterPackages.ListInstances().Count == 0,
+                    "Deleting final instance removed its shared package");
                 return new { shared_dll = true, independent_config = true, separate_load_contexts = true, http_config = true,
                     independent_start_stop_reload_delete = true, persisted_instances = true };
             });
-            await Scenario("root-config-instance-management", async host =>
+            await Scenario("package-config-instance-management", async host =>
             {
                 await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
                 await host.Adapters.StopAsync();
-                var path = Path.Combine(host.Root, "config.toml");
-                File.AppendAllText(path, "\n# keep unrelated core settings\n");
-                new ConfigManager(path).ReplaceConfigValue(path, "adapter_instances", new List<object>
-                {
-                    new Dictionary<string, object?> { ["id"] = "config-work", ["package_id"] = AdapterId, ["name"] = "Configured work", ["enabled"] = true },
-                    new Dictionary<string, object?> { ["id"] = "config-home", ["package_id"] = AdapterId, ["enabled"] = false }
-                });
-                var fromToml = host.AdapterPackages.ListInstances();
-                Check(fromToml.Count == 2 && !fromToml.Any(item => item.Id == AdapterId), "Explicit root config revived an undeclared default instance");
-                foreach (var instance in fromToml.Where(item => item.Enabled)) await host.Adapters.LoadInstanceAsync(instance);
-                Check(host.Adapters.LoadedIds.SequenceEqual(["config-work"]), "Root config enabled flags were ignored");
+                var path = host.AdapterPackages.GetInstance(AdapterId)!.ConfigPath;
+                var corePath = Path.Combine(host.Root, "config.toml");
+                var originalCore = File.ReadAllText(corePath);
+                File.AppendAllText(path, "\n# keep package comment\n");
+                AdapterInstanceStore.Write(path, [new() { Id = "config-work", Enabled = true, Config = new() { ["bot"] = "work" } }, new() { Id = "config-home", Config = new() { ["bot"] = "home" } }]);
+                foreach (var instance in host.AdapterPackages.ListInstances().Where(item => item.Enabled)) await host.Adapters.LoadInstanceAsync(instance);
+                Check(host.Adapters.LoadedIds.SequenceEqual(["config-work"]), "Package enabled flags were ignored");
                 await host.PostAsync("/adapters/config-work/stop", new { });
-                var config = await new ConfigManager(path).LoadCoreConfig();
-                Check(config.AdapterInstances!.Single(item => item.Id == "config-work").Enabled == false, "WebUI stop did not update root config");
-                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "config-new", name = "Added from web" });
-                config = await new ConfigManager(path).LoadCoreConfig();
-                Check(config.AdapterInstances!.Length == 3 && config.AdapterInstances.Any(item => item.Id == "config-new"), "WebUI create did not update root config");
-                Check(File.ReadAllText(path).Contains("# keep unrelated core settings"), "Instance management destroyed unrelated core comments");
-                using var deleted = await host.Client.DeleteAsync("adapters/config-home");
-                Check(deleted.IsSuccessStatusCode && !host.AdapterPackages.ListInstances().Any(item => item.Id == "config-home"), "WebUI delete did not update root config");
+                Check(!AdapterInstanceStore.Read(path).Single(item => item.Id == "config-work").Enabled, "WebUI did not update package config");
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "config-new" });
+                Check(AdapterInstanceStore.Read(path).Count == 3, "WebUI create did not write package config");
+                Check(File.ReadAllText(corePath) == originalCore && File.ReadAllText(path).Contains("# keep package comment"), "Instance management changed unrelated settings");
                 var original = File.ReadAllText(path);
-                new ConfigManager(path).ReplaceConfigValue(path, "adapter_instances", new List<object>
-                {
-                    new Dictionary<string, object?> { ["id"] = "duplicate", ["package_id"] = AdapterId },
-                    new Dictionary<string, object?> { ["id"] = "duplicate", ["package_id"] = AdapterId }
-                });
-                try { host.AdapterPackages.ListInstances(); throw new Exception("Duplicate root-config IDs accepted"); }
-                catch (InvalidOperationException) { }
+                AdapterInstanceStore.Write(path, [new() { Id = "duplicate" }, new() { Id = "DUPLICATE" }]);
+                try { host.AdapterPackages.ListInstances(); throw new Exception("Duplicate package IDs accepted"); } catch (InvalidOperationException) { }
                 finally { File.WriteAllText(path, original); }
-                return new { declarative_toml = true, undeclared_default_stays_absent = true, web_and_file_share_state = true, comments_preserved = true, duplicate_validation = true };
+                return new { package_toml = true, no_default = true, web_and_file_share_state = true, duplicate_validation = true };
             });
             await Scenario("legacy-instance-migration", async host =>
             {
                 await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
-                File.WriteAllText(Path.Combine(host.Root, "config.toml"), "protocols = []\n# legacy core configuration\n");
+                await host.Adapters.StopAsync();
+                var path = host.AdapterPackages.GetInstance(AdapterId)!.ConfigPath;
+                File.WriteAllText(path, "bot = \"legacy-default\"\n");
                 var directory = Path.Combine(host.Root, "adapters", ".instances", "legacy-extra");
                 Directory.CreateDirectory(directory);
-                File.WriteAllText(Path.Combine(directory, "instance.json"), JsonSerializer.Serialize(new { Id = "legacy-extra", PackageId = AdapterId, Name = "Legacy instance", Enabled = true }));
                 File.WriteAllText(Path.Combine(directory, "config.toml"), "bot = \"legacy-extra\"\n");
+                var corePath = Path.Combine(host.Root, "config.toml");
+                new ConfigManager(corePath).ReplaceConfigValue(corePath, "adapter_instances", new List<object>
+                {
+                    new Dictionary<string, object?> { ["id"] = AdapterId, ["package_id"] = AdapterId, ["enabled"] = true },
+                    new Dictionary<string, object?> { ["id"] = "legacy-extra", ["package_id"] = AdapterId, ["enabled"] = false }
+                });
                 host.AdapterPackages.InitializeInstances();
-                var migrated = await new ConfigManager(Path.Combine(host.Root, "config.toml")).LoadCoreConfig();
-                Check(migrated.AdapterInstances!.Length == 2 && migrated.AdapterInstances.Any(item => item.Id == "legacy-extra" && item.Enabled),
-                    "Legacy JSON/default instances were not migrated to root TOML");
-                Check(File.ReadAllText(Path.Combine(directory, "config.toml")).Contains("legacy-extra"), "Migration overwrote instance credentials/config");
-                return new { old_manifest_and_json_migrated = true, configs_untouched = true };
+                Check(host.AdapterPackages.ListInstances().Count == 2 && !File.ReadAllText(corePath).Contains("adapter_instances"), "Legacy registry not migrated/removed");
+                Check(AdapterInstanceStore.GetConfig(path, "legacy-extra")["bot"]?.ToString() == "legacy-extra" && AdapterInstanceStore.GetConfig(path, AdapterId)["bot"]?.ToString() == "legacy-default", "Migration lost credentials/config");
+                host.AdapterPackages.InitializeInstances();
+                Check(host.AdapterPackages.ListInstances().Count == 2, "Migration is not idempotent");
+                return new { root_registry_migrated = true, configs_preserved = true, idempotent = true };
             });
             await Scenario("multi-instance-package-update", async host =>
             {
                 await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
                 await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-home" });
                 await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-disabled" });
-                foreach (var instance in host.AdapterPackages.ListInstances()) File.WriteAllText(instance.ConfigPath, $"bot = \"{instance.Id}\"\n");
+                foreach (var instance in host.AdapterPackages.ListInstances()) AdapterInstanceStore.Update(instance.ConfigPath, instance.Id, item => item.Config["bot"] = instance.Id);
                 await host.PostAsync("/adapters/probe-home/start", new { });
                 var response = await host.UpdateAdapterAsync();
                 Check(!response.TryGetProperty("pending_restart", out var pending) || !pending.GetBoolean(), "Multi-instance update unexpectedly staged");
@@ -338,7 +332,7 @@ internal static class UpdateIntegration
                     Check(deleted.IsSuccessStatusCode, "Pinned assembly blocked deleting adapter files");
                     using var response = JsonDocument.Parse(await deleted.Content.ReadAsStringAsync());
                     Check(response.RootElement.GetProperty("restartRequired").GetBoolean(), "Deleted pinned adapter did not offer restart");
-                    Check(host.AdapterPackages.Get(AdapterId) is null && !host.Adapters.GetSnapshot().Any(item => item.Id == AdapterId),
+                    Check(host.AdapterPackages.Get(AdapterId) is not null && host.AdapterPackages.GetInstance(AdapterId) is null && !host.Adapters.GetSnapshot().Any(item => item.Id == AdapterId),
                         "Deleted pinned adapter left installed files or ghost state");
                 }
                 finally { _pinnedAdapter = null; }
@@ -369,7 +363,7 @@ internal static class UpdateIntegration
                 await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
                 await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-staged" });
                 await host.PostAsync("/adapters/probe-staged/start", new { });
-                foreach (var instance in host.AdapterPackages.ListInstances()) File.WriteAllText(instance.ConfigPath, $"bot = \"{instance.Id}\"\n");
+                foreach (var instance in host.AdapterPackages.ListInstances()) AdapterInstanceStore.Update(instance.ConfigPath, instance.Id, item => item.Config["bot"] = instance.Id);
                 _pinnedAdapter = host.Adapters.GetLoadedAssembly(AdapterId);
                 JsonElement response;
                 try { response = await host.UpdateAdapterAsync(); }
@@ -461,7 +455,7 @@ internal static class UpdateIntegration
         Write("payload/payload.txt", $"version-{version}");
         if (version == 1) Write("payload/old-only.txt", "removed-in-v2");
         else Write("payload/runtimes/sidecar.txt", "v2-sidecar");
-        if (broken) Write("payload/fail-start", "fail");
+        if (broken) { Write("payload/fail-start", "fail"); Write("fail-start", "fail"); }
         void Write(string name, string value) { using var writer = new StreamWriter(archive.CreateEntry(name).Open()); writer.Write(value); }
     }
     private static int FreePort() { using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); return ((IPEndPoint)listener.LocalEndpoint).Port; }
@@ -532,6 +526,13 @@ internal static class UpdateIntegration
             content.Add(new ByteArrayContent(await File.ReadAllBytesAsync(zip)), "file", Path.GetFileName(zip));
             var upload = await ReadAsync(await Client.PostAsync(component + "/upload", content));
             await PostAsync($"/{component}/upload/{upload.GetProperty("upload_id").GetString()}/confirm", new { replace = false, enable = true });
+            if (component == "adapters")
+            {
+                var id = upload.GetProperty("adapter").GetProperty("id").GetString()!;
+                Check(AdapterPackages.GetInstance(id) is null, "Install created an implicit instance");
+                await PostAsync($"/adapters/{id}/instances", new { id });
+                await PostAsync($"/adapters/{id}/start", new { });
+            }
         }
         public async Task<JsonElement> UpdateAdapterAsync(bool expectFailure = false)
         {
@@ -560,7 +561,8 @@ internal static class UpdateIntegration
             var folder = component == "adapters"
                 ? Path.GetDirectoryName(AdapterPackages.Get(id)!.AssemblyPath)!
                 : Path.Combine(Root, component, id);
-            File.WriteAllText(Path.Combine(folder, "config.toml"), "user = 42 # retain me\n");
+            if (component == "adapters") { AdapterInstanceStore.Update(AdapterPackages.GetInstance(id)!.ConfigPath, id, item => item.Config["user"] = 42L); File.AppendAllText(AdapterPackages.GetInstance(id)!.ConfigPath, "# retain me\n"); }
+            else File.WriteAllText(Path.Combine(folder, "config.toml"), "user = 42 # retain me\n");
             Directory.CreateDirectory(Path.Combine(folder, "data"));
             File.WriteAllText(Path.Combine(folder, "data", "user.txt"), "keep-user-data");
         }
@@ -569,7 +571,8 @@ internal static class UpdateIntegration
             var folder = component == "adapters"
                 ? Path.GetDirectoryName(AdapterPackages.Get(id)!.AssemblyPath)!
                 : Path.Combine(Root, component, id);
-            Check(File.ReadAllText(Path.Combine(folder, "config.toml")) == "user = 42 # retain me\n", "User configuration was overwritten");
+            if (component == "adapters") Check(Convert.ToInt64(AdapterInstanceStore.GetConfig(AdapterPackages.GetInstance(id)!.ConfigPath, id)["user"]) == 42 && File.ReadAllText(AdapterPackages.GetInstance(id)!.ConfigPath).Contains("# retain me"), "Instance config was overwritten");
+            else Check(File.ReadAllText(Path.Combine(folder, "config.toml")) == "user = 42 # retain me\n", "User configuration was overwritten");
             Check(File.ReadAllText(Path.Combine(folder, "data", "user.txt")) == "keep-user-data", "User data was overwritten");
         }
         public void AssertPackage(string component, string id)

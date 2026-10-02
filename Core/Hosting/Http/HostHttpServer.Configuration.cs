@@ -82,8 +82,8 @@ internal sealed partial class HostHttpServer
         schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly),
         protocol = config.Protocols.FirstOrDefault() ?? string.Empty,
         protocols = config.Protocols,
-        adapter_instances = config.AdapterInstances,
         enable_log = config.EnableLog,
+        showid = config.Showid,
         disable_console_input = config.DisableConsoleInput,
         github_proxy = config.GithubProxy,
         host_update_repository = config.HostUpdateRepository,
@@ -108,6 +108,7 @@ internal sealed partial class HostHttpServer
         string configPath)
     {
         // Validated before anything is written, so a rejected value leaves the file untouched.
+        var hasShowid = TryGetBool(patch, "showid", out var showid);
         // Auto switches by the clock (dark 18:00–06:00); older dashboards sent "System" for it.
         string? avaloniaTheme = TryGetString(patch, "avalonia_theme", out var requestedTheme)
             ? requestedTheme.Trim().ToLowerInvariant() switch
@@ -118,6 +119,8 @@ internal sealed partial class HostHttpServer
                 _ => throw new InvalidOperationException("avalonia_theme 只能是 Light、Dark 或 Auto。")
             }
             : null;
+
+        if (hasShowid) configManager.SetConfigValue(configPath, "showid", showid);
 
         // Legacy single value: an empty one means "no extra adapter", not a list holding "".
         if (TryGetString(patch, "protocol", out var protocol))

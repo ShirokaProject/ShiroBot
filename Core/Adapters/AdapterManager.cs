@@ -190,6 +190,24 @@ internal sealed class AdapterManager(
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// Creates an instance. Adding one turns an implicit single-instance config into [[instances]], so a running
+    /// implicit instance (which reads the file root) restarts to read its own section.
+    /// </summary>
+    public async Task<InstalledAdapterInstance> CreateInstanceAsync(AdapterPackageManager packages, string packageId, string id, string? name)
+    {
+        var implicitRunning = packages.ListInstances().FirstOrDefault(item => item.Implicit &&
+            string.Equals(item.PackageId, packageId, StringComparison.OrdinalIgnoreCase) &&
+            LoadedIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase));
+        if (implicitRunning is not null) await StopByIdAsync(implicitRunning.Id).ConfigureAwait(false);
+        try { return packages.CreateInstance(packageId, id, name); }
+        finally
+        {
+            if (implicitRunning is not null && packages.GetInstance(implicitRunning.Id) is { } restarted)
+                await LoadInstanceAsync(restarted).ConfigureAwait(false);
+        }
+    }
+
     public async Task ReloadByIdAsync(string id)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -373,7 +391,7 @@ internal sealed class AdapterManager(
 
             var configDirectory = Path.GetDirectoryName(logicalAssemblyPath ?? adapterPath) ?? adapterRoot;
             configPath ??= Path.Combine(configDirectory, "config.toml");
-            adapter.Config = ConfigContext.ForAdapter(configPath);
+            adapter.Config = ConfigContext.ForAdapter(configPath, instanceId);
             adapter.Logger = new ConsoleLogger($"[Adapter:{instanceId}]", logHub);
             var configurable = adapter as IConfigurableAdapter;
             object? initialConfig = null;

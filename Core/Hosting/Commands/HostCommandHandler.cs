@@ -274,7 +274,7 @@ internal sealed class HostCommandHandler(
                     if (input.Length < 4) return "用法: adapter create <包 ID> <实例 ID>";
                     if (packages is null) throw new InvalidOperationException("Adapter 包管理器不可用。");
                     InstalledAdapterInstance? created = null;
-                    Task CreateInstance() { created = packages.CreateInstance(input[2], input[3], null); return Task.CompletedTask; }
+                    async Task CreateInstance() => created = await manager.CreateInstanceAsync(packages, input[2], input[3], null);
                     if (_reloadCoordinator is not null) await _reloadCoordinator.ExecuteAdapterMutationAsync(CreateInstance);
                     else await CreateInstance();
                     return $"已创建停用实例 {created!.Id}，请编辑 {created.ConfigPath}，然后 adapter start {created.Id}";
@@ -293,6 +293,7 @@ internal sealed class HostCommandHandler(
                     return $"已删除 Adapter 实例: {input[2]}";
                 case "start":
                     var package = packages?.GetInstance(input[2]) ?? throw new InvalidOperationException($"未安装 Adapter: {input[2]}");
+                    if (!package.PackageEnabled) throw new InvalidOperationException($"适配器包 {package.PackageId} 已关闭，请先打开适配器。");
                     if (_reloadCoordinator is not null)
                         await _reloadCoordinator.ExecuteAdapterMutationAsync(() => manager.LoadInstanceAsync(package));
                     else

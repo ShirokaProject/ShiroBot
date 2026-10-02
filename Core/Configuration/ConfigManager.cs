@@ -17,12 +17,11 @@ public class CoreConfig
     [ConfigField("启动时加载的 Adapter 名称或 DLL 路径。", Label = "Adapters", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
-    /// <summary>When present, this is the authoritative installed-adapter instance list.</summary>
-    [ConfigField("适配器实例清单，每项包含 id、package_id、name、enabled。WebUI 和 CLI 管理同一清单；手动修改后重启生效。", Label = "适配器实例", Type = "array", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 15)]
-    public AdapterInstanceConfig[]? AdapterInstances { get; set; }
-
     [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 20)]
     public bool EnableLog { get; set; } = true;
+
+    [ConfigField("在消息日志中显示群 ID 和用户 ID；修改后即时生效。", Label = "显示群与用户 ID", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 25)]
+    public bool Showid { get; set; } = false;
 
     [ConfigField("是否关闭交互式控制台输入；修改后重启生效。", Label = "禁用控制台输入", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 30)]
     public bool DisableConsoleInput { get; set; } = false;
@@ -55,14 +54,6 @@ public class CoreConfig
 
     [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupOrder = 40, Order = 10)]
     public ApiHostConfig Api { get; set; } = new();
-}
-
-public sealed class AdapterInstanceConfig
-{
-    public string Id { get; set; } = string.Empty;
-    public string PackageId { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public bool Enabled { get; set; }
 }
 
 public class ApiHostConfig
@@ -658,7 +649,9 @@ public class ConfigManager(string? coreConfigPath = null)
     /// a table as a <c>[key]</c> block and anything else as <c>key = value</c>. Unrelated content and
     /// comments are preserved.
     /// </summary>
-    public void ReplaceConfigValue(string configPath, string keyPath, object? value)
+    public void RemoveConfigValue(string configPath, string keyPath) => ReplaceConfigValue(configPath, keyPath, null, remove: true);
+
+    public void ReplaceConfigValue(string configPath, string keyPath, object? value, bool remove = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
         var normalizedConfigPath = Path.GetFullPath(configPath);
@@ -733,7 +726,8 @@ public class ConfigManager(string? coreConfigPath = null)
             block = string.Concat(list.Cast<System.Collections.IDictionary>()
                 .Select(element => $"[[{fullName}]]{newline}{FormatTomlTableBody(element, newline)}{newline}"));
 
-        if (block is null)
+        if (remove) { }
+        else if (block is null)
         {
             var patch = (parentName.Length == 0 ? string.Empty : $"[{parentName}]\n") + $"{FormatTomlKey(leaf)} = {FormatTomlValue(value)}\n";
             updated = MergeToml(updated, patch, overwriteExisting: true);
@@ -777,6 +771,7 @@ public class ConfigManager(string? coreConfigPath = null)
             sbyte or byte or short or ushort or int or uint or long or ulong => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
             float or double or decimal => FormatTomlFloat(Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture)),
             Enum enumValue => QuoteTomlString(enumValue.ToString()),
+            TomlDateTime date => date.ToString(),
             System.Collections.IDictionary table => "{ " + string.Join(", ", table.Keys.Cast<object>().Select(key =>
                 $"{FormatTomlKey(Convert.ToString(key, System.Globalization.CultureInfo.InvariantCulture)!)} = {FormatTomlValue(table[key])}")) + " }",
             System.Collections.IEnumerable items when value is not string => FormatTomlArray(items),

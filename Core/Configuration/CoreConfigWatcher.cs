@@ -47,6 +47,12 @@ internal sealed class CoreConfigWatcher : IDisposable
             changes.Add($"enable_log={updated.EnableLog}");
         }
 
+        if (active.Showid != updated.Showid)
+        {
+            active.Showid = updated.Showid;
+            changes.Add($"showid={updated.Showid}");
+        }
+
         if (active.DisableConsoleInput != updated.DisableConsoleInput)
         {
             // 控制台输入循环是启动期一次性决定的，运行期改这个值不会即时生效。
@@ -65,12 +71,6 @@ internal sealed class CoreConfigWatcher : IDisposable
         {
             active.Protocols = updated.Protocols;
             changes.Add("protocols(下次启动生效)");
-        }
-
-        if (System.Text.Json.JsonSerializer.Serialize(active.AdapterInstances) != System.Text.Json.JsonSerializer.Serialize(updated.AdapterInstances))
-        {
-            active.AdapterInstances = updated.AdapterInstances;
-            changes.Add("adapter_instances(手动修改下次启动生效)");
         }
 
         active.PluginRoutes.CopyFrom(updated.PluginRoutes);

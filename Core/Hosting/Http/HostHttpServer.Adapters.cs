@@ -50,7 +50,7 @@ internal sealed partial class HostHttpServer
             return Results.Ok(new
             {
                 adapter_id = instance!.Id,
-                config = LoadTomlObject(configPath),
+                config = AdapterInstanceStore.GetConfig(configPath, id),
                 schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id)),
                 apply_status = adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)
                     ? "loaded"
@@ -84,15 +84,15 @@ internal sealed partial class HostHttpServer
                 var configPath = instance!.ConfigPath;
                 try
                 {
-                    ApplyComponentConfigPatch(configManager, configPath, configPatch,
-                        GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id)));
+                    AdapterInstanceStore.Patch(configPath, id, path => ApplyComponentConfigPatch(configManager, path, configPatch,
+                        GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id))));
                     var applied = await reloadCoordinator.ExecuteAdapterMutationAsync(
                         () => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
                     return Results.Ok(new
                     {
                         ok = true,
                         adapter_id = instance!.Id,
-                        config = LoadTomlObject(configPath),
+                        config = AdapterInstanceStore.GetConfig(configPath, id),
                         schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id)),
                         apply_status = applied ? "applied" :
                             adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)
@@ -149,6 +149,9 @@ internal sealed partial class HostHttpServer
             }
         });
 
+        api.MapGet("/adapter-packages", () => Results.Ok(adapterPackages.List().Select(package => new
+        { id = package.Id, name = package.Name, version = package.Version, platform = package.Platform, description = package.Description, assembly_path = package.AssemblyPath, enabled = adapterPackages.IsPackageEnabled(package) })));
+
         api.MapGet("/adapters", () =>
         {
             var snapshots = adapterManager.GetSnapshot();
@@ -177,11 +180,8 @@ internal sealed partial class HostHttpServer
             try
             {
                 InstalledAdapterInstance? instance = null;
-                await reloadCoordinator.ExecuteAdapterMutationAsync(() =>
-                {
-                    instance = adapterPackages.CreateInstance(packageId, request.Id, request.Name);
-                    return Task.CompletedTask;
-                }).ConfigureAwait(false);
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                    instance = await adapterManager.CreateInstanceAsync(adapterPackages, packageId, request.Id, request.Name).ConfigureAwait(false)).ConfigureAwait(false);
                 return Results.Ok(new { ok = true, adapter = new { id = instance!.Id }, message = "实例已创建，请配置后启动。" });
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
@@ -201,8 +201,8 @@ internal sealed partial class HostHttpServer
                 entry["installed"] = new JsonObject
                 {
                     ["version"] = package.Version,
-                    ["enabled"] = package.Enabled,
-                    ["loaded"] = loaded.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
+                    ["enabled"] = adapterPackages.ListInstances().Any(item => item.PackageId == package.Id && item.Enabled),
+                    ["loaded"] = adapterPackages.ListInstances().Any(item => item.PackageId == package.Id && loaded.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
                 };
             }
             return Results.Ok(new { adapters = entries });
@@ -251,7 +251,7 @@ internal sealed partial class HostHttpServer
                 async Task ActivateInstances(InstalledAdapterPackage package, bool restoring = false)
                 {
                     var candidates = adapterPackages.ListInstances().Where(instance => string.Equals(instance.PackageId, package.Id, StringComparison.OrdinalIgnoreCase) &&
-                        (instance.Enabled || runningInstances.Any(previous => string.Equals(previous.Id, instance.Id, StringComparison.OrdinalIgnoreCase)))).ToArray();
+                        (instance.Active || runningInstances.Any(previous => string.Equals(previous.Id, instance.Id, StringComparison.OrdinalIgnoreCase)))).ToArray();
                     var started = new List<string>();
                     try
                     {
@@ -326,7 +326,7 @@ internal sealed partial class HostHttpServer
                         message = $"Adapter 已安装，但启动失败，已保持停用。请先完成配置再启动：{result.StartError}"
                     });
                 }
-                return Results.Ok(new { ok = true, adapter = new { id = installed.Id, enabled = installed.Enabled }, rollback = false, restarted = existing?.Enabled ?? request.Enable, started = installed.Enabled });
+                return Results.Ok(new { ok = true, adapter = new { id = installed.Id }, rollback = false, started = adapterPackages.ListInstances().Any(item => item.PackageId == installed.Id && adapterManager.LoadedIds.Contains(item.Id)), message = existing is null ? "适配器包已安装，请展开并添加实例。" : "适配器程序集已更新，所有实例配置已保留。" });
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
             { return Results.Conflict(new { error = "install_failed", message = ex.Message, rollback = ex.Message.Contains("恢复", StringComparison.Ordinal), restarted = ex.Message.Contains("恢复", StringComparison.Ordinal) }); }
@@ -369,6 +369,7 @@ internal sealed partial class HostHttpServer
             try
             {
                 var instance = adapterPackages.GetInstance(id); if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                if (!instance.PackageEnabled) return Results.Conflict(new { ok = false, error = "adapter_package_disabled", message = "适配器已关闭，请先打开适配器。", restartRequired = false });
                 await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); adapterPackages.SetInstanceEnabled(instance.Id, true); }).ConfigureAwait(false);
                 return Results.Ok(new { ok = true, restartRequired = false });
             }
@@ -376,6 +377,115 @@ internal sealed partial class HostHttpServer
         });
         api.MapPost("/adapters/{id}/stop", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.SetInstanceEnabled(id, false); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_stop_failed", ex); } });
         api.MapPost("/adapters/{id}/reload", async (string id) => { try { await reloadCoordinator.ReloadAdapterByIdAsync(id).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_reload_failed", ex); } });
+        // Package master switch: off stops every instance but keeps their own switches; on starts the ones that are on.
+        api.MapPost("/adapter-packages/{id}/start", async (string id) =>
+        {
+            try
+            {
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                var failed = new List<string>();
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                {
+                    adapterPackages.SetPackageEnabled(id, true);
+                    foreach (var instance in adapterPackages.ListInstances().Where(item => string.Equals(item.PackageId, id, StringComparison.OrdinalIgnoreCase) && item.Enabled))
+                        try { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); }
+                        catch (Exception ex) { failed.Add($"{instance.Id}: {ex.Message}"); }
+                }).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, restartRequired = false, message = failed.Count == 0 ? "适配器已打开。" : "适配器已打开，部分实例启动失败：" + string.Join("；", failed) });
+            }
+            catch (Exception ex) { return AdapterOperationError("adapter_start_failed", ex); }
+        });
+        api.MapPost("/adapter-packages/{id}/stop", async (string id) =>
+        {
+            try
+            {
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                var restartRequired = false;
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                {
+                    adapterPackages.SetPackageEnabled(id, false);
+                    foreach (var instance in adapterPackages.ListInstances().Where(item => string.Equals(item.PackageId, id, StringComparison.OrdinalIgnoreCase)))
+                        try { await adapterManager.StopByIdAsync(instance.Id).ConfigureAwait(false); }
+                        catch (ComponentUnloadPendingException) { restartRequired = true; }
+                }).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, restartRequired, message = restartRequired ? "适配器已关闭，重启宿主后释放残留程序集。" : "适配器已关闭。" });
+            }
+            catch (Exception ex) { return AdapterOperationError("adapter_stop_failed", ex); }
+        });
+        api.MapPost("/adapter-packages/{id}/reload", async (string id) =>
+        {
+            try
+            {
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                var reloaded = 0;
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                {
+                    foreach (var instance in adapterPackages.ListInstances().Where(item => string.Equals(item.PackageId, id, StringComparison.OrdinalIgnoreCase) &&
+                                 adapterManager.LoadedIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase)))
+                    {
+                        await adapterManager.ReloadByIdAsync(instance.Id).ConfigureAwait(false);
+                        reloaded++;
+                    }
+                }).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, restartRequired = false, message = reloaded == 0 ? "没有运行中的实例需要重载。" : $"已重载 {reloaded} 个实例。" });
+            }
+            catch (Exception ex) { return AdapterOperationError("adapter_reload_failed", ex); }
+        });
+        api.MapDelete("/adapter-packages/{id}", async (string id) =>
+        {
+            try
+            {
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { error = "adapter_not_found" });
+                var restartRequired = false;
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                {
+                    foreach (var instance in adapterPackages.ListInstances().Where(item => string.Equals(item.PackageId, id, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        restartRequired |= adapterManager.GetSnapshot().Any(item => string.Equals(item.Id, instance.Id, StringComparison.OrdinalIgnoreCase) && item.RestartRequired);
+                        if (adapterManager.LoadedIds.Contains(instance.Id, StringComparer.OrdinalIgnoreCase))
+                            try { await adapterManager.StopByIdAsync(instance.Id).ConfigureAwait(false); } catch (ComponentUnloadPendingException) { restartRequired = true; }
+                        adapterManager.ForgetRemovedAdapter(instance.Id);
+                    }
+                    adapterPackages.Uninstall(id);
+                }).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, restartRequired, message = restartRequired ? "适配器包及实例已删除，重启后释放残留程序集。" : "适配器包及实例已删除。" });
+            }
+            catch (Exception ex) { return AdapterOperationError("adapter_delete_failed", ex); }
+        });
+        // Edit an instance's ID / display name. Both are handed to the adapter at load, so a running instance restarts.
+        api.MapPatch("/adapters/{id}", async (string id, AdapterInstanceUpdateRequest request) =>
+        {
+            try
+            {
+                var instance = adapterPackages.GetInstance(id);
+                if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                var newId = string.IsNullOrWhiteSpace(request.Id) ? instance.Id : request.Id.Trim();
+                var renamed = !string.Equals(newId, instance.Id, StringComparison.OrdinalIgnoreCase);
+                InstalledAdapterInstance? updated = null;
+                string? startError = null;
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                {
+                    var wasLoaded = adapterManager.LoadedIds.Contains(instance.Id, StringComparer.OrdinalIgnoreCase);
+                    if (wasLoaded) await adapterManager.StopByIdAsync(instance.Id).ConfigureAwait(false);
+                    try { updated = adapterPackages.UpdateInstance(instance.Id, newId, request.Name); }
+                    catch
+                    {
+                        if (wasLoaded) await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false);
+                        throw;
+                    }
+                    if (renamed) adapterManager.ForgetRemovedAdapter(instance.Id);
+                    // The edit is saved either way; a failed restart shows on the instance like any start error.
+                    if (wasLoaded)
+                        try { await adapterManager.LoadInstanceAsync(updated).ConfigureAwait(false); }
+                        catch (Exception ex) { startError = ex.Message; }
+                }).ConfigureAwait(false);
+                return Results.Ok(new { ok = startError is null, restartRequired = false, adapter = new { id = updated!.Id, name = updated.Name },
+                    message = startError is null ? "实例已保存。" : $"实例已保存，但重新启动失败：{startError}" });
+            }
+            catch (InvalidOperationException ex) when (ex is not ComponentUnloadPendingException)
+            { return Results.Conflict(new { ok = false, error = "instance_update_failed", message = ex.Message, restartRequired = false }); }
+            catch (Exception ex) { return AdapterOperationError("instance_update_failed", ex); }
+        });
         api.MapDelete("/adapters/{id}", async (string id) =>
         {
             try
@@ -396,7 +506,7 @@ internal sealed partial class HostHttpServer
                 {
                     ok = true,
                     restartRequired,
-                    message = restartRequired ? "适配器文件已删除，重启宿主后将释放残留程序集。" : "适配器已删除。"
+                    message = restartRequired ? "实例已删除，重启宿主后将释放残留程序集。" : "实例已删除，适配器包继续保留。"
                 });
             }
             catch (Exception ex) { return AdapterOperationError("adapter_delete_failed", ex); }
@@ -404,6 +514,7 @@ internal sealed partial class HostHttpServer
     }
 
     private sealed record AdapterInstanceCreateRequest(string Id, string? Name = null);
+    private sealed record AdapterInstanceUpdateRequest(string? Id = null, string? Name = null);
 
     private static object CreateAdapterPreview(
         string uploadId,

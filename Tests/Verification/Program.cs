@@ -740,6 +740,22 @@ if (!discordAdapter.MessageService.Messages.Contains("explicit-discord") ||
 
 Console.WriteLine("Explicit adapter platform selection verification passed.");
 
+var namedGroupMessage = new MessageEvent
+{
+    Platform = "verification",
+    MessageId = "showid-test",
+    Channel = Channel.Group("123") with { Name = "测试群" },
+    Sender = new User("456") { Name = "用户名" },
+    Member = new Member(new User("456")) { Nick = "群名片" },
+    Segments = [new TextSegment("hello")]
+};
+if (HostEventDispatcher.Describe(namedGroupMessage) != "测试群 群名片发送: hello" ||
+    HostEventDispatcher.Describe(namedGroupMessage, true) != "测试群(123) 群名片(456)发送: hello" ||
+    HostEventDispatcher.Describe(namedGroupMessage with { Channel = Channel.Direct("456") }, true) != "用户名(456)发送: hello" ||
+    HostEventDispatcher.Describe(namedGroupMessage with { Channel = Channel.Group("123"), Sender = new User("456"), Member = null }, true) != "123 456发送: hello")
+    throw new InvalidOperationException("showid log formatting failed for group, direct, nick or missing-name messages.");
+Console.WriteLine("Message log showid verification passed.");
+
 var tempRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
 var configPath = Path.Combine(tempRoot, "config.toml");
 
@@ -755,20 +771,71 @@ try
     if (adapterPackage.Get("verification") is not { Enabled: true } || !File.Exists(firstInstall.AssemblyPath))
         throw new InvalidOperationException("Adapter DLL install verification failed.");
 
-    // Docker keeps configuration in /data while the adapter directory is linked from /app.
+    // New packages do not create implicit bots; all instances share the package config.
+    if (adapterPackage.ListInstances().Count != 0) throw new InvalidOperationException("Fresh installation created a default instance.");
     var externalCorePath = Path.Combine(tempRoot, "data", "custom.toml");
     Directory.CreateDirectory(Path.GetDirectoryName(externalCorePath)!);
-    File.WriteAllText(externalCorePath, "[[adapter_instances]]\nid = \"verification\"\npackage_id = \"verification\"\nenabled = false\n");
-    var defaultCoreContents = File.ReadAllText(configPath);
+    File.WriteAllText(externalCorePath, "# Core settings remain unchanged\nprotocols = []\n");
     var externalPackages = new AdapterPackageManager(adapterPackageRoot, externalCorePath);
-    if (externalPackages.ListInstances().Single().Enabled)
-        throw new InvalidOperationException("Adapter registry ignored the explicit core config path.");
     externalPackages.CreateInstance("verification", "external-instance", null);
+    externalPackages.CreateInstance("verification", "second-instance", null);
     externalPackages.SetInstanceEnabled("external-instance", true);
-    if (!new AdapterPackageManager(adapterPackageRoot, externalCorePath).GetInstance("external-instance")!.Enabled ||
-        File.ReadAllText(configPath) != defaultCoreContents)
-        throw new InvalidOperationException("Adapter mutation wrote to the default core config instead of the explicit path.");
-    externalPackages.DeleteInstance("external-instance");
+    var first = externalPackages.GetInstance("external-instance")!;
+    var second = externalPackages.GetInstance("second-instance")!;
+    if (first.ConfigPath != second.ConfigPath || !first.Enabled || second.Enabled)
+        throw new InvalidOperationException("Package instances are not in one config with independent enabled flags.");
+    var firstContext = ConfigContext.ForAdapter(first.ConfigPath, first.Id);
+    var secondContext = ConfigContext.ForAdapter(second.ConfigPath, second.Id);
+    firstContext.Save(new VerificationComponentConfig { Mode = "first account" });
+    secondContext.Save(new VerificationComponentConfig { Mode = "second account" });
+    if (firstContext.Load<VerificationComponentConfig>().Mode != "first account" || secondContext.Load<VerificationComponentConfig>().Mode != "second account")
+        throw new InvalidOperationException("SDK configuration escaped its instance scope.");
+    AssertThrows<InvalidOperationException>(() => externalPackages.CreateInstance("verification", "EXTERNAL-INSTANCE", null));
+    if (!first.PackageEnabled || !first.Active) throw new InvalidOperationException("A package without a master switch did not default to on.");
+    externalPackages.SetPackageEnabled("verification", false);
+    var gated = externalPackages.GetInstance(first.Id)!;
+    if (gated.PackageEnabled || gated.Active || !gated.Enabled)
+        throw new InvalidOperationException("The package master switch did not gate its instances without touching their own switches.");
+    if (firstContext.Load<VerificationComponentConfig>().Mode != "first account" || externalPackages.ListInstances().Count != 2)
+        throw new InvalidOperationException("Turning the package off disturbed instance configuration.");
+    externalPackages.SetPackageEnabled("verification", true);
+    if (!externalPackages.GetInstance(first.Id)!.Active) throw new InvalidOperationException("Turning the package back on did not restore its instances.");
+    AssertThrows<InvalidOperationException>(() => externalPackages.UpdateInstance(first.Id, "SECOND-instance", null));
+    var renamed = externalPackages.UpdateInstance(first.Id, "renamed-instance", "Main account");
+    if (externalPackages.GetInstance(first.Id) is not null || renamed.Name != "Main account" || !renamed.Enabled ||
+        ConfigContext.ForAdapter(renamed.ConfigPath, renamed.Id).Load<VerificationComponentConfig>().Mode != "first account")
+        throw new InvalidOperationException("Renaming an instance lost its switch or configuration.");
+    first = externalPackages.UpdateInstance(renamed.Id, first.Id, null);
+    if (first.Name != "Main account") throw new InvalidOperationException("Renaming the ID alone changed the display name.");
+    externalPackages.DeleteInstance(first.Id);
+    externalPackages.DeleteInstance(second.Id);
+    if (externalPackages.ListInstances().Count != 0 || externalPackages.List().Count != 1 || File.ReadAllText(externalCorePath).Contains("adapter_instances"))
+        throw new InvalidOperationException("Instance mutations removed the shared DLL or wrote to core config.");
+
+    // An older config without [[instances]] is one implicit instance and stays untouched until a second one is added.
+    var packageConfigPath = first.ConfigPath;
+    var declaredConfig = File.ReadAllText(packageConfigPath);
+    const string legacyConfig = "# kept as-is\nmode = \"legacy account\"\n";
+    File.WriteAllText(packageConfigPath, legacyConfig);
+    var implicitPackages = new AdapterPackageManager(adapterPackageRoot, externalCorePath);
+    var implicitInstance = implicitPackages.ListInstances().SingleOrDefault();
+    if (implicitInstance is not { Implicit: true, Id: "verification" } ||
+        ConfigContext.ForAdapter(implicitInstance.ConfigPath, implicitInstance.Id).Load<VerificationComponentConfig>().Mode != "legacy account")
+        throw new InvalidOperationException("An undeclared config was not read as one implicit instance.");
+    var loadedConfig = File.ReadAllText(packageConfigPath); // Loading fills in defaults, as for any legacy config.
+    implicitPackages.SetInstanceEnabled(implicitInstance.Id, !implicitInstance.Enabled);
+    implicitPackages.SetPackageEnabled("verification", false);
+    implicitPackages.SetPackageEnabled("verification", true);
+    if (File.ReadAllText(packageConfigPath) != loadedConfig || !loadedConfig.StartsWith(legacyConfig) || implicitPackages.GetInstance("verification")!.Enabled == implicitInstance.Enabled)
+        throw new InvalidOperationException("Switches rewrote an implicit config or did not persist.");
+    implicitPackages.SetInstanceEnabled(implicitInstance.Id, implicitInstance.Enabled);
+    implicitPackages.CreateInstance("verification", "second-account", null);
+    var converted = implicitPackages.ListInstances();
+    if (converted.Count != 2 || converted.Any(item => item.Implicit) || !File.Exists(packageConfigPath + ".pre-instances.bak") ||
+        AdapterInstanceStore.GetConfig(packageConfigPath, "verification")["mode"]?.ToString() != "legacy account")
+        throw new InvalidOperationException("Adding a second instance did not convert the implicit config with its settings.");
+    File.WriteAllText(packageConfigPath, declaredConfig);
+    File.Delete(packageConfigPath + ".pre-instances.bak");
 
     var zipPath = Path.Combine(adapterWorkRoot, "adapter.zip");
     using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
@@ -789,7 +856,7 @@ try
     }
     var configProbe = adapterPackage.Prepare(packageWithDefaultConfig, Path.Combine(adapterWorkRoot, "config-preview"));
     adapterPackage.Install(configProbe, enabled: true);
-    if (File.ReadAllText(installedConfig) != "user_value = true")
+    if (AdapterInstanceStore.GetConfig(installedConfig, "verification")["user_value"] is not true)
         throw new InvalidOperationException("Adapter replacement overwrote user config.toml.");
 
     AssertThrows<InvalidOperationException>(() => adapterPackage.Uninstall("."));

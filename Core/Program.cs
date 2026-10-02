@@ -185,7 +185,8 @@ public static class Program
                 (ownerId, content) => botContext.Message.SendDirectMessageAsync(ownerId, content),
                 coreConfig.GithubProxy);
 
-            var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub);
+            var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub,
+                () => coreConfig.Showid);
             pluginManager = new PluginManager(botContext, sharedAssemblies, modelPackages, runtimeState, logHub);
             Updater.PluginUpdateApplier = async (request, cancellationToken) =>
             {
@@ -238,10 +239,10 @@ public static class Program
                 logHub,
                 commandHandler.HandleDirectMessageAsync);
             commandHandler.SetAdapterCommands(adapterManager, null, adapterPackages);
-            if (adapterPaths.Count > 0 || adapterPackages.ListInstances().Any(instance => instance.Enabled))
+            if (adapterPaths.Count > 0 || adapterPackages.ListInstances().Any(instance => instance.Active))
             {
-                var instances = adapterPackages.ListInstances().Where(instance => instance.Enabled ||
-                    !adapterPackages.HasDeclaredInstances && string.Equals(instance.Id, instance.PackageId, StringComparison.OrdinalIgnoreCase) &&
+                var instances = adapterPackages.ListInstances().Where(instance => instance.Active ||
+                    instance.Implicit &&
                     adapterPaths.Contains(instance.AssemblyPath, StringComparer.OrdinalIgnoreCase)).ToArray();
                 var installedPaths = adapterPackages.List().Select(package => package.AssemblyPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 await adapterManager.LoadAsync(adapterPaths.Where(path => !installedPaths.Contains(path))).ConfigureAwait(false);
@@ -433,7 +434,7 @@ public static class Program
             paths.Add(path);
         }
 
-        return paths.Concat(packages.ListInstances().Where(instance => instance.Enabled).Select(instance => instance.AssemblyPath))
+        return paths.Concat(packages.ListInstances().Where(instance => instance.Active).Select(instance => instance.AssemblyPath))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
@@ -466,9 +467,10 @@ public static class Program
             {
                 case "list":
                     var installed = packages.ListInstances();
+                    foreach (var package in packages.List()) global::System.Console.WriteLine($"package={package.Id}\t{package.Version}\t{installed.Count(item => item.PackageId == package.Id)} instances");
                     if (installed.Count == 0)
                     {
-                        global::System.Console.WriteLine("No adapters installed.");
+                        global::System.Console.WriteLine("No adapter instances. Use adapter create <package-id> <unique-id>.");
                         break;
                     }
                     foreach (var adapter in installed)
@@ -520,7 +522,7 @@ public static class Program
                             throw new InvalidOperationException($"Adapter {probe.Id} is already installed. Pass --replace to replace it.");
                         var enabled = !args.Contains("--no-enable", StringComparer.OrdinalIgnoreCase);
                         var result = packages.Install(probe, enabled);
-                        global::System.Console.WriteLine($"Installed {result.Id} ({(result.Enabled ? "enabled" : "disabled")}) to {result.AssemblyPath}");
+                        global::System.Console.WriteLine($"Installed package {result.Id} to {result.AssemblyPath}; create an instance with adapter create {result.Id} <unique-id>");
                     }
                     finally
                     {

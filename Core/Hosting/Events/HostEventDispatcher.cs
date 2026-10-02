@@ -12,7 +12,8 @@ internal sealed class HostEventDispatcher(
     Lock pluginLifecycleLock,
     ReplySubscriptionManager replySubscriptions,
     HostRuntimeState runtimeState,
-    HostLogHub logHub)
+    HostLogHub logHub,
+    Func<bool>? showIds = null)
 {
     private readonly Dictionary<string, List<LoadedPluginHandle>> _groupMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<LoadedPluginHandle>> _directMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
@@ -251,7 +252,7 @@ internal sealed class HostEventDispatcher(
         IReadOnlyList<LoadedPluginHandle> handlers,
         Func<IBotEventSubscriber, Task> dispatch)
     {
-        var text = $"收到{eventName} {Describe(message)}";
+        var text = $"收到{eventName} {Describe(message, showIds?.Invoke() ?? false)}";
         logHub.Record("system", "log", text);
         ConsoleOutput.Log(text);
 
@@ -294,27 +295,27 @@ internal sealed class HostEventDispatcher(
         };
     }
 
-    private static string Describe(BotEvent evt)
+    internal static string Describe(BotEvent evt, bool showId = false)
     {
         return evt switch
         {
             MessageEvent { IsDirect: false } message =>
-                $"{Display(message.Channel.Name, message.Channel.Id)} {Display(message.Member?.DisplayName ?? message.Sender.Name, message.Sender.Id)}发送: {GetMessageSegments(message.Segments)}",
+                $"{Display(message.Channel.Name, message.Channel.Id, showId)} {Display(message.Member?.DisplayName ?? message.Sender.Name, message.Sender.Id, showId)}发送: {GetMessageSegments(message.Segments)}",
             MessageEvent message =>
-                $"{Display(message.Sender.Name, message.Sender.Id)}发送: {GetMessageSegments(message.Segments)}",
+                $"{Display(message.Sender.Name, message.Sender.Id, showId)}发送: {GetMessageSegments(message.Segments)}",
             MessageDeletedEvent e => $"{e.Channel.Id} 中消息 {e.MessageId} 被撤回",
             MemberJoinedEvent e => $"用户 {e.UserId} 加入 {e.Channel.Id}",
             MemberLeftEvent e => $"用户 {e.UserId} 离开 {e.Channel.Id}",
             FriendRequestEvent e => $"用户 {e.UserId} 发来好友请求: {e.Comment}",
             GuildInviteEvent e => $"用户 {e.InviterId} 邀请机器人加入 {e.GuildId}",
             BotOfflineEvent e => $"机器人离线: {e.Reason}",
-            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{Display(e.Channel.Name, e.Channel.Id)}"),
+            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{Display(e.Channel.Name, e.Channel.Id, showId)}"),
             _ => evt.GetType().Name
         };
     }
 
-    private static string Display(string? name, string id) =>
-        string.IsNullOrWhiteSpace(name) ? id : name;
+    private static string Display(string? name, string id, bool showId) =>
+        string.IsNullOrWhiteSpace(name) || name == id ? id : showId ? $"{name}({id})" : name;
 
     private static string GetMessageSegments(IReadOnlyList<MessageSegment> segments)
     {

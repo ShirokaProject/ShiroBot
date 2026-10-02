@@ -52,25 +52,36 @@ key = ""
 
 ## 适配器实例清单
 
-开发版本（v0.9.6 之后）在根 config.toml 用 `adapter_instances` 管理已安装适配器的运行实例。每个条目引用同一个已安装包，但有独立的连接配置：
+开发版本（v0.9.6 之后）把实例清单和连接配置放在各适配器自己的 `config.toml` 中，主配置不再保存实例。安装包后，在 Dashboard 展开适配器并添加唯一 ID，或直接编辑文件：
 
 ```toml
-[[adapter_instances]]
+[[instances]]
 id = "qq-work"
-package_id = "qq-official"
 name = "工作机器人"
 enabled = true
 
-[[adapter_instances]]
+[instances.config]
+# 当前实例的连接配置。
+
+[[instances]]
 id = "qq-home"
-package_id = "qq-official"
-name = "家庭机器人"
 enabled = false
+
+[instances.config]
+# 另一个账号的连接配置。
 ```
 
-实例 ID 唯一；name 可省略，enabled 默认 false。此清单存在时只加载 enabled=true 的条目；未列出的默认实例不会启动，`protocols` 不覆盖这里的停用状态。新实例的连接配置位于 `adapters/.instances/<ID>/config.toml`；ID 等于包 ID 的默认实例继续使用原 DLL 目录配置。手动改清单重启生效，WebUI/CLI 管理会即时写回清单；旧记录在首次启动迁移。
+实例 ID 全局唯一，enabled 默认 false，不再自动创建包 ID 对应的实例。`instances = []` 保留已安装包但不加载机器人。WebUI/CLI 创建、启停、删除写回同一份文件；修改实例清单后重启生效。没有 `[[instances]]` 的旧配置按单实例处理（实例 ID 为包 ID，根配置即连接配置），文件保持原样；新增实例、重命名或删除该实例时才改写为 `[[instances]]`，并保留 ID、启用状态和连接配置。
 
-无需 WebUI 的安装、创建、配置和启用命令见[配置与部署](/adapter/deployment#没有-webui-时)。备份时同时保留根 config.toml 与 adapters/.instances/。
+完整部署、备份和无需 WebUI 的管理方法见[配置与部署](/adapter/deployment#没有-webui-时)。
+
+## 检查与安装更新
+
+Dashboard 的“关于”页可手动检查宿主更新。找到适合当前平台、架构和运行形态的发布包后，可点击“更新并重启”。此功能适用于单文件 Release 发布包；开发运行或通过 `dotnet ShiroBot.dll` 启动时只检查版本。Docker 中会显示拉取新镜像的命令；systemd 服务更新后需要 `Restart=on-failure` 或 `Restart=always` 才能自动重启。
+
+控制台可使用 `update check host`、`update check plugins`，再通过 `update confirm <id>` 执行更新。插件更新与 Dashboard 共用整包替换逻辑，保留 `config.toml` 和组件数据；无法卸载或文件被占用时暂存新包，重启宿主后应用。执行失败的更新请求仍可再次确认，或使用 `update cancel <id>` 取消。
+
+Dashboard 删除插件时会取消同一插件的待确认更新和暂存更新。如果当前版本无法卸载或文件仍被占用，删除任务会写入 `plugins/.update/<id>/`，面板提示重启后删除。下次启动会在加载插件、应用更新之前执行删除；失败的删除任务保留，后续启动继续重试。
 
 ## 插件群路由
 
