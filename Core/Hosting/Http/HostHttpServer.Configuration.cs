@@ -82,6 +82,7 @@ internal sealed partial class HostHttpServer
         schema = GetComponentConfigSchema(typeof(CoreConfig).Assembly),
         protocol = config.Protocols.FirstOrDefault() ?? string.Empty,
         protocols = config.Protocols,
+        adapter_instances = config.AdapterInstances,
         enable_log = config.EnableLog,
         disable_console_input = config.DisableConsoleInput,
         github_proxy = config.GithubProxy,

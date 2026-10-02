@@ -28,6 +28,18 @@ private Task HandleEchoAsync(MessageEvent message) =>
 
 如果需要接收某一场景的所有消息，也可重写 `OnGroupMessageAsync(MessageEvent)` 或 `OnDirectMessageAsync(MessageEvent)`。重写后若仍需执行命令路由，应调用基类实现。
 
+## 只处理指定适配器实例
+
+默认命令路由可以接收所有实例的消息，服务调用自动绑定每条消息的来源。如果插件只服务某个机器人，在开发版本按 AdapterId 过滤：
+
+```csharp
+GroupCommands.MapWhen(
+    message => message.AdapterId == "qq-work" && message.GetPlainText() == "#ping",
+    message => Context.Message.ReplyAsync(message, "工作机器人在线"));
+```
+
+也可在通用事件处理器中检查 `evt.AdapterId`。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
+
 ## 接收通用事件
 
 ```csharp

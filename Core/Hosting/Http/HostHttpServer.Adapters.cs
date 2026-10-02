@@ -43,15 +43,16 @@ internal sealed partial class HostHttpServer
 
         api.MapGet("/adapters/{id}/config", (string id) =>
         {
-            var package = adapterPackages.Get(id);
+            var instance = adapterPackages.GetInstance(id);
+            var package = instance is null ? null : adapterPackages.Get(instance.PackageId);
             if (package is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
-            var configPath = GetAdapterConfigPath(package);
+            var configPath = instance!.ConfigPath;
             return Results.Ok(new
             {
-                adapter_id = package.Id,
+                adapter_id = instance!.Id,
                 config = LoadTomlObject(configPath),
-                schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(package.Id)),
-                apply_status = adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
+                schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id)),
+                apply_status = adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)
                     ? "loaded"
                     : "pending_start"
             });
@@ -59,7 +60,8 @@ internal sealed partial class HostHttpServer
 
         api.MapPatch("/adapters/{id}/config", async (string id, HttpContext context) =>
         {
-            var package = adapterPackages.Get(id);
+            var instance = adapterPackages.GetInstance(id);
+            var package = instance is null ? null : adapterPackages.Get(instance.PackageId);
             if (package is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
 
             JsonDocument document;
@@ -79,21 +81,21 @@ internal sealed partial class HostHttpServer
                     !document.RootElement.TryGetProperty("config", out var configPatch))
                     return Results.BadRequest(new { error = "invalid_request", message = "请求必须包含 config 对象。" });
 
-                var configPath = GetAdapterConfigPath(package);
+                var configPath = instance!.ConfigPath;
                 try
                 {
                     ApplyComponentConfigPatch(configManager, configPath, configPatch,
-                        GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(package.Id)));
+                        GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id)));
                     var applied = await reloadCoordinator.ExecuteAdapterMutationAsync(
-                        () => adapterManager.ApplyConfigByIdAsync(package.Id)).ConfigureAwait(false);
+                        () => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
                     return Results.Ok(new
                     {
                         ok = true,
-                        adapter_id = package.Id,
+                        adapter_id = instance!.Id,
                         config = LoadTomlObject(configPath),
-                        schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(package.Id)),
+                        schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id)),
                         apply_status = applied ? "applied" :
-                            adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase)
+                            adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)
                                 ? "legacy_saved_only"
                                 : "pending_start"
                     });
@@ -147,23 +149,45 @@ internal sealed partial class HostHttpServer
             }
         });
 
-        api.MapGet("/adapters", () => Results.Ok(adapterPackages.List().Select(package => new
+        api.MapGet("/adapters", () =>
         {
-            id = package.Id,
-            name = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Name ?? package.Name,
-            version = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Version ?? package.Version,
-            platform = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Platform ?? package.Platform,
-            description = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Description ?? package.Description,
-            assembly_path = (string?)package.AssemblyPath,
-            enabled = package.Enabled,
-            loaded = adapterManager.LoadedIds.Contains(package.Id, StringComparer.OrdinalIgnoreCase),
-            error = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.Error,
-            restartRequired = adapterManager.GetSnapshot().FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase))?.RestartRequired ?? false
-        }).Concat(adapterManager.GetSnapshot().Where(item => adapterPackages.Get(item.Id) is null).Select(item => new
+            var snapshots = adapterManager.GetSnapshot();
+            var instances = adapterPackages.ListInstances();
+            return Results.Ok(instances.Select(instance =>
+            {
+                var package = adapterPackages.Get(instance.PackageId)!;
+                var snapshot = snapshots.FirstOrDefault(item => string.Equals(item.Id, instance.Id, StringComparison.OrdinalIgnoreCase));
+                return new
+                {
+                    id = instance.Id, package_id = package.Id, name = instance.Name,
+                    version = snapshot?.Version ?? package.Version, platform = snapshot?.Platform ?? package.Platform,
+                    description = package.Description, assembly_path = (string?)instance.AssemblyPath,
+                    config_path = (string?)instance.ConfigPath, enabled = instance.Enabled,
+                    loaded = snapshot?.Loaded ?? false, error = snapshot?.Error, restartRequired = snapshot?.RestartRequired ?? false
+                };
+            }).Concat(snapshots.Where(item => !instances.Any(instance => string.Equals(instance.Id, item.Id, StringComparison.OrdinalIgnoreCase))).Select(item => new
+            {
+                id = item.Id, package_id = item.Id, name = item.Name, version = item.Version ?? string.Empty, platform = item.Platform,
+                description = item.Description, assembly_path = item.AssemblyPath, config_path = (string?)null,
+                enabled = false, loaded = item.Loaded, error = item.Error, restartRequired = item.RestartRequired
+            })));
+        });
+        api.MapPost("/adapters/{packageId}/instances", async (string packageId, AdapterInstanceCreateRequest request) =>
         {
-            id = item.Id, name = item.Name, version = item.Version ?? string.Empty, platform = item.Platform, description = item.Description, assembly_path = item.AssemblyPath,
-            enabled = false, loaded = item.Loaded, error = item.Error, restartRequired = item.RestartRequired
-        }))));
+            try
+            {
+                InstalledAdapterInstance? instance = null;
+                await reloadCoordinator.ExecuteAdapterMutationAsync(() =>
+                {
+                    instance = adapterPackages.CreateInstance(packageId, request.Id, request.Name);
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+                return Results.Ok(new { ok = true, adapter = new { id = instance!.Id }, message = "实例已创建，请配置后启动。" });
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+            { return Results.Conflict(new { ok = false, error = "instance_create_failed", message = ex.Message }); }
+        });
+
         api.MapGet("/adapter-market/adapters", async (HttpContext context) =>
         {
             var installed = adapterPackages.List();
@@ -220,18 +244,42 @@ internal sealed partial class HostHttpServer
                 var probe = adapterPackages.Prepare(source, root);
                 var existing = adapterPackages.Get(probe.Id);
                 if (existing is not null && !request.Replace) return Results.Conflict(new { error = "adapter_exists", message = "Adapter 已存在，请确认替换。" });
-                var wasLoaded = adapterManager.LoadedIds.Contains(probe.Id, StringComparer.OrdinalIgnoreCase);
+                var runningInstances = adapterPackages.ListInstances().Where(instance =>
+                    string.Equals(instance.PackageId, probe.Id, StringComparison.OrdinalIgnoreCase) &&
+                    adapterManager.LoadedIds.Contains(instance.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
+                var wasLoaded = runningInstances.Length > 0;
+                async Task ActivateInstances(InstalledAdapterPackage package, bool restoring = false)
+                {
+                    var candidates = adapterPackages.ListInstances().Where(instance => string.Equals(instance.PackageId, package.Id, StringComparison.OrdinalIgnoreCase) &&
+                        (instance.Enabled || runningInstances.Any(previous => string.Equals(previous.Id, instance.Id, StringComparison.OrdinalIgnoreCase)))).ToArray();
+                    var started = new List<string>();
+                    try
+                    {
+                        foreach (var instance in candidates)
+                        {
+                            await adapterManager.LoadInstanceAsync(instance, forceFreshImage: restoring).ConfigureAwait(false);
+                            started.Add(instance.Id);
+                        }
+                    }
+                    catch
+                    {
+                        foreach (var id in started)
+                            try { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); } catch (ComponentUnloadPendingException) { }
+                        throw;
+                    }
+                }
                 string? pendingReason = null;
                 var result = await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                 {
                     try
                     {
-                        if (wasLoaded) await adapterManager.StopByIdAsync(probe.Id).ConfigureAwait(false);
+                        foreach (var instance in runningInstances) await adapterManager.StopByIdAsync(instance.Id).ConfigureAwait(false);
                         return await adapterPackages.InstallAndActivateAsync(
                             probe,
-                            request.Enable,
-                            installed => adapterManager.LoadByIdAsync(installed.Id, installed.AssemblyPath),
-                            wasLoaded ? restored => adapterManager.LoadByIdAsync(restored.Id, restored.AssemblyPath, forceFreshImage: true) : null).ConfigureAwait(false);
+                            existing?.Enabled ?? request.Enable,
+                            installed => ActivateInstances(installed),
+                            wasLoaded ? restored => ActivateInstances(restored, restoring: true) : null,
+                            activateWhenDisabled: wasLoaded).ConfigureAwait(false);
                     }
                     catch (Exception ex) when (existing is not null &&
                                                ex is ComponentUnloadPendingException or IOException or UnauthorizedAccessException)
@@ -239,11 +287,12 @@ internal sealed partial class HostHttpServer
                         // The running copy cannot be released (a referenced assembly, a locked file): hand the
                         // new version to the next start and keep the current one serving until then.
                         pendingReason = ex.Message;
-                        adapterPackages.StageUpdate(probe, request.Enable);
-                        if (wasLoaded && !adapterManager.LoadedIds.Contains(existing.Id, StringComparer.OrdinalIgnoreCase))
+                        adapterPackages.StageUpdate(probe, existing.Enabled);
+                        foreach (var previous in runningInstances)
                         {
-                            try { await adapterManager.LoadByIdAsync(existing.Id, existing.AssemblyPath).ConfigureAwait(false); }
-                            catch (Exception reloadError) { BotLog.Warning($"重新启动当前版本 Adapter {existing.Id} 失败: {reloadError.Message}"); }
+                            if (adapterManager.LoadedIds.Contains(previous.Id, StringComparer.OrdinalIgnoreCase)) continue;
+                            try { await adapterManager.LoadInstanceAsync(previous).ConfigureAwait(false); }
+                            catch (Exception reloadError) { BotLog.Warning($"重新启动当前版本 Adapter {previous.Id} 失败: {reloadError.Message}"); }
                         }
                         return null;
                     }
@@ -277,7 +326,7 @@ internal sealed partial class HostHttpServer
                         message = $"Adapter 已安装，但启动失败，已保持停用。请先完成配置再启动：{result.StartError}"
                     });
                 }
-                return Results.Ok(new { ok = true, adapter = new { id = installed.Id, enabled = installed.Enabled }, rollback = false, restarted = request.Enable || wasLoaded, started = installed.Enabled });
+                return Results.Ok(new { ok = true, adapter = new { id = installed.Id, enabled = installed.Enabled }, rollback = false, restarted = existing?.Enabled ?? request.Enable, started = installed.Enabled });
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
             { return Results.Conflict(new { error = "install_failed", message = ex.Message, rollback = ex.Message.Contains("恢复", StringComparison.Ordinal), restarted = ex.Message.Contains("恢复", StringComparison.Ordinal) }); }
@@ -319,13 +368,13 @@ internal sealed partial class HostHttpServer
         {
             try
             {
-                var package = adapterPackages.Get(id); if (package is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
-                await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.LoadByIdAsync(package.Id, package.AssemblyPath).ConfigureAwait(false); adapterPackages.SetEnabled(package.Id, true); }).ConfigureAwait(false);
+                var instance = adapterPackages.GetInstance(id); if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); adapterPackages.SetInstanceEnabled(instance.Id, true); }).ConfigureAwait(false);
                 return Results.Ok(new { ok = true, restartRequired = false });
             }
             catch (Exception ex) { return AdapterOperationError("adapter_start_failed", ex); }
         });
-        api.MapPost("/adapters/{id}/stop", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.SetEnabled(id, false); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_stop_failed", ex); } });
+        api.MapPost("/adapters/{id}/stop", async (string id) => { try { await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); adapterPackages.SetInstanceEnabled(id, false); }).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_stop_failed", ex); } });
         api.MapPost("/adapters/{id}/reload", async (string id) => { try { await reloadCoordinator.ReloadAdapterByIdAsync(id).ConfigureAwait(false); return Results.Ok(new { ok = true, restartRequired = false }); } catch (Exception ex) { return AdapterOperationError("adapter_reload_failed", ex); } });
         api.MapDelete("/adapters/{id}", async (string id) =>
         {
@@ -340,7 +389,7 @@ internal sealed partial class HostHttpServer
                         try { await adapterManager.StopByIdAsync(id).ConfigureAwait(false); }
                         catch (ComponentUnloadPendingException) { restartRequired = true; }
                     }
-                    adapterPackages.Uninstall(id);
+                    adapterPackages.DeleteInstance(id);
                     adapterManager.ForgetRemovedAdapter(id);
                 }).ConfigureAwait(false);
                 return Results.Ok(new
@@ -354,8 +403,7 @@ internal sealed partial class HostHttpServer
         });
     }
 
-    private static string GetAdapterConfigPath(InstalledAdapterPackage package) =>
-        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(package.AssemblyPath))!, "config.toml");
+    private sealed record AdapterInstanceCreateRequest(string Id, string? Name = null);
 
     private static object CreateAdapterPreview(
         string uploadId,

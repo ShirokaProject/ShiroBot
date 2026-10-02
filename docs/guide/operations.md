@@ -8,7 +8,7 @@
 | --- | --- |
 | `plugins` | 显示已加载插件、程序集文件大小和宿主进程工作集 |
 | `adapters` | 显示已安装适配器 |
-| `adapter start\|stop\|reload <ID>` | 启动、停止或重载适配器 |
+| `adapter start\|stop\|reload <ID>` | 启动、停止或重载指定适配器实例，ID 见 Dashboard |
 | `actions` | 列出已加载插件注册的操作 |
 | `action <插件 ID> <操作 ID>` | 执行插件操作 |
 | `load <插件名或路径>` | 热加载插件 |
@@ -65,6 +65,26 @@ Dashboard 的插件 actions 也使用同一套 active-dispatch 计数。执行�
 通过 Dashboard 上传或市场安装时，插件统一放在 `plugins/<插件 ID>/`，入口 DLL 可与插件 ID 不同名。替换已有插件会保留其 `config.toml`；选择暂不启用时，安装后的入口 DLL 会被禁用，之后可在 Dashboard 中启用。ZIP 包只接受根目录中的入口 DLL，或唯一顶层文件夹中的入口 DLL。手动放入插件目录的规则见[安装插件](/guide/installation#安装插件)。
 
 插件更新包中的 DLL 优先按已安装入口文件名匹配；若文件名不同，ZIP 中只有一个 DLL 时仍可用于更新。ZIP 中有多个 DLL 且找不到原入口文件名时，更新会拒绝选择，以免替换错误的程序集。
+
+## 适配器实例管理
+
+开发版本支持一个适配器包创建多个配置实例。在 Dashboard 适配器详情点击「添加实例」，填写唯一 ID，配置后启动。根 config.toml 的 adapter_instances 是统一实例清单，WebUI/CLI 管理都会写回；手动编辑后重启生效。每个实例独立启停、重载和删除；重新上传同一包用于更新 DLL，增加账号请使用「添加实例」。更新会覆盖该包下所有实例使用的版本。
+
+HTTP API 均需要宿主鉴权：
+
+| 接口 | 用途 |
+| --- | --- |
+| `GET /api/v1/adapters` | 实例列表：id 为实例 ID，package_id 为共享包 ID，config_path 为独立配置路径 |
+| `POST /api/v1/adapters/<包 ID>/instances` | 创建停用实例，JSON 为 `{"id":"qq-work","name":"工作机器人"}`，name 可省略 |
+| `GET/PATCH /api/v1/adapters/<实例 ID>/config` | 读/写实例配置，PATCH 使用 `{"config":{...}}` |
+| `POST /api/v1/adapters/<实例 ID>/start` | 启动并保存启用状态 |
+| `POST /api/v1/adapters/<实例 ID>/stop` | 停止并保存停用状态 |
+| `POST /api/v1/adapters/<实例 ID>/reload` | 重载指定运行实例 |
+| `DELETE /api/v1/adapters/<实例 ID>` | 删除实例；最后一个实例删除时同时卸载包 |
+
+默认实例 ID 仍为包 ID，已有单实例 API 调用无需修改。实例 ID 不能重复或包含路径字符，新增配置不复制凭据。目录、备份和生命周期见[配置与部署](/adapter/deployment#同一个-dll-配置多个实例)，自动回复、后台发送和兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。这些功能尚未包含在已发布的 v0.9.6 中。
+
+离线管理支持 `adapter create <包 ID> <实例 ID>`、`adapter config <实例 ID>`、`adapter enable|disable <实例 ID>` 和 `adapter remove <实例 ID>`。离线命令在宿主停止时使用，运行中的控制台用 start/stop 即时启停。完整示例见[无 WebUI 管理](/adapter/deployment#没有-webui-时)。
 
 ## native 依赖缓存
 

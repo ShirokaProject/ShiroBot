@@ -17,6 +17,10 @@ public class CoreConfig
     [ConfigField("启动时加载的 Adapter 名称或 DLL 路径。", Label = "Adapters", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
+    /// <summary>When present, this is the authoritative installed-adapter instance list.</summary>
+    [ConfigField("适配器实例清单，每项包含 id、package_id、name、enabled。WebUI 和 CLI 管理同一清单；手动修改后重启生效。", Label = "适配器实例", Type = "array", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 15)]
+    public AdapterInstanceConfig[]? AdapterInstances { get; set; }
+
     [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 20)]
     public bool EnableLog { get; set; } = true;
 
@@ -51,6 +55,14 @@ public class CoreConfig
 
     [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupOrder = 40, Order = 10)]
     public ApiHostConfig Api { get; set; } = new();
+}
+
+public sealed class AdapterInstanceConfig
+{
+    public string Id { get; set; } = string.Empty;
+    public string PackageId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool Enabled { get; set; }
 }
 
 public class ApiHostConfig

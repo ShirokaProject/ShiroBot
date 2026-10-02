@@ -67,6 +67,12 @@ internal sealed class CoreConfigWatcher : IDisposable
             changes.Add("protocols(下次启动生效)");
         }
 
+        if (System.Text.Json.JsonSerializer.Serialize(active.AdapterInstances) != System.Text.Json.JsonSerializer.Serialize(updated.AdapterInstances))
+        {
+            active.AdapterInstances = updated.AdapterInstances;
+            changes.Add("adapter_instances(手动修改下次启动生效)");
+        }
+
         active.PluginRoutes.CopyFrom(updated.PluginRoutes);
         changes.Add("plugin_routes");
 

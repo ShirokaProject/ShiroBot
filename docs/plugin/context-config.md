@@ -6,6 +6,10 @@
 
 | 属性 | 用途 |
 | --- | --- |
+| `Context.Platform` | 当前实例的平台类型，例如 qq 或 qq-official |
+| `Context.AdapterId` | 当前适配器运行实例 ID（开发版本） |
+| `Context.UseAdapter(id)` | 临时选择指定实例，作用域结束后恢复（开发版本） |
+| `Context.UsePlatform(platform)` | 临时选择该平台唯一运行实例，多实例时需用 UseAdapter |
 | `Context.Message` | 发送、回复、撤回、查询消息 |
 | `Context.Channel` | 群或频道信息与成员管理 |
 | `Context.User` | 机器人、用户和好友信息与请求 |
@@ -29,6 +33,8 @@ if (!Context.IsAdmin(message.Sender.Id))
 ```
 
 适配器可以只实现自己支持的服务方法。调用不支持的方法时会抛出 `NotSupportedException`，插件应按需要捕获并提供友好提示。
+
+事件处理期间这些服务绑定来源实例，跨 await 保留。后台发送、自动回复、回复订阅和旧 DLL 兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。平台、账号和实例的区别见[通用 Model](/plugin/models#事件)。
 
 ## 插件配置
 

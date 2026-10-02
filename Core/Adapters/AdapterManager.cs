@@ -38,7 +38,7 @@ internal sealed class AdapterManager(
         {
             AdapterEntry? entry;
             lock (_sync) entry = _entries.Values.FirstOrDefault(item =>
-                string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase));
+                string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
             if (entry?.Configurable is null || entry.Adapter is null) return false;
             var candidate = ConfigContext.LoadUntyped(entry.Adapter.Config, entry.Configurable.ConfigType);
             await ApplyConfigCandidateAsync(entry, candidate).ConfigureAwait(false);
@@ -52,7 +52,7 @@ internal sealed class AdapterManager(
     {
         lock (_sync)
             return _entries.Values.FirstOrDefault(item =>
-                string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase))?.Adapter?.GetType().Assembly;
+                string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase))?.Adapter?.GetType().Assembly;
     }
 
     public bool IsLoaded
@@ -61,12 +61,12 @@ internal sealed class AdapterManager(
     }
     public IReadOnlyList<string> AssemblyPaths
     {
-        get { lock (_sync) return _entries.Keys.ToArray(); }
+        get { lock (_sync) return _entries.Values.Select(entry => entry.AssemblyPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(); }
     }
 
     public IReadOnlyList<string> LoadedIds
     {
-        get { lock (_sync) return _entries.Values.Select(entry => entry.Metadata.Id).ToArray(); }
+        get { lock (_sync) return _entries.Values.Select(entry => entry.Id).ToArray(); }
     }
 
     /// <summary>Forget a removed adapter's stale lifecycle error after its package is deleted.</summary>
@@ -74,7 +74,7 @@ internal sealed class AdapterManager(
     {
         lock (_sync)
         {
-            if (_entries.Values.Any(entry => string.Equals(entry.Metadata.Id, id, StringComparison.OrdinalIgnoreCase)))
+            if (_entries.Values.Any(entry => string.Equals(entry.Id, id, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("无法清理仍在运行的 Adapter 状态。");
             _errors.Remove(id);
             _restartRequiredErrors.Remove(id);
@@ -86,9 +86,9 @@ internal sealed class AdapterManager(
         lock (_sync)
         {
             return _entries.Values.Where(entry => entry.Adapter is not null).Select(entry => new AdapterRuntimeSnapshot(
-                    entry.Metadata.Id, entry.Metadata.Name, entry.Metadata.Version, entry.Adapter!.Platform,
+                    entry.Id, entry.Name, entry.Metadata.Version, entry.Adapter!.Platform,
                     entry.Metadata.Description, entry.AssemblyPath, true, null, false))
-                .Concat(_errors.Where(error => !_entries.Values.Any(entry => string.Equals(entry.Metadata.Id, error.Key, StringComparison.OrdinalIgnoreCase)))
+                .Concat(_errors.Where(error => !_entries.Values.Any(entry => string.Equals(entry.Id, error.Key, StringComparison.OrdinalIgnoreCase)))
                     .Select(error => new AdapterRuntimeSnapshot(error.Key, error.Key, null, null, null, null, false, error.Value, _restartRequiredErrors.Contains(error.Key))))
                 .ToArray();
         }
@@ -102,15 +102,15 @@ internal sealed class AdapterManager(
         return new
         {
             loaded = entries.Length > 0,
-            id = primary?.Metadata.Id,
-            name = primary?.Metadata.Name,
+            id = primary?.Id,
+            name = primary?.Name,
             version = primary?.Metadata.Version,
             platform = primary?.Adapter?.Platform,
             assembly_path = primary?.AssemblyPath,
             adapters = entries.Select(entry => new
             {
-                id = entry.Metadata.Id,
-                name = entry.Metadata.Name,
+                id = entry.Id,
+                name = entry.Name,
                 version = entry.Metadata.Version,
                 platform = entry.Adapter?.Platform,
                 assembly_path = entry.AssemblyPath
@@ -127,7 +127,7 @@ internal sealed class AdapterManager(
             {
                 lock (_sync)
                 {
-                    if (_entries.ContainsKey(path)) continue;
+                    if (_entries.Values.Any(entry => string.Equals(entry.AssemblyPath, path, StringComparison.OrdinalIgnoreCase))) continue;
                 }
                 try
                 {
@@ -151,6 +151,21 @@ internal sealed class AdapterManager(
     public Task LoadByIdAsync(string id, string assemblyPath, bool forceFreshImage = false) =>
         LoadOneAsync(assemblyPath, id, forceFreshImage);
 
+    public async Task LoadInstanceAsync(InstalledAdapterInstance instance, bool forceFreshImage = false)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            lock (_sync) if (_entries.ContainsKey(instance.Id)) return;
+            Directory.CreateDirectory(Path.GetDirectoryName(instance.ConfigPath)!);
+            await LoadCoreAsync(instance.AssemblyPath, instance.PackageId, forceFreshImage: forceFreshImage,
+                instanceId: instance.Id, configPath: instance.ConfigPath, instanceName: instance.Name).ConfigureAwait(false);
+            UpdateRuntimeState();
+        }
+        catch (Exception ex) { RecordError(instance.Id, ex); throw; }
+        finally { _gate.Release(); }
+    }
+
     public async Task LoadOneAsync(string assemblyPath, string? expectedId = null, bool forceFreshImage = false)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -160,7 +175,7 @@ internal sealed class AdapterManager(
             {
                 lock (_sync)
                 {
-                    if (_entries.Values.Any(item => string.Equals(item.Metadata.Id, expectedId, StringComparison.OrdinalIgnoreCase)))
+                    if (_entries.Values.Any(item => string.Equals(item.Id, expectedId, StringComparison.OrdinalIgnoreCase)))
                         return;
                 }
             }
@@ -181,7 +196,7 @@ internal sealed class AdapterManager(
         try
         {
             AdapterEntry entry;
-            lock (_sync) entry = _entries.Values.FirstOrDefault(item => string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase))
+            lock (_sync) entry = _entries.Values.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase))
                 ?? throw new InvalidOperationException($"未加载 Adapter: {id}");
             await ReloadEntryAsync(entry).ConfigureAwait(false);
             UpdateRuntimeState();
@@ -195,7 +210,7 @@ internal sealed class AdapterManager(
         try
         {
             AdapterEntry? entry;
-            lock (_sync) entry = _entries.Values.FirstOrDefault(item => string.Equals(item.Metadata.Id, id, StringComparison.OrdinalIgnoreCase));
+            lock (_sync) entry = _entries.Values.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
             if (entry is null) return;
             await StopAndRemoveAsync(entry).ConfigureAwait(false);
             UpdateRuntimeState();
@@ -216,10 +231,10 @@ internal sealed class AdapterManager(
 
             foreach (var path in paths)
             {
-                AdapterEntry? entry;
-                lock (_sync) _entries.TryGetValue(path, out entry);
-                if (entry is not null) await ReloadEntryAsync(entry).ConfigureAwait(false);
-                else await LoadCoreAsync(path).ConfigureAwait(false);
+                AdapterEntry[] entries;
+                lock (_sync) entries = _entries.Values.Where(entry => string.Equals(entry.AssemblyPath, path, StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (entries.Length == 0) await LoadCoreAsync(path).ConfigureAwait(false);
+                else foreach (var entry in entries) await ReloadEntryAsync(entry).ConfigureAwait(false);
             }
             UpdateRuntimeState();
         }
@@ -244,7 +259,7 @@ internal sealed class AdapterManager(
             {
                 entries = assemblyPath is null
                     ? _entries.Values.ToArray()
-                    : _entries.TryGetValue(Path.GetFullPath(assemblyPath), out var entry) ? [entry] : [];
+                    : _entries.Values.Where(entry => string.Equals(entry.AssemblyPath, Path.GetFullPath(assemblyPath), StringComparison.OrdinalIgnoreCase)).ToArray();
             }
             foreach (var current in entries)
             {
@@ -271,24 +286,24 @@ internal sealed class AdapterManager(
             // collectible-context release. Do not leave a dead entry that blocks future retries.
             if (entry.Adapter is null)
             {
-                lock (_sync) _entries.Remove(entry.AssemblyPath);
+                lock (_sync) _entries.Remove(entry.Id);
             }
         }
 
         try
         {
-            await LoadCoreAsync(entry.AssemblyPath, entry.Metadata.Id).ConfigureAwait(false);
+            await LoadCoreAsync(entry.AssemblyPath, entry.Metadata.Id, instanceId: entry.Id, configPath: entry.ConfigPath, instanceName: entry.Name).ConfigureAwait(false);
         }
         catch (Exception reloadError)
         {
             try
             {
-                await LoadCoreAsync(shadowPath, entry.Metadata.Id, entry.AssemblyPath).ConfigureAwait(false);
-                RecordError(entry.Metadata.Id, new InvalidOperationException($"Adapter reload failed; restored shadow copy: {reloadError.Message}"));
+                await LoadCoreAsync(shadowPath, entry.Metadata.Id, entry.AssemblyPath, instanceId: entry.Id, configPath: entry.ConfigPath, instanceName: entry.Name).ConfigureAwait(false);
+                RecordError(entry.Id, new InvalidOperationException($"Adapter reload failed; restored shadow copy: {reloadError.Message}"));
             }
             catch (Exception restoreError)
             {
-                RecordError(entry.Metadata.Id, new InvalidOperationException($"Adapter reload and shadow restore failed: {reloadError.Message}; {restoreError.Message}"));
+                RecordError(entry.Id, new InvalidOperationException($"Adapter reload and shadow restore failed: {reloadError.Message}; {restoreError.Message}"));
                 throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 重载失败且旧版本恢复失败。", new AggregateException(reloadError, restoreError));
             }
         }
@@ -304,12 +319,12 @@ internal sealed class AdapterManager(
         {
             if (entry.Adapter is null)
             {
-                lock (_sync) _entries.Remove(entry.AssemblyPath);
+                lock (_sync) _entries.Remove(entry.Id);
             }
         }
     }
 
-    private async Task LoadCoreAsync(string adapterPath, string? expectedId = null, string? logicalAssemblyPath = null, bool forceFreshImage = false)
+    private async Task LoadCoreAsync(string adapterPath, string? expectedId = null, string? logicalAssemblyPath = null, bool forceFreshImage = false, string? instanceId = null, string? configPath = null, string? instanceName = null)
     {
         if (!File.Exists(adapterPath)) throw new FileNotFoundException("Adapter DLL 不存在。", adapterPath);
 
@@ -349,43 +364,45 @@ internal sealed class AdapterManager(
             adapter = loader.Load(loadAssemblyPath);
             var metadata = adapter.GetType().GetCustomAttribute<BotAdapterAttribute>(inherit: false)
                 ?? throw new InvalidOperationException($"Adapter 未声明 {nameof(BotAdapterAttribute)}。");
+            instanceId ??= metadata.Id;
             lock (_sync)
             {
-                if (_entries.Values.Any(entry => string.Equals(entry.Metadata.Id, metadata.Id, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidOperationException($"适配器实例 {metadata.Id} 已加载，不能重复加载。");
+                if (_entries.Values.Any(entry => string.Equals(entry.Id, instanceId, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException($"适配器实例 {instanceId} 已加载，不能重复加载。");
             }
 
             var configDirectory = Path.GetDirectoryName(logicalAssemblyPath ?? adapterPath) ?? adapterRoot;
-            adapter.Config = ConfigContext.ForAdapter(Path.Combine(configDirectory, "config.toml"));
-            adapter.Logger = new ConsoleLogger($"[Adapter:{metadata.Id}]", logHub);
+            configPath ??= Path.Combine(configDirectory, "config.toml");
+            adapter.Config = ConfigContext.ForAdapter(configPath);
+            adapter.Logger = new ConsoleLogger($"[Adapter:{instanceId}]", logHub);
             var configurable = adapter as IConfigurableAdapter;
             object? initialConfig = null;
             if (configurable is not null)
             {
                 initialConfig = await configurable.InitializeConfigAsync(adapter.Config).ConfigureAwait(false);
             }
-            botContext.RegisterAdapter(adapter, metadata.Id);
+            botContext.RegisterAdapter(adapter, instanceId);
             registered = true;
-            subscription = eventBridge.Bridge(metadata.Id, adapter.Platform, adapter.Event, directMessageHandler);
+            subscription = eventBridge.Bridge(instanceId, adapter.Platform, adapter.Event, directMessageHandler);
             using (BotLog.BeginScope(adapter.Logger)) await adapter.StartAsync().ConfigureAwait(false);
             if (configurable is not null)
             {
                 configWatch = ConfigContext.WatchUntyped(adapter.Config, configurable.ConfigType,
-                    updated => _ = QueueConfigUpdateAsync(metadata.Id, updated));
+                    updated => _ = QueueConfigUpdateAsync(instanceId, updated));
             }
             var fullPath = Path.GetFullPath(logicalAssemblyPath ?? adapterPath);
             var shadowAssemblyPath = forceFreshImage ? loadAssemblyPath : CreateReloadShadow(adapterPath);
             lock (_sync)
             {
-                _entries[fullPath] = new AdapterEntry(fullPath, adapter, loader, metadata, subscription!,
+                _entries[instanceId] = new AdapterEntry(instanceId, configPath, instanceName ?? metadata.Name, fullPath, adapter, loader, metadata, subscription!,
                     configWatch, configurable, initialConfig,
                     Path.GetDirectoryName(shadowAssemblyPath), shadowAssemblyPath);
-                _errors.Remove(metadata.Id);
-                _restartRequiredErrors.Remove(metadata.Id);
+                _errors.Remove(instanceId);
+                _restartRequiredErrors.Remove(instanceId);
             }
             subscription = null; // Entry owns it now.
             configWatch = null;
-            logHub.RegisterSource(metadata.Id, metadata.Description ?? $"{metadata.Name} Adapter logs", metadata.Name, HostLogHub.LogSourceKind.Adapter);
+            logHub.RegisterSource(instanceId, metadata.Description ?? $"{metadata.Name} Adapter logs", metadata.Name, HostLogHub.LogSourceKind.Adapter);
             runtimeState.RecordEvent($"{metadata.Name} Adapter loaded");
         }
         catch
@@ -409,7 +426,7 @@ internal sealed class AdapterManager(
         var subscription = entry.EventSubscription ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
         var loader = entry.Loader ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
 
-        var adapterId = entry.Metadata.Id;
+        var adapterId = entry.Id;
         var adapterName = entry.Metadata.Name;
         var assemblyPath = entry.AssemblyPath;
         var references = new AdapterUnloadReferences(
@@ -501,7 +518,7 @@ internal sealed class AdapterManager(
         {
             AdapterEntry? entry;
             lock (_sync) entry = _entries.Values.FirstOrDefault(item =>
-                string.Equals(item.Metadata.Id, adapterId, StringComparison.OrdinalIgnoreCase));
+                string.Equals(item.Id, adapterId, StringComparison.OrdinalIgnoreCase));
             if (entry is not null) await ApplyConfigCandidateAsync(entry, candidate).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -623,6 +640,9 @@ internal sealed class AdapterManager(
     }
 
     private sealed class AdapterEntry(
+        string id,
+        string configPath,
+        string name,
         string assemblyPath,
         IBotAdapter adapter,
         DllLoader<IBotAdapter> loader,
@@ -634,6 +654,9 @@ internal sealed class AdapterManager(
         string? shadowRoot = null,
         string? shadowAssemblyPath = null)
     {
+        public string Id { get; } = id;
+        public string ConfigPath { get; } = configPath;
+        public string Name { get; } = name;
         public string AssemblyPath { get; } = assemblyPath;
         public IBotAdapter? Adapter { get; private set; } = adapter;
         public DllLoader<IBotAdapter>? Loader { get; private set; } = loader;

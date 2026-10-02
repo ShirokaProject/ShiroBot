@@ -50,6 +50,28 @@ key = ""
 
 `owner_list` 和 `admin_list` 供插件判断权限，不开放宿主控制台命令的私聊入口。禁用控制台输入后，仍可使用受鉴权保护的 Dashboard API 管理宿主。
 
+## 适配器实例清单
+
+开发版本（v0.9.6 之后）在根 config.toml 用 `adapter_instances` 管理已安装适配器的运行实例。每个条目引用同一个已安装包，但有独立的连接配置：
+
+```toml
+[[adapter_instances]]
+id = "qq-work"
+package_id = "qq-official"
+name = "工作机器人"
+enabled = true
+
+[[adapter_instances]]
+id = "qq-home"
+package_id = "qq-official"
+name = "家庭机器人"
+enabled = false
+```
+
+实例 ID 唯一；name 可省略，enabled 默认 false。此清单存在时只加载 enabled=true 的条目；未列出的默认实例不会启动，`protocols` 不覆盖这里的停用状态。新实例的连接配置位于 `adapters/.instances/<ID>/config.toml`；ID 等于包 ID 的默认实例继续使用原 DLL 目录配置。手动改清单重启生效，WebUI/CLI 管理会即时写回清单；旧记录在首次启动迁移。
+
+无需 WebUI 的安装、创建、配置和启用命令见[配置与部署](/adapter/deployment#没有-webui-时)。备份时同时保留根 config.toml 与 adapters/.instances/。
+
 ## 插件群路由
 
 群路由用于限制插件在哪些群中接收事件。

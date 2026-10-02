@@ -171,6 +171,7 @@ public static class Program
 
             var adapterPackages = new AdapterPackageManager(adapterRoot);
             ReportStagedUpdates("Adapter", adapterPackages.ApplyStagedUpdates());
+            adapterPackages.InitializeInstances(coreConfig.Protocols.Concat(parserResult.GetValue(adapterOption) ?? []));
             var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption), adapterPackages);
 
             // ─── BotContext + 基础设施 ───
@@ -237,10 +238,19 @@ public static class Program
                 logHub,
                 commandHandler.HandleDirectMessageAsync);
             commandHandler.SetAdapterCommands(adapterManager, null, adapterPackages);
-            if (adapterPaths.Count > 0)
+            if (adapterPaths.Count > 0 || adapterPackages.ListInstances().Any(instance => instance.Enabled))
             {
-                await adapterManager.LoadAsync(adapterPaths).ConfigureAwait(false);
-                CH.Success($"已加载 {adapterPaths.Count} 个 Adapter。 ");
+                var instances = adapterPackages.ListInstances().Where(instance => instance.Enabled ||
+                    !adapterPackages.HasDeclaredInstances && string.Equals(instance.Id, instance.PackageId, StringComparison.OrdinalIgnoreCase) &&
+                    adapterPaths.Contains(instance.AssemblyPath, StringComparer.OrdinalIgnoreCase)).ToArray();
+                var installedPaths = adapterPackages.List().Select(package => package.AssemblyPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                await adapterManager.LoadAsync(adapterPaths.Where(path => !installedPaths.Contains(path))).ConfigureAwait(false);
+                foreach (var instance in instances)
+                {
+                    try { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); }
+                    catch (Exception ex) { BotLog.Error($"Adapter 实例 {instance.Id} 加载失败: {ex.Message}"); }
+                }
+                CH.Success($"已加载 {adapterManager.LoadedIds.Count} 个 Adapter。 ");
             }
             else
             {
@@ -423,7 +433,7 @@ public static class Program
             paths.Add(path);
         }
 
-        return paths.Concat(packages.List().Where(package => package.Enabled).Select(package => package.AssemblyPath))
+        return paths.Concat(packages.ListInstances().Where(instance => instance.Enabled).Select(instance => instance.AssemblyPath))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
@@ -455,14 +465,37 @@ public static class Program
             switch (action)
             {
                 case "list":
-                    var installed = packages.List();
+                    var installed = packages.ListInstances();
                     if (installed.Count == 0)
                     {
                         global::System.Console.WriteLine("No adapters installed.");
                         break;
                     }
                     foreach (var adapter in installed)
-                        global::System.Console.WriteLine($"{adapter.Id}\t{(adapter.Enabled ? "enabled" : "disabled")}\t{adapter.AssemblyPath}");
+                        global::System.Console.WriteLine($"{adapter.Id}\tpackage={adapter.PackageId}\t{(adapter.Enabled ? "enabled" : "disabled")}\t{adapter.ConfigPath}");
+                    break;
+                case "create":
+                    var sourceId = GetCommandArgument(args, 2);
+                    var instanceId = GetCommandArgument(args, 3);
+                    var created = packages.CreateInstance(sourceId, instanceId, GetOptionValue(args, "--name"));
+                    global::System.Console.WriteLine($"Created disabled instance {created.Id}; edit {created.ConfigPath}, then enable it.");
+                    break;
+                case "enable":
+                case "disable":
+                    var selectedId = GetCommandArgument(args, 2);
+                    packages.SetInstanceEnabled(selectedId, action == "enable");
+                    global::System.Console.WriteLine($"Instance {selectedId} {(action == "enable" ? "enabled" : "disabled")}; takes effect next start.");
+                    break;
+                case "config":
+                    var selected = packages.GetInstance(GetCommandArgument(args, 2)) ?? throw new InvalidOperationException("Adapter instance not found.");
+                    Directory.CreateDirectory(Path.GetDirectoryName(selected.ConfigPath)!);
+                    if (!File.Exists(selected.ConfigPath)) File.WriteAllText(selected.ConfigPath, "");
+                    global::System.Console.WriteLine(selected.ConfigPath);
+                    break;
+                case "remove-package":
+                    var removePackageId = GetCommandArgument(args, 2);
+                    packages.Uninstall(removePackageId);
+                    global::System.Console.WriteLine($"Removed adapter package and all its instances: {removePackageId}.");
                     break;
                 case "verify":
                     var verifyPath = GetCommandArgument(args, 2);
@@ -497,15 +530,19 @@ public static class Program
                 case "remove":
                 case "uninstall":
                     var id = GetCommandArgument(args, 2);
-                    packages.Uninstall(id);
-                    global::System.Console.WriteLine($"Removed adapter {id}.");
+                    packages.DeleteInstance(id);
+                    global::System.Console.WriteLine($"Removed adapter instance {id}.");
                     break;
                 default:
                     global::System.Console.WriteLine("Adapter management commands:");
                     global::System.Console.WriteLine("  ShiroBot adapter list [--adapter-dir <path>]");
                     global::System.Console.WriteLine("  ShiroBot adapter verify <dll|zip> [--adapter-dir <path>]");
                     global::System.Console.WriteLine("  ShiroBot adapter install <dll|zip> [--replace] [--no-enable] [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter remove <id> [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter create <package-id> <instance-id> [--name <name>] [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter config <instance-id> [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter enable|disable <instance-id> [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter remove <instance-id> [--adapter-dir <path>]");
+                    global::System.Console.WriteLine("  ShiroBot adapter remove-package <package-id> [--adapter-dir <path>]");
                     break;
             }
         }

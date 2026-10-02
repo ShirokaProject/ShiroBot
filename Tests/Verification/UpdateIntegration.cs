@@ -85,6 +85,119 @@ internal static class UpdateIntegration
                 Check(host.Adapters.LoadedIds.SequenceEqual([AdapterId]), "Stopping one adapter affected the other instance");
                 return new { same_platform_loaded = true, separate_ids = true, independent_stop = true };
             });
+            await Scenario("same-dll-multiple-configs", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-work", name = "Work bot" });
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-work" }, expectFailure: true);
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "../escape" }, expectFailure: true);
+                var instances = host.AdapterPackages.ListInstances();
+                Check(instances.Count == 2 && instances.Select(item => item.AssemblyPath).Distinct().Count() == 1,
+                    "Instances must share exactly one installed DLL");
+                Check(instances.Select(item => item.ConfigPath).Distinct().Count() == 2, "Instance config paths overlap");
+                foreach (var instance in instances) File.WriteAllText(instance.ConfigPath, $"bot = \"{instance.Id}\"\n");
+                await host.PostAsync("/adapters/probe-work/start", new { });
+                Check(host.Adapters.LoadedIds.Count == 2, "Same DLL instances did not load together");
+                var workAssembly = host.Adapters.GetLoadedAssembly("probe-work");
+                Check(workAssembly is not null && !ReferenceEquals(workAssembly, host.Adapters.GetLoadedAssembly(AdapterId)),
+                    "Instances must have separate collectible assembly contexts/static state");
+                workAssembly = null;
+                using var configResponse = await host.Client.GetAsync("adapters/probe-work/config");
+                var config = await configResponse.Content.ReadFromJsonAsync<JsonElement>();
+                Check(config.GetProperty("config").GetProperty("bot").GetString() == "probe-work", "HTTP config read selected another instance");
+                using var patchResponse = await host.Client.PatchAsJsonAsync("adapters/probe-work/config", new { config = new { bot = "changed" } });
+                Check(patchResponse.IsSuccessStatusCode, "HTTP instance config patch failed");
+                Check(File.ReadAllText(host.AdapterPackages.GetInstance(AdapterId)!.ConfigPath).Contains(AdapterId), "Config edit changed another bot");
+                await host.PostAsync("/adapters/probe-work/reload", new { });
+                await host.PostAsync("/adapters/probe-work/stop", new { });
+                Check(host.Adapters.LoadedIds.SequenceEqual([AdapterId]), "Instance stop affected sibling");
+                await host.PostAsync("/adapters/probe-work/start", new { });
+                using var deleteDefault = await host.Client.DeleteAsync($"adapters/{AdapterId}");
+                Check(deleteDefault.IsSuccessStatusCode, "Deleting default instance failed");
+                Check(host.Adapters.LoadedIds.SequenceEqual(["probe-work"]) && host.AdapterPackages.Get(AdapterId) is not null,
+                    "Deleting default instance deleted a sibling's shared DLL");
+                var reloadedRegistry = new AdapterPackageManager(Path.Combine(host.Root, "adapters"));
+                Check(reloadedRegistry.ListInstances().Single().Id == "probe-work", "Restart revived deleted default instance");
+                using var deleteLast = await host.Client.DeleteAsync("adapters/probe-work");
+                Check(deleteLast.IsSuccessStatusCode && host.AdapterPackages.List().Count == 0 && host.AdapterPackages.ListInstances().Count == 0,
+                    "Deleting final instance did not remove package/registry");
+                return new { shared_dll = true, independent_config = true, separate_load_contexts = true, http_config = true,
+                    independent_start_stop_reload_delete = true, persisted_instances = true };
+            });
+            await Scenario("root-config-instance-management", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                await host.Adapters.StopAsync();
+                var path = Path.Combine(host.Root, "config.toml");
+                File.AppendAllText(path, "\n# keep unrelated core settings\n");
+                new ConfigManager(path).ReplaceConfigValue(path, "adapter_instances", new List<object>
+                {
+                    new Dictionary<string, object?> { ["id"] = "config-work", ["package_id"] = AdapterId, ["name"] = "Configured work", ["enabled"] = true },
+                    new Dictionary<string, object?> { ["id"] = "config-home", ["package_id"] = AdapterId, ["enabled"] = false }
+                });
+                var fromToml = host.AdapterPackages.ListInstances();
+                Check(fromToml.Count == 2 && !fromToml.Any(item => item.Id == AdapterId), "Explicit root config revived an undeclared default instance");
+                foreach (var instance in fromToml.Where(item => item.Enabled)) await host.Adapters.LoadInstanceAsync(instance);
+                Check(host.Adapters.LoadedIds.SequenceEqual(["config-work"]), "Root config enabled flags were ignored");
+                await host.PostAsync("/adapters/config-work/stop", new { });
+                var config = await new ConfigManager(path).LoadCoreConfig();
+                Check(config.AdapterInstances!.Single(item => item.Id == "config-work").Enabled == false, "WebUI stop did not update root config");
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "config-new", name = "Added from web" });
+                config = await new ConfigManager(path).LoadCoreConfig();
+                Check(config.AdapterInstances!.Length == 3 && config.AdapterInstances.Any(item => item.Id == "config-new"), "WebUI create did not update root config");
+                Check(File.ReadAllText(path).Contains("# keep unrelated core settings"), "Instance management destroyed unrelated core comments");
+                using var deleted = await host.Client.DeleteAsync("adapters/config-home");
+                Check(deleted.IsSuccessStatusCode && !host.AdapterPackages.ListInstances().Any(item => item.Id == "config-home"), "WebUI delete did not update root config");
+                var original = File.ReadAllText(path);
+                new ConfigManager(path).ReplaceConfigValue(path, "adapter_instances", new List<object>
+                {
+                    new Dictionary<string, object?> { ["id"] = "duplicate", ["package_id"] = AdapterId },
+                    new Dictionary<string, object?> { ["id"] = "duplicate", ["package_id"] = AdapterId }
+                });
+                try { host.AdapterPackages.ListInstances(); throw new Exception("Duplicate root-config IDs accepted"); }
+                catch (InvalidOperationException) { }
+                finally { File.WriteAllText(path, original); }
+                return new { declarative_toml = true, undeclared_default_stays_absent = true, web_and_file_share_state = true, comments_preserved = true, duplicate_validation = true };
+            });
+            await Scenario("legacy-instance-migration", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                File.WriteAllText(Path.Combine(host.Root, "config.toml"), "protocols = []\n# legacy core configuration\n");
+                var directory = Path.Combine(host.Root, "adapters", ".instances", "legacy-extra");
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "instance.json"), JsonSerializer.Serialize(new { Id = "legacy-extra", PackageId = AdapterId, Name = "Legacy instance", Enabled = true }));
+                File.WriteAllText(Path.Combine(directory, "config.toml"), "bot = \"legacy-extra\"\n");
+                host.AdapterPackages.InitializeInstances();
+                var migrated = await new ConfigManager(Path.Combine(host.Root, "config.toml")).LoadCoreConfig();
+                Check(migrated.AdapterInstances!.Length == 2 && migrated.AdapterInstances.Any(item => item.Id == "legacy-extra" && item.Enabled),
+                    "Legacy JSON/default instances were not migrated to root TOML");
+                Check(File.ReadAllText(Path.Combine(directory, "config.toml")).Contains("legacy-extra"), "Migration overwrote instance credentials/config");
+                return new { old_manifest_and_json_migrated = true, configs_untouched = true };
+            });
+            await Scenario("multi-instance-package-update", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-home" });
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-disabled" });
+                foreach (var instance in host.AdapterPackages.ListInstances()) File.WriteAllText(instance.ConfigPath, $"bot = \"{instance.Id}\"\n");
+                await host.PostAsync("/adapters/probe-home/start", new { });
+                var response = await host.UpdateAdapterAsync();
+                Check(!response.TryGetProperty("pending_restart", out var pending) || !pending.GetBoolean(), "Multi-instance update unexpectedly staged");
+                Check(host.Adapters.GetSnapshot().Count == 2 && host.Adapters.GetSnapshot().All(item => item.Loaded && item.Version == "2.0.0"),
+                    "Package update did not replace every running instance: " + JsonSerializer.Serialize(host.Adapters.GetSnapshot()) + " response=" + response);
+                Check(!host.AdapterPackages.GetInstance("probe-disabled")!.Enabled, "Update enabled an inactive instance");
+                foreach (var instance in host.AdapterPackages.ListInstances())
+                    Check(File.ReadAllText(instance.ConfigPath).Contains(instance.Id), "Package update lost an instance config");
+                await host.PostAsync($"/adapters/{AdapterId}/stop", new { });
+                await host.UpdateAdapterAsync();
+                Check(!host.AdapterPackages.GetInstance(AdapterId)!.Enabled && !host.Adapters.LoadedIds.Contains(AdapterId),
+                    "Updating an enabled sibling re-enabled the stopped default instance");
+                await host.Adapters.StopForShutdownAsync();
+                var registry = new AdapterPackageManager(Path.Combine(host.Root, "adapters"));
+                foreach (var instance in registry.ListInstances().Where(item => item.Enabled)) await host.Adapters.LoadInstanceAsync(instance);
+                Check(host.Adapters.LoadedIds.SequenceEqual(["probe-home"]), "Restart did not preserve per-instance enabled flags");
+                return new { all_running_instances_updated = true, configs_preserved = true, disabled_instances_preserved = true, restart_persistence = true };
+            });
             await Scenario("plugin-http", async host =>
             {
                 await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));
@@ -251,6 +364,28 @@ internal static class UpdateIntegration
                 host.AssertPackage("adapters", AdapterId);
                 return new { pending_restart = true, old_version_kept = true, startup_version = "2.0.0" };
             });
+            await Scenario("multi-instance-staged-update", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-staged" });
+                await host.PostAsync("/adapters/probe-staged/start", new { });
+                foreach (var instance in host.AdapterPackages.ListInstances()) File.WriteAllText(instance.ConfigPath, $"bot = \"{instance.Id}\"\n");
+                _pinnedAdapter = host.Adapters.GetLoadedAssembly(AdapterId);
+                JsonElement response;
+                try { response = await host.UpdateAdapterAsync(); }
+                finally { _pinnedAdapter = null; }
+                Check(response.GetProperty("pending_restart").GetBoolean(), "Pinned sibling did not stage the whole package");
+                Check(host.Adapters.GetSnapshot().Count(item => item.Loaded && item.Version == "1.0.0") == 2,
+                    "Staging failed to keep/restore all current instances");
+                await host.Adapters.StopAsync();
+                var applied = host.AdapterPackages.ApplyStagedUpdates();
+                Check(applied.Applied.Contains(AdapterId) && applied.Failed.Count == 0, "Multi-instance staged package failed to apply");
+                foreach (var instance in host.AdapterPackages.ListInstances().Where(item => item.Enabled)) await host.Adapters.LoadInstanceAsync(instance);
+                Check(host.Adapters.GetSnapshot().Count == 2 && host.Adapters.GetSnapshot().All(item => item.Version == "2.0.0"),
+                    "Staged update did not restore both instances on the new DLL");
+                foreach (var instance in host.AdapterPackages.ListInstances()) Check(File.ReadAllText(instance.ConfigPath).Contains(instance.Id), "Staged update lost config");
+                return new { package_staged = true, both_old_instances_kept = true, both_new_instances_restored = true, configs_preserved = true };
+            });
             await Scenario("adapter-shutdown", async host =>
             {
                 await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
@@ -267,6 +402,17 @@ internal static class UpdateIntegration
                 finally { _pinnedAdapter = null; }
             });
             releasePackage = "broken.zip";
+            await Scenario("multi-instance-rollback", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
+                await host.PostAsync($"/adapters/{AdapterId}/instances", new { id = "probe-rollback" });
+                await host.PostAsync("/adapters/probe-rollback/start", new { });
+                var response = await host.UpdateAdapterAsync(expectFailure: true);
+                Check(response.GetProperty("rollback").GetBoolean(), "Multi-instance failure did not report rollback");
+                Check(host.Adapters.GetSnapshot().Count == 2 && host.Adapters.GetSnapshot().All(item => item.Loaded && item.Version == "1.0.0"),
+                    "Failed update did not restore every old instance");
+                return new { failed_update_rolled_back = true, both_instances_restored = true };
+            });
             await Scenario("adapter-rollback", async host =>
             {
                 await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));

@@ -252,38 +252,64 @@ internal sealed class HostCommandHandler(
 
     private static string? NormalizeCommand(string? command) => command?.TrimStart('/').ToLowerInvariant();
 
-    private string BuildAdaptersText() => _adapterManager is null || _adapterManager.LoadedIds.Count == 0
-        ? "当前没有已加载适配器。"
-        : "已加载适配器: " + string.Join(", ", _adapterManager.LoadedIds);
+    private string BuildAdaptersText()
+    {
+        var instances = _adapterPackages?.ListInstances();
+        return instances is null || instances.Count == 0 ? "当前没有已安装适配器实例。" : string.Join("\n", instances.Select(instance =>
+            $"{instance.Id} | 包 {instance.PackageId} | {(_adapterManager?.LoadedIds.Contains(instance.Id, StringComparer.OrdinalIgnoreCase) == true ? "运行中" : "已停止")} | 配置 {instance.ConfigPath}"));
+    }
 
     private async Task<string> HandleAdapterCommandAsync(string[] input)
     {
-        if (_adapterManager is null) return "Adapter 管理器不可用。";
+        var manager = _adapterManager;
+        var packages = _adapterPackages;
+        if (manager is null) return "Adapter 管理器不可用。";
         if (input.Length < 2 || string.Equals(input[1], "list", StringComparison.OrdinalIgnoreCase)) return BuildAdaptersText();
-        if (input.Length < 3) return "用法: adapter start|stop|reload <id>";
+        if (input.Length < 3) return "用法: adapter list | create <包 ID> <实例 ID> | config|start|stop|reload|remove <实例 ID>";
         try
         {
             switch (input[1].ToLowerInvariant())
             {
+                case "create":
+                    if (input.Length < 4) return "用法: adapter create <包 ID> <实例 ID>";
+                    if (packages is null) throw new InvalidOperationException("Adapter 包管理器不可用。");
+                    InstalledAdapterInstance? created = null;
+                    Task CreateInstance() { created = packages.CreateInstance(input[2], input[3], null); return Task.CompletedTask; }
+                    if (_reloadCoordinator is not null) await _reloadCoordinator.ExecuteAdapterMutationAsync(CreateInstance);
+                    else await CreateInstance();
+                    return $"已创建停用实例 {created!.Id}，请编辑 {created.ConfigPath}，然后 adapter start {created.Id}";
+                case "config":
+                    return packages?.GetInstance(input[2])?.ConfigPath ?? $"未安装 Adapter 实例: {input[2]}";
+                case "remove":
+                    if (packages is null) throw new InvalidOperationException("Adapter 包管理器不可用。");
+                    async Task RemoveInstance()
+                    {
+                        await manager.StopByIdAsync(input[2]);
+                        packages.DeleteInstance(input[2]);
+                        manager.ForgetRemovedAdapter(input[2]);
+                    }
+                    if (_reloadCoordinator is not null) await _reloadCoordinator.ExecuteAdapterMutationAsync(RemoveInstance);
+                    else await RemoveInstance();
+                    return $"已删除 Adapter 实例: {input[2]}";
                 case "start":
-                    var package = _adapterPackages?.Get(input[2]) ?? throw new InvalidOperationException($"未安装 Adapter: {input[2]}");
+                    var package = packages?.GetInstance(input[2]) ?? throw new InvalidOperationException($"未安装 Adapter: {input[2]}");
                     if (_reloadCoordinator is not null)
-                        await _reloadCoordinator.ExecuteAdapterMutationAsync(() => _adapterManager.LoadByIdAsync(package.Id, package.AssemblyPath));
+                        await _reloadCoordinator.ExecuteAdapterMutationAsync(() => manager.LoadInstanceAsync(package));
                     else
-                        await _adapterManager.LoadByIdAsync(package.Id, package.AssemblyPath);
-                    _adapterPackages!.SetEnabled(package.Id, true);
+                        await manager.LoadInstanceAsync(package);
+                    packages!.SetInstanceEnabled(package.Id, true);
                     return $"已启动 Adapter: {package.Id}";
                 case "stop":
                     if (_reloadCoordinator is not null)
-                        await _reloadCoordinator.ExecuteAdapterMutationAsync(() => _adapterManager.StopByIdAsync(input[2]));
+                        await _reloadCoordinator.ExecuteAdapterMutationAsync(() => manager.StopByIdAsync(input[2]));
                     else
-                        await _adapterManager.StopByIdAsync(input[2]);
-                    _adapterPackages?.SetEnabled(input[2], false);
+                        await manager.StopByIdAsync(input[2]);
+                    packages?.SetInstanceEnabled(input[2], false);
                     return $"已停止 Adapter: {input[2]}";
                 case "reload":
-                    if (_reloadCoordinator is not null) await _reloadCoordinator.ReloadAdapterByIdAsync(input[2]); else await _adapterManager.ReloadByIdAsync(input[2]);
+                    if (_reloadCoordinator is not null) await _reloadCoordinator.ReloadAdapterByIdAsync(input[2]); else await manager.ReloadByIdAsync(input[2]);
                     return $"已重载 Adapter: {input[2]}";
-                default: return "用法: adapter start|stop|reload <id>";
+                default: return "用法: adapter list | create <包 ID> <实例 ID> | config|start|stop|reload|remove <实例 ID>";
             }
         }
         catch (Exception ex) { return "Adapter 操作失败: " + ex.Message; }

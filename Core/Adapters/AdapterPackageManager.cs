@@ -3,6 +3,8 @@ using System.Text.Json;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Plugins.Compatibility;
 using ShiroBot.Components.Updates;
+using ShiroBot.Configuration;
+using Tomlyn;
 
 namespace ShiroBot.Adapters;
 
@@ -23,6 +25,182 @@ internal sealed class AdapterPackageManager(string adapterRoot)
             .OrderBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    // Package files are shared; descriptors/configs are host-owned and survive DLL updates.
+    private string InstanceRoot => Path.Combine(_root, ".instances");
+
+    private string CoreConfigPath => Path.Combine(Path.GetDirectoryName(_root)!, "config.toml");
+    public bool HasDeclaredInstances => ReadDeclaredInstances() is not null;
+
+    public void InitializeInstances(IEnumerable<string>? requestedAdapters = null)
+    {
+        if (HasDeclaredInstances) return;
+        var legacy = CurrentDeclarations();
+        if (legacy.Length == 0) return;
+        var requested = (requestedAdapters ?? []).ToArray();
+        foreach (var instance in legacy)
+        {
+            if (!string.Equals(instance.Id, instance.PackageId, StringComparison.OrdinalIgnoreCase)) continue;
+            var package = Get(instance.PackageId)!;
+            if (requested.Any(value => string.Equals(value, package.Id, StringComparison.OrdinalIgnoreCase) ||
+                                       string.Equals(value, package.Name, StringComparison.OrdinalIgnoreCase) ||
+                                       File.Exists(value) && string.Equals(Path.GetFullPath(value), package.AssemblyPath, StringComparison.OrdinalIgnoreCase)))
+                instance.Enabled = true;
+        }
+        SaveDeclaredInstances(legacy);
+    }
+
+    private AdapterInstanceConfig[]? ReadDeclaredInstances()
+    {
+        if (!File.Exists(CoreConfigPath)) return null;
+        var config = TomlSerializer.Deserialize<CoreConfig>(File.ReadAllText(CoreConfigPath), new TomlSerializerOptions
+        { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+        var instances = config?.AdapterInstances;
+        if (instances is null) return null;
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var instance in instances)
+        {
+            ValidateId(instance.Id);
+            ValidateId(instance.PackageId);
+            if (!ids.Add(instance.Id)) throw new InvalidOperationException($"实例 ID {instance.Id} 重复出现在 adapter_instances 中。");
+            if (Get(instance.Id) is { } reserved && !string.Equals(reserved.Id, instance.PackageId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"实例 ID {instance.Id} 与另一个适配器包冲突。");
+        }
+        return instances;
+    }
+
+    private void SaveDeclaredInstances(IEnumerable<AdapterInstanceConfig> instances)
+    {
+        var values = instances.Select(instance => (object)new Dictionary<string, object?>
+        {
+            ["id"] = instance.Id, ["package_id"] = instance.PackageId, ["name"] = instance.Name, ["enabled"] = instance.Enabled
+        }).ToList();
+        new ConfigManager(CoreConfigPath).ReplaceConfigValue(CoreConfigPath, "adapter_instances", values);
+    }
+
+    private AdapterInstanceConfig[] CurrentDeclarations() => ReadDeclaredInstances() ?? ListLegacyInstances().Select(instance =>
+        new AdapterInstanceConfig { Id = instance.Id, PackageId = instance.PackageId, Name = instance.Name, Enabled = instance.Enabled }).ToArray();
+
+    public IReadOnlyList<InstalledAdapterInstance> ListInstances()
+    {
+        var declared = ReadDeclaredInstances();
+        if (declared is null) return ListLegacyInstances();
+        return declared.Select(instance =>
+        {
+            var package = Get(instance.PackageId) ?? throw new InvalidOperationException($"实例 {instance.Id} 引用未安装的适配器包 {instance.PackageId}。");
+            var configPath = string.Equals(instance.Id, package.Id, StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(Path.GetDirectoryName(package.AssemblyPath)!, "config.toml")
+                : Path.Combine(InstanceRoot, instance.Id, "config.toml");
+            return new InstalledAdapterInstance(instance.Id, package.Id, package.AssemblyPath, configPath,
+                instance.Enabled, string.IsNullOrWhiteSpace(instance.Name) ? instance.Id : instance.Name);
+        }).OrderBy(instance => instance.Id, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private IReadOnlyList<InstalledAdapterInstance> ListLegacyInstances()
+
+    {
+        var descriptors = Directory.Exists(InstanceRoot)
+            ? Directory.EnumerateFiles(InstanceRoot, "instance.json", SearchOption.AllDirectories)
+                .Select(path => ReadInstanceDescriptor(path))
+                .Where(item => item is not null).Cast<AdapterInstanceManifest>().ToArray()
+            : [];
+        var result = new List<InstalledAdapterInstance>();
+        foreach (var package in List())
+        {
+            var defaultDescriptor = descriptors.FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase));
+            if (defaultDescriptor?.Deleted != true)
+                result.Add(new(package.Id, package.Id, package.AssemblyPath,
+                    Path.Combine(Path.GetDirectoryName(package.AssemblyPath)!, "config.toml"),
+                    package.Enabled, package.Name));
+            foreach (var descriptor in descriptors.Where(item => !item.Deleted &&
+                         string.Equals(item.PackageId, package.Id, StringComparison.OrdinalIgnoreCase) &&
+                         !string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase)))
+                result.Add(new(descriptor.Id, package.Id, package.AssemblyPath,
+                    Path.Combine(InstanceRoot, descriptor.Id, "config.toml"), descriptor.Enabled, descriptor.Name));
+        }
+        return result.OrderBy(item => item.Id, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    public InstalledAdapterInstance? GetInstance(string id) => ListInstances().FirstOrDefault(item =>
+        string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    public InstalledAdapterInstance CreateInstance(string packageId, string id, string? name)
+    {
+        ValidateId(id);
+        if (id.Length > 64 || id.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '.' and not '-' and not '_'))
+            throw new InvalidOperationException("实例 ID 最多 64 个字符，只能使用英文字母、数字、点、横线和下划线。");
+        if (name?.Length > 100) throw new InvalidOperationException("实例显示名称最多 100 个字符。");
+        var package = Get(packageId) ?? throw new InvalidOperationException($"未安装 Adapter 包: {packageId}");
+        if (Get(id) is not null || GetInstance(id) is not null || Directory.Exists(Path.Combine(InstanceRoot, id)))
+            throw new InvalidOperationException($"适配器实例 ID {id} 已存在。");
+        var directory = Path.Combine(InstanceRoot, id);
+        Directory.CreateDirectory(directory);
+        var declarations = CurrentDeclarations().ToList();
+        declarations.Add(new AdapterInstanceConfig { Id = id, PackageId = package.Id, Name = string.IsNullOrWhiteSpace(name) ? id : name.Trim() });
+        try
+        {
+            // Start empty rather than copying another bot's credentials.
+            File.WriteAllText(Path.Combine(directory, "config.toml"), "");
+            SaveDeclaredInstances(declarations);
+        }
+        catch { TryDeleteDirectory(directory); throw; }
+        return GetInstance(id)!;
+    }
+
+    public void SetInstanceEnabled(string id, bool enabled)
+    {
+        var instance = GetInstance(id) ?? throw new InvalidOperationException($"未安装 Adapter 实例: {id}");
+        var declarations = CurrentDeclarations();
+        declarations.Single(item => string.Equals(item.Id, instance.Id, StringComparison.OrdinalIgnoreCase)).Enabled = enabled;
+        SaveDeclaredInstances(declarations);
+        if (string.Equals(instance.Id, instance.PackageId, StringComparison.OrdinalIgnoreCase)) SetEnabled(instance.PackageId, enabled);
+    }
+
+    public void DeleteInstance(string id)
+    {
+        ValidateId(id);
+        var instance = GetInstance(id);
+        if (instance is null)
+        {
+            if (Get(id) is null) Uninstall(id);
+            return;
+        }
+        var declarations = CurrentDeclarations().Where(item => !string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var siblings = declarations.Where(item => string.Equals(item.PackageId, instance.PackageId, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (siblings.Length == 0) { Uninstall(instance.PackageId); return; }
+        SaveDeclaredInstances(declarations);
+        if (string.Equals(instance.Id, instance.PackageId, StringComparison.OrdinalIgnoreCase))
+        {
+            SetEnabled(instance.PackageId, false);
+            File.Delete(instance.ConfigPath);
+        }
+        else TryDeleteDirectory(Path.Combine(InstanceRoot, instance.Id));
+    }
+
+    private void EnsureInstalledDefault(InstalledAdapterPackage package)
+    {
+        var declarations = CurrentDeclarations().ToList();
+        if (!declarations.Any(instance => string.Equals(instance.PackageId, package.Id, StringComparison.OrdinalIgnoreCase)))
+            declarations.Add(new AdapterInstanceConfig { Id = package.Id, PackageId = package.Id, Name = package.Name, Enabled = package.Enabled });
+        SaveDeclaredInstances(declarations);
+    }
+
+    private static AdapterInstanceManifest? ReadInstanceDescriptor(string path)
+    {
+        try
+        {
+            var descriptor = JsonSerializer.Deserialize<AdapterInstanceManifest>(File.ReadAllText(path));
+            if (descriptor is null) return null;
+            ValidateId(descriptor.Id);
+            ValidateId(descriptor.PackageId);
+            return string.Equals(Path.GetFileName(Path.GetDirectoryName(path)), descriptor.Id, StringComparison.OrdinalIgnoreCase)
+                ? descriptor : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        { return null; }
+    }
+
+    private sealed record AdapterInstanceManifest(string Id, string PackageId, string Name, bool Enabled, bool Deleted = false);
 
     public AdapterPackageProbe Prepare(string packagePath, string workRoot)
     {
@@ -51,6 +229,8 @@ internal sealed class AdapterPackageManager(string adapterRoot)
         var metadata = AdapterContractProbe.ReadMetadata(entryPath)
             ?? throw new InvalidOperationException("未找到有效的 BotAdapter 入口。");
         ValidateId(metadata.Id);
+        if (GetInstance(metadata.Id) is { } collision && !string.Equals(collision.PackageId, metadata.Id, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"包 ID {metadata.Id} 已被其他适配器的实例占用。");
         ComponentApiCompatibility.EnsureCompatible("Adapter", metadata.Id, metadata.MinimumApiVersion, metadata.MaximumApiVersion);
         return new AdapterPackageProbe(
             metadata.Id,
@@ -94,7 +274,9 @@ internal sealed class AdapterPackageManager(string adapterRoot)
             }
 
             TryDeleteDirectory(backup);
-            return new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled, package.Name, package.Version, package.Description, package.Platform);
+            var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled, package.Name, package.Version, package.Description, package.Platform);
+            EnsureInstalledDefault(installed);
+            return installed;
         }
         finally
         {
@@ -112,7 +294,8 @@ internal sealed class AdapterPackageManager(string adapterRoot)
         AdapterPackageProbe package,
         bool enabled,
         Func<InstalledAdapterPackage, Task> activate,
-        Func<InstalledAdapterPackage, Task>? restore = null)
+        Func<InstalledAdapterPackage, Task>? restore = null,
+        bool activateWhenDisabled = false)
     {
         Directory.CreateDirectory(_root);
         var target = GetAdapterDirectory(package.Id);
@@ -135,15 +318,16 @@ internal sealed class AdapterPackageManager(string adapterRoot)
             if (Directory.Exists(target)) Directory.Move(target, backup);
             Directory.Move(staging, target);
             var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled, package.Name, package.Version, package.Description, package.Platform);
+            if (previous is null) EnsureInstalledDefault(installed);
             try
             {
-                if (enabled) await activate(installed).ConfigureAwait(false);
+                if (enabled || activateWhenDisabled) await activate(installed).ConfigureAwait(false);
                 TryDeleteDirectory(backup);
                 return new AdapterInstallResult(installed, null);
             }
             catch (Exception activationError) when (previous is null)
             {
-                SetEnabled(package.Id, false);
+                SetInstanceEnabled(package.Id, false);
                 return new AdapterInstallResult(installed with { Enabled = false }, activationError.Message);
             }
             catch (Exception activationError)
@@ -216,8 +400,17 @@ internal sealed class AdapterPackageManager(string adapterRoot)
     {
         var path = GetAdapterDirectory(id);
         if (!IsStrictChild(_root, path)) throw new InvalidOperationException("拒绝删除 Adapter 根目录之外的路径。");
+        var declarations = CurrentDeclarations();
+        foreach (var instance in declarations.Where(item => string.Equals(item.PackageId, id, StringComparison.OrdinalIgnoreCase)))
+        {
+            var directory = Path.Combine(InstanceRoot, instance.Id);
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+        var tombstone = Path.Combine(InstanceRoot, id);
+        if (Directory.Exists(tombstone)) Directory.Delete(tombstone, true);
         StagedComponentUpdates.DiscardStaged(_root, id);
         if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        SaveDeclaredInstances(declarations.Where(item => !string.Equals(item.PackageId, id, StringComparison.OrdinalIgnoreCase)));
     }
 
     private InstalledAdapterPackage? ReadInstalled(string directory)
@@ -227,7 +420,8 @@ internal sealed class AdapterPackageManager(string adapterRoot)
             var manifestPath = Path.Combine(directory, "adapter.json");
             if (!File.Exists(manifestPath)) return null;
             var manifest = JsonSerializer.Deserialize<AdapterManifest>(File.ReadAllText(manifestPath));
-            if (manifest is null || string.IsNullOrWhiteSpace(manifest.Id) || string.IsNullOrWhiteSpace(manifest.Entry)) return null;
+            if (manifest is null || string.IsNullOrWhiteSpace(manifest.Id) || string.IsNullOrWhiteSpace(manifest.Entry) ||
+                !string.Equals(Path.GetFileName(directory), manifest.Id, StringComparison.OrdinalIgnoreCase)) return null;
             var assemblyPath = Path.GetFullPath(Path.Combine(directory, manifest.Entry));
             if (!IsUnder(directory, assemblyPath) || !File.Exists(assemblyPath)) return null;
             return new InstalledAdapterPackage(manifest.Id, assemblyPath, manifest.Enabled, manifest.Name ?? manifest.Id, manifest.Version ?? "1.0.0", manifest.Description, manifest.Platform);
@@ -311,7 +505,7 @@ internal sealed class AdapterPackageManager(string adapterRoot)
 
     private static void ValidateId(string id)
     {
-        if (string.IsNullOrWhiteSpace(id) || id is "." or ".." || id != id.Trim() || id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..", StringComparison.Ordinal) || id.Contains('/') || id.Contains('\\') ||
+        if (string.IsNullOrWhiteSpace(id) || id.StartsWith('.') || id is "." or ".." || id != id.Trim() || id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..", StringComparison.Ordinal) || id.Contains('/') || id.Contains('\\') ||
             string.Equals(id, "CON", StringComparison.OrdinalIgnoreCase) || string.Equals(id, "PRN", StringComparison.OrdinalIgnoreCase) || string.Equals(id, "AUX", StringComparison.OrdinalIgnoreCase) || string.Equals(id, "NUL", StringComparison.OrdinalIgnoreCase) ||
             id.StartsWith("COM", StringComparison.OrdinalIgnoreCase) && id.Length == 4 && char.IsDigit(id[3]) || id.StartsWith("LPT", StringComparison.OrdinalIgnoreCase) && id.Length == 4 && char.IsDigit(id[3]))
             throw new InvalidOperationException("Adapter ID 包含非法路径字符。");
@@ -357,3 +551,5 @@ internal sealed record AdapterPackageProbe(string Id, string MinimumApiVersion, 
 internal sealed record AdapterInstallResult(InstalledAdapterPackage Package, string? StartError);
 
 internal sealed record InstalledAdapterPackage(string Id, string AssemblyPath, bool Enabled, string Name, string Version, string? Description, string? Platform);
+
+internal sealed record InstalledAdapterInstance(string Id, string PackageId, string AssemblyPath, string ConfigPath, bool Enabled, string Name);

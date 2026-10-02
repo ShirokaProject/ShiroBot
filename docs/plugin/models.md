@@ -42,7 +42,15 @@ await Context.Message.SendMessageAsync(
 
 ## 事件
 
-所有事件继承 `BotEvent`，包含 `Platform`、`SelfId` 和可选 `Raw`。通用事件包括：
+所有事件继承 `BotEvent`，包含 `Platform`、`SelfId` 和可选 `Raw`；开发版本增加 `AdapterId`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `Platform` | 平台类型，例如 Milky 的 qq、官方 QQ 的 qq-official |
+| `SelfId` | 平台机器人账号 ID，相同平台可以存在同账号的多个连接实例 |
+| `AdapterId` | 宿主运行实例 ID，由宿主转发入站事件时填写；区分相同 Platform/SelfId 的实例 |
+
+会话 ID、用户 ID 和消息 ID 都只有来源平台/实例内的意义。需要隔离状态时将 AdapterId 加入缓存键，例如 `(message.AdapterId, message.Channel.Id)`；主动发送时只有 Channel 无法推断实例，应显式选择上下文。用法见[调用 API](/plugin/apis#适配器实例与后台发送)。通用事件包括：
 
 | 类型 | 场景 |
 | --- | --- |

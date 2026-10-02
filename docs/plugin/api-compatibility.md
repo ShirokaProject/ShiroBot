@@ -17,6 +17,12 @@ Adapters use the same standalone compatibility attribute. `MinimumVersion` is th
 component beyond that tested version because host APIs evolve additively. An older host rejects a
 component whose minimum version is newer before creating the component load context.
 
+## Dashboard 的“声明兼容”范围
+
+插件目录显示的 `>=0.9.1 <1.0.0` 来自目录作者的 compatibility.shirobot 元数据，描述其声明/验证过的宿主版本范围；这不是宿主限制 1.0 以上安装的开关。
+
+宿主实际加载检查 DLL 声明的最低 ShiroBot API 版本和共享程序集 ABI。组件的 MaximumVersion 表示测试过的 API 上界，不是硬性拒绝上界；较新宿主可加载较旧的兼容 DLL。宿主发布版本、API 版本和 AssemblyVersion/ABI 是不同的数字，不能仅凭目录的版本字符串判断某 DLL 一定兼容未来版本。
+
 ## Evolution rules
 
 - Do not remove, rename, or change the signature of an existing public member within one API version.
@@ -55,13 +61,13 @@ package loads on any host whose ABI for every referenced assembly is the same or
 ## Multi-adapter background work
 
 Event handlers automatically use the adapter that produced the event. Timers, dashboard actions,
-and other background work must select a platform explicitly when more than one adapter is loaded:
+and other background work must select an instance explicitly when more than one adapter is loaded (development version):
 
 ```csharp
-using (Context.UsePlatform("discord"))
+using (Context.UseAdapter("discord-work"))
 {
     await Context.Message.SendMessageAsync(channel, segments);
 }
 ```
 
-The scope flows through asynchronous calls and restores the previous platform when disposed.
+The scope flows through asynchronous calls and restores the previous instance when disposed. UsePlatform remains available only when that platform has one loaded instance. See [instance routing](/plugin/apis#适配器实例与后台发送).
