@@ -15,6 +15,22 @@ public static class QEventKinds
 {
     /// <summary>QQ 官方 INTERACTION_CREATE，type=11 的消息按钮点击。</summary>
     public const string OfficialButtonInteraction = "official_button_interaction";
+    /// <summary>机器人被拉入群（GROUP_ADD_ROBOT）。适配器上报为 GuildInviteEvent，Raw 为 <see cref="QOfficialLifecycleEvent"/>。</summary>
+    public const string OfficialGroupAddRobot = "official_group_add_robot";
+    /// <summary>机器人被移出群（GROUP_DEL_ROBOT）。适配器上报为 MemberLeftEvent，Raw 为 <see cref="QOfficialLifecycleEvent"/>。</summary>
+    public const string OfficialGroupDelRobot = "official_group_del_robot";
+    /// <summary>群里关闭了主动消息（GROUP_MSG_REJECT）。</summary>
+    public const string OfficialGroupMsgReject = "official_group_msg_reject";
+    /// <summary>群里开启了主动消息（GROUP_MSG_RECEIVE）。</summary>
+    public const string OfficialGroupMsgReceive = "official_group_msg_receive";
+    /// <summary>用户添加机器人为好友（FRIEND_ADD）。</summary>
+    public const string OfficialFriendAdd = "official_friend_add";
+    /// <summary>用户删除机器人好友（FRIEND_DEL）。</summary>
+    public const string OfficialFriendDel = "official_friend_del";
+    /// <summary>用户关闭了单聊主动消息（C2C_MSG_REJECT）。</summary>
+    public const string OfficialC2CMsgReject = "official_c2c_msg_reject";
+    /// <summary>用户开启了单聊主动消息（C2C_MSG_RECEIVE）。</summary>
+    public const string OfficialC2CMsgReceive = "official_c2c_msg_receive";
     public const string FriendNudge = "friend_nudge";
     public const string FriendFileUpload = "friend_file_upload";
     public const string GroupAdminChange = "group_admin_change";
@@ -53,6 +69,22 @@ public sealed record QOfficialButtonInteraction : QEventPayload
     public required string UserId { get; init; }
     /// <summary>频道场景的 guild_id。</summary>
     public string? GuildId { get; init; }
+}
+
+/// <summary>
+/// QQ 官方机器人在群或单聊里的生命周期事件（加群、被移出、好友变化、主动消息开关）。
+/// Kind 见 <see cref="QEventKinds"/> 中的 Official* 常量。
+/// </summary>
+public sealed record QOfficialLifecycleEvent : QEventPayload
+{
+    /// <summary>Gateway 事件 ID。部分事件（如 GROUP_ADD_ROBOT、GROUP_MSG_RECEIVE）可用它做被动回复。</summary>
+    public string? EventId { get; init; }
+    /// <summary>事件发生的会话。</summary>
+    public required QOfficialMessageTarget Target { get; init; }
+    /// <summary>操作者的 openid：群事件为 op_member_openid，单聊事件为用户 openid。</summary>
+    public string? OperatorId { get; init; }
+    /// <summary>平台给出的事件时间。</summary>
+    public DateTimeOffset? EventTime { get; init; }
 }
 
 /// <summary>好友戳一戳。</summary>
