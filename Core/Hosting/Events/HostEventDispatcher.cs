@@ -324,12 +324,12 @@ internal sealed class HostEventDispatcher(
             TextSegment text => text.Text,
             ImageSegment image => $"[图片: {image.Uri}]",
             VideoSegment video => $"[视频: {video.Uri}]",
-            AudioSegment audio => $"[语音: {audio.Uri}]",
+            AudioSegment audio => string.IsNullOrWhiteSpace(audio.Transcript) ? $"[语音: {audio.Uri}]" : $"[语音: {audio.Uri} 「{audio.Transcript}」]",
             FileSegment file => $"[文件: {file.FileName ?? file.Uri}]",
             MentionSegment mention => $"[@{mention.DisplayName ?? mention.UserId}]",
             MentionAllSegment => "[@全体成员]",
             EmojiSegment emoji => $"[表情: {emoji.Name ?? emoji.Id}]",
-            QuoteSegment quote => $"[回复: {quote.MessageId}]",
+            QuoteSegment quote => $"[回复: {(string.IsNullOrWhiteSpace(quote.Preview) ? quote.MessageId : quote.Preview)}]",
             RawSegment raw => $"[{raw.Platform}:{raw.Kind}]",
             _ => $"<{segment.GetType().Name}>"
         });

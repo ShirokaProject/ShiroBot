@@ -22,7 +22,11 @@ public sealed record MentionSegment(string UserId) : MessageSegment
 public sealed record MentionAllSegment : MessageSegment;
 
 /// <summary>引用回复某条消息。</summary>
-public sealed record QuoteSegment(string MessageId) : MessageSegment;
+public sealed record QuoteSegment(string MessageId) : MessageSegment
+{
+    /// <summary>被引用消息的简短文本预览（文字或资源链接），仅用于日志等展示；平台未解析出来时为 null。</summary>
+    public string? Preview { get; init; }
+}
 
 /// <summary>表情。<see cref="Id"/> 为平台表情 ID（QQ face id、Discord emoji id 等）。</summary>
 public sealed record EmojiSegment(string Id) : MessageSegment
@@ -55,6 +59,9 @@ public sealed record ImageSegment(string Uri) : ResourceSegment(Uri)
 public sealed record AudioSegment(string Uri) : ResourceSegment(Uri)
 {
     public TimeSpan? Duration { get; init; }
+
+    /// <summary>平台提供的语音转文字结果（如 QQ 内置语音识别），没有时为 null。</summary>
+    public string? Transcript { get; init; }
 }
 
 /// <summary>视频。</summary>
