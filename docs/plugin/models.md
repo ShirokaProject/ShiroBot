@@ -8,7 +8,7 @@
 | --- | --- |
 | `Channel` / `ChannelType` | 会话 ID 与类型；`Channel.Direct(id)`、`Channel.Group(id)` 可快速构造 |
 | `MessageEvent` | 入站消息，包含 `MessageId`、`Channel`、`Sender`、`Segments`、`Timestamp` |
-| `SentMessage` | 出站结果，包含字符串 `MessageId` 与可选时间 |
+| `SentMessage` | 出站结果，包含 `MessageId`、可选时间、`IsSuccess` 与失败说明 `ErrorMessage`；发送失败时 ID 为空 |
 | `User` / `Member` | 用户信息与频道内成员信息 |
 
 ```csharp
@@ -63,3 +63,18 @@ await Context.Message.SendMessageAsync(
 | `PlatformEvent` | 平台特有事件；用 `Kind` 区分，`Raw` 承载平台 Model |
 
 如何订阅与处理，参见[接收消息与事件](/plugin/routes-events)。
+
+### QQ 官方群管理与事件
+
+`IQOfficialGroupApi` 使用字符串 OpenID，提供入群申请查询/审批、禁言状态查询、批量成员禁言，
+以及自动审批策略和策略白名单管理；通过 `GetAdapterExtension<IQOfficialGroupApi>()` 探测支持。
+管理接口需要机器人具备群管理员身份及平台接口权限。策略执行为平台异步任务。
+
+QQPlatform 的成员加入/退出分别映射为 `MemberJoinedEvent` / `MemberLeftEvent`，
+Raw 为 `QOfficialGroupMemberEvent`；入群申请通过 `QEventKinds.OfficialGroupJoinRequest`
+的 `PlatformEvent` 上报，Raw 为 `QOfficialJoinRequest`。在适配器中启用
+`subscribe_group_member_events` 或订阅 `GROUP_MEMBER_EVENT`（`1 << 24`）。
+
+官方按钮新增 `GroupId`、`QKeyboardModal`、`Red` / `BlueFilled` 样式；
+`QOfficialMarkdown.ForceVerifyImageResource` 控制图片转存失败时是否拒绝发送。
+新增类型需要更新宿主共享 QQ Model 和适配器；旧插件可继续使用已有接口。

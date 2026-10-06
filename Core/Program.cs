@@ -179,7 +179,7 @@ public static class Program
                 ? coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? ApiHostConfig.DefaultListenUrl
                 : coreConfig.Api.PublicBaseUrl;
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
-            botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext);
+            botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub);
             Updater.Initialize(
                 () => botContext.OwnerList,
                 (ownerId, content) => botContext.Message.SendDirectMessageAsync(ownerId, content),

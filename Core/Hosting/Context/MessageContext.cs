@@ -2,6 +2,7 @@ using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Hosting.Events;
+using ShiroBot.Hosting.Logging;
 
 namespace ShiroBot.Hosting.Context;
 
@@ -11,7 +12,8 @@ internal sealed class MessageContext(
     Func<string?> getAdapterId,
     Func<MessageEvent, IDisposable> useMessageSource,
     ReplySubscriptionManager replySubscriptions,
-    string ownerId) : IMessageContext
+    string ownerId,
+    HostLogHub? logHub = null) : IMessageContext
 {
     public IReplySubscription SubscribeReply(
         string messageId,
@@ -20,8 +22,41 @@ internal sealed class MessageContext(
         bool disposeOnReply = true) =>
         replySubscriptions.Subscribe(ownerId, getPlatform(), messageId, duration, handler, disposeOnReply, getAdapterId());
 
-    public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments) =>
-        getMessageService().SendMessageAsync(channel, segments);
+    public async Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        ArgumentNullException.ThrowIfNull(segments);
+        // Resolve routing before the boundary: selecting a missing instance is a caller error.
+        var service = getMessageService();
+        var platform = getPlatform();
+        var adapterId = getAdapterId() ?? platform;
+        try
+        {
+            return await service.SendMessageAsync(channel, segments).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            // Avoid logging message segments, which may contain an entire Base64 file.
+            var error = $"适配器发送消息失败: instance={adapterId}, platform={platform}, caller={ownerId}, " +
+                $"channel={channel.Type}:{channel.Id}, {ex.GetType().Name}: {DescribeError(ex)}";
+            new ConsoleLogger($"[Adapter:{adapterId}]", logHub).Error(error);
+            return new SentMessage(string.Empty)
+            {
+                IsSuccess = false,
+                ErrorMessage = $"适配器 {adapterId} 发送消息失败，详情请查看适配器日志。"
+            };
+        }
+    }
+
+    private static string DescribeError(Exception exception)
+    {
+        var message = exception.Message;
+        // Some adapters include the input URI in a filesystem exception.
+        var base64Index = message.IndexOf("base64:", StringComparison.OrdinalIgnoreCase);
+        if (base64Index >= 0) message = message[..base64Index] + "[Base64 内容已省略]";
+        const int maxLength = 1024;
+        return message.Length > maxLength ? message[..maxLength] + "…" : message;
+    }
 
     public Task<SentMessage> ReplyAsync(MessageEvent message, params MessageSegment[] segments) =>
         SendReplyAsync(message, segments);
@@ -39,7 +74,7 @@ internal sealed class MessageContext(
     {
         ArgumentNullException.ThrowIfNull(message);
         using var scope = useMessageSource(message);
-        return await getMessageService().SendMessageAsync(message.Channel, segments).ConfigureAwait(false);
+        return await SendMessageAsync(message.Channel, segments).ConfigureAwait(false);
     }
 
     public Task DeleteMessageAsync(Channel channel, string messageId) =>

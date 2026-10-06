@@ -43,7 +43,11 @@ public enum QOfficialMessageScene
 }
 
 /// <summary>QQ 官方 Markdown 消息。发送时在自定义内容和模板之间选择一种。</summary>
-public abstract record QOfficialMarkdown;
+public abstract record QOfficialMarkdown
+{
+    /// <summary>图片转存失败时拒绝发送整条消息。</summary>
+    public bool? ForceVerifyImageResource { get; init; }
+}
 
 public sealed record QCustomMarkdown(string Content) : QOfficialMarkdown;
 
@@ -80,6 +84,8 @@ public sealed record QKeyboardButton
 {
     /// <summary>在同一键盘内唯一。</summary>
     public string? Id { get; init; }
+    /// <summary>仅回调按钮有效；组内一个按钮操作后，其余按钮变灰。</summary>
+    public string? GroupId { get; init; }
     public required QKeyboardRenderData RenderData { get; init; }
     public required QKeyboardAction Action { get; init; }
 }
@@ -89,7 +95,9 @@ public sealed record QKeyboardRenderData(string Label, string VisitedLabel, QKey
 public enum QKeyboardButtonStyle
 {
     Gray = 0,
-    Blue = 1
+    Blue = 1,
+    Red = 3,
+    BlueFilled = 4
 }
 
 public sealed record QKeyboardAction
@@ -105,7 +113,11 @@ public sealed record QKeyboardAction
     public bool? Enter { get; init; }
     /// <summary>仅指令按钮有效；设置后忽略 Enter。值 1 唤起手机端选图器。</summary>
     public int? Anchor { get; init; }
+    public QKeyboardModal? Modal { get; init; }
 }
+
+/// <summary>按钮点击二次确认。Content 最多 40 字符且不能包含 URL，按钮文字最多 4 字符。</summary>
+public sealed record QKeyboardModal(string Content, string? ConfirmText = null, string? CancelText = null);
 
 public enum QKeyboardActionType
 {

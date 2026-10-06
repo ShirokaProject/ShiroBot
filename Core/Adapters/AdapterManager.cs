@@ -325,6 +325,11 @@ internal sealed class AdapterManager(
                 throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 重载失败且旧版本恢复失败。", new AggregateException(reloadError, restoreError));
             }
         }
+        finally
+        {
+            // A restored instance owns a fresh shadow; the previous one is no longer needed.
+            TryDeleteDirectory(entry.ShadowRoot);
+        }
     }
 
     private async Task StopAndRemoveAsync(AdapterEntry entry, bool waitForAssemblyRelease = true)
@@ -332,6 +337,7 @@ internal sealed class AdapterManager(
         try
         {
             await StopEntryAsync(entry, waitForAssemblyRelease).ConfigureAwait(false);
+            if (waitForAssemblyRelease) TryDeleteDirectory(entry.ShadowRoot);
         }
         finally
         {
@@ -369,9 +375,10 @@ internal sealed class AdapterManager(
         var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
             adapterPath,
             Path.GetDirectoryName(adapterPath) ?? adapterRoot).ConfigureAwait(false);
-        // A failed new version can keep its image mapped through the exception stack. Loading the
-        // restored file at that same path may reuse the failed image despite disk rollback.
-        var loadAssemblyPath = forceFreshImage ? CreateReloadShadow(adapterPath) : adapterPath;
+        // Never map the installed DLL: an in-place file replacement can corrupt its lazy-loaded IL
+        // before StopAsync is JIT-compiled. Each instance maps an independent, immutable copy.
+        // Fresh paths also prevent rollback from reusing a failed version's mapped image.
+        var loadAssemblyPath = CreateReloadShadow(adapterPath);
         var loader = new DllLoader<IBotAdapter>(collectible: true, shared: sharedAssemblies, dependencies: dependencies);
         IAsyncDisposable? subscription = null;
         IDisposable? configWatch = null;
@@ -409,7 +416,7 @@ internal sealed class AdapterManager(
                     updated => _ = QueueConfigUpdateAsync(instanceId, updated));
             }
             var fullPath = Path.GetFullPath(logicalAssemblyPath ?? adapterPath);
-            var shadowAssemblyPath = forceFreshImage ? loadAssemblyPath : CreateReloadShadow(adapterPath);
+            var shadowAssemblyPath = loadAssemblyPath;
             lock (_sync)
             {
                 _entries[instanceId] = new AdapterEntry(instanceId, configPath, instanceName ?? metadata.Name, fullPath, adapter, loader, metadata, subscription!,
@@ -433,7 +440,7 @@ internal sealed class AdapterManager(
                 try { await adapter.StopAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); } catch { }
             }
             loader.Unload();
-            if (forceFreshImage) TryDeleteDirectory(Path.GetDirectoryName(loadAssemblyPath));
+            TryDeleteDirectory(Path.GetDirectoryName(loadAssemblyPath));
             throw;
         }
     }

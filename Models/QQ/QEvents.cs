@@ -13,6 +13,8 @@ public abstract record QEventPayload
 /// <summary>PlatformEvent.Kind 常量表。</summary>
 public static class QEventKinds
 {
+    /// <summary>QQ 官方入群申请；PlatformEvent.Raw 为 QOfficialJoinRequest。</summary>
+    public const string OfficialGroupJoinRequest = "official_group_join_request";
     /// <summary>QQ 官方 INTERACTION_CREATE，type=11 的消息按钮点击。</summary>
     public const string OfficialButtonInteraction = "official_button_interaction";
     /// <summary>机器人被拉入群（GROUP_ADD_ROBOT）。适配器上报为 GuildInviteEvent，Raw 为 <see cref="QOfficialLifecycleEvent"/>。</summary>

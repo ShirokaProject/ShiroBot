@@ -486,6 +486,79 @@ var botContext = new BotContext(null, [], [], new WebHostContext("http://127.0.0
 botContext.RegisterAdapter(qqAdapter);
 botContext.RegisterAdapter(discordAdapter);
 
+if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length: > 0 } qqProbePath)
+{
+    var weakContext = ProbeQQAdapterJson(qqProbePath, out var probeReferences);
+    if (!DllLoader<IBotAdapter>.WaitForUnload(weakContext))
+        throw new InvalidOperationException("QQ adapter token JSON deserialization pinned its collectible assembly: " +
+            string.Join(",", probeReferences.Where(item => item.Value.IsAlive).Select(item => item.Key)));
+    Console.WriteLine("QQ adapter JSON serialization collectible-context verification passed.");
+}
+
+{
+    var root = Path.Combine(Path.GetTempPath(), "ShiroBot.AdapterLifecycle", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = Path.Combine(root, "LifecycleProbe.dll");
+    File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, path);
+    var resolver = new SharedAssemblyResolver();
+    var logs = new HostLogHub();
+    var runtime = new HostRuntimeState(DateTimeOffset.UtcNow);
+    var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
+    var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
+    var manager = new AdapterManager(root, resolver, new ModelPackageRegistry(resolver), context,
+        new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
+    try
+    {
+        await manager.LoadByIdAsync("lifecycle-probe", path);
+        var loadedPath = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
+        if (string.Equals(loadedPath, path, StringComparison.OrdinalIgnoreCase) || !File.Exists(loadedPath))
+            throw new InvalidOperationException("The active adapter maps the replaceable installed DLL.");
+
+        // Simulate an editor/deployer truncating the installed image while the old version is running.
+        File.WriteAllBytes(path, [0, 1, 2, 3]);
+        await manager.ReloadByIdAsync("lifecycle-probe");
+        if (!manager.IsLoaded || !context.HasAdapter || File.Exists(loadedPath))
+            throw new InvalidOperationException("Adapter rollback did not recover its independent old image or clean it up.");
+        File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, path, overwrite: true);
+        for (var iteration = 0; iteration < 3; iteration++)
+        {
+            await manager.ReloadByIdAsync("lifecycle-probe");
+            if (!manager.IsLoaded || !context.HasAdapter)
+                throw new InvalidOperationException("Adapter hot reload lost the active instance.");
+        }
+        var finalShadow = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
+        await manager.StopByIdAsync("lifecycle-probe");
+        if (manager.IsLoaded || context.HasAdapter || manager.GetSnapshot().Any(item => item.RestartRequired) ||
+            File.Exists(finalShadow))
+            throw new InvalidOperationException("Adapter hot unload retained state or requires a restart.");
+
+        var probeConfigPath = Path.Combine(root, "config.toml");
+        AdapterInstanceStore.Write(probeConfigPath,
+            [new PackageAdapterInstance { Id = "probe-a", Enabled = true },
+             new PackageAdapterInstance { Id = "probe-b", Enabled = true }], replaceLegacy: true);
+        await manager.LoadInstanceAsync(new InstalledAdapterInstance("probe-a", "lifecycle-probe", path,
+            probeConfigPath, true, "First probe"));
+        await manager.LoadInstanceAsync(new InstalledAdapterInstance("probe-b", "lifecycle-probe", path,
+            probeConfigPath, true, "Second probe"));
+        await manager.ReloadByIdAsync("probe-a");
+        if (!manager.LoadedIds.Order().SequenceEqual(new[] { "probe-a", "probe-b" }))
+            throw new InvalidOperationException("Reloading an adapter instance disrupted another instance of the same package.");
+        await manager.StopByIdAsync("probe-a");
+        await manager.StopByIdAsync("probe-b");
+        Console.WriteLine("Collectible adapter overwrite isolation, rollback, hot reload and unload verification passed.");
+    }
+    catch
+    {
+        foreach (var log in logs.GetHistory("system", 100)) Console.WriteLine(log.Message);
+        throw;
+    }
+    finally
+    {
+        await manager.StopForShutdownAsync();
+        Directory.Delete(root, recursive: true);
+    }
+}
+
 {
     var pluginRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"), "plugins");
     var configDirectory = Path.Combine(pluginRoot, "SharedContractPluginProbe");
@@ -616,8 +689,9 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     official.MessageService.BeforeSend = () => Task.FromException(new IOException("send failed"));
     using (replies.UseInstance("qq"))
     {
-        try { await messageContext.QuoteReplyAsync(group, "failed-reply"); throw new InvalidOperationException("Send failure was swallowed."); }
-        catch (IOException) { }
+        var failed = await messageContext.QuoteReplyAsync(group, "failed-reply");
+        if (failed.IsSuccess || failed.MessageId.Length != 0 || failed.ErrorMessage is null)
+            throw new InvalidOperationException("Adapter reply failure was not returned as an explicit failed send.");
         if (replies.Platform != "qq") throw new InvalidOperationException("Failed reply leaked its adapter scope.");
         await messageContext.SendGroupMessageAsync("same-channel-id", "explicit-send");
     }
@@ -625,6 +699,54 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
         official.MessageService.Messages.Count != 5 || AdapterExecutionContext.Current is not null)
         throw new InvalidOperationException("Reply routing affected later sends or sent through a missing adapter.");
     Console.WriteLine("Automatic source-platform reply and quote routing verification passed.");
+}
+
+{
+    var logs = new HostLogHub();
+    var adapter = new VerificationAdapter("qq-official");
+    var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
+    context.RegisterAdapter(adapter, "official-main");
+    var messages = context.CreatePluginMessageContext("MyParser");
+    adapter.MessageService.BeforeSend = () => Task.FromException(new IOException(
+        "The path '/demo/base64:/PRIVATE_FILE_CONTENT' is too long."));
+    var failed = await messages.SendGroupMessageAsync("group-1", new ImageSegment("base64:PRIVATE_FILE_CONTENT"));
+    var error = logs.GetHistory("official-main", 10).Single();
+    if (failed.IsSuccess || failed.MessageId != "" || failed.ErrorMessage is null ||
+        !failed.ErrorMessage.Contains("official-main") || error.Level != "error" ||
+        !error.Message.Contains("caller=MyParser") || !error.Message.Contains("IOException") ||
+        error.Message.Contains("PRIVATE_FILE_CONTENT") || logs.GetHistory("MyParser", 10).Length != 0)
+        throw new InvalidOperationException("Failed adapter sends were attributed to a plugin or leaked Base64 data.");
+
+    adapter.MessageService.BeforeSend = null;
+    var successful = await messages.SendGroupMessageAsync("group-1", "next send");
+    if (!successful.IsSuccess || successful.MessageId != "sent" || successful.ErrorMessage is not null)
+        throw new InvalidOperationException("Send failure affected a subsequent successful result.");
+
+    adapter.MessageService.BeforeSend = () => Task.FromCanceled(new CancellationToken(canceled: true));
+    try
+    {
+        await messages.SendGroupMessageAsync("group-1", "cancelled");
+        throw new InvalidOperationException("Adapter cancellation was swallowed.");
+    }
+    catch (OperationCanceledException) { }
+    if (logs.GetHistory("official-main", 10).Length != 1)
+        throw new InvalidOperationException("Cancellation was logged as an adapter fault.");
+
+    foreach (var prefix in new[] { "base64:", "base64://", "BASE64:/" })
+    {
+        var logger = new ConsoleLogger("[Plugin:MyParser]", logs);
+        logger.Error("Upload failed: " + prefix + new string('A', 100000));
+        var logged = logs.GetHistory("MyParser", 1).Single();
+        if (!logged.Message.Contains("[Base64 内容已省略]") || logged.Message.Length > 100)
+            throw new InvalidOperationException("Plugin error logging exposed a Base64 payload.");
+    }
+
+    // The default interface implementation throws synchronously, before it returns a Task.
+    var unavailable = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
+    var unsupported = await unavailable.Message.SendGroupMessageAsync("group-1", "no adapter");
+    if (unsupported.IsSuccess || logs.GetHistory("none", 10).Single().Level != "error")
+        throw new InvalidOperationException("Synchronous adapter errors escaped the message boundary.");
+    Console.WriteLine("Adapter send error isolation, logging and cancellation verification passed.");
 }
 
 {
@@ -1554,6 +1676,81 @@ async Task SendInAdapterScopeAsync(VerificationAdapter adapter, string text)
 {
     using var _ = AdapterExecutionContext.Enter(adapter.Platform);
     await botContext.Message.SendMessageAsync(Channel.Group("channel"), [new TextSegment(text)]);
+}
+
+[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+static WeakReference? ProbeQQAdapterJson(string assemblyPath, out Dictionary<string, WeakReference> references)
+{
+    var loader = new DllLoader<IBotAdapter>(true, new SharedAssemblyResolver());
+    var adapter = loader.Load(Path.GetFullPath(assemblyPath));
+    var assembly = adapter.GetType().Assembly;
+    var config = Activator.CreateInstance(assembly.GetType("ShiroBot.Adapter.QQPlatform.QQPlatformConfig")!)!;
+    config.GetType().GetProperty("AppId")!.SetValue(config, "probe");
+    config.GetType().GetProperty("AppSecret")!.SetValue(config, "probe");
+    using var http = new HttpClient(new QQTokenProbeHandler());
+    var providerType = assembly.GetType("ShiroBot.Adapter.QQPlatform.Protocol.QQTokenProvider")!;
+    var provider = Activator.CreateInstance(providerType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+        null, [http, config], null)!;
+    var result = (Task<string>)providerType.GetMethod("GetAsync")!.Invoke(provider, [false, CancellationToken.None])!;
+    if (result.GetAwaiter().GetResult() != "probe-token") throw new InvalidOperationException("QQ token probe failed.");
+    var apiType = assembly.GetType("ShiroBot.Adapter.QQPlatform.Protocol.QQOpenApiClient")!;
+    var api = Activator.CreateInstance(apiType, [http, config, provider, null])!;
+    ((Task)apiType.GetMethod("GetCurrentUserAsync")!.Invoke(api, [CancellationToken.None])!).GetAwaiter().GetResult();
+    var messagesType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQMessageService")!;
+    var messages = (IMessageService)Activator.CreateInstance(messagesType, [api, null, null])!;
+    var sent = messages.SendMessageAsync(Channel.Direct("probe-user"),
+        [new ImageSegment("https://example.org/probe.png")]).GetAwaiter().GetResult();
+    if (sent.MessageId != "probe-sent") throw new InvalidOperationException("QQ media serialization probe failed.");
+    // Exercise new group contracts and nested keyboard metadata before checking collection.
+    var groupType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQOfficialGroupService")!;
+    var groupApi = (IQOfficialGroupApi)Activator.CreateInstance(groupType, [api])!;
+    adapter.GetType().GetField("_officialGroups", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(adapter, groupApi);
+    if (!ReferenceEquals(groupApi, adapter.GetExtension<IQOfficialGroupApi>()))
+        throw new InvalidOperationException("QQ group extension discovery failed.");
+    var page = groupApi.GetJoinRequestsAsync("probe-group").GetAwaiter().GetResult();
+    if (page.Requests.Count != 1 || page.Requests[0].JoinRequestId != "probe-request")
+        throw new InvalidOperationException("QQ group response mapping failed.");
+    groupApi.SetMemberMutesAsync("probe-group", [new QOfficialMemberMute("probe-member", TimeSpan.Zero)])
+        .GetAwaiter().GetResult();
+    var officialType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQOfficialMessageService")!;
+    var official = (IQOfficialMessageApi)Activator.CreateInstance(officialType, [api, messages, null, null])!;
+    official.SendMarkdownAsync(new QOfficialMessageTarget(QOfficialMessageScene.Group, "probe-group"),
+        new QCustomMarkdown("probe") { ForceVerifyImageResource = true },
+        new QInlineKeyboard([new QKeyboardRow([new QKeyboardButton
+        {
+            Id = "probe", GroupId = "probe-group",
+            RenderData = new QKeyboardRenderData("Probe", "Done", QKeyboardButtonStyle.Red),
+            Action = new QKeyboardAction
+            {
+                Type = QKeyboardActionType.Callback, Data = "probe", UnsupportTips = "upgrade",
+                Permission = new QKeyboardPermission { Type = QKeyboardPermissionType.Everyone },
+                Modal = new QKeyboardModal("Confirm", "Yes", "No")
+            }
+        }])])).GetAwaiter().GetResult();
+    references = new()
+    {
+        ["adapter"] = new(adapter), ["config"] = new(config), ["provider"] = new(provider),
+        ["token-task"] = new(result), ["http"] = new(http),
+        ["options"] = new(assembly.GetType("ShiroBot.Adapter.QQPlatform.Protocol.QQJson")?.GetProperty("Options")?.GetValue(null))
+    };
+    return loader.BeginUnload();
+}
+
+internal sealed class QQTokenProbeHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent(request.RequestUri!.AbsolutePath switch
+            {
+                "/app/getAppAccessToken" => """{"access_token":"probe-token","expires_in":7200}""",
+                "/users/@me" => """{"id":"probe-bot","username":"Probe"}""",
+                var path when path.EndsWith("/files") => """{"file_info":"probe-file"}""",
+                var path when path.EndsWith("/join_request_list") => """{"list":[{"member_openid":"probe-member","join_request_id":"probe-request"}]}""",
+                var path when path.EndsWith("/restrict_chat_setting") => "{}",
+                _ => """{"id":"probe-sent"}"""
+            }, System.Text.Encoding.UTF8, "application/json")
+        });
 }
 
 internal sealed class VerificationConfig

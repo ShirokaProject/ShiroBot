@@ -42,4 +42,10 @@ public sealed record MessageEvent : BotEvent
 public sealed record SentMessage(string MessageId)
 {
     public DateTimeOffset? Timestamp { get; init; }
+
+    /// <summary>是否发送成功。宿主拦截适配器发送异常时为 false，且 MessageId 为空。</summary>
+    public bool IsSuccess { get; init; } = true;
+
+    /// <summary>失败说明。适配器的原始异常由宿主记入适配器日志。</summary>
+    public string? ErrorMessage { get; init; }
 }

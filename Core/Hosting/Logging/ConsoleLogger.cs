@@ -22,6 +22,9 @@ internal sealed class ConsoleLogger(string? prefix = null, HostLogHub? logHub = 
 
     private void Write(string level, string message, Action<string> writeConsole)
     {
+        // Adapter failures may be caught and logged by an existing plugin.
+        var base64Index = message.IndexOf("base64:", StringComparison.OrdinalIgnoreCase);
+        if (base64Index >= 0) message = message[..base64Index] + "[Base64 内容已省略]";
         logHub?.Record(_source, level, message);
         writeConsole(_prefix + message);
     }

@@ -4,6 +4,7 @@ using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Hosting.Events;
+using ShiroBot.Hosting.Logging;
 
 namespace ShiroBot.Hosting.Context;
 
@@ -12,6 +13,7 @@ internal sealed class BotContext
     private IReadOnlyList<string> _ownerList;
     private IReadOnlyList<string> _adminList;
     private IRenderContext? _renderer;
+    private readonly HostLogHub? _logHub;
     private readonly Lock _adapterLock = new();
     private AdapterRegistration[] _adapters = [];
     private sealed record AdapterRegistration(string Id, IBotAdapter Adapter, AdapterInstanceInfo Info);
@@ -25,13 +27,15 @@ internal sealed class BotContext
             metadata?.Name ?? adapter.GetType().Name, metadata?.Version ?? string.Empty, adapter.Platform, metadata?.Protocol));
     }
 
-    public BotContext(IBotAdapter? adapter, IReadOnlyList<string> ownerList, IReadOnlyList<string> adminList, IWebHostContext webHost)
+    public BotContext(IBotAdapter? adapter, IReadOnlyList<string> ownerList, IReadOnlyList<string> adminList,
+        IWebHostContext webHost, HostLogHub? logHub = null)
     {
+        _logHub = logHub;
         if (adapter is not null) _adapters = [CreateRegistration(adapter, adapter.Platform, null)];
         Channel = new SwitchableChannelService(this);
         User = new SwitchableUserService(this);
         ReplySubscriptions = new ReplySubscriptionManager();
-        Message = new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, "__host");
+        Message = new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, "__host", _logHub);
         Updater = new UpdaterContext();
         WebHost = webHost;
         _ownerList = ownerList;
@@ -63,7 +67,7 @@ internal sealed class BotContext
     internal ReplySubscriptionManager ReplySubscriptions { get; }
 
     internal IMessageContext CreatePluginMessageContext(string pluginName) =>
-        new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, pluginName);
+        new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, pluginName, _logHub);
 
     internal TService? GetAdapterExtension<TService>() where TService : class =>
         CurrentAdapter?.GetExtension<TService>();

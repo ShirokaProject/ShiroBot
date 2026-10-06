@@ -16,11 +16,15 @@ await Context.Message.ReplyAsync(message, "收到");
 await Context.Message.QuoteReplyAsync(message, "引用这条消息");
 
 var sent = await Context.Message.SendGroupMessageAsync(groupId, "已发送");
-var messageId = sent.MessageId;
-await Context.Message.DeleteMessageAsync(Channel.Group(groupId), messageId);
+if (sent.IsSuccess)
+{
+    await Context.Message.DeleteMessageAsync(Channel.Group(groupId), sent.MessageId);
+}
 ```
 
-`Context.Message` 是 `IMessageContext`，也提供 `GetMessageAsync`、`GetHistoryMessagesAsync` 和 `GetResourceUrlAsync`。资源段支持的 URI 形式由适配器决定；不支持的方法会抛出 `NotSupportedException`。
+`Context.Message` 是 `IMessageContext`，也提供 `GetMessageAsync`、`GetHistoryMessagesAsync` 和 `GetResourceUrlAsync`。资源段支持的 URI 形式由适配器决定。
+
+宿主在通用发送、回复和引用回复入口拦截适配器发送异常，按适配器实例记录错误，并返回 `IsSuccess = false`、空 `MessageId` 和 `ErrorMessage`，原始异常不再传给插件。依赖发送成功的操作（例如缓存消息 ID、订阅回复、撤回）应先检查 `IsSuccess`。取消、参数为空和来源实例选择错误仍会抛出异常。其他消息操作、用户/频道服务和平台专有扩展保留原有异常语义，不支持的方法仍会抛出 `NotSupportedException`。
 
 ## 查询用户与频道
 
