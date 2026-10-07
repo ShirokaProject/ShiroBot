@@ -34,7 +34,7 @@ public sealed class ExamplePlugin : PluginBase;
 
 本次 QQ Model 直接升级到 **1.0.0.0**：数值 ID 改为字符串，官方群管理并入 `IQGroupApi`，旧接口删除。
 SDK 与全部内置 Model 分别要求 ABI 主版本匹配；当前 SDK 和 QQ Model 均为 1.0.0.0，引用旧 SDK 或 QQ Model 的组件需重新编译。
-当前改动尚未发布，下面表格保留已发布版本记录。具体接口见[QQ 接口审阅](/plugin/qq-interface-review)。
+本轮宿主与 SDK 版本为 `0.9.8`，下面表格记录各产品版本的共享程序集 ABI。具体接口见[QQ 接口审阅](/plugin/qq-interface-review)。
 
 ## 版本对照
 
@@ -42,7 +42,7 @@ NuGet 包版本跟随宿主发布版本。ABI 版本只在对应程序集的公�
 
 | ShiroBot.SDK（NuGet） | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
-| 0.9.8（本地构建，未发布） | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.8 | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.6 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.5 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
