@@ -229,6 +229,9 @@ jobs:
           log_path="$RUNNER_TEMP/shirobot-legacy-host.log"
           legacy_build_root="$RUNNER_TEMP/shirobot-legacy-abi-build"
 
+          # The rejection check below asserts a console diagnostic; the success probe disables logging.
+          sed -i 's/^enable_log = false$/enable_log = true/' "$config_path"
+
           dotnet publish Tests/SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
             -o "$plugin_dir" \
             /p:ShiroBotSdkAbiVersion=0.8.0.0 \
@@ -253,5 +256,6 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:17081/api/v1/plugins/list -o "$response_path"
           jq -e 'all(.[]; .id != "SharedContractPluginProbe" or .enable != true)' "$response_path"
           # Check the explicit preflight diagnostic as well as disabled state: absence alone is insufficient.
+          cat "$log_path"
           grep -q 'Component contract preflight failed before activation:' "$log_path"
           grep -q 'Version=0.8.0.0' "$log_path"
