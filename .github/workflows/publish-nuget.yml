@@ -55,10 +55,13 @@ jobs:
              throw "Release version $expected does not match ShiroBotProductVersion=$productVersion."
            }
 
-      - name: Build and verify
-        run: |
-          dotnet build .\Shirobot.slnx -c Release --no-restore
-          dotnet run --project .\Tests\Verification\ShiroBot.Verification.csproj -c Release --no-build
+      - name: Build
+        timeout-minutes: 5
+        run: dotnet build .\Shirobot.slnx -c Release --no-restore
+
+      - name: Verify
+        timeout-minutes: 3
+        run: dotnet run --project .\Tests\Verification\ShiroBot.Verification.csproj -c Release --no-build
       - name: Pack SDK packages
         run: |
            dotnet pack .\Packaging\ShiroBot.SDK.Package\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore

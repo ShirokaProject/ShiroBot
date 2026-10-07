@@ -578,27 +578,33 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
     var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
     var manager = new AdapterManager(root, resolver, new ModelPackageRegistry(resolver), context,
         new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
+    async Task LifecycleStep(string name, Func<Task> action)
+    {
+        Console.WriteLine($"Adapter lifecycle probe starting: {name}");
+        await action().WaitAsync(TimeSpan.FromSeconds(30));
+        Console.WriteLine($"Adapter lifecycle probe finished: {name}");
+    }
     try
     {
-        await manager.LoadByIdAsync("lifecycle-probe", path);
+        await LifecycleStep("initial load", () => manager.LoadByIdAsync("lifecycle-probe", path));
         var loadedPath = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
         if (string.Equals(loadedPath, path, StringComparison.OrdinalIgnoreCase) || !File.Exists(loadedPath))
             throw new InvalidOperationException("The active adapter maps the replaceable installed DLL.");
 
         // Simulate an editor/deployer truncating the installed image while the old version is running.
         File.WriteAllBytes(path, [0, 1, 2, 3]);
-        await manager.ReloadByIdAsync("lifecycle-probe");
+        await LifecycleStep("ReloadByIdAsync lifecycle-probe", () => manager.ReloadByIdAsync("lifecycle-probe"));
         if (!manager.IsLoaded || !context.HasAdapter || File.Exists(loadedPath))
             throw new InvalidOperationException("Adapter rollback did not recover its independent old image or clean it up.");
         File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, path, overwrite: true);
         for (var iteration = 0; iteration < 3; iteration++)
         {
-            await manager.ReloadByIdAsync("lifecycle-probe");
+            await LifecycleStep("ReloadByIdAsync lifecycle-probe", () => manager.ReloadByIdAsync("lifecycle-probe"));
             if (!manager.IsLoaded || !context.HasAdapter)
                 throw new InvalidOperationException("Adapter hot reload lost the active instance.");
         }
         var finalShadow = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
-        await manager.StopByIdAsync("lifecycle-probe");
+        await LifecycleStep("StopByIdAsync lifecycle-probe", () => manager.StopByIdAsync("lifecycle-probe"));
         if (manager.IsLoaded || context.HasAdapter || manager.GetSnapshot().Any(item => item.RestartRequired) ||
             File.Exists(finalShadow))
             throw new InvalidOperationException("Adapter hot unload retained state or requires a restart.");
@@ -611,11 +617,11 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
             probeConfigPath, true, "First probe"));
         await manager.LoadInstanceAsync(new InstalledAdapterInstance("probe-b", "lifecycle-probe", path,
             probeConfigPath, true, "Second probe"));
-        await manager.ReloadByIdAsync("probe-a");
+        await LifecycleStep("ReloadByIdAsync probe-a", () => manager.ReloadByIdAsync("probe-a"));
         if (!manager.LoadedIds.Order().SequenceEqual(new[] { "probe-a", "probe-b" }))
             throw new InvalidOperationException("Reloading an adapter instance disrupted another instance of the same package.");
-        await manager.StopByIdAsync("probe-a");
-        await manager.StopByIdAsync("probe-b");
+        await LifecycleStep("StopByIdAsync probe-a", () => manager.StopByIdAsync("probe-a"));
+        await LifecycleStep("StopByIdAsync probe-b", () => manager.StopByIdAsync("probe-b"));
         Console.WriteLine("Collectible adapter overwrite isolation, rollback, hot reload and unload verification passed.");
     }
     catch
@@ -625,7 +631,7 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
     }
     finally
     {
-        await manager.StopForShutdownAsync();
+        await LifecycleStep("shutdown", () => manager.StopForShutdownAsync());
         Directory.Delete(root, recursive: true);
     }
 }
