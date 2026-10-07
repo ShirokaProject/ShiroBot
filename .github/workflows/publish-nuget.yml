@@ -59,8 +59,13 @@ jobs:
         timeout-minutes: 5
         run: dotnet build .\Shirobot.slnx -c Release --no-restore
 
+      - name: Install lifecycle diagnostics
+        run: dotnet tool install --global dotnet-dump
+
       - name: Verify
-        timeout-minutes: 3
+        timeout-minutes: 5
+        env:
+          SHIROBOT_LIFECYCLE_DIAGNOSTICS: 'true'
         run: dotnet run --project .\Tests\Verification\ShiroBot.Verification.csproj -c Release --no-build
       - name: Pack SDK packages
         run: |

@@ -578,11 +578,32 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
     var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
     var manager = new AdapterManager(root, resolver, new ModelPackageRegistry(resolver), context,
         new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
+    var lifecycleDumpCaptured = false;
     async Task LifecycleStep(string name, Func<Task> action)
     {
         Console.WriteLine($"Adapter lifecycle probe starting: {name}");
-        await action().WaitAsync(TimeSpan.FromSeconds(30));
+        try { await action().WaitAsync(TimeSpan.FromSeconds(30)); }
+        catch (TimeoutException) when (OperatingSystem.IsWindows() &&
+            Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
+        {
+            if (!lifecycleDumpCaptured)
+            {
+                lifecycleDumpCaptured = true;
+                var dumpPath = Path.Combine(Path.GetTempPath(), "shirobot-adapter-lifecycle.dmp");
+                await Diagnose("collect", "--process-id", Environment.ProcessId.ToString(), "--type", "Heap", "--output", dumpPath);
+                await Diagnose("analyze", dumpPath, "-c", "clrstack -all", "-c", "dumpasync", "-c", "exit");
+            }
+            throw;
+        }
         Console.WriteLine($"Adapter lifecycle probe finished: {name}");
+    }
+    static async Task Diagnose(params string[] arguments)
+    {
+        var info = new System.Diagnostics.ProcessStartInfo("dotnet-dump") { UseShellExecute = false };
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(info)!;
+        try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); }
+        catch (TimeoutException) { process.Kill(entireProcessTree: true); }
     }
     try
     {
