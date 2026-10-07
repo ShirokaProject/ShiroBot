@@ -162,6 +162,14 @@ Console.WriteLine("Component API version verification passed.");
     var verificationAssembly = typeof(VerificationComponentConfig).Assembly;
     var constructionsBefore = VerificationComponentConfig.Constructions;
     var fileSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(verificationAssembly.Location));
+    if (fileSchema.ContainsKey("internal_value") || fileSchema.ContainsKey("private_value") ||
+        fileSchema.ContainsKey("computed_value") || fileSchema.ContainsKey("static_value") ||
+        fileSchema.ContainsKey("private_setter"))
+        throw new InvalidOperationException("Config schema exposed a non-editable property.");
+    var recordFields = fileSchema["record_section"].GetProperty("fields").EnumerateArray()
+        .Select(field => field.GetProperty("key").GetString()).ToArray();
+    if (!recordFields.SequenceEqual(["value"]))
+        throw new InvalidOperationException("Record config schema exposed compiler-generated or internal properties.");
     if (VerificationComponentConfig.Constructions != constructionsBefore)
         throw new InvalidOperationException("Config schema executed code from a component assembly that is not loaded.");
     if (fileSchema["retry_count"].GetProperty("default_value").GetInt64() != 0 ||
@@ -1971,7 +1979,20 @@ internal sealed class VerificationComponentConfig
 
     public int? OptionalLimit { get; set; }
 
+    internal string InternalValue { get; set; } = "internal";
+    private string PrivateValue { get; set; } = "private";
+    public string ComputedValue => "computed";
+    public static string StaticValue { get; set; } = "static";
+    public string PrivateSetter { get; private set; } = "private setter";
+    public VerificationRecordSection RecordSection { get; set; } = new();
+
     public VerificationRecursiveSection Recursive { get; set; } = new();
+}
+
+internal sealed record VerificationRecordSection
+{
+    public string Value { get; init; } = "record";
+    internal string InternalValue { get; init; } = "internal";
 }
 
 internal sealed class VerificationNetworkSection

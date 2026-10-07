@@ -212,6 +212,15 @@ internal sealed partial class HostHttpServer
         IReadOnlyDictionary<string, object?> runtimeDefaults,
         IReadOnlyList<TypeDefinitionHandle> path)
     {
+        var accessors = property.GetAccessors();
+        if (accessors.Getter.IsNil || accessors.Setter.IsNil) return null;
+        var getter = reader.GetMethodDefinition(accessors.Getter);
+        var setter = reader.GetMethodDefinition(accessors.Setter);
+        if ((getter.Attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Public ||
+            (setter.Attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Public ||
+            (getter.Attributes & MethodAttributes.Static) != 0 ||
+            (setter.Attributes & MethodAttributes.Static) != 0) return null;
+
         var propertyName = reader.GetString(property.Name);
         if (string.IsNullOrWhiteSpace(propertyName)) return null;
 
