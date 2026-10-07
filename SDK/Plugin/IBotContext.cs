@@ -1,5 +1,6 @@
 ﻿using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Config;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.SDK.Plugin;
 
@@ -31,8 +32,8 @@ public interface IBotContext
     public IWebHostContext WebHost { get; }
     public IPluginServices Services { get; }
     public string PluginDirectory { get; }
-    public IReadOnlyList<string> OwnerList { get; }
-    public IReadOnlyList<string> AdminList { get; }
+    public IReadOnlyList<UserReference> OwnerList { get; }
+    public IReadOnlyList<UserReference> AdminList { get; }
 
     /// <summary>
     /// 获取适配器的平台特有扩展服务。适配器未实现时返回 null，插件应做能力探测。
@@ -48,7 +49,13 @@ public interface IBotContext
     /// </summary>
     public IRenderContext? Render { get; }
 
-    public bool IsOwner(string userId) => OwnerList.Contains(userId);
+    /// <summary>检查宿主配置的机器人所有者身份。</summary>
+    public bool IsOwner(UserReference user) => OwnerList.Any(entry => entry.Matches(user));
 
-    public bool IsAdmin(string userId) => IsOwner(userId) || AdminList.Contains(userId);
+    public bool IsOwner(string userId) => InstanceId is { } id && IsOwner(new UserReference(id, userId));
+
+    /// <summary>机器人所有者或管理员均返回 true；owner 不需要重复配置到 admin_list。</summary>
+    public bool IsAdmin(UserReference user) => IsOwner(user) || AdminList.Any(entry => entry.Matches(user));
+
+    public bool IsAdmin(string userId) => InstanceId is { } id && IsAdmin(new UserReference(id, userId));
 }

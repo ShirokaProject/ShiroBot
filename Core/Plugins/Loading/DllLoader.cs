@@ -45,6 +45,7 @@ public class DllLoader<T>
 
     public T Load(string dllPath, string? typeFullName = null)
     {
+        if (_shared is not null) ContractReferencePreflight.Validate(dllPath, _shared);
         _alc = new PluginAssemblyLoadContext(dllPath, _collectible, _shared, _dependencyLayout);
         _alcWeakReference = new WeakReference(_alc);
 

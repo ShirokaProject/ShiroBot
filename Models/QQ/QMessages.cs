@@ -3,9 +3,9 @@ namespace ShiroBot.Model.QQ;
 /// <summary>QQ 入站消息(协议无关)。</summary>
 public abstract record QIncomingMessage
 {
-    public required long PeerId { get; init; }
-    public required long MessageSeq { get; init; }
-    public required long SenderId { get; init; }
+    public required string PeerId { get; init; }
+    public required string MessageId { get; init; }
+    public required string SenderId { get; init; }
     public DateTimeOffset Time { get; init; }
     public IReadOnlyList<QIncomingSegment> Segments { get; init; } = [];
 
@@ -40,7 +40,7 @@ public sealed record QTempMessage : QIncomingMessage
 /// <summary>合并转发内的一条消息。</summary>
 public sealed record QForwardedIncomingMessage
 {
-    public long MessageSeq { get; init; }
+    public string? MessageId { get; init; }
     public string? SenderName { get; init; }
     public string? AvatarUrl { get; init; }
     public DateTimeOffset Time { get; init; }
@@ -48,4 +48,4 @@ public sealed record QForwardedIncomingMessage
 }
 
 /// <summary>QQ 原生消息发送结果。</summary>
-public sealed record QSentMessage(long MessageSeq, DateTimeOffset Time);
+public sealed record QSentMessage(string MessageId, DateTimeOffset Time);

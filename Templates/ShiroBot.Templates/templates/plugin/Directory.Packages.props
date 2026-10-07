@@ -4,6 +4,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="ShiroBot.SDK" Version="0.9.7" />
+    <PackageVersion Include="ShiroBot.SDK" Version="0.9.8" />
   </ItemGroup>
 </Project>

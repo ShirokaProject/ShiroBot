@@ -7,17 +7,20 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="0.9.7" />
+<PackageReference Include="ShiroBot.SDK" Version="0.9.8" />
 ```
 
 ## Version and ABI
 
 The package version follows the ShiroBot host release. Each contract assembly in the package has its
 own ABI version, which only increases when its public contracts change. A plugin built against this
-package requires a host whose ABI is the same or newer for every assembly it references.
+package requires compatible ABI major versions and the same or newer ABI within each major series.
+The current development branch breaks SDK and QQ Model ABI to 1.0.0.0. Rebuild components;
+old static SDK/Model references are rejected before component activation.
 
 | ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
+| 0.9.8（本地构建，未发布） | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.6 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.5 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
@@ -277,7 +280,7 @@ Subscribe to replies for a sent message (default: automatically dispose on reply
 var sent = await Context.Message.SendGroupMessageAsync(groupId, "reply to me");
 
 Context.Message.SubscribeReply(
-    sent.MessageSeq,
+    sent.Reference ?? throw new InvalidOperationException("Send failed"),
     TimeSpan.FromMinutes(5),
     async reply => await Context.Message.ReplyAsync(reply, "got it"));
 ```
@@ -286,7 +289,7 @@ Pass `disposeOnReply: false` to keep listening until the timeout expires or the 
 
 ```csharp
 var subscription = Context.Message.SubscribeReply(
-    sent.MessageSeq,
+    sent.Reference ?? throw new InvalidOperationException("Send failed"),
     TimeSpan.FromMinutes(5),
     async reply => await Context.Message.ReplyAsync(reply, "still listening"),
     disposeOnReply: false);
@@ -296,7 +299,7 @@ Subscribe only to replies containing a matching text segment:
 
 ```csharp
 Context.Message.SubscribeReply(
-    sent.MessageSeq,
+    sent.Reference ?? throw new InvalidOperationException("Send failed"),
     "confirm",
     TimeSpan.FromMinutes(5),
     async reply => await Context.Message.ReplyAsync(reply, "confirmed"));
@@ -442,4 +445,7 @@ Adapter config is loaded from the adapter directory through `Config.Load<T>()`.
 `BotAdapterAttribute` is required and is the only adapter metadata source. `IEventService` exposes
 one `Func<Event, Task>` event named `EventReceived`; adapters publish every concrete model event
 through that stream. `StartAsync()` and `StopAsync()` are optional no-op lifecycle hooks. Adapter ABI
-is versioned as a breaking contract, while plugin and model ABI compatibility remain preserved.
+is versioned with the shared SDK contract; SDK and Model ABI major series must match.
+
+
+通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](../docs/plugin/rich-messages.md)。

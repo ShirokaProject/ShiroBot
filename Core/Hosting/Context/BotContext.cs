@@ -10,8 +10,8 @@ namespace ShiroBot.Hosting.Context;
 
 internal sealed class BotContext
 {
-    private IReadOnlyList<string> _ownerList;
-    private IReadOnlyList<string> _adminList;
+    private IReadOnlyList<UserReference> _ownerList;
+    private IReadOnlyList<UserReference> _adminList;
     private IRenderContext? _renderer;
     private readonly HostLogHub? _logHub;
     private readonly Lock _adapterLock = new();
@@ -35,11 +35,11 @@ internal sealed class BotContext
         Channel = new SwitchableChannelService(this);
         User = new SwitchableUserService(this);
         ReplySubscriptions = new ReplySubscriptionManager();
-        Message = new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, "__host", _logHub);
+        Message = new MessageContext(GetMessageRoute, UseMessageSource, UseInstance, ReplySubscriptions, "__host", _logHub);
         Updater = new UpdaterContext();
         WebHost = webHost;
-        _ownerList = ownerList;
-        _adminList = adminList;
+        _ownerList = ownerList.Select(UserReference.Parse).ToArray();
+        _adminList = adminList.Select(UserReference.Parse).ToArray();
     }
 
     public string Platform => CurrentRegistration?.Adapter.Platform ?? "none";
@@ -56,8 +56,15 @@ internal sealed class BotContext
     public IUpdater Updater { get; }
     public IWebHostContext WebHost { get; }
 
-    public IReadOnlyList<string> OwnerList => Volatile.Read(ref _ownerList);
-    public IReadOnlyList<string> AdminList => Volatile.Read(ref _adminList);
+    public IReadOnlyList<UserReference> OwnerList => Volatile.Read(ref _ownerList);
+    public IReadOnlyList<UserReference> AdminList => Volatile.Read(ref _adminList);
+
+    public bool IsOwner(UserReference user) => OwnerList.Any(entry => entry.Matches(user));
+    public bool IsOwner(string userId) => InstanceId is { } id && IsOwner(new UserReference(id, userId));
+
+    /// <summary>Owner 始终拥有管理员权限，无需重复加入 admin_list；每次读取当前热重载的列表。</summary>
+    public bool IsAdmin(UserReference user) => IsOwner(user) || AdminList.Any(entry => entry.Matches(user));
+    public bool IsAdmin(string userId) => InstanceId is { } id && IsAdmin(new UserReference(id, userId));
 
     /// <summary>
     /// 由宿主渲染集成提供的服务。渲染集成未启用时为 null。
@@ -67,10 +74,39 @@ internal sealed class BotContext
     internal ReplySubscriptionManager ReplySubscriptions { get; }
 
     internal IMessageContext CreatePluginMessageContext(string pluginName) =>
-        new MessageContext(GetMessageService, () => Platform, () => InstanceId, UseMessageSource, ReplySubscriptions, pluginName, _logHub);
+        new MessageContext(GetMessageRoute, UseMessageSource, UseInstance, ReplySubscriptions, pluginName, _logHub);
 
-    internal TService? GetAdapterExtension<TService>() where TService : class =>
-        CurrentAdapter?.GetExtension<TService>();
+    internal TService? GetAdapterExtension<TService>() where TService : class
+    {
+        if (typeof(TService) == typeof(IMessageReactionService) && CurrentAdapter?.GetExtension<IMessageReactionService>() is not null)
+            return new RoutedReactionService(this) as TService;
+        if (typeof(TService) == typeof(IMessageInteractionService) && CurrentAdapter?.GetExtension<IMessageInteractionService>() is not null)
+            return new RoutedInteractionService(this) as TService;
+        return CurrentAdapter?.GetExtension<TService>();
+    }
+    private sealed class RoutedReactionService(BotContext context) : IMessageReactionService
+    {
+        public ReactionCapabilities GetReactionCapabilities(Channel channel) => context.CurrentAdapter?.GetExtension<IMessageReactionService>()?.GetReactionCapabilities(channel) ?? ReactionCapabilities.None;
+        public async Task SetReactionAsync(MessageReference message, ReactionEmoji emoji, bool isAdd = true, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+            if (emoji is PlatformReactionEmoji custom && !string.Equals(custom.InstanceId, message.InstanceId, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Platform emoji belongs to a different instance.");
+            using var scope = context.UseInstance(message.InstanceId);
+            var service = context.CurrentAdapter?.GetExtension<IMessageReactionService>() ?? throw new NotSupportedException("Source instance does not implement reactions.");
+            await service.SetReactionAsync(message, emoji, isAdd, cancellationToken).ConfigureAwait(false);
+        }
+    }
+    private sealed class RoutedInteractionService(BotContext context) : IMessageInteractionService
+    {
+        public async Task AcknowledgeAsync(InteractionEvent interaction, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(interaction);
+            using var scope = context.UseInstance(interaction.InstanceId ?? throw new ArgumentException("Interaction has no source instance."));
+            var service = context.CurrentAdapter?.GetExtension<IMessageInteractionService>() ?? throw new NotSupportedException("Source instance does not implement interaction acknowledgements.");
+            await service.AcknowledgeAsync(interaction, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     // Only for messages built without an InstanceId (inbound events always carry one): the platform's sole instance.
     private IDisposable UseOnlyInstanceOf(string platform)
@@ -131,16 +167,22 @@ internal sealed class BotContext
         }
     }
 
-    private IMessageService GetMessageService() => CurrentAdapter?.Message ?? NullMessageService.Instance;
+    private (IMessageService Service, string Platform, string? InstanceId) GetMessageRoute()
+    {
+        // Capture a single registration so a concurrent default-instance change cannot mix service and identity.
+        var registration = CurrentRegistration;
+        return (registration?.Adapter.Message ?? NullMessageService.Instance,
+            registration?.Adapter.Platform ?? "none", registration?.Id);
+    }
 
     public void UpdateOwnerList(IReadOnlyList<string> ownerList)
     {
-        Volatile.Write(ref _ownerList, ownerList);
+        Volatile.Write(ref _ownerList, ownerList.Select(UserReference.Parse).ToArray());
     }
 
     public void UpdateAdminList(IReadOnlyList<string> adminList)
     {
-        Volatile.Write(ref _adminList, adminList);
+        Volatile.Write(ref _adminList, adminList.Select(UserReference.Parse).ToArray());
     }
 
     public void AttachRenderer(IRenderContext renderer)
@@ -167,24 +209,24 @@ internal sealed class BotContext
     {
         private IChannelService Current => context.CurrentAdapter?.Channel ?? NullChannelService.Instance;
 
-        public Task<IReadOnlyList<Channel>> GetChannelsAsync() => Current.GetChannelsAsync();
-        public Task<Channel?> GetChannelAsync(string channelId) => Current.GetChannelAsync(channelId);
-        public Task<IReadOnlyList<Member>> GetMembersAsync(string channelId) => Current.GetMembersAsync(channelId);
-        public Task<Member?> GetMemberAsync(string channelId, string userId) => Current.GetMemberAsync(channelId, userId);
-        public Task SetChannelNameAsync(string channelId, string name) => Current.SetChannelNameAsync(channelId, name);
-        public Task KickMemberAsync(string channelId, string userId) => Current.KickMemberAsync(channelId, userId);
-        public Task MuteMemberAsync(string channelId, string userId, TimeSpan duration) => Current.MuteMemberAsync(channelId, userId, duration);
-        public Task LeaveChannelAsync(string channelId) => Current.LeaveChannelAsync(channelId);
+        public Task<IReadOnlyList<Channel>> GetChannelsAsync(CancellationToken cancellationToken = default) => Current.GetChannelsAsync(cancellationToken: cancellationToken);
+        public Task<Channel?> GetChannelAsync(string channelId, CancellationToken cancellationToken = default) => Current.GetChannelAsync(channelId, cancellationToken: cancellationToken);
+        public Task<IReadOnlyList<Member>> GetMembersAsync(string channelId, CancellationToken cancellationToken = default) => Current.GetMembersAsync(channelId, cancellationToken: cancellationToken);
+        public Task<Member?> GetMemberAsync(string channelId, string userId, CancellationToken cancellationToken = default) => Current.GetMemberAsync(channelId, userId, cancellationToken: cancellationToken);
+        public Task SetChannelNameAsync(string channelId, string name, CancellationToken cancellationToken = default) => Current.SetChannelNameAsync(channelId, name, cancellationToken: cancellationToken);
+        public Task KickMemberAsync(string channelId, string userId, CancellationToken cancellationToken = default) => Current.KickMemberAsync(channelId, userId, cancellationToken: cancellationToken);
+        public Task MuteMemberAsync(string channelId, string userId, TimeSpan duration, CancellationToken cancellationToken = default) => Current.MuteMemberAsync(channelId, userId, duration, cancellationToken: cancellationToken);
+        public Task LeaveChannelAsync(string channelId, CancellationToken cancellationToken = default) => Current.LeaveChannelAsync(channelId, cancellationToken: cancellationToken);
     }
 
     private sealed class SwitchableUserService(BotContext context) : IUserService
     {
         private IUserService Current => context.CurrentAdapter?.User ?? NullUserService.Instance;
 
-        public Task<User> GetSelfAsync() => Current.GetSelfAsync();
-        public Task<User?> GetUserAsync(string userId) => Current.GetUserAsync(userId);
-        public Task<IReadOnlyList<User>> GetFriendsAsync() => Current.GetFriendsAsync();
-        public Task AcceptFriendRequestAsync(string token) => Current.AcceptFriendRequestAsync(token);
-        public Task RejectFriendRequestAsync(string token, string? reason = null) => Current.RejectFriendRequestAsync(token, reason);
+        public Task<User> GetSelfAsync(CancellationToken cancellationToken = default) => Current.GetSelfAsync(cancellationToken: cancellationToken);
+        public Task<User?> GetUserAsync(string userId, CancellationToken cancellationToken = default) => Current.GetUserAsync(userId, cancellationToken: cancellationToken);
+        public Task<IReadOnlyList<User>> GetFriendsAsync(CancellationToken cancellationToken = default) => Current.GetFriendsAsync(cancellationToken: cancellationToken);
+        public Task AcceptFriendRequestAsync(string token, CancellationToken cancellationToken = default) => Current.AcceptFriendRequestAsync(token, cancellationToken);
+        public Task RejectFriendRequestAsync(string token, string? reason = null, CancellationToken cancellationToken = default) => Current.RejectFriendRequestAsync(token, reason, cancellationToken);
     }
 }

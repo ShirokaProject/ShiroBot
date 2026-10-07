@@ -6,13 +6,13 @@ namespace ShiroBot.SDK.Plugin;
 public interface IMessageContext : IMessageService
 {
     IReplySubscription SubscribeReply(
-        string messageId,
+        MessageReference message,
         TimeSpan duration,
         ReplyMessageHandler handler,
         bool disposeOnReply = true);
 
     IReplySubscription SubscribeReply(
-        string messageId,
+        MessageReference message,
         string text,
         TimeSpan duration,
         ReplyMessageHandler handler,
@@ -20,16 +20,16 @@ public interface IMessageContext : IMessageService
     {
         IReplySubscription? subscription = null;
         // ReSharper disable once AccessToModifiedClosure
-        subscription = SubscribeReply(messageId, duration, async message =>
+        subscription = SubscribeReply(message, duration, async reply =>
         {
-            if (message.Segments.OfType<TextSegment>().All(segment => segment.Text != text))
+            if (reply.Segments.OfType<TextSegment>().All(segment => segment.Text != text))
             {
                 return;
             }
 
             try
             {
-                await handler(message);
+                await handler(reply);
             }
             finally
             {
@@ -42,6 +42,16 @@ public interface IMessageContext : IMessageService
 
         return subscription;
     }
+
+    MessageCapabilities GetMessageCapabilities(ChannelReference channel);
+    MessageSendAssessment AssessMessage(ChannelReference channel, OutgoingMessage message);
+    Task<SentMessage> SendMessageAsync(ChannelReference channel, OutgoingMessage message, CancellationToken cancellationToken = default);
+    Task<SentMessage> ReplyAsync(MessageEvent message, OutgoingMessage content, CancellationToken cancellationToken = default);
+    Task<SentMessage> ReplyAsync(InteractionEvent interaction, OutgoingMessage content, CancellationToken cancellationToken = default);
+
+    Task<SentMessage> SendMessageAsync(ChannelReference channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default);
+    Task DeleteMessageAsync(MessageReference message, CancellationToken cancellationToken = default);
+    Task<MessageEvent?> GetMessageAsync(MessageReference message, CancellationToken cancellationToken = default);
 
     // ─── 发送 ───
 
@@ -63,6 +73,12 @@ public interface IMessageContext : IMessageService
     Task<SentMessage> SendGroupMessageAsync(string groupId, string text, params MessageSegment[] additionalSegments) =>
         SendMessageAsync(Channel.Group(groupId), BuildSegments(text, additionalSegments));
 
+    Task<SentMessage> SendDirectMessageAsync(string userId, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default) =>
+        SendMessageAsync(Channel.Direct(userId), segments, cancellationToken);
+
+    Task<SentMessage> SendGroupMessageAsync(string groupId, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default) =>
+        SendMessageAsync(Channel.Group(groupId), segments, cancellationToken);
+
     // ─── 回复 ───
 
     Task<SentMessage> ReplyAsync(MessageEvent message, params MessageSegment[] segments) =>
@@ -79,10 +95,14 @@ public interface IMessageContext : IMessageService
     Task<SentMessage> QuoteReplyAsync(MessageEvent message, string text, params MessageSegment[] segments) =>
         QuoteReplyAsync(message, segments.Prepend(new TextSegment(text)).ToArray());
 
+    Task<SentMessage> ReplyAsync(MessageEvent message, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default);
+
+    Task<SentMessage> QuoteReplyAsync(MessageEvent message, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default);
+
     // ─── 其他 ───
 
-    Task DeleteMessageAsync(MessageEvent message) =>
-        DeleteMessageAsync(message.Channel, message.MessageId);
+    Task DeleteMessageAsync(MessageEvent message, CancellationToken cancellationToken = default) =>
+        DeleteMessageAsync(message.Reference, cancellationToken);
 
     private static MessageSegment[] BuildSegments(string text, IReadOnlyList<MessageSegment> additionalSegments)
     {

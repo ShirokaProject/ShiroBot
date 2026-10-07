@@ -1,5 +1,6 @@
 using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Config;
+using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Plugins.Services;
@@ -27,8 +28,12 @@ internal sealed class PluginContext : IBotContext, IDisposable
     public IPluginServices Services { get; }
     public string PluginDirectory { get; }
     public IConfigContext Config { get; private set; }
-    public IReadOnlyList<string> OwnerList => BotContext.OwnerList;
-    public IReadOnlyList<string> AdminList => BotContext.AdminList;
+    public IReadOnlyList<UserReference> OwnerList => BotContext.OwnerList;
+    public IReadOnlyList<UserReference> AdminList => BotContext.AdminList;
+    public bool IsOwner(UserReference user) => BotContext.IsOwner(user);
+    public bool IsAdmin(UserReference user) => BotContext.IsAdmin(user);
+    public bool IsOwner(string userId) => BotContext.IsOwner(userId);
+    public bool IsAdmin(string userId) => BotContext.IsAdmin(userId);
     public IRenderContext? Render => BotContext.Renderer;
     public IConsoleLogger Logger { get; }
 

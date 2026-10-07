@@ -49,6 +49,7 @@ export default defineConfig({
           items: [
             { text: '接收消息与事件', link: '/plugin/routes-events' },
             { text: '调用 API', link: '/plugin/apis' },
+            { text: '通用富消息与互动', link: '/plugin/rich-messages' },
             { text: '插件操作与控制台', link: '/plugin/actions' },
             { text: '上下文、配置与日志', link: '/plugin/context-config' },
             { text: 'API 兼容性与版本', link: '/plugin/api-compatibility' }
@@ -62,7 +63,25 @@ export default defineConfig({
               text: 'QQ Model',
               items: [
                 { text: 'QQ 特有能力', link: '/plugin/qq-model' },
-                { text: '官方 Markdown 与按钮', link: '/plugin/qq-official' }
+                {
+                  text: 'C# 接口参考',
+                  link: '/plugin/qq-reference',
+                  collapsed: false,
+                  items: [
+                    { text: '好友接口', link: '/plugin/qq/friend' },
+                    { text: '群管理接口', link: '/plugin/qq/group' },
+                    { text: '入群审批策略', link: '/plugin/qq/approval' },
+                    { text: '文件接口', link: '/plugin/qq/file' },
+                    { text: '账号与资料接口', link: '/plugin/qq/system' },
+                    { text: '原生消息接口', link: '/plugin/qq/message' },
+                    { text: '官方消息接口', link: '/plugin/qq/official-message' },
+                    { text: '官方媒体接口', link: '/plugin/qq/official-media' },
+                    { text: '官方私聊接口', link: '/plugin/qq/official-direct' },
+                    { text: '官方流式会话', link: '/plugin/qq/official-stream' },
+                    { text: 'C# 类型参考', link: '/plugin/qq/types' },
+                    { text: '官方 Markdown 与按钮', link: '/plugin/qq-official' }
+                  ]
+                }
               ]
             },
             { text: 'Discord Model', link: '/plugin/discord-model' },

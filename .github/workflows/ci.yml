@@ -41,6 +41,7 @@ jobs:
           set -euo pipefail
           dotnet build Shirobot.slnx -c Release
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
+          dotnet run --project Tests/ApiBaseline/ShiroBot.ApiBaseline.csproj -c Release
 
       - name: Pack SDK and smoke-test NuGet consumer
         shell: bash
@@ -164,13 +165,8 @@ jobs:
           test ! -f "$output_dir/ShiroBot.Model.Telegram.dll"
           test ! -f "$output_dir/ShiroBot.SDK.dll"
 
-          legacy_build_root="$RUNNER_TEMP/shirobot-legacy-abi-build"
           dotnet publish Tests/SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
-            -o "$plugin_dir" \
-            /p:ShiroBotSdkAbiVersion=0.8.0.0 \
-            /p:ShiroBotQqModelAbiVersion=0.8.0.0 \
-            /p:BaseOutputPath="$legacy_build_root/bin/" \
-            '/p:IntermediateOutputPath='"$legacy_build_root"'/obj/$(MSBuildProjectName)/'
+            -o "$plugin_dir"
           test -f "$plugin_dir/ShiroBot.SharedContractPluginProbe.dll"
           test ! -f "$plugin_dir/ShiroBot.Model.QQ.dll"
           test ! -f "$plugin_dir/ShiroBot.SDK.dll"
@@ -210,14 +206,52 @@ jobs:
             ]
           ' "$response_path"
 
-          curl --fail --silent --show-error \
-            http://127.0.0.1:17081/api/v1/plugins/list \
-            -o "$plugin_response_path"
-
-          jq -e '
-            any(.[]; .id == "SharedContractPluginProbe" and .enable == true)
-          ' "$plugin_response_path"
+          for attempt in $(seq 1 40); do
+            curl --fail --silent --show-error \
+              http://127.0.0.1:17081/api/v1/plugins/list -o "$plugin_response_path"
+            if jq -e 'any(.[]; .id == "SharedContractPluginProbe" and .enable == true)' "$plugin_response_path"; then break; fi
+            sleep 1
+          done
+          jq -e 'any(.[]; .id == "SharedContractPluginProbe" and .enable == true)' "$plugin_response_path"
 
           curl --fail --silent --show-error \
             http://127.0.0.1:17081/dashboard/ \
             -o /dev/null
+
+      - name: Reject old ABI plugin in single-file host
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/shirobot-single-file"
+          plugin_dir="$RUNNER_TEMP/shirobot-legacy-plugin/ShiroBot.SharedContractPluginProbe"
+          config_path="$RUNNER_TEMP/shirobot-single-file.toml"
+          response_path="$RUNNER_TEMP/shirobot-legacy-plugins.json"
+          log_path="$RUNNER_TEMP/shirobot-legacy-host.log"
+          legacy_build_root="$RUNNER_TEMP/shirobot-legacy-abi-build"
+
+          dotnet publish Tests/SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
+            -o "$plugin_dir" \
+            /p:ShiroBotSdkAbiVersion=0.8.0.0 \
+            /p:ShiroBotQqModelAbiVersion=0.8.0.0 \
+            /p:BaseOutputPath="$legacy_build_root/bin/" \
+            '/p:IntermediateOutputPath='"$legacy_build_root"'/obj/$(MSBuildProjectName)/'
+          test -f "$plugin_dir/ShiroBot.SharedContractPluginProbe.dll"
+          test ! -f "$plugin_dir/ShiroBot.SDK.dll"
+          test ! -f "$plugin_dir/ShiroBot.Model.QQ.dll"
+
+          "$output_dir/ShiroBot" --config "$config_path" \
+            --plugin-dir "$(dirname "$plugin_dir")" > "$log_path" 2>&1 &
+          host_pid=$!
+          trap 'kill "$host_pid" 2>/dev/null || true; wait "$host_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --show-error \
+            --retry 40 --retry-delay 1 --retry-connrefused \
+            http://127.0.0.1:17081/api/v1/plugins/list -o "$response_path"
+          for attempt in $(seq 1 40); do
+            if grep -q 'Component contract preflight failed before activation:' "$log_path"; then break; fi
+            sleep 1
+          done
+          curl --fail --silent --show-error http://127.0.0.1:17081/api/v1/plugins/list -o "$response_path"
+          jq -e 'all(.[]; .id != "SharedContractPluginProbe" or .enable != true)' "$response_path"
+          # Check the explicit preflight diagnostic as well as disabled state: absence alone is insufficient.
+          grep -q 'Component contract preflight failed before activation:' "$log_path"
+          grep -q 'Version=0.8.0.0' "$log_path"

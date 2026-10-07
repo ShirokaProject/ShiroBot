@@ -109,6 +109,17 @@ internal sealed partial class HostHttpServer
     {
         // Validated before anything is written, so a rejected value leaves the file untouched.
         var hasShowid = TryGetBool(patch, "showid", out var showid);
+        var hasOwners = TryGetIdArray(patch, "owner_list", out var ownerList);
+        var hasAdmins = TryGetIdArray(patch, "admin_list", out var adminList);
+        try
+        {
+            if (hasOwners) foreach (var entry in ownerList) ShiroBot.SDK.Models.UserReference.Parse(entry);
+            if (hasAdmins) foreach (var entry in adminList) ShiroBot.SDK.Models.UserReference.Parse(entry);
+        }
+        catch (Exception error) when (error is FormatException or ArgumentException)
+        {
+            throw new InvalidOperationException("权限列表必须使用 instanceId:userId，不能填写裸用户 ID。", error);
+        }
         // Auto switches by the clock (dark 18:00–06:00); older dashboards sent "System" for it.
         string? avaloniaTheme = TryGetString(patch, "avalonia_theme", out var requestedTheme)
             ? requestedTheme.Trim().ToLowerInvariant() switch
@@ -155,12 +166,12 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "avalonia_theme", avaloniaTheme);
         }
 
-        if (TryGetIdArray(patch, "owner_list", out var ownerList))
+        if (hasOwners)
         {
             configManager.SetConfigValue(configPath, "owner_list", ownerList);
         }
 
-        if (TryGetIdArray(patch, "admin_list", out var adminList))
+        if (hasAdmins)
         {
             configManager.SetConfigValue(configPath, "admin_list", adminList);
         }

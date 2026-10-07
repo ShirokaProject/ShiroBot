@@ -1,6 +1,6 @@
 # API 兼容性与版本
 
-当前的兼容级别是 ShiroBot API `0.9.2`（宿主/SDK v0.9.7 起）：它增加了按实例选择和查询适配器实例的接口（`UseInstance`、`InstanceId`、`AdapterInstance`、`GetAdapterInstances()`），并移除了 `UsePlatform`。`0.9.1` 增加了由宿主管理的组件配置（`IConfigurableComponent`、`PluginBase<TConfig>`）。没有声明 API 元数据的旧组件按要求 `0.8` 处理，因此较新的宿主无需重新编译即可继续加载它们。
+当前的兼容级别是 ShiroBot API `0.9.2`（宿主/SDK v0.9.7 起）：它增加了按实例选择和查询适配器实例的接口（`UseInstance`、`InstanceId`、`AdapterInstance`、`GetAdapterInstances()`），并移除了 `UsePlatform`。`0.9.1` 增加了由宿主管理的组件配置（`IConfigurableComponent`、`PluginBase<TConfig>`）。没有声明 API 元数据的旧组件按要求 `0.8` 处理，但仍需满足 SDK / Model ABI 主版本要求；本轮旧 ABI 组件必须迁移并重新编译。
 
 组件可以在元数据中声明支持的范围：
 
@@ -15,7 +15,7 @@ public sealed class ExamplePlugin : PluginBase;
 
 ## Dashboard 的“声明兼容”范围
 
-插件目录显示的 `>=0.9.1 <1.0.0` 来自目录作者的 compatibility.shirobot 元数据，描述其声明/验证过的宿主版本范围；这不是宿主限制 1.0 以上安装的开关。
+插件目录的“声明兼容”来自目录作者的 `compatibility.shirobot` 元数据。保持向后兼容的插件只需声明最低宿主版本，例如 `>=0.9.1`，不应统一添加 `<1.0.0` 上限。该字段是目录声明，不是宿主安装或加载的硬性限制。
 
 宿主实际加载检查 DLL 声明的最低 ShiroBot API 版本和共享程序集 ABI。组件的 MaximumVersion 表示测试过的 API 上界，不是硬性拒绝上界；较新宿主可加载较旧的兼容 DLL。宿主发布版本、API 版本和 AssemblyVersion/ABI 是不同的数字，不能仅凭目录的版本字符串判断某 DLL 一定兼容未来版本。
 
@@ -30,14 +30,19 @@ public sealed class ExamplePlugin : PluginBase;
 - 加载到默认 ALC 的 SDK 与内置 Model 契约需要重启宿主才能更新；组件私有的实现程序集支持正常热重载。
 - 只有在有意进行兼容性过渡时才修改 `ShiroBotApi.CurrentVersion`，并同步明确更新各组件声明的范围。
 
-共享的 SDK 与 Model 程序集版本表示组件所需的最低宿主 ABI。宿主可以满足对相同或更旧 ABI 的引用，因此较新的宿主能继续加载旧插件；宿主不会满足对更新 ABI 的引用，因此依赖新增契约编译的插件会正确地要求该宿主版本或更新版本。ABI 变更必须保持增量：不能因为 `AssemblyVersion` 升高就删除或修改已有的公开契约。
+共享的 SDK 与 Model 程序集版本表示组件所需的最低宿主 ABI。兼容系列内，新宿主可满足相同或更旧 ABI；依赖更新 ABI 的组件需要更新宿主。
+
+本次 QQ Model 直接升级到 **1.0.0.0**：数值 ID 改为字符串，官方群管理并入 `IQGroupApi`，旧接口删除。
+SDK 与全部内置 Model 分别要求 ABI 主版本匹配；当前 SDK 和 QQ Model 均为 1.0.0.0，引用旧 SDK 或 QQ Model 的组件需重新编译。
+当前改动尚未发布，下面表格保留已发布版本记录。具体接口见[QQ 接口审阅](/plugin/qq-interface-review)。
 
 ## 版本对照
 
-NuGet 包版本跟随宿主发布版本。ABI 版本只在对应程序集的公开契约变化时才升高，所以一个 ABI 可以跨越多个 SDK 版本。基于某个 SDK 包构建的插件，可以在所有被引用程序集的 ABI 都相同或更新的宿主上加载。
+NuGet 包版本跟随宿主发布版本。ABI 版本只在对应程序集的公开契约变化时才升高，所以一个 ABI 可以跨越多个 SDK 版本。基于某个 SDK 包构建的插件，需要宿主满足所有引用的 ABI；SDK 与全部内置 Model 还要求各自主版本匹配。
 
 | ShiroBot.SDK（NuGet） | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
+| 0.9.8（本地构建，未发布） | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.6 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.5 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
@@ -57,4 +62,8 @@ using (Context.UseInstance("discord-work"))
 }
 ```
 
-该作用域会跨异步调用传递，Dispose 后恢复到之前的实例。实例只能按实例 ID 选择：v0.9.7 移除了 `UsePlatform`，用 SDK v0.9.6 及更早版本构建、调用了它的插件，在新宿主上执行到该调用时会失败，需要改用 `UseInstance` 后重新构建。详见[适配器实例与后台发送](/plugin/apis#适配器实例与后台发送)。
+该作用域跨异步调用传递，Dispose 后恢复原选择。`UsePlatform` 已删除，改用 `UseInstance`。
+旧 SDK 0.x 组件会在加载前的程序集引用检查中被拒绝，不再允许等到执行时才发现缺失的方法。
+宿主检查入口和可解析私有依赖的静态引用；运行后动态加载或反射产生的依赖仍受加载时 ABI 检查约束。
+公开签名基线位于 `Tests/ApiBaseline`，固定旧组件 DLL 位于 `Tests/AbiFixtures/frozen`。
+详见[适配器实例与后台发送](/plugin/apis#适配器实例与后台发送)。

@@ -12,22 +12,23 @@ internal sealed class ReplySubscriptionManager
 
     public IReplySubscription Subscribe(
         string ownerId,
-        string platform,
-        string messageId,
+        MessageReference message,
         TimeSpan duration,
         ReplyMessageHandler handler,
-        bool disposeOnReply = true,
-        string? instanceId = null)
+        bool disposeOnReply = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message.InstanceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message.MessageId);
+        ArgumentNullException.ThrowIfNull(message.Channel);
         ArgumentNullException.ThrowIfNull(handler);
 
         var id = Guid.NewGuid();
         var expiresAt = duration == Timeout.InfiniteTimeSpan
             ? (DateTimeOffset?)null
             : DateTimeOffset.UtcNow.Add(duration);
-        var subscription = new ReplySubscription(id, ownerId, platform, instanceId, messageId, expiresAt, handler, disposeOnReply, Remove);
+        var subscription = new ReplySubscription(id, ownerId, message, expiresAt, handler, disposeOnReply, Remove);
         _subscriptions[id] = subscription;
         return subscription;
     }
@@ -48,7 +49,8 @@ internal sealed class ReplySubscriptionManager
     public async Task PublishAsync(MessageEvent message)
     {
         var quote = message.GetQuote();
-        if (quote is null) return;
+        if (quote is null || message.InstanceId is null) return;
+        var reference = new MessageReference(message.InstanceId, message.Channel, quote.MessageId);
 
         var now = DateTimeOffset.UtcNow;
         var matches = new List<ReplySubscription>();
@@ -60,9 +62,7 @@ internal sealed class ReplySubscriptionManager
                 continue;
             }
 
-            if (subscription.MessageId == quote.MessageId &&
-                string.Equals(subscription.Platform, message.Platform, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(subscription.InstanceId, message.InstanceId, StringComparison.OrdinalIgnoreCase))
+            if (subscription.Reference.Matches(reference))
             {
                 matches.Add(subscription);
             }
@@ -81,7 +81,7 @@ internal sealed class ReplySubscriptionManager
             }
             catch (Exception ex)
             {
-                ConsoleOutput.Error($"回复订阅处理失败: {subscription.OwnerId} messageId={subscription.MessageId} - {ex.Message}");
+                ConsoleOutput.Error($"回复订阅处理失败: {subscription.OwnerId} messageId={subscription.Reference.MessageId} - {ex.Message}");
             }
         }
     }
@@ -91,9 +91,7 @@ internal sealed class ReplySubscriptionManager
     private sealed class ReplySubscription(
         Guid id,
         string ownerId,
-        string platform,
-        string? instanceId,
-        string messageId,
+        MessageReference reference,
         DateTimeOffset? expiresAt,
         ReplyMessageHandler handler,
         bool disposeOnReply,
@@ -102,9 +100,7 @@ internal sealed class ReplySubscriptionManager
         private int _disposed;
 
         public string OwnerId { get; } = ownerId;
-        public string Platform { get; } = platform;
-        public string? InstanceId { get; } = instanceId;
-        public string MessageId { get; } = messageId;
+        public MessageReference Reference { get; } = reference;
         public DateTimeOffset? ExpiresAt { get; } = expiresAt;
         public ReplyMessageHandler Handler { get; } = handler;
         public bool DisposeOnReply { get; } = disposeOnReply;

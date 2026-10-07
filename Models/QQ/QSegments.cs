@@ -5,16 +5,16 @@ public abstract record QIncomingSegment;
 
 public sealed record QIncomingText(string Text) : QIncomingSegment;
 
-public sealed record QIncomingMention(long UserId, string Name) : QIncomingSegment;
+public sealed record QIncomingMention(string UserId, string Name) : QIncomingSegment;
 
 public sealed record QIncomingMentionAll : QIncomingSegment;
 
 /// <summary>QQ 表情。</summary>
 public sealed record QIncomingFace(string FaceId, bool IsLarge = false) : QIncomingSegment;
 
-public sealed record QIncomingReply(long MessageSeq) : QIncomingSegment
+public sealed record QIncomingReply(string MessageId) : QIncomingSegment
 {
-    public long SenderId { get; init; }
+    public string? SenderId { get; init; }
     public string? SenderName { get; init; }
     public DateTimeOffset? Time { get; init; }
     public IReadOnlyList<QIncomingSegment> Segments { get; init; } = [];
@@ -77,13 +77,13 @@ public abstract record QOutgoingSegment;
 
 public sealed record QOutgoingText(string Text) : QOutgoingSegment;
 
-public sealed record QOutgoingMention(long UserId) : QOutgoingSegment;
+public sealed record QOutgoingMention(string UserId) : QOutgoingSegment;
 
 public sealed record QOutgoingMentionAll : QOutgoingSegment;
 
 public sealed record QOutgoingFace(string FaceId, bool IsLarge = false) : QOutgoingSegment;
 
-public sealed record QOutgoingReply(long MessageSeq) : QOutgoingSegment;
+public sealed record QOutgoingReply(string MessageId) : QOutgoingSegment;
 
 /// <summary>Uri 支持 http(s)://、file://、base64://。</summary>
 public sealed record QOutgoingImage(string Uri) : QOutgoingSegment
@@ -105,7 +105,7 @@ public sealed record QOutgoingVideo(string Uri) : QOutgoingSegment
 public sealed record QOutgoingLightApp(string JsonPayload) : QOutgoingSegment;
 
 /// <summary>合并转发的一条消息。</summary>
-public sealed record QForwardedMessage(long UserId, string SenderName, IReadOnlyList<QOutgoingSegment> Segments)
+public sealed record QForwardedMessage(string UserId, string SenderName, IReadOnlyList<QOutgoingSegment> Segments)
 {
     /// <summary>消息展示时间,null 使用当前时间。</summary>
     public DateTimeOffset? Time { get; init; }

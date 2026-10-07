@@ -11,8 +11,8 @@ github_proxy = ""
 host_update_repository = "ShirokaProject/ShiroBot"
 avalonia_theme = "Auto"
 
-owner_list = ["123456789"]
-admin_list = ["06E88C1E2090950724B8D9E8A4E097E3"]
+owner_list = ["qq-work:123456789"]
+admin_list = ["qq-official:06E88C1E2090950724B8D9E8A4E097E3"]
 
 [plugin_routes.default]
 mode = "blacklist"
@@ -41,8 +41,8 @@ key = ""
 | `github_proxy` | 空 | GitHub 下载代理前缀 |
 | `host_update_repository` | `ShirokaProject/ShiroBot` | 宿主更新仓库 |
 | `avalonia_theme` | `Auto` | `Light`、`Dark` 或 `Auto`（按时间切换，18:00–6:00 为深色） |
-| `owner_list` | `[]` | 所有者账号列表，供插件通过 `Context.IsOwner` / `Context.IsAdmin` 判断 |
-| `admin_list` | `[]` | 管理员账号列表，插件可通过 `Context.IsAdmin` 判断 |
+| `owner_list` | `[]` | 所有者身份列表（`instanceId:userId`）；自动拥有管理员权限，`Context.IsOwner` 和 `Context.IsAdmin` 均返回 `true` |
+| `admin_list` | `[]` | 管理员身份列表（`instanceId:userId`）；owner 无需重复填写，插件通过 `Context.IsAdmin` 判断 |
 | `protocols` | `[]` | 仅用于开发：额外加载未安装成适配器包的独立 DLL（名称或路径），见下文 |
 
 账号 ID 按平台原样填写，写成字符串：QQ 号、开放平台 OpenID、Telegram 用户名等都可以，不要求是数字。
@@ -173,3 +173,6 @@ timeout_seconds = 15
 配置 API：`GET/PATCH /api/v1/config` 管理宿主配置。GET 返回 `{ schema, config }`：`config` 使用 CoreConfig 对应的 snake_case 嵌套结构，`schema` 提供可编辑字段、默认值和分类元数据（稳定 ID、名称、图标、说明与顺序）。PATCH 请求使用 `{ "config": { ... } }`，字段键与 Schema 一致；Dashboard 按该 Schema 展示和生成更新内容，不维护另一份宿主配置字段表。开发用 `protocols` 和由专门路由 API 管理的 `plugin_routes` 不包含在可编辑 Schema 中。
 
 `GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和旧组件仅保存文件的情况。
+
+权限配置不接受裸用户 ID。冒号等保留字符按 URI 组件编码，例如用户 ID 内的 `:` 写成 `%3A`。
+相同用户在两个实例共享权限时，分别配置两个条目；不同平台的相同 ID 不再互相授予权限。

@@ -5,221 +5,230 @@ namespace ShiroBot.Model.QQ;
 /// </summary>
 public interface IQFriendApi
 {
-    Task SendNudgeAsync(long userId, bool isSelf = false)
+    Task SendNudgeAsync(string userId, bool isSelf = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SendProfileLikeAsync(long userId, int count = 1)
+    Task SendProfileLikeAsync(string userId, int count = 1, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task DeleteFriendAsync(long userId)
+    Task DeleteFriendAsync(string userId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取好友请求列表。</summary>
-    Task<IReadOnlyList<QFriendRequest>> GetFriendRequestsAsync(int limit = 20, bool isFiltered = false)
+    Task<IReadOnlyList<QFriendRequest>> GetFriendRequestsAsync(int limit = 20, bool isFiltered = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>接受好友请求。initiatorUid 来自 QFriendRequest.InitiatorUid 或好友请求事件的 Token。</summary>
-    Task AcceptFriendRequestAsync(string initiatorUid, bool isFiltered = false)
+    Task AcceptFriendRequestAsync(string initiatorUid, bool isFiltered = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task RejectFriendRequestAsync(string initiatorUid, bool isFiltered = false, string? reason = null)
+    Task RejectFriendRequestAsync(string initiatorUid, bool isFiltered = false, string? reason = null, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 }
 
 /// <summary>QQ 群管理扩展服务。</summary>
 public interface IQGroupApi
 {
-    Task SetGroupNameAsync(long groupId, string name)
+    /// <summary>适配器实现的能力，不代表账号已获得平台授权。</summary>
+    QGroupCapabilities Capabilities => QGroupCapabilities.None;
+    Task<IReadOnlyList<QGroup>> GetGroupListAsync(bool noCache = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetGroupAvatarAsync(long groupId, string imageUri)
+    Task<QGroup> GetGroupInfoAsync(string groupId, bool noCache = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetMemberCardAsync(long groupId, long userId, string card)
+    Task<IReadOnlyList<QGroupMember>> GetGroupMemberListAsync(string groupId, bool noCache = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetMemberSpecialTitleAsync(long groupId, long userId, string title)
+    Task<QGroupMember> GetGroupMemberInfoAsync(string groupId, string userId, bool noCache = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetMemberAdminAsync(long groupId, long userId, bool isSet = true)
+    Task SetGroupNameAsync(string groupId, string name, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task MuteMemberAsync(long groupId, long userId, TimeSpan duration)
+    Task SetGroupAvatarAsync(string groupId, string imageUri, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetWholeMuteAsync(long groupId, bool isMute = true)
+    Task SetMemberCardAsync(string groupId, string userId, string card, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task KickMemberAsync(long groupId, long userId, bool rejectAddRequest = false)
+    Task SetMemberSpecialTitleAsync(string groupId, string userId, string title, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task QuitGroupAsync(long groupId)
+    Task SetMemberAdminAsync(string groupId, string userId, bool isSet = true, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SendNudgeAsync(long groupId, long userId)
+    Task MuteMemberAsync(string groupId, string userId, TimeSpan duration, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SendMessageReactionAsync(long groupId, long messageSeq, string faceId, bool isAdd = true)
+    Task SetWholeMuteAsync(string groupId, bool isMute = true, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    Task KickMemberAsync(string groupId, string userId, bool rejectAddRequest = false, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    Task QuitGroupAsync(string groupId, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    Task SendNudgeAsync(string groupId, string userId, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    Task SendMessageReactionAsync(string groupId, string messageId, string faceId, bool isAdd = true, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>发送消息表情回应(指定 Face/Emoji 类型)。</summary>
-    Task SendMessageReactionAsync(long groupId, long messageSeq, string reactionId, QReactionType reactionType, bool isAdd = true)
+    Task SendMessageReactionAsync(string groupId, string messageId, string reactionId, QReactionType reactionType, bool isAdd = true, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QGroupAnnouncement>> GetAnnouncementsAsync(long groupId)
+    Task<IReadOnlyList<QGroupAnnouncement>> GetAnnouncementsAsync(string groupId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SendAnnouncementAsync(long groupId, string content, string? imageUri = null)
+    Task SendAnnouncementAsync(string groupId, string content, string? imageUri = null, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task DeleteAnnouncementAsync(long groupId, string announcementId)
+    Task DeleteAnnouncementAsync(string groupId, string announcementId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QEssenceMessage>> GetEssenceMessagesAsync(long groupId, int pageIndex, int pageSize)
+    Task<IReadOnlyList<QEssenceMessage>> GetEssenceMessagesAsync(string groupId, int pageIndex, int pageSize, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取一页群精华消息，并返回是否已到最后一页。</summary>
     Task<(IReadOnlyList<QEssenceMessage> Messages, bool IsEnd)> GetEssenceMessagesPageAsync(
-        long groupId, int pageIndex, int pageSize)
+        string groupId, int pageIndex, int pageSize, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetEssenceMessageAsync(long groupId, long messageSeq, bool isSet = true)
+    Task SetEssenceMessageAsync(string groupId, string messageId, bool isSet = true, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task AcceptJoinRequestAsync(QGroupJoinRequest request)
+    /// <summary>按原样返回的申请对象接受申请或邀请他人入群。</summary>
+    Task AcceptJoinRequestAsync(QGroupJoinRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task RejectJoinRequestAsync(QGroupJoinRequest request, string? reason = null)
+    Task RejectJoinRequestAsync(QGroupJoinRequest request, string? reason = null, bool addToBlacklist = false,
+        CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    /// <summary>按通知序号接受入群申请/邀请入群申请。</summary>
-    Task AcceptJoinRequestAsync(long groupId, long notificationSeq, bool isInvited = false, bool isFiltered = false)
+    /// <summary>统一分页申请列表；Cursor 是不透明分页凭据。</summary>
+    Task<QGroupJoinRequestPage> GetJoinRequestsAsync(string groupId, string? cursor = null,
+        int limit = 20, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task RejectJoinRequestAsync(long groupId, long notificationSeq, bool isInvited = false, bool isFiltered = false, string? reason = null)
+    Task<QGroupMuteState> GetMuteStateAsync(string groupId, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QMemberMute> members,
+        CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取群通知列表(入群申请/邀请/管理员变更/踢人/退群)。返回通知与下一页起始序号。</summary>
-    Task<(IReadOnlyList<QGroupNotification> Notifications, long? NextNotificationSeq)> GetNotificationsAsync(
-        long? startNotificationSeq = null, bool isFiltered = false, int limit = 20)
+    Task<(IReadOnlyList<QGroupNotification> Notifications, string? NextCursor)> GetNotificationsAsync(
+        string? cursor = null, bool isFiltered = false, int limit = 20, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    /// <summary>接受他人邀请机器人入群。invitationSeq 来自群邀请事件的 Token。</summary>
-    Task AcceptInvitationAsync(long groupId, long invitationSeq)
+    /// <summary>接受他人邀请机器人入群。invitationId 来自群邀请事件的 Token。</summary>
+    Task AcceptInvitationAsync(string groupId, string invitationId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task RejectInvitationAsync(long groupId, long invitationSeq)
+    Task RejectInvitationAsync(string groupId, string invitationId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 }
 
 /// <summary>QQ 群文件扩展服务。</summary>
 public interface IQFileApi
 {
-    Task<string> UploadPrivateFileAsync(long userId, string fileUri, string fileName)
+    Task<string> UploadPrivateFileAsync(string userId, string fileUri, string fileName, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<string> UploadGroupFileAsync(long groupId, string fileUri, string fileName, string parentFolderId = "/")
+    Task<string> UploadGroupFileAsync(string groupId, string fileUri, string fileName, string parentFolderId = "/", CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<string> GetPrivateFileDownloadUrlAsync(long userId, string fileId, string fileHash)
+    Task<string> GetPrivateFileDownloadUrlAsync(string userId, string fileId, string fileHash, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取私聊文件下载链接，并指定文件是否由机器人自己发送。</summary>
-    Task<string> GetPrivateFileDownloadUrlAsync(long userId, string fileId, string fileHash, bool isSelfSend)
+    Task<string> GetPrivateFileDownloadUrlAsync(string userId, string fileId, string fileHash, bool isSelfSend, CancellationToken cancellationToken = default)
     {
         if (isSelfSend)
             throw new NotSupportedException("Current adapter does not support downloading self-sent private files.");
 
-        return GetPrivateFileDownloadUrlAsync(userId, fileId, fileHash);
+        return GetPrivateFileDownloadUrlAsync(userId, fileId, fileHash, cancellationToken);
     }
 
-    Task<string> GetGroupFileDownloadUrlAsync(long groupId, string fileId)
+    Task<string> GetGroupFileDownloadUrlAsync(string groupId, string fileId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     Task<(IReadOnlyList<QGroupFile> Files, IReadOnlyList<QGroupFolder> Folders)> GetGroupFilesAsync(
-        long groupId, string parentFolderId = "/")
+        string groupId, string parentFolderId = "/", CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task MoveGroupFileAsync(long groupId, string fileId, string targetFolderId, string parentFolderId = "/")
+    Task MoveGroupFileAsync(string groupId, string fileId, string targetFolderId, string parentFolderId = "/", CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task RenameGroupFileAsync(long groupId, string fileId, string newFileName, string parentFolderId = "/")
+    Task RenameGroupFileAsync(string groupId, string fileId, string newFileName, string parentFolderId = "/", CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task DeleteGroupFileAsync(long groupId, string fileId)
+    Task DeleteGroupFileAsync(string groupId, string fileId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<string> CreateGroupFolderAsync(long groupId, string folderName)
+    Task<string> CreateGroupFolderAsync(string groupId, string folderName, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task RenameGroupFolderAsync(long groupId, string folderId, string newFolderName)
+    Task RenameGroupFolderAsync(string groupId, string folderId, string newFolderName, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task DeleteGroupFolderAsync(long groupId, string folderId)
+    Task DeleteGroupFolderAsync(string groupId, string folderId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>把群文件转存为永久文件(阻止过期)。</summary>
-    Task PersistGroupFileAsync(long groupId, string fileId)
+    Task PersistGroupFileAsync(string groupId, string fileId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 }
 
 /// <summary>QQ 账号/资料扩展服务。</summary>
 public interface IQSystemApi
 {
-    Task<QUserProfile> GetUserProfileAsync(long userId)
+    Task<QUserProfile> GetUserProfileAsync(string userId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QFriend>> GetFriendListAsync(bool noCache = false)
+    Task<IReadOnlyList<QFriend>> GetFriendListAsync(bool noCache = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<QFriend> GetFriendInfoAsync(long userId, bool noCache = false)
-        => throw new NotSupportedException();
-
-    Task<IReadOnlyList<QGroup>> GetGroupListAsync(bool noCache = false)
-        => throw new NotSupportedException();
-
-    Task<QGroup> GetGroupInfoAsync(long groupId, bool noCache = false)
-        => throw new NotSupportedException();
-
-    Task<IReadOnlyList<QGroupMember>> GetGroupMemberListAsync(long groupId, bool noCache = false)
-        => throw new NotSupportedException();
-
-    Task<QGroupMember> GetGroupMemberInfoAsync(long groupId, long userId, bool noCache = false)
+    Task<QFriend> GetFriendInfoAsync(string userId, bool noCache = false, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取置顶的好友和群。</summary>
-    Task<(IReadOnlyList<QFriend> Friends, IReadOnlyList<QGroup> Groups)> GetPeerPinsAsync()
+    Task<(IReadOnlyList<QFriend> Friends, IReadOnlyList<QGroup> Groups)> GetPeerPinsAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetAvatarAsync(string imageUri)
+    Task SetAvatarAsync(string imageUri, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetNicknameAsync(string nickname)
+    Task SetNicknameAsync(string nickname, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task SetBioAsync(string bio)
+    Task SetBioAsync(string bio, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<string> GetCookiesAsync(string domain)
+    Task<string> GetCookiesAsync(string domain, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<string> GetCsrfTokenAsync()
+    Task<string> GetCsrfTokenAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取登录账号信息。</summary>
-    Task<QLoginInfo> GetLoginInfoAsync()
+    Task<QLoginInfo> GetLoginInfoAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取协议实现端信息(实现名/版本/QQ协议类型)。</summary>
-    Task<QImplInfo> GetImplInfoAsync()
+    Task<QImplInfo> GetImplInfoAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取收藏表情 URL 列表。</summary>
-    Task<IReadOnlyList<string>> GetCustomFaceUrlListAsync()
+    Task<IReadOnlyList<string>> GetCustomFaceUrlListAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>设置会话置顶。</summary>
-    Task SetPeerPinAsync(QMessageScene scene, long peerId, bool isPinned = true)
+    Task SetPeerPinAsync(QMessageScene scene, string peerId, bool isPinned = true, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 }
 
@@ -227,35 +236,35 @@ public interface IQSystemApi
 public interface IQMessageApi
 {
     /// <summary>用 QQ 原生段发送消息(LightApp、合并转发等核心模型未覆盖的内容)。</summary>
-    Task<long> SendMessageAsync(QMessageScene scene, long peerId, IReadOnlyList<QOutgoingSegment> segments)
+    Task<string> SendMessageAsync(QMessageScene scene, string peerId, IReadOnlyList<QOutgoingSegment> segments, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>发送 QQ 原生消息，并返回消息序列号和发送时间。</summary>
     Task<QSentMessage> SendMessageDetailedAsync(
-        QMessageScene scene, long peerId, IReadOnlyList<QOutgoingSegment> segments)
+        QMessageScene scene, string peerId, IReadOnlyList<QOutgoingSegment> segments, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取单条消息(QQ 原生形态)。</summary>
-    Task<QIncomingMessage?> GetMessageAsync(QMessageScene scene, long peerId, long messageSeq)
+    Task<QIncomingMessage?> GetMessageAsync(QMessageScene scene, string peerId, string messageId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>获取历史消息(QQ 原生形态)。返回消息与下一页起始序号。</summary>
-    Task<(IReadOnlyList<QIncomingMessage> Messages, long? NextMessageSeq)> GetHistoryMessagesAsync(
-        QMessageScene scene, long peerId, long? startMessageSeq = null, int limit = 20)
+    Task<(IReadOnlyList<QIncomingMessage> Messages, string? NextCursor)> GetHistoryMessagesAsync(
+        QMessageScene scene, string peerId, string? cursor = null, int limit = 20, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>撤回消息。</summary>
-    Task RecallMessageAsync(QMessageScene scene, long peerId, long messageSeq)
+    Task RecallMessageAsync(QMessageScene scene, string peerId, string messageId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>把接收到的资源 ID 解析为临时下载 URL。</summary>
-    Task<string> GetResourceTempUrlAsync(string resourceId)
+    Task<string> GetResourceTempUrlAsync(string resourceId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task<IReadOnlyList<QForwardedIncomingMessage>> GetForwardedMessagesAsync(string forwardId)
+    Task<IReadOnlyList<QForwardedIncomingMessage>> GetForwardedMessagesAsync(string forwardId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
-    Task MarkAsReadAsync(QMessageScene scene, long peerId, long messageSeq)
+    Task MarkAsReadAsync(QMessageScene scene, string peerId, string messageId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 }
 
@@ -277,9 +286,9 @@ public interface IQOfficialMessageApi
         ArgumentNullException.ThrowIfNull(message);
         return message switch
         {
-            QOfficialTextMessage text => await SendTextAsync(target, text.Content, reply).ConfigureAwait(false),
+            QOfficialTextMessage text => await SendTextAsync(target, text.Content, reply, cancellationToken).ConfigureAwait(false),
             QOfficialMarkdownMessage markdown => await SendMarkdownAsync(target, markdown.Content,
-                markdown.Keyboard, reply).ConfigureAwait(false),
+                markdown.Keyboard, reply, cancellationToken).ConfigureAwait(false),
             QOfficialMediaSourceMessage media when this is IQOfficialMediaApi mediaApi =>
                 media.Caption is null
                     ? await mediaApi.UploadAndSendAsync(target, media.Type, media.Content, media.FileName,
@@ -288,8 +297,8 @@ public interface IQOfficialMessageApi
                         media.Caption, reply, cancellationToken).ConfigureAwait(false),
             QOfficialUploadedMediaMessage media when this is IQOfficialMediaApi mediaApi =>
                 media.Caption is null
-                    ? await mediaApi.SendAsync(target, media.UploadedMedia, reply).ConfigureAwait(false)
-                    : await mediaApi.SendWithCaptionAsync(target, media.UploadedMedia, media.Caption, reply)
+                    ? await mediaApi.SendAsync(target, media.UploadedMedia, reply, cancellationToken).ConfigureAwait(false)
+                    : await mediaApi.SendWithCaptionAsync(target, media.UploadedMedia, media.Caption, reply, cancellationToken)
                         .ConfigureAwait(false),
             _ => throw new NotSupportedException("This adapter does not support the requested QQ official message type.")
         };
@@ -299,7 +308,7 @@ public interface IQOfficialMessageApi
     Task<string> SendTextAsync(
         QOfficialMessageTarget target,
         string content,
-        QOfficialMessageReply? reply = null)
+        QOfficialMessageReply? reply = null, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>发送 QQ 官方 Ark 模板消息；不支持时抛出 NotSupportedException。</summary>
@@ -307,14 +316,14 @@ public interface IQOfficialMessageApi
         QOfficialMessageTarget target,
         int templateId,
         IReadOnlyDictionary<string, string> fields,
-        QOfficialMessageReply? reply = null)
+        QOfficialMessageReply? reply = null, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>发送 QQ 官方 Embed 卡片消息。</summary>
     Task<string> SendEmbedAsync(
         QOfficialMessageTarget target,
         QOfficialEmbed embed,
-        QOfficialMessageReply? reply = null)
+        QOfficialMessageReply? reply = null, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>
@@ -334,7 +343,7 @@ public interface IQOfficialMessageApi
         QOfficialMessageTarget target,
         QOfficialMarkdown markdown,
         QOfficialKeyboard? keyboard = null,
-        QOfficialMessageReply? reply = null);
+        QOfficialMessageReply? reply = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 回应消息按钮互动。每个 InteractionId 仅能回应一次且会过期；
@@ -342,7 +351,7 @@ public interface IQOfficialMessageApi
     /// </summary>
     Task AcknowledgeInteractionAsync(
         string interactionId,
-        QOfficialInteractionResponseCode code = QOfficialInteractionResponseCode.Success);
+        QOfficialInteractionResponseCode code = QOfficialInteractionResponseCode.Success, CancellationToken cancellationToken = default);
 }
 
 /// <summary>QQ 官方群媒体上传与发送能力。媒体上传使用可读流，避免插件依赖适配器实现。</summary>
@@ -360,14 +369,14 @@ public interface IQOfficialMediaApi
     Task<string> SendAsync(
         QOfficialMessageTarget target,
         QOfficialMedia media,
-        QOfficialMessageReply? reply = null);
+        QOfficialMessageReply? reply = null, CancellationToken cancellationToken = default);
 
     /// <summary>发送官方媒体并附带文本说明；图片说明可通过同一条富媒体消息发送。</summary>
     Task<string> SendWithCaptionAsync(
         QOfficialMessageTarget target,
         QOfficialMedia media,
         string content,
-        QOfficialMessageReply? reply = null)
+        QOfficialMessageReply? reply = null, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     /// <summary>上传并发送媒体。没有 reply 时使用平台主动发送接口。</summary>
@@ -397,7 +406,7 @@ public interface IQOfficialMediaApi
 /// </summary>
 public interface IQOfficialDirectMessageApi
 {
-    Task SendTypingAsync(QOfficialMessageTarget target, QOfficialMessageReply reply, TimeSpan duration);
+    Task SendTypingAsync(QOfficialMessageTarget target, QOfficialMessageReply reply, TimeSpan duration, CancellationToken cancellationToken = default);
 
     IQOfficialMessageStream BeginStream(
         QOfficialMessageTarget target,

@@ -7,14 +7,14 @@ namespace ShiroBot.Model.QQ;
 public abstract record QEventPayload
 {
     public DateTimeOffset Time { get; init; }
-    public long SelfId { get; init; }
+    public string? SelfId { get; init; }
+    /// <summary>平台提供的事件 ID；不是所有事件都可用它被动回复。</summary>
+    public string? EventId { get; init; }
 }
 
 /// <summary>PlatformEvent.Kind 常量表。</summary>
 public static class QEventKinds
 {
-    /// <summary>QQ 官方入群申请；PlatformEvent.Raw 为 QOfficialJoinRequest。</summary>
-    public const string OfficialGroupJoinRequest = "official_group_join_request";
     /// <summary>QQ 官方 INTERACTION_CREATE，type=11 的消息按钮点击。</summary>
     public const string OfficialButtonInteraction = "official_button_interaction";
     /// <summary>机器人被拉入群（GROUP_ADD_ROBOT）。适配器上报为 GuildInviteEvent，Raw 为 <see cref="QOfficialLifecycleEvent"/>。</summary>
@@ -44,7 +44,6 @@ public static class QEventKinds
     public const string GroupNudge = "group_nudge";
     public const string GroupFileUpload = "group_file_upload";
     public const string GroupJoinRequest = "group_join_request";
-    public const string GroupInvitedJoinRequest = "group_invited_join_request";
     public const string GroupDisband = "group_disband";
     public const string PeerPinChange = "peer_pin_change";
 }
@@ -57,8 +56,6 @@ public sealed record QOfficialButtonInteraction : QEventPayload
 {
     /// <summary>互动 ID，用于调用 PUT /interactions/{interaction_id}。</summary>
     public required string InteractionId { get; init; }
-    /// <summary>Gateway 事件 ID，用于发送按钮点击后的被动回复。</summary>
-    public string? EventId { get; init; }
     /// <summary>按钮 action.data，即事件 data.resolved.button_data。</summary>
     public required string ButtonData { get; init; }
     /// <summary>按钮 ID；发送时未指定则可能为空。</summary>
@@ -79,8 +76,6 @@ public sealed record QOfficialButtonInteraction : QEventPayload
 /// </summary>
 public sealed record QOfficialLifecycleEvent : QEventPayload
 {
-    /// <summary>Gateway 事件 ID。部分事件（如 GROUP_ADD_ROBOT、GROUP_MSG_RECEIVE）可用它做被动回复。</summary>
-    public string? EventId { get; init; }
     /// <summary>事件发生的会话。</summary>
     public required QOfficialMessageTarget Target { get; init; }
     /// <summary>操作者的 openid：群事件为 op_member_openid，单聊事件为用户 openid。</summary>
@@ -92,7 +87,7 @@ public sealed record QOfficialLifecycleEvent : QEventPayload
 /// <summary>好友戳一戳。</summary>
 public sealed record QFriendNudge : QEventPayload
 {
-    public required long UserId { get; init; }
+    public required string UserId { get; init; }
     public bool IsSelfSend { get; init; }
     public bool IsSelfReceive { get; init; }
     public string? DisplayAction { get; init; }
@@ -105,7 +100,7 @@ public sealed record QFriendNudge : QEventPayload
 /// <summary>好友文件上传。</summary>
 public sealed record QFriendFileUpload : QEventPayload
 {
-    public required long UserId { get; init; }
+    public required string UserId { get; init; }
     public required string FileId { get; init; }
     public required string FileName { get; init; }
     public long FileSize { get; init; }
@@ -116,35 +111,35 @@ public sealed record QFriendFileUpload : QEventPayload
 /// <summary>群管理员变更。</summary>
 public sealed record QGroupAdminChange : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long UserId { get; init; }
-    public long OperatorId { get; init; }
+    public required string GroupId { get; init; }
+    public required string UserId { get; init; }
+    public string? OperatorId { get; init; }
     public bool IsSet { get; init; }
 }
 
 /// <summary>群精华消息变更。</summary>
 public sealed record QGroupEssenceMessageChange : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long MessageSeq { get; init; }
-    public long OperatorId { get; init; }
+    public required string GroupId { get; init; }
+    public required string MessageId { get; init; }
+    public string? OperatorId { get; init; }
     public bool IsSet { get; init; }
 }
 
 /// <summary>群名变更。</summary>
 public sealed record QGroupNameChange : QEventPayload
 {
-    public required long GroupId { get; init; }
+    public required string GroupId { get; init; }
     public required string NewGroupName { get; init; }
-    public long OperatorId { get; init; }
+    public string? OperatorId { get; init; }
 }
 
 /// <summary>群消息表情回应。</summary>
 public sealed record QGroupMessageReaction : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long UserId { get; init; }
-    public required long MessageSeq { get; init; }
+    public required string GroupId { get; init; }
+    public required string UserId { get; init; }
+    public required string MessageId { get; init; }
     public required string FaceId { get; init; }
 
     /// <summary>回应类型(QQ 表情 / Emoji 字符)。</summary>
@@ -156,9 +151,9 @@ public sealed record QGroupMessageReaction : QEventPayload
 /// <summary>群禁言(Duration 为零表示解除)。</summary>
 public sealed record QGroupMute : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long UserId { get; init; }
-    public long OperatorId { get; init; }
+    public required string GroupId { get; init; }
+    public required string UserId { get; init; }
+    public string? OperatorId { get; init; }
     public TimeSpan Duration { get; init; }
     public bool IsUnmute => Duration == TimeSpan.Zero;
 }
@@ -166,17 +161,17 @@ public sealed record QGroupMute : QEventPayload
 /// <summary>全员禁言。</summary>
 public sealed record QGroupWholeMute : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public long OperatorId { get; init; }
+    public required string GroupId { get; init; }
+    public string? OperatorId { get; init; }
     public bool IsMute { get; init; }
 }
 
 /// <summary>群戳一戳。</summary>
 public sealed record QGroupNudge : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long SenderId { get; init; }
-    public required long ReceiverId { get; init; }
+    public required string GroupId { get; init; }
+    public required string SenderId { get; init; }
+    public required string ReceiverId { get; init; }
     public string? DisplayAction { get; init; }
     public string? DisplaySuffix { get; init; }
 
@@ -187,50 +182,44 @@ public sealed record QGroupNudge : QEventPayload
 /// <summary>群文件上传。</summary>
 public sealed record QGroupFileUpload : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long UserId { get; init; }
+    public required string GroupId { get; init; }
+    public required string UserId { get; init; }
     public required string FileId { get; init; }
     public required string FileName { get; init; }
     public long FileSize { get; init; }
 }
 
-/// <summary>入群申请。</summary>
+/// <summary>统一入群申请。RequestId 是不透明审批凭据，应原样传回 IQGroupApi。</summary>
 public sealed record QGroupJoinRequest : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long NotificationSeq { get; init; }
-    public required long InitiatorId { get; init; }
+    public required string GroupId { get; init; }
+    public required string UserId { get; init; }
+    public required string RequestId { get; init; }
+    public string? Username { get; init; }
     public string? Comment { get; init; }
+    public bool IsInvited { get; init; }
     public bool IsFiltered { get; init; }
-
-    /// <summary>协议处理令牌(OneBot 为 flag;Milky 不使用)。</summary>
-    public string? Token { get; init; }
-}
-
-/// <summary>群成员邀请他人入群申请。</summary>
-public sealed record QGroupInvitedJoinRequest : QEventPayload
-{
-    public required long GroupId { get; init; }
-    public required long NotificationSeq { get; init; }
-    public required long InitiatorId { get; init; }
-    public required long TargetUserId { get; init; }
-
-    /// <summary>协议处理令牌(OneBot 为 flag;Milky 不使用)。</summary>
-    public string? Token { get; init; }
+    public string? InviterId { get; init; }
+    public QRequestState State { get; init; }
+    public string? RiskTips { get; init; }
+    public string? UnionId { get; init; }
+    public bool IsBot { get; init; }
+    public QJoinVerification? Verification { get; init; }
+    public string? AutoApprovedStrategyId { get; init; }
 }
 
 /// <summary>群解散。</summary>
 public sealed record QGroupDisband : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public long OperatorId { get; init; }
+    public required string GroupId { get; init; }
+    public string? OperatorId { get; init; }
 }
 
 /// <summary>会话置顶变更。</summary>
 public sealed record QPeerPinChange : QEventPayload
 {
     public required QMessageScene Scene { get; init; }
-    public required long PeerId { get; init; }
+    public required string PeerId { get; init; }
     public bool IsPinned { get; init; }
 }
 
@@ -238,34 +227,38 @@ public sealed record QPeerPinChange : QEventPayload
 public sealed record QMessageRecall : QEventPayload
 {
     public required QMessageScene Scene { get; init; }
-    public required long PeerId { get; init; }
-    public required long MessageSeq { get; init; }
-    public required long SenderId { get; init; }
-    public required long OperatorId { get; init; }
+    public required string PeerId { get; init; }
+    public required string MessageId { get; init; }
+    public required string SenderId { get; init; }
+    public required string OperatorId { get; init; }
     public string? DisplaySuffix { get; init; }
 }
 
 /// <summary>群成员增加的 QQ 原始信息。</summary>
 public sealed record QGroupMemberIncrease : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long UserId { get; init; }
-    public long? OperatorId { get; init; }
-    public long? InvitorId { get; init; }
+    public required string GroupId { get; init; }
+    public required string UserId { get; init; }
+    public string? OperatorId { get; init; }
+    public string? InvitorId { get; init; }
+    /// <summary>官方平台跨场景的 user_openid（存在时）。</summary>
+    public string? GlobalUserId { get; init; }
 }
 
 /// <summary>群成员减少的 QQ 原始信息。</summary>
 public sealed record QGroupMemberDecrease : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long UserId { get; init; }
-    public long? OperatorId { get; init; }
+    public required string GroupId { get; init; }
+    public required string UserId { get; init; }
+    public string? OperatorId { get; init; }
+    /// <summary>官方平台跨场景的 user_openid（存在时）。</summary>
+    public string? GlobalUserId { get; init; }
 }
 
 /// <summary>好友请求的 QQ 原始信息。</summary>
 public sealed record QFriendRequestReceived : QEventPayload
 {
-    public required long InitiatorId { get; init; }
+    public required string InitiatorId { get; init; }
     public required string InitiatorUid { get; init; }
     public string? Comment { get; init; }
     public string? Via { get; init; }
@@ -274,10 +267,10 @@ public sealed record QFriendRequestReceived : QEventPayload
 /// <summary>机器人被邀请入群的 QQ 原始信息。</summary>
 public sealed record QGroupInvitation : QEventPayload
 {
-    public required long GroupId { get; init; }
-    public required long InvitationSeq { get; init; }
-    public required long InitiatorId { get; init; }
-    public long? SourceGroupId { get; init; }
+    public required string GroupId { get; init; }
+    public required string InvitationId { get; init; }
+    public required string InitiatorId { get; init; }
+    public string? SourceGroupId { get; init; }
 }
 
 /// <summary>机器人离线的 QQ 原始信息。</summary>

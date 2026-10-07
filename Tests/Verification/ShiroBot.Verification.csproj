@@ -11,5 +11,6 @@
     <ProjectReference Include="..\..\Core\ShiroBot.csproj" />
     <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" />
     <ProjectReference Include="..\SharedContractPluginProbe\ShiroBot.SharedContractPluginProbe.csproj" />
+    <None Include="../AbiFixtures/frozen/**/*.dll" Link="fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

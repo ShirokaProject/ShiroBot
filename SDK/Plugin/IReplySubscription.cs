@@ -4,7 +4,7 @@ namespace ShiroBot.SDK.Plugin;
 
 public interface IReplySubscription : IDisposable
 {
-    string MessageId { get; }
+    MessageReference Reference { get; }
 
     DateTimeOffset? ExpiresAt { get; }
 }

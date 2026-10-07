@@ -64,17 +64,20 @@ await Context.Message.SendMessageAsync(
 
 如何订阅与处理，参见[接收消息与事件](/plugin/routes-events)。
 
-### QQ 官方群管理与事件
+### QQ 群管理与事件
 
-`IQOfficialGroupApi` 使用字符串 OpenID，提供入群申请查询/审批、禁言状态查询、批量成员禁言，
-以及自动审批策略和策略白名单管理；通过 `GetAdapterExtension<IQOfficialGroupApi>()` 探测支持。
-管理接口需要机器人具备群管理员身份及平台接口权限。策略执行为平台异步任务。
+QQ Model ABI 1.0.0.0 统一使用字符串 ID，直接替换旧接口，引用 QQ Model 的插件和适配器需重新编译。
+群信息、成员查询、禁言、踢人和入群审批统一通过 `GetAdapterExtension<IQGroupApi>()` 获取。
+使用 `Capabilities` 检查适配器实现的操作；平台权限仍由 QQ 控制。
+自动审批策略和白名单通过 `IQGroupApprovalStrategyApi` 探测。
 
-QQPlatform 的成员加入/退出分别映射为 `MemberJoinedEvent` / `MemberLeftEvent`，
-Raw 为 `QOfficialGroupMemberEvent`；入群申请通过 `QEventKinds.OfficialGroupJoinRequest`
-的 `PlatformEvent` 上报，Raw 为 `QOfficialJoinRequest`。在适配器中启用
-`subscribe_group_member_events` 或订阅 `GROUP_MEMBER_EVENT`（`1 << 24`）。
+两种适配器的入群申请均使用 `QEventKinds.GroupJoinRequest` 和 `QGroupJoinRequest`，
+将原申请对象传给 `AcceptJoinRequestAsync` / `RejectJoinRequestAsync` 即可。
+成员事件 Raw 使用 `QGroupMemberIncrease` / `QGroupMemberDecrease`。
+QQPlatform 可用 `GlobalUserId` 保留额外的 `user_openid`。
+官方事件需订阅 `GROUP_MEMBER_EVENT`（`1 << 24`）；管理接口仍需平台权限。
 
-官方按钮新增 `GroupId`、`QKeyboardModal`、`Red` / `BlueFilled` 样式；
-`QOfficialMarkdown.ForceVerifyImageResource` 控制图片转存失败时是否拒绝发送。
-新增类型需要更新宿主共享 QQ Model 和适配器；旧插件可继续使用已有接口。
+完整签名见 [QQ C# 接口参考](/plugin/qq-reference)，迁移说明见 [QQ 接口审阅](/plugin/qq-interface-review)。
+
+
+通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](./rich-messages.md)。

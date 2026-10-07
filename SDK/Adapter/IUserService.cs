@@ -8,19 +8,19 @@ namespace ShiroBot.SDK.Adapter;
 public interface IUserService
 {
     /// <summary>获取机器人自身信息。</summary>
-    Task<User> GetSelfAsync()
+    Task<User> GetSelfAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetSelfAsync)}'.");
 
-    Task<User?> GetUserAsync(string userId)
+    Task<User?> GetUserAsync(string userId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetUserAsync)}'.");
 
     /// <summary>获取好友 / 私聊联系人列表。</summary>
-    Task<IReadOnlyList<User>> GetFriendsAsync()
+    Task<IReadOnlyList<User>> GetFriendsAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetFriendsAsync)}'.");
 
-    Task AcceptFriendRequestAsync(string token)
+    Task AcceptFriendRequestAsync(string token, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(AcceptFriendRequestAsync)}'.");
 
-    Task RejectFriendRequestAsync(string token, string? reason = null)
+    Task RejectFriendRequestAsync(string token, string? reason = null, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(RejectFriendRequestAsync)}'.");
 }

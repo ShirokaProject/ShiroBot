@@ -139,6 +139,8 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
             {
                 // Routing identity belongs to the host, not adapter-supplied event data.
                 botEvent = botEvent with { InstanceId = _adapterId, Platform = _platform };
+                if (botEvent is MessageReactionEvent { Emoji: PlatformReactionEmoji emoji } reaction)
+                    botEvent = reaction with { Emoji = emoji with { InstanceId = _adapterId } };
                 using var _ = AdapterExecutionContext.Enter(_adapterId);
                 await (botEvent is MessageEvent { IsDirect: true } directMessage
                     ? _directMessageHandler(directMessage)

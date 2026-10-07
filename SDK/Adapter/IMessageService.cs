@@ -7,19 +7,34 @@ namespace ShiroBot.SDK.Adapter;
 /// </summary>
 public interface IMessageService
 {
-    Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)
+    MessageCapabilities GetMessageCapabilities(Channel channel) => new();
+
+    MessageSendAssessment AssessMessage(Channel channel, OutgoingMessage message) =>
+        MessagePreparation.Assess(message, GetMessageCapabilities(channel));
+
+    async Task<SentMessage> SendMessageAsync(Channel channel, OutgoingMessage message, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var prepared = MessagePreparation.Prepare(message, GetMessageCapabilities(channel));
+        if (prepared.Message.Buttons is not null) throw new NotSupportedException("Adapter must implement native button sending.");
+        if (prepared.Message.ReplyToInteraction is not null) throw new NotSupportedException("Adapter must implement native interaction replies.");
+        var result = await SendMessageAsync(channel, prepared.Message.Segments, cancellationToken).ConfigureAwait(false);
+        return result with { Transformations = prepared.Transformations };
+    }
+
+    Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(SendMessageAsync)}'.");
 
-    Task DeleteMessageAsync(Channel channel, string messageId)
+    Task DeleteMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(DeleteMessageAsync)}'.");
 
-    Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId)
+    Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetMessageAsync)}'.");
 
-    Task<IReadOnlyList<MessageEvent>> GetHistoryMessagesAsync(Channel channel, string? beforeMessageId = null, int limit = 20)
+    Task<IReadOnlyList<MessageEvent>> GetHistoryMessagesAsync(Channel channel, string? beforeMessageId = null, int limit = 20, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetHistoryMessagesAsync)}'.");
 
     /// <summary>把接收到的资源段解析为可下载的临时 URL。</summary>
-    Task<string> GetResourceUrlAsync(string resourceId)
+    Task<string> GetResourceUrlAsync(string resourceId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException($"Current adapter does not support '{nameof(GetResourceUrlAsync)}'.");
 }

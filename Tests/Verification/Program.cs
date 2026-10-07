@@ -27,6 +27,12 @@ using ShiroBot.Plugins.Compatibility;
 using ShiroBot.SharedContractPluginProbe;
 
 [assembly: ShiroBotApiCompatibility("0.9", "0.9")]
+if (args is ["--plugin-migration", var migrationManifest])
+{
+    PluginMigrationVerification.Run(migrationManifest);
+    return;
+}
+
 if (args is ["--update-integration", var fixtureDirectory])
 {
     await UpdateIntegration.RunAsync(fixtureDirectory);
@@ -368,8 +374,8 @@ Console.WriteLine("Component API version verification passed.");
 Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "0.9.3.0");
-    AssertAssemblyVersion(typeof(QGroup).Assembly, "0.9.2.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.0.0.0");
+    AssertAssemblyVersion(typeof(QGroup).Assembly, "1.0.0.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "0.9.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "0.9.0.0");
 
@@ -390,23 +396,19 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     {
         Version = new Version(0, 8, 0, 0)
     };
-    if (sharedAssemblies.TryResolve(legacyQqRequest) != typeof(QGroup).Assembly)
-    {
-        throw new InvalidOperationException("Current host did not satisfy an older QQ Model ABI request.");
-    }
+    AssertThrows<InvalidOperationException>(() => sharedAssemblies.TryResolve(legacyQqRequest));
 
     var previousQqRequest = new AssemblyName(typeof(QGroup).Assembly.FullName!)
     {
         Version = new Version(0, 9, 0, 0)
     };
-    if (sharedAssemblies.TryResolve(previousQqRequest) != typeof(QGroup).Assembly)
-    {
-        throw new InvalidOperationException("Current host did not satisfy the previous QQ Model ABI request.");
-    }
+    AssertThrows<InvalidOperationException>(() => sharedAssemblies.TryResolve(previousQqRequest));
+    if (sharedAssemblies.TryResolve(typeof(QGroup).Assembly.GetName()) != typeof(QGroup).Assembly)
+        throw new InvalidOperationException("Matching QQ Model ABI did not resolve.");
 
     var futureQqRequest = new AssemblyName(typeof(QGroup).Assembly.FullName!)
     {
-        Version = new Version(0, 10, 0, 0)
+        Version = new Version(2, 0, 0, 0)
     };
     AssertThrows<InvalidOperationException>(() => sharedAssemblies.TryResolve(futureQqRequest));
 
@@ -480,11 +482,80 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     Console.WriteLine("Pending update retry and cancellation verification passed.");
 }
 
+{
+    const string owner = "55C88F86C7E7BF9F9F53615CDAAA493F";
+    var permissions = new BotContext(new VerificationAdapter("qq"), ["qq:" + owner], ["qq:admin"], new WebHostContext("http://127.0.0.1", false));
+    var root = Path.Combine(Path.GetTempPath(), "ShiroBot.OwnerAdmin", Guid.NewGuid().ToString("N"));
+    try
+    {
+        using var context = new PluginContext(permissions, "permission-test", root, new HostLogHub(), new PluginServiceRegistry());
+        IBotContext sdk = context;
+        if (!permissions.IsOwner(owner) || !permissions.IsAdmin(owner) || !sdk.IsOwner(owner) || !sdk.IsAdmin(owner) ||
+            !sdk.IsAdmin("admin") || sdk.IsOwner("admin") || sdk.IsAdmin("other") || sdk.AdminList.Any(entry => entry.UserId == owner))
+            throw new InvalidOperationException("Owner must inherit admin permissions through SDK without duplicating the explicit admin list.");
+        permissions.UpdateOwnerList(["qq:new-owner"]);
+        if (sdk.IsAdmin(owner) || !sdk.IsAdmin("new-owner") || !sdk.IsAdmin("admin"))
+            throw new InvalidOperationException("Owner changes did not update effective admin permissions.");
+        permissions.UpdateAdminList([]);
+        if (sdk.IsAdmin("admin") || !sdk.IsAdmin("new-owner"))
+            throw new InvalidOperationException("Updating the admin list must not remove an owner's inherited permissions.");
+        permissions.UpdateOwnerList([]);
+        if (sdk.IsAdmin("new-owner")) throw new InvalidOperationException("Removed owner retained admin permissions.");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    permissions.RegisterAdapter(new VerificationAdapter("telegram"), "telegram-test");
+    permissions.UpdateOwnerList(["qq:" + owner]);
+    using (permissions.UseInstance("telegram-test"))
+        if (permissions.IsOwner(owner) || permissions.IsAdmin(owner)) throw new InvalidOperationException("Permissions crossed platform instances.");
+    permissions.RegisterAdapter(new VerificationAdapter("qq"), "qq-other");
+    using (permissions.UseInstance("qq-other"))
+        if (permissions.IsAdmin(owner)) throw new InvalidOperationException("Permissions crossed instances on the same platform.");
+    permissions.UpdateOwnerList(["qq:" + owner, "qq-other:" + owner]);
+    using (permissions.UseInstance("qq-other"))
+        if (!permissions.IsOwner(owner)) throw new InvalidOperationException("Explicit cross-instance permission mapping did not work.");
+    if (!permissions.IsOwner(new UserReference("qq", owner))) throw new InvalidOperationException("Explicit scoped identity was not recognized.");
+    AssertThrows<FormatException>(() => permissions.UpdateOwnerList([owner]));
+    Console.WriteLine("Owner/admin SDK inheritance and hot-reload permission verification passed.");
+}
+
 var qqAdapter = new VerificationAdapter("qq");
 var discordAdapter = new VerificationAdapter("discord");
 var botContext = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
 botContext.RegisterAdapter(qqAdapter);
 botContext.RegisterAdapter(discordAdapter);
+
+foreach (var legacyProbe in new[] { Environment.GetEnvironmentVariable("SHIROBOT_LEGACY_ABI_PROBE") ?? Path.Combine(AppContext.BaseDirectory, "fixtures/LegacyFixture.dll"), Path.Combine(AppContext.BaseDirectory, "fixtures/indirect/LegacyIndirect.dll") })
+{
+    var sentinel = Path.Combine(Path.GetTempPath(), "shirobot-legacy-activated-" + Guid.NewGuid().ToString("N"));
+    Environment.SetEnvironmentVariable("SHIROBOT_ABI_FIXTURE_SENTINEL", sentinel);
+    var loader = new DllLoader<object>(true, new SharedAssemblyResolver());
+    try
+    {
+        try { loader.Load(legacyProbe, "LegacyFixture.Probe"); throw new Exception("Old ABI fixture was accepted."); }
+        catch (InvalidOperationException error) when (error.Message.Contains("preflight") && error.Message.Contains("ShiroBot.SDK")) { }
+        if (loader.Alc is not null || File.Exists(sentinel)) throw new InvalidOperationException("Legacy component activated before ABI rejection.");
+        Console.WriteLine("Real legacy SDK DLL metadata preflight rejection before activation verification passed.");
+    }
+    finally { Environment.SetEnvironmentVariable("SHIROBOT_ABI_FIXTURE_SENTINEL", null); loader.Unload(); if (File.Exists(sentinel)) File.Delete(sentinel); }
+}
+
+{
+    var adapter = new VerificationAdapter("qq");
+    var context = new BotContext(adapter, [], [], new WebHostContext("http://127.0.0.1", false));
+    var user = (VerificationUserService)adapter.User;
+    using var cancel = new CancellationTokenSource();
+    cancel.Cancel();
+    try { await context.User.AcceptFriendRequestAsync("request", cancel.Token); throw new Exception("Canceled accept was executed."); }
+    catch (OperationCanceledException) { }
+    try { await context.User.RejectFriendRequestAsync("request", "reason", cancel.Token); throw new Exception("Canceled reject was executed."); }
+    catch (OperationCanceledException) { }
+    if (user.ApprovalRequests != 0 || user.LastToken != cancel.Token) throw new InvalidOperationException("Friend approval cancellation token was not forwarded.");
+    using var active = new CancellationTokenSource();
+    await context.User.AcceptFriendRequestAsync("request", active.Token);
+    await context.User.RejectFriendRequestAsync("request", "reason", active.Token);
+    if (user.ApprovalRequests != 2 || user.LastToken != active.Token) throw new InvalidOperationException("Active approval tokens were not forwarded.");
+    Console.WriteLine("Friend accept/reject cancellation forwarding and no-request-on-cancel verification passed.");
+}
 
 if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length: > 0 } qqProbePath)
 {
@@ -765,6 +836,39 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
         Platform = "qq", SelfId = "same-account", InstanceId = "second-qq", MessageId = "same-message",
         Channel = Channel.Direct("same-channel"), Sender = new User("sender"), Segments = []
     };
+    var richRequest = new OutgoingMessage { Segments = [new MarkdownSegment("**rich**") { PlainTextFallback = "rich" }], AllowedFallbacks = MessageFallbackOptions.MarkdownAsText };
+    var richTarget = new ChannelReference("second-qq", message.Channel);
+    var assessment = context.Message.AssessMessage(richTarget, richRequest);
+    if (!assessment.IsSupported || assessment.IsNative || first.MessageService.Sent.Count != 0 || second.MessageService.Sent.Count != 0)
+        throw new InvalidOperationException("Rich assessment performed a send or lost fallback information.");
+    var richResult = await context.Message.SendMessageAsync(richTarget, richRequest);
+    if (richResult.Reference!.InstanceId != "second-qq" || richResult.Transformations.Single().Kind != MessageTransformationKind.MarkdownToText || second.MessageService.Messages.Single() != "rich")
+        throw new InvalidOperationException("Rich send lost transformations or source routing.");
+    using (context.UseInstance("first-qq"))
+    {
+        var reactions = context.GetAdapterExtension<IMessageReactionService>()!;
+        await reactions.SetReactionAsync(message.Reference, new UnicodeReactionEmoji("👍"));
+        if (first.MessageService.Reactions.Count != 0 || second.MessageService.Reactions.Single().InstanceId != "second-qq" || context.InstanceId != "first-qq")
+            throw new InvalidOperationException("Cached reaction service ignored message source or leaked routing.");
+        try { await reactions.SetReactionAsync(message.Reference, new PlatformReactionEmoji("1", "first-qq")); throw new InvalidOperationException("Foreign emoji accepted."); }
+        catch (ArgumentException) { }
+        using var canceled = new CancellationTokenSource(); canceled.Cancel();
+        try { await reactions.SetReactionAsync(message.Reference, new UnicodeReactionEmoji("👍"), cancellationToken: canceled.Token); throw new InvalidOperationException("Canceled reaction executed."); }
+        catch (OperationCanceledException) { }
+        if (second.MessageService.Reactions.Count != 1) throw new InvalidOperationException("Rejected reactions reached adapter.");
+        await context.Message.ReplyAsync(message, richRequest);
+        if (second.MessageService.Sent.Last().Segments.OfType<QuoteSegment>().Single().MessageId != message.MessageId)
+            throw new InvalidOperationException("Rich reply lost message reference.");
+    }
+    first.MessageService.Messages.Clear(); first.MessageService.Sent.Clear();
+    second.MessageService.Messages.Clear(); second.MessageService.Sent.Clear();
+    var interactionRoutes = new EventRouter();
+    var typedClicks = 0; var platformClicks = 0;
+    interactionRoutes.Map<InteractionEvent>(_ => { typedClicks++; return Task.CompletedTask; });
+    interactionRoutes.MapPlatform("button", _ => { platformClicks++; return Task.CompletedTask; });
+    await interactionRoutes.DispatchAsync(new InteractionEvent { Platform = "qq", SelfId = "bot", InstanceId = "second-qq", Channel = message.Channel, Kind = "button", InteractionId = "click", User = new User("user") });
+    if (typedClicks != 1 || platformClicks != 1) throw new InvalidOperationException("Typed interaction lost platform event compatibility.");
+    Console.WriteLine("Rich fallback assessment, send and reply routing, reaction source and cancellation verification passed.");
     async Task InInstanceAsync(string id, string text)
     {
         using var scope = context.UseInstance(id);
@@ -793,11 +897,45 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     var firstReplies = 0;
     var secondReplies = 0;
     using (context.UseInstance("first-qq"))
-        context.Message.SubscribeReply("same-message", TimeSpan.FromMinutes(1), _ => { firstReplies++; return Task.CompletedTask; });
+        context.Message.SubscribeReply(new MessageReference(context.InstanceId!, message.Channel, "same-message"), TimeSpan.FromMinutes(1), _ => { firstReplies++; return Task.CompletedTask; });
     using (context.UseInstance("second-qq"))
-        context.Message.SubscribeReply("same-message", TimeSpan.FromMinutes(1), _ => { secondReplies++; return Task.CompletedTask; });
+        context.Message.SubscribeReply(new MessageReference(context.InstanceId!, message.Channel, "same-message"), TimeSpan.FromMinutes(1), _ => { secondReplies++; return Task.CompletedTask; });
+    await instances.ReplySubscriptions.PublishAsync(message with { Channel = Channel.Group("other-group"), Segments = [new QuoteSegment("same-message")] });
+    if (firstReplies != 0 || secondReplies != 0) throw new InvalidOperationException("Reply subscription crossed channels.");
     await instances.ReplySubscriptions.PublishAsync(message with { Segments = [new QuoteSegment("same-message")] });
     if (firstReplies != 0 || secondReplies != 1) throw new InvalidOperationException("Reply subscription crossed adapter instances.");
+
+    // Query results come from adapters without InstanceId (or with forged metadata).
+    second.MessageService.QueryResult = message with { InstanceId = null, Platform = "untrusted-query-platform" };
+    var queried = await context.Message.GetMessageAsync(new MessageReference("second-qq", message.Channel, message.MessageId));
+    if (queried is not { InstanceId: "second-qq", Platform: "qq" } || queried.Reference.InstanceId != "second-qq")
+        throw new InvalidOperationException("Queried message did not receive its captured source identity.");
+    await context.Message.DeleteMessageAsync(queried);
+    await context.Message.ReplyAsync(queried, "queried-second-reply");
+    IReadOnlyList<MessageEvent> history;
+    using (context.UseInstance("second-qq")) history = await context.Message.GetHistoryMessagesAsync(message.Channel);
+    var historical = history.Single();
+    if (historical.Reference.InstanceId != "second-qq") throw new InvalidOperationException("History message lost its source identity.");
+    await context.Message.DeleteMessageAsync(historical.Reference);
+    await context.Message.ReplyAsync(historical, "history-second-reply");
+    if (first.MessageService.Deleted.Count != 0 || second.MessageService.Deleted.Count != 2)
+        throw new InvalidOperationException("Queried-message deletion routed to a different instance.");
+    second.MessageService.QueryResult = null;
+    if (await context.Message.GetMessageAsync(new MessageReference("second-qq", message.Channel, "missing")) is not null)
+        throw new InvalidOperationException("Missing message query did not preserve null.");
+
+    // The default changes during the await; the completed query must retain its original registration.
+    var transient = new VerificationAdapter("qq");
+    var remaining = new VerificationAdapter("qq");
+    var changing = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
+    changing.RegisterAdapter(transient, "query-source");
+    changing.RegisterAdapter(remaining, "new-default");
+    transient.MessageService.QueryResult = message with { InstanceId = "forged-instance" };
+    transient.MessageService.BeforeQuery = async () => { await Task.Yield(); changing.UnregisterAdapter(transient); };
+    var captured = await changing.Message.GetMessageAsync(message.Channel, message.MessageId);
+    if (captured?.Reference.InstanceId != "query-source" || changing.InstanceId != "new-default")
+        throw new InvalidOperationException("Query source was captured after awaiting instead of before.");
+    Console.WriteLine("Single/history query source stamping, reference deletion/reply and default-instance change verification passed.");
 
     var dispatcher = new HostEventDispatcher(new Lock(), instances.ReplySubscriptions,
         new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
@@ -823,7 +961,7 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     catch (InvalidOperationException) { }
     using (context.UseInstance("first-qq")) await context.Message.SendDirectMessageAsync("same-channel", "single-instance-send");
     if (!first.MessageService.Messages.SequenceEqual(["first-send", "first-event-reply", "single-instance-send"]) ||
-        !second.MessageService.Messages.SequenceEqual(["second-send", "background-second-reply", "second-quote"]) ||
+        !second.MessageService.Messages.SequenceEqual(["second-send", "background-second-reply", "second-quote", "queried-second-reply", "history-second-reply"]) ||
         AdapterExecutionContext.Current is not null)
         throw new InvalidOperationException("Identical-platform/account instances routed messages incorrectly.");
     using (context.UseInstance("first-qq"))
@@ -1703,14 +1841,14 @@ static WeakReference? ProbeQQAdapterJson(string assemblyPath, out Dictionary<str
     if (sent.MessageId != "probe-sent") throw new InvalidOperationException("QQ media serialization probe failed.");
     // Exercise new group contracts and nested keyboard metadata before checking collection.
     var groupType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQOfficialGroupService")!;
-    var groupApi = (IQOfficialGroupApi)Activator.CreateInstance(groupType, [api])!;
+    var groupApi = (IQGroupApi)Activator.CreateInstance(groupType, [api])!;
     adapter.GetType().GetField("_officialGroups", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(adapter, groupApi);
-    if (!ReferenceEquals(groupApi, adapter.GetExtension<IQOfficialGroupApi>()))
+    if (!ReferenceEquals(groupApi, adapter.GetExtension<IQGroupApi>()))
         throw new InvalidOperationException("QQ group extension discovery failed.");
     var page = groupApi.GetJoinRequestsAsync("probe-group").GetAwaiter().GetResult();
-    if (page.Requests.Count != 1 || page.Requests[0].JoinRequestId != "probe-request")
+    if (page.Requests.Count != 1 || page.Requests[0].RequestId != "probe-request")
         throw new InvalidOperationException("QQ group response mapping failed.");
-    groupApi.SetMemberMutesAsync("probe-group", [new QOfficialMemberMute("probe-member", TimeSpan.Zero)])
+    groupApi.SetMemberMutesAsync("probe-group", [new QMemberMute { UserId = "probe-member", Duration = TimeSpan.Zero }])
         .GetAwaiter().GetResult();
     var officialType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQOfficialMessageService")!;
     var official = (IQOfficialMessageApi)Activator.CreateInstance(officialType, [api, messages, null, null])!;
@@ -2015,17 +2153,47 @@ internal sealed class VerificationAdapter(string platform) : IBotAdapter
     public IEventService Event { get; } = new VerificationEventService();
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
-    public TService? GetExtension<TService>() where TService : class => this as TService;
+    public TService? GetExtension<TService>() where TService : class => this as TService ?? MessageService as TService;
     public Task StartAsync() => Task.CompletedTask;
     public Task StopAsync() => Task.CompletedTask;
 }
 
-internal sealed class VerificationMessageService : IMessageService
+internal sealed class VerificationMessageService : IMessageService, IMessageReactionService
 {
+    public MessageCapabilities GetMessageCapabilities(Channel channel) => new() { NativeFeatures = MessageFeatures.Text | MessageFeatures.Quote };
+    public List<MessageReference> Reactions { get; } = [];
+    public ReactionCapabilities GetReactionCapabilities(Channel channel) => ReactionCapabilities.Unicode | ReactionCapabilities.PlatformEmoji;
+    public Task SetReactionAsync(MessageReference message, ReactionEmoji emoji, bool isAdd = true, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Reactions.Add(message);
+        return Task.CompletedTask;
+    }
     public List<string> Messages { get; } = [];
     public List<(Channel Channel, IReadOnlyList<MessageSegment> Segments)> Sent { get; } = [];
     public Func<Task>? BeforeSend { get; set; }
-    public async Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)
+    public Func<Task>? BeforeQuery { get; set; }
+    public MessageEvent? QueryResult { get; set; }
+    public List<(Channel Channel, string MessageId)> Deleted { get; } = [];
+    public Task DeleteMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Deleted.Add((channel, messageId));
+        return Task.CompletedTask;
+    }
+    public async Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (BeforeQuery is { } beforeQuery) await beforeQuery();
+        return QueryResult;
+    }
+    public async Task<IReadOnlyList<MessageEvent>> GetHistoryMessagesAsync(Channel channel, string? beforeMessageId = null, int limit = 20, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (BeforeQuery is { } beforeQuery) await beforeQuery();
+        return QueryResult is { } result ? [result] : [];
+    }
+    public async Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default)
     {
         if (BeforeSend is { } beforeSend) await beforeSend();
         lock (Messages)
@@ -2038,7 +2206,20 @@ internal sealed class VerificationMessageService : IMessageService
 }
 
 internal sealed class VerificationChannelService : IChannelService;
-internal sealed class VerificationUserService : IUserService;
+internal sealed class VerificationUserService : IUserService
+{
+    public int ApprovalRequests { get; private set; }
+    public CancellationToken LastToken { get; private set; }
+    public Task AcceptFriendRequestAsync(string token, CancellationToken cancellationToken = default) => Approve(cancellationToken);
+    public Task RejectFriendRequestAsync(string token, string? reason = null, CancellationToken cancellationToken = default) => Approve(cancellationToken);
+    private Task Approve(CancellationToken token)
+    {
+        LastToken = token;
+        token.ThrowIfCancellationRequested();
+        ApprovalRequests++;
+        return Task.CompletedTask;
+    }
+}
 internal sealed class VerificationEventService : IEventService
 {
     public event Func<BotEvent, Task>? EventReceived;

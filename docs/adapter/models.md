@@ -29,12 +29,12 @@
 
 | 名称 | 类型 | 必填 | 描述 |
 | --- | --- | --- | --- |
-| `QIncomingMessage.PeerId` | `long` | 是 | QQ 会话目标 ID |
-| `QIncomingMessage.MessageSeq` | `long` | 是 | QQ 原生消息序号 |
-| `QIncomingMessage.SenderId` | `long` | 是 | 发送者 QQ ID |
+| `QIncomingMessage.PeerId` | `string` | 是 | QQ 会话目标 ID |
+| `QIncomingMessage.MessageId` | `string` | 是 | QQ 原生消息序号 |
+| `QIncomingMessage.SenderId` | `string` | 是 | 发送者 QQ ID |
 | `QGroupMessage.Group` / `GroupMember` | `QGroup` / `QGroupMember` | 是 | 群消息对应的群和发送成员 |
 | `QIncomingMessage.Segments` | `IReadOnlyList<QIncomingSegment>` | 否 | QQ 原生消息段；默认空列表 |
-| `QIncomingMention.UserId` / `Name` | `long` / `string` | 是 | 原生 @ 的 QQ ID 和显示名 |
+| `QIncomingMention.UserId` / `Name` | `string` / `string` | 是 | 原生 @ 的 QQ ID 和显示名 |
 | `QOfficialMessageTarget.Scene` / `Id` | `QOfficialMessageScene` / `string` | 是 | QQ 官方发送场景和目标 ID；单聊、群聊使用 openid |
 
 ### Discord 与 Telegram 用户
@@ -105,7 +105,7 @@ static MessageEvent ToCommonMessage(QGroupMessage source, string selfId)
     {
         Platform = "qq",
         SelfId = selfId,
-        MessageId = source.MessageSeq.ToString(),
+        MessageId = source.MessageId,
         Channel = Channel.Group(source.Group.GroupId.ToString()),
         Sender = sender,
         Member = new Member(sender) { Nick = source.GroupMember.Card },

@@ -152,7 +152,7 @@ ShiroBot 的插件市场读取 [awesome-shirobot](https://github.com/ShirokaProj
      "repository": "https://github.com/YOUR_NAME/HelloPlugin",
      "license": "NOASSERTION",
      "compatibility": {
-       "shirobot": ">=0.9.4 <1.0.0",
+       "shirobot": ">=0.9.4",
        "framework": "net10.0"
      },
      "release": { "required": true, "assetPattern": "HelloPlugin.zip" },

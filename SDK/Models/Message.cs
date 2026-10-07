@@ -20,6 +20,8 @@ public sealed record MessageEvent : BotEvent
     public DateTimeOffset Timestamp { get; init; }
 
     /// <summary>是否为私聊消息。</summary>
+    public MessageReference Reference => new(InstanceId ?? throw new InvalidOperationException("Message has no source instance."), Channel, MessageId);
+
     public bool IsDirect => Channel.Type == ChannelType.Direct;
 
     /// <summary>消息纯文本内容（拼接所有文本段）。</summary>
@@ -41,6 +43,10 @@ public sealed record MessageEvent : BotEvent
 /// </summary>
 public sealed record SentMessage(string MessageId)
 {
+    public IReadOnlyList<MessageTransformation> Transformations { get; init; } = [];
+
+    public MessageReference? Reference { get; init; }
+
     public DateTimeOffset? Timestamp { get; init; }
 
     /// <summary>是否发送成功。宿主拦截适配器发送异常时为 false，且 MessageId 为空。</summary>

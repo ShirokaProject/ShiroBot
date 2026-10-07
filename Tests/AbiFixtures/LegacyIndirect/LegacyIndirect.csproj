@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><AssemblyName>LegacyIndirect</AssemblyName></PropertyGroup><ItemGroup><ProjectReference Include="../LegacyHelper/LegacyHelper.csproj" /></ItemGroup></Project>

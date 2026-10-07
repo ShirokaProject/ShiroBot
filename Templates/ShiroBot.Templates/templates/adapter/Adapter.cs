@@ -68,7 +68,7 @@ public sealed class AdapterConfig
 
 internal sealed class AdapterMessageService : IMessageService
 {
-    public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)
+    public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default)
     {
         // Map common message segments to the platform API and return its message ID.
         throw new NotImplementedException();

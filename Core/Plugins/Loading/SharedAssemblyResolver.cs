@@ -64,12 +64,15 @@ public sealed class SharedAssemblyResolver
                     return loadedAssembly;
                 }
 
-                return entry.Alc.LoadFromAssemblyName(name);
+                var resolved = entry.Alc.LoadFromAssemblyName(name);
+                EnsureCompatible(name, resolved.GetName(), GetAssemblyOrigin(resolved));
+                return resolved;
             }
             catch (FileNotFoundException)
             {
                 if (TryLoadFromDefaultBaseDirectory(entry.Alc, name) is { } assembly)
                 {
+                    EnsureCompatible(name, assembly.GetName(), GetAssemblyOrigin(assembly));
                     return assembly;
                 }
 
@@ -170,9 +173,12 @@ public sealed class SharedAssemblyResolver
         }
     }
 
-    private static void EnsureCompatible(AssemblyName requested, AssemblyName loaded, string requestedPath)
+    internal static void EnsureCompatible(AssemblyName requested, AssemblyName loaded, string requestedPath)
     {
-        if (HasSameIdentity(requested, loaded) &&
+        var majorMatches = !(string.Equals(requested.Name, "ShiroBot.SDK", StringComparison.OrdinalIgnoreCase)
+            || requested.Name?.StartsWith("ShiroBot.Model.", StringComparison.OrdinalIgnoreCase) == true) || requested.Version is null
+            || requested.Version.Major == loaded.Version?.Major;
+        if (HasSameIdentity(requested, loaded) && majorMatches &&
             (requested.Version is null || loaded.Version is not null && loaded.Version >= requested.Version))
         {
             return;
@@ -181,7 +187,8 @@ public sealed class SharedAssemblyResolver
         throw new InvalidOperationException(
             $"Shared assembly conflict for {requested.Name}: {loaded.FullName} is already loaded, " +
             $"but {requested.FullName} was requested from {requestedPath}. A host can satisfy the same or an " +
-            "older component ABI, but an older host cannot satisfy a newer component ABI.");
+            "older component ABI within a compatible contract. SDK and Model ABI major versions must match; " +
+            "rebuild the component after a contract ABI break.");
     }
 
     private static bool HasSameIdentity(AssemblyName left, AssemblyName right)
@@ -235,8 +242,10 @@ public sealed class SharedAssemblyResolver
             return null;
         }
 
-        return alc.Assemblies.FirstOrDefault(assembly =>
+        var loaded = alc.Assemblies.FirstOrDefault(assembly =>
             string.Equals(assembly.GetName().Name, name.Name, StringComparison.OrdinalIgnoreCase));
+        if (loaded is not null) EnsureCompatible(name, loaded.GetName(), GetAssemblyOrigin(loaded));
+        return loaded;
     }
 
     private static Assembly? TryLoadFromDefaultBaseDirectory(AssemblyLoadContext alc, AssemblyName name)

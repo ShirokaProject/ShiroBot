@@ -55,7 +55,7 @@ public sealed class ProbeAdapter : IBotAdapter
 }
 internal sealed class ProbeMessages : IMessageService
 {
-    public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments) =>
+    public Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default) =>
         Task.FromResult(new SentMessage("probe"));
 }
 internal sealed class ProbeChannels : IChannelService;

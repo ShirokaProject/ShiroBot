@@ -9,9 +9,14 @@ component that uses these contracts should declare the runtime package requireme
 [assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.4")]
 ```
 
-Public contracts follow the API evolution rules documented by ShiroBot API 0.9: existing
-constructors and members remain stable, enum values are fixed, and new data is added through
-optional properties or capability interfaces.
+SDK and QQ Model ABI **1.0.0.0** are breaking changes. Rebuild adapters and plugins that reference
+`ShiroBot.Model.QQ`; the host rejects older QQ Model ABI references. All account, group,
+message and request IDs are opaque strings. Milky converts numeric IDs at its wire boundary;
+QQ Open Platform retains openids. IDs must come from the same adapter instance.
+
+Group queries, moderation and join requests use `IQGroupApi` across both adapters.
+`IQOfficialGroupApi` has been removed. Check `Capabilities` before optional operations;
+platform permissions still apply. See [interface review](../../docs/plugin/qq-interface-review.md).
 
 ## QQ official Markdown and buttons
 

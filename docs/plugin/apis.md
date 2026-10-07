@@ -131,19 +131,19 @@ using (Context.UseInstance(savedMessage.InstanceId!))
 }
 ```
 
-自动选择来源仅适用于 `ReplyAsync` 和 `QuoteReplyAsync`；`DeleteMessageAsync(message)` 当前只是 Channel/MessageId 的便捷封装，后台调用仍须选择实例。仅有 groupId、userId、Channel 或 MessageId 不能自行推断适配器。
+自动选择来源仅适用于 `ReplyAsync` 和 `QuoteReplyAsync`；`DeleteMessageAsync(message)` 同样使用完整消息引用进行路由；保存后台目标时可以使用 `ChannelReference` / `MessageReference`。仅有 groupId、userId、Channel 或 MessageId 不能自行推断适配器。
 
 只能按实例 ID 选择实例，`UsePlatform` 已移除；需要按平台或协议挑选时，从 `Context.GetAdapterInstances()` 中筛选后传其 `Id`。独立后台任务、加载钩子及 Dashboard Action 没有来源事件时，未显式选择就使用第一个已加载适配器；给指定账号发消息不要依赖加载顺序。
 
 ### 回复订阅
 
-订阅绑定**创建订阅时**的实例。同平台同账号且消息 ID 相同的其他实例不会触发它。事件处理器已经有来源上下文；后台发送和订阅应放在同一个实例作用域内：
+订阅绑定传入 `MessageReference` 的实例和会话。同消息 ID 的其他实例或群不会触发它。事件处理器已经有来源上下文；后台发送和订阅应放在同一个实例作用域内：
 
 ```csharp
 using (Context.UseInstance("qq-work"))
 {
     var sent = await Context.Message.SendGroupMessageAsync(groupId, "请回复确认");
-    Context.Message.SubscribeReply(sent.MessageId, TimeSpan.FromMinutes(1), async reply =>
+    Context.Message.SubscribeReply(sent.Reference ?? throw new InvalidOperationException("发送失败"), TimeSpan.FromMinutes(1), async reply =>
     {
         await Context.Message.ReplyAsync(reply, "已确认");
     });
@@ -152,12 +152,16 @@ using (Context.UseInstance("qq-work"))
 
 ### 多实例状态与旧插件兼容性
 
-需要按机器人隔离的缓存、任务或去重记录，用 `(InstanceId, ChannelId)`、`(InstanceId, MessageId)` 等键。只用 Platform、SelfId 或群号不能区分同平台同账号的多个实例；`(Platform, SelfId)` 表示平台账号，InstanceId 表示运行来源。
+需要按机器人隔离的缓存、任务或去重记录，用 `(InstanceId, ChannelId)`、`(InstanceId, Channel, MessageId)` 等键。只用 Platform、SelfId 或群号不能区分同平台同账号的多个实例；`(Platform, SelfId)` 表示平台账号，InstanceId 表示运行来源。
 
-新增上下文成员有默认实现，未调用 `UsePlatform` 的旧插件 DLL 可直接加载。已用公开发布的 DemoPlugin v0.6.1 DLL 验证加载和双实例回复。`UsePlatform` 已移除：调用它的旧插件 DLL 仍可加载，但执行到该调用时抛出 `MissingMethodException`，需改用 `UseInstance` 并引用新版 SDK 重新编译。旧插件若自行按平台缓存状态，也需按上述规则调整；并未逐一测试全部第三方插件。
+SDK 0.9.8 将 SDK 与 QQ Model ABI 主版本升为 1.0.0.0。引用旧 ABI 的插件会在激活前被拒绝，必须迁移并重新编译；`UsePlatform` 已删除，使用 `UseInstance` 选择实例。插件缓存、定时任务和持久身份也应携带 InstanceId，不能仅按平台保存。
 
 ::: info 版本范围
-实例接口、自动回复和同 DLL 多配置管理从宿主/SDK v0.9.7 开始提供，同时移除了 `UsePlatform`。v0.9.6 及更早版本仍使用平台作用域，后台回复需先 `Context.UsePlatform(message.Platform)`；面向 v0.9.7 及以后的插件请引用 SDK v0.9.7 并改用 `UseInstance`。
+实例接口、自动回复和同 DLL 多配置管理从宿主/SDK v0.9.7 开始提供，同时移除了 `UsePlatform`。v0.9.6 及更早版本使用平台作用域；本轮面向 SDK 0.9.8 的插件使用 `UseInstance`，并遵守新的 SDK / QQ Model ABI 和消息引用契约。0.9.8 当前仅本地构建，尚未公开发布。
 :::
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。
+
+## SDK 0.9.8 富消息与互动
+
+普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/rich-messages)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。

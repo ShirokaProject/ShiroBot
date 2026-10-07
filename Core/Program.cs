@@ -181,8 +181,15 @@ public static class Program
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
             botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub);
             Updater.Initialize(
-                () => botContext.OwnerList,
-                (ownerId, content) => botContext.Message.SendDirectMessageAsync(ownerId, content),
+                () => botContext.OwnerList.Where(entry => botContext.GetAdapterInstances().Any(instance =>
+                    string.Equals(instance.Id, entry.InstanceId, StringComparison.OrdinalIgnoreCase)))
+                    .Select(entry => entry.ToConfigString()).ToArray(),
+                async (ownerId, content) =>
+                {
+                    var owner = ShiroBot.SDK.Models.UserReference.Parse(ownerId);
+                    using var scope = botContext.UseInstance(owner.InstanceId);
+                    await botContext.Message.SendDirectMessageAsync(owner.UserId, content);
+                },
                 coreConfig.GithubProxy);
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub,

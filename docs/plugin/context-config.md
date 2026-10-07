@@ -19,8 +19,10 @@
 | `Context.Updater` | 插件更新能力 |
 | `Context.Render` | 可选图片渲染服务 |
 | `Context.PluginDirectory` | 插件稳定数据目录 |
-| `Context.OwnerList` | 宿主所有者列表 |
-| `Context.AdminList` | 宿主管理员列表 |
+| `Context.OwnerList` | 宿主所有者身份列表（`UserReference`） |
+| `Context.AdminList` | 宿主管理员身份列表（`UserReference`） |
+
+权限判断由 SDK 的 `Context.IsOwner` / `Context.IsAdmin` 接口完成。宿主中 owner 自动拥有 admin 权限：`IsAdmin(id)` 对 `owner_list` 或 `admin_list` 中的账号均返回 `true`，无需将 owner 重复加入 `admin_list`。两份列表热重载后，后续检查使用新配置。`Context.AdminList` 返回显式配置的管理员列表，不包含自动授予权限的 owner；插件应调用 `IsAdmin`，不要直接用 `AdminList.Contains` 判断权限，也不需要自行维护管理员名单。
 
 权限判断：
 
@@ -124,7 +126,7 @@ BotLog.Error("操作失败");
 var sent = await Context.Message.SendGroupMessageAsync(groupId, "请回复 yes");
 
 var subscription = Context.Message.SubscribeReply(
-    sent.MessageId,
+    sent.Reference ?? throw new InvalidOperationException("发送失败，不能订阅回复"),
     "yes",
     TimeSpan.FromMinutes(1),
     async reply =>
@@ -134,3 +136,28 @@ var subscription = Context.Message.SubscribeReply(
 ```
 
 默认在匹配一次后自动释放。长期订阅应保存返回值，并在插件卸载时主动 `Dispose()`。
+
+## 身份与消息作用域（SDK ABI 1.0）
+
+`UserReference(InstanceId, UserId)` 用于保存身份。`IsOwner(userId)` / `IsAdmin(userId)` 自动使用当前实例；
+后台权限检查可以传 `UserReference`。`OwnerList` / `AdminList` 是带实例的身份列表，Owner 自动继承 Admin。
+
+`ChannelReference(InstanceId, Channel)` 与 `MessageReference(InstanceId, Channel, MessageId)` 可用于后台路由。
+成功发送后 `SentMessage.Reference` 携带来源；失败时为 null。入站消息的 `Reference` 同样保留来源。
+回复订阅匹配实例、会话类型、会话 ID、所属 GuildId 和消息 ID，不比较显示名称。
+
+```csharp
+var sent = await Context.Message.SendMessageAsync(
+    new ChannelReference("qq-work", Channel.Group(groupId)),
+    [new TextSegment("请回复确认")], cancellationToken);
+if (sent.Reference is { } reference)
+    Context.Message.SubscribeReply(reference, TimeSpan.FromMinutes(1), HandleReplyAsync);
+```
+
+取消继续抛 `OperationCanceledException`。通用发送的适配器失败返回 `IsSuccess = false` 并由宿主记录；
+其他扩展操作正常抛异常，批量操作返回逐项结果。文件或 Base64 全量内容不得写入错误日志。
+
+SDK 的 `IMessageService`、`IChannelService`、`IUserService` 异步操作均支持 `CancellationToken`。
+
+宿主的单条消息及历史消息查询会为返回结果补上查询时捕获的实例和平台来源，
+因此查询结果也可直接使用 `Reference`、`DeleteMessageAsync(message)` 和 `ReplyAsync(message, ...)`。

@@ -20,9 +20,10 @@ public sealed record User(string Id)
 /// </summary>
 public enum MemberRole
 {
-    Member = 0,
-    Admin = 1,
-    Owner = 2
+    Unknown = 0,
+    Member = 1,
+    Admin = 2,
+    Owner = 3
 }
 
 /// <summary>
@@ -33,7 +34,7 @@ public sealed record Member(User User)
     /// <summary>群名片 / 服务器昵称，未设置时为 null。</summary>
     public string? Nick { get; init; }
 
-    public MemberRole Role { get; init; } = MemberRole.Member;
+    public MemberRole Role { get; init; } = MemberRole.Unknown;
 
     public DateTimeOffset? JoinedAt { get; init; }
 

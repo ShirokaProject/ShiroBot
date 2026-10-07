@@ -24,6 +24,8 @@ internal sealed class CoreConfigWatcher : IDisposable
     {
         if (active is null || updated is null) return;
 
+        // Validate both lists before applying either permission or any runtime settings.
+        foreach (var entry in updated.OwnerList.Concat(updated.AdminList)) ShiroBot.SDK.Models.UserReference.Parse(entry);
         var changes = new List<string>();
 
         if (!ArrayEquals(active.OwnerList, updated.OwnerList))
