@@ -328,7 +328,11 @@ internal sealed class AdapterManager(
         finally
         {
             // A restored instance owns a fresh shadow; the previous one is no longer needed.
+            if (Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
+                global::System.Console.WriteLine($"Adapter reload probe: deleting old shadow {entry.ShadowRoot}");
             TryDeleteDirectory(entry.ShadowRoot);
+            if (Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
+                global::System.Console.WriteLine("Adapter reload probe: old shadow deleted");
         }
     }
 
@@ -350,8 +354,15 @@ internal sealed class AdapterManager(
 
     private async Task LoadCoreAsync(string adapterPath, string? expectedId = null, string? logicalAssemblyPath = null, bool forceFreshImage = false, string? instanceId = null, string? configPath = null, string? instanceName = null)
     {
+        void TraceLoad(string stage)
+        {
+            if (Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
+                global::System.Console.WriteLine($"Adapter load probe: {stage}: {adapterPath}");
+        }
+        TraceLoad("begin");
         if (!File.Exists(adapterPath)) throw new FileNotFoundException("Adapter DLL 不存在。", adapterPath);
 
+        TraceLoad("metadata");
         var probeInfo = AdapterContractProbe.ReadMetadata(adapterPath)
             ?? throw new InvalidOperationException($"Adapter 未声明有效的 {nameof(BotAdapterAttribute)}。");
         if (!string.IsNullOrWhiteSpace(expectedId) && !string.Equals(expectedId, probeInfo.Id, StringComparison.OrdinalIgnoreCase))
@@ -371,6 +382,7 @@ internal sealed class AdapterManager(
             sharedAssemblies.RegisterDefaultAssembly(contractPath);
         }
 
+        TraceLoad("dependencies");
         modelPackages.ValidateDependencies(adapterPath);
         var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
             adapterPath,
@@ -378,6 +390,7 @@ internal sealed class AdapterManager(
         // Never map the installed DLL: an in-place file replacement can corrupt its lazy-loaded IL
         // before StopAsync is JIT-compiled. Each instance maps an independent, immutable copy.
         // Fresh paths also prevent rollback from reusing a failed version's mapped image.
+        TraceLoad("shadow copy");
         var loadAssemblyPath = CreateReloadShadow(adapterPath);
         var loader = new DllLoader<IBotAdapter>(collectible: true, shared: sharedAssemblies, dependencies: dependencies);
         IAsyncDisposable? subscription = null;
@@ -386,6 +399,7 @@ internal sealed class AdapterManager(
         var registered = false;
         try
         {
+            TraceLoad("DLL activation");
             adapter = loader.Load(loadAssemblyPath);
             var metadata = adapter.GetType().GetCustomAttribute<BotAdapterAttribute>(inherit: false)
                 ?? throw new InvalidOperationException($"Adapter 未声明 {nameof(BotAdapterAttribute)}。");
@@ -404,14 +418,18 @@ internal sealed class AdapterManager(
             object? initialConfig = null;
             if (configurable is not null)
             {
+                TraceLoad("initial config");
                 initialConfig = await configurable.InitializeConfigAsync(adapter.Config).ConfigureAwait(false);
             }
+            TraceLoad("instance registration");
             botContext.RegisterAdapter(adapter, instanceId, instanceName ?? metadata.Name);
             registered = true;
             subscription = eventBridge.Bridge(instanceId, adapter.Platform, adapter.Event, directMessageHandler);
+            TraceLoad("start");
             using (BotLog.BeginScope(adapter.Logger)) await adapter.StartAsync().ConfigureAwait(false);
             if (configurable is not null)
             {
+                TraceLoad("watch config");
                 configWatch = ConfigContext.WatchUntyped(adapter.Config, configurable.ConfigType,
                     updated => _ = QueueConfigUpdateAsync(instanceId, updated));
             }
@@ -427,6 +445,7 @@ internal sealed class AdapterManager(
             }
             subscription = null; // Entry owns it now.
             configWatch = null;
+            TraceLoad("log registration");
             logHub.RegisterSource(instanceId, metadata.Description ?? $"{metadata.Name} Adapter logs", metadata.Name, HostLogHub.LogSourceKind.Adapter);
             runtimeState.RecordEvent($"{metadata.Name} Adapter loaded");
         }

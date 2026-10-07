@@ -592,6 +592,16 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
                 var dumpPath = Path.Combine(Path.GetTempPath(), "shirobot-adapter-lifecycle.dmp");
                 await Diagnose("collect", "--process-id", Environment.ProcessId.ToString(), "--type", "Heap", "--output", dumpPath);
                 await Diagnose("analyze", dumpPath, "-c", "clrstack -all", "-c", "dumpasync", "-c", "exit");
+                var nativeDebugger = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                    "Windows Kits", "10", "Debuggers", "x64", "cdb.exe");
+                if (File.Exists(nativeDebugger))
+                {
+                    var info = new System.Diagnostics.ProcessStartInfo(nativeDebugger) { UseShellExecute = false };
+                    foreach (var argument in new[] { "-z", dumpPath, "-c", "~* kb; q" }) info.ArgumentList.Add(argument);
+                    using var process = System.Diagnostics.Process.Start(info)!;
+                    try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); }
+                    catch (TimeoutException) { process.Kill(entireProcessTree: true); }
+                }
             }
             throw;
         }
