@@ -14,7 +14,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     private const long MaxExtractedBytes = 500L * 1024L * 1024L;
     private const int MaxArchiveEntries = 4096;
     private readonly string _root = Path.GetFullPath(adapterRoot);
-    // Legacy registries are migrated once per process; after that an undeclared config is a single implicit instance.
+    // Validate current instance configs once per manager; legacy registries are ignored.
     private bool _initialized;
 
     public IReadOnlyList<InstalledAdapterPackage> List()
@@ -29,58 +29,18 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     }
 
     // Package files are shared; descriptors/configs are host-owned and survive DLL updates.
-    private string InstanceRoot => Path.Combine(_root, ".instances");
+    private static readonly object ProtocolGate = new();
 
     private string CoreConfigPath => coreConfigPath is null
         ? Path.Combine(Path.GetDirectoryName(_root)!, "config.toml")
         : Path.GetFullPath(coreConfigPath);
     private string PackageConfigPath(InstalledAdapterPackage package) => Path.Combine(GetAdapterDirectory(package.Id), "config.toml");
 
-    public void InitializeInstances(IEnumerable<string>? requestedAdapters = null)
+    public void InitializeInstances()
     {
-        var legacyRoot = File.Exists(CoreConfigPath)
-            ? TomlSerializer.Deserialize<LegacyCoreAdapterConfig>(File.ReadAllText(CoreConfigPath), new TomlSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower })?.AdapterInstances
-            : null;
-        var legacy = legacyRoot is null ? ListLegacyInstances() : legacyRoot.Select(item =>
-        {
-            var package = Get(item.PackageId) ?? throw new InvalidOperationException($"实例 {item.Id} 引用未安装的适配器包 {item.PackageId}。");
-            var path = string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase)
-                ? Path.Combine(Path.GetDirectoryName(package.AssemblyPath)!, "config.toml") : Path.Combine(InstanceRoot, item.Id, "config.toml");
-            return new InstalledAdapterInstance(item.Id, item.PackageId, package.AssemblyPath, path, item.Enabled, item.Name);
-        }).ToArray();
-        var plans = List().Select(package =>
-        {
-            var path = PackageConfigPath(package);
-            var declared = AdapterInstanceStore.IsDeclared(path);
-            var instances = declared ? AdapterInstanceStore.Read(path) : legacy.Where(item => string.Equals(item.PackageId, package.Id, StringComparison.OrdinalIgnoreCase)).Select(item =>
-                new PackageAdapterInstance { Id = item.Id, Name = item.Name, Enabled = item.Enabled || legacyRoot is null && (requestedAdapters ?? []).Any(value => string.Equals(value, package.Id, StringComparison.OrdinalIgnoreCase) || string.Equals(value, package.Name, StringComparison.OrdinalIgnoreCase) || File.Exists(value) && string.Equals(Path.GetFullPath(value), package.AssemblyPath, StringComparison.OrdinalIgnoreCase)),
-                    Config = AdapterInstanceStore.ReadObject(item.ConfigPath) }).ToList();
-            return (Path: path, Declared: declared, Instances: instances);
-        }).ToArray();
-        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in plans.SelectMany(plan => plan.Instances))
-        {
-            ValidateInstanceId(item.Id);
-            if (!ids.Add(item.Id)) throw new InvalidOperationException($"适配器实例 ID {item.Id} 重复，请使用全局唯一 ID。");
-        }
-        foreach (var (package, plan) in List().Zip(plans).Where(pair => !pair.Second.Declared))
-        {
-            // One default instance on the package's own config needs no rewrite: it stays implicit until a second
-            // instance (or a rename / delete) needs the [[instances]] layout.
-            var legacyDefault = legacy.FirstOrDefault(item => string.Equals(item.PackageId, package.Id, StringComparison.OrdinalIgnoreCase));
-            if (plan.Instances is [var only] && string.Equals(only.Id, package.Id, StringComparison.OrdinalIgnoreCase) &&
-                (string.IsNullOrWhiteSpace(only.Name) || only.Name == package.Name) && legacyDefault is not null &&
-                string.Equals(Path.GetFullPath(legacyDefault.ConfigPath), Path.GetFullPath(plan.Path), StringComparison.OrdinalIgnoreCase))
-            {
-                if (only.Enabled != package.Enabled) SetEnabled(package.Id, only.Enabled);
-                continue;
-            }
-            if (File.Exists(plan.Path) && !File.Exists(plan.Path + ".pre-instances.bak")) File.Copy(plan.Path, plan.Path + ".pre-instances.bak", overwrite: false);
-            AdapterInstanceStore.Write(plan.Path, plan.Instances, replaceLegacy: true);
-        }
-        if (legacyRoot is not null) new ConfigManager(CoreConfigPath).RemoveConfigValue(CoreConfigPath, "adapter_instances");
+        // Only current package configs are authoritative; no legacy state is imported.
         _initialized = true;
-        _ = ListInstances(); // Validate global uniqueness after migration.
+        _ = ListInstances();
     }
 
     public IReadOnlyList<InstalledAdapterInstance> ListInstances()
@@ -96,7 +56,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             {
                 // Older config without [[instances]]: the whole file is one instance named after the package.
                 if (!ids.Add(package.Id)) throw new InvalidOperationException($"适配器实例 ID {package.Id} 重复，请使用全局唯一 ID。");
-                result.Add(new(package.Id, package.Id, package.AssemblyPath, path, package.Enabled, package.Name, packageEnabled, Implicit: true));
+                result.Add(new(package.Id, package.Id, package.AssemblyPath, path, ReadImplicitEnabled(path), package.Name, packageEnabled, Implicit: true));
                 continue;
             }
             foreach (var item in AdapterInstanceStore.Read(path))
@@ -106,31 +66,6 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 result.Add(new(item.Id, package.Id, package.AssemblyPath, path, item.Enabled,
                     string.IsNullOrWhiteSpace(item.Name) ? item.Id : item.Name, packageEnabled));
             }
-        }
-        return result.OrderBy(item => item.Id, StringComparer.OrdinalIgnoreCase).ToArray();
-    }
-
-    private IReadOnlyList<InstalledAdapterInstance> ListLegacyInstances()
-
-    {
-        var descriptors = Directory.Exists(InstanceRoot)
-            ? Directory.EnumerateFiles(InstanceRoot, "instance.json", SearchOption.AllDirectories)
-                .Select(path => ReadInstanceDescriptor(path))
-                .Where(item => item is not null).Cast<AdapterInstanceManifest>().ToArray()
-            : [];
-        var result = new List<InstalledAdapterInstance>();
-        foreach (var package in List())
-        {
-            var defaultDescriptor = descriptors.FirstOrDefault(item => string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase));
-            if (defaultDescriptor?.Deleted != true)
-                result.Add(new(package.Id, package.Id, package.AssemblyPath,
-                    Path.Combine(Path.GetDirectoryName(package.AssemblyPath)!, "config.toml"),
-                    package.Enabled, package.Name));
-            foreach (var descriptor in descriptors.Where(item => !item.Deleted &&
-                         string.Equals(item.PackageId, package.Id, StringComparison.OrdinalIgnoreCase) &&
-                         !string.Equals(item.Id, package.Id, StringComparison.OrdinalIgnoreCase)))
-                result.Add(new(descriptor.Id, package.Id, package.AssemblyPath,
-                    Path.Combine(InstanceRoot, descriptor.Id, "config.toml"), descriptor.Enabled, descriptor.Name));
         }
         return result.OrderBy(item => item.Id, StringComparer.OrdinalIgnoreCase).ToArray();
     }
@@ -166,25 +101,39 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         if (AdapterInstanceStore.IsDeclared(path)) return false;
         if (File.Exists(path) && !File.Exists(path + ".pre-instances.bak")) File.Copy(path, path + ".pre-instances.bak", overwrite: false);
         AdapterInstanceStore.Write(path, [new PackageAdapterInstance
-            { Id = package.Id, Name = package.Name, Enabled = package.Enabled, Config = AdapterInstanceStore.ReadObject(path) }], replaceLegacy: true);
+            { Id = package.Id, Name = package.Name, Enabled = ReadImplicitEnabled(path), Config = AdapterInstanceStore.ReadObject(path) }], replaceLegacy: true);
         return true;
     }
 
-    // The package master switch lives in a host-owned file beside the package, not in config.toml, whose root
-    // belongs to the adapter itself while the config is still implicit. Missing means on.
-    private string PackageStatePath(string id) => Path.Combine(GetAdapterDirectory(id), ".shirobot-adapter-state.json");
-
-    public bool IsPackageEnabled(InstalledAdapterPackage package)
+    private sealed class ProtocolConfig
     {
-        var path = PackageStatePath(package.Id);
-        try { return !File.Exists(path) || JsonSerializer.Deserialize<AdapterPackageState>(File.ReadAllText(path))?.Enabled != false; }
-        catch (JsonException) { return true; }
+        public string[] Protocols { get; set; } = [];
     }
+
+    private string[] ReadProtocols() => File.Exists(CoreConfigPath)
+        ? TomlSerializer.Deserialize<ProtocolConfig>(File.ReadAllText(CoreConfigPath),
+            new TomlSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower })?.Protocols ?? []
+        : [];
+
+    private bool IsProtocolEnabled(string id) => ReadProtocols().Any(value =>
+        string.Equals(value.Trim(), id, StringComparison.OrdinalIgnoreCase));
+
+    private static bool ReadImplicitEnabled(string path) =>
+        AdapterInstanceStore.ReadObject(path).GetValueOrDefault("enabled") is true;
+
+    public bool IsPackageEnabled(InstalledAdapterPackage package) => IsProtocolEnabled(package.Id);
 
     public void SetPackageEnabled(string id, bool enabled)
     {
         var package = Get(id) ?? throw new InvalidOperationException($"未安装 Adapter 包: {id}");
-        File.WriteAllText(PackageStatePath(package.Id), JsonSerializer.Serialize(new AdapterPackageState(enabled)));
+        lock (ProtocolGate)
+        {
+            var protocols = ReadProtocols().Where(value =>
+                !string.Equals(value.Trim(), package.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (enabled) protocols.Add(package.Id);
+            Directory.CreateDirectory(Path.GetDirectoryName(CoreConfigPath)!);
+            new ConfigManager(CoreConfigPath).SetConfigValue(CoreConfigPath, "protocols", protocols.ToArray());
+        }
     }
 
     /// <summary>Renames an instance and/or changes its display name; its switch and connection config stay with it.</summary>
@@ -208,7 +157,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     public void SetInstanceEnabled(string id, bool enabled)
     {
         var instance = GetInstance(id) ?? throw new InvalidOperationException($"未安装 Adapter 实例: {id}");
-        if (instance.Implicit) SetEnabled(instance.PackageId, enabled);
+        if (instance.Implicit) new ConfigManager(instance.ConfigPath).SetConfigValue(instance.ConfigPath, "enabled", enabled);
         else AdapterInstanceStore.Update(instance.ConfigPath, id, item => item.Enabled = enabled);
     }
 
@@ -225,35 +174,6 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         var path = PackageConfigPath(package);
         if (!AdapterInstanceStore.IsDeclared(path)) AdapterInstanceStore.Write(path, [], replaceLegacy: true);
     }
-
-    private static AdapterInstanceManifest? ReadInstanceDescriptor(string path)
-    {
-        try
-        {
-            var descriptor = JsonSerializer.Deserialize<AdapterInstanceManifest>(File.ReadAllText(path));
-            if (descriptor is null) return null;
-            ValidateId(descriptor.Id);
-            ValidateId(descriptor.PackageId);
-            return string.Equals(Path.GetFileName(Path.GetDirectoryName(path)), descriptor.Id, StringComparison.OrdinalIgnoreCase)
-                ? descriptor : null;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
-        { return null; }
-    }
-
-    private sealed class LegacyCoreAdapterConfig
-    {
-        public LegacyAdapterInstanceConfig[]? AdapterInstances { get; set; }
-    }
-    private sealed class LegacyAdapterInstanceConfig
-    {
-        public string Id { get; set; } = "";
-        public string PackageId { get; set; } = "";
-        public string Name { get; set; } = "";
-        public bool Enabled { get; set; }
-    }
-
-    private sealed record AdapterInstanceManifest(string Id, string PackageId, string Name, bool Enabled, bool Deleted = false);
 
     public AdapterPackageProbe Prepare(string packagePath, string workRoot)
     {
@@ -312,7 +232,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 package.EntryAssemblyPath);
             if (package.Type == "dll") entryRelativePath = Path.GetFileName(package.EntryAssemblyPath);
             PreserveUserFiles(target, staging);
-            var manifest = new AdapterManifest(package.Id, entryRelativePath, enabled, package.Name, package.Version, package.Description, package.Platform);
+            var manifest = new AdapterManifest(package.Id, entryRelativePath, package.Name, package.Version, package.Description, package.Platform);
             File.WriteAllText(Path.Combine(staging, "adapter.json"), JsonSerializer.Serialize(manifest));
 
             if (Directory.Exists(target)) Directory.Move(target, backup);
@@ -329,6 +249,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             TryDeleteDirectory(backup);
             var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled, package.Name, package.Version, package.Description, package.Platform);
             if (fresh) EnsureInstanceConfig(installed);
+            SetPackageEnabled(package.Id, enabled);
             return installed;
         }
         finally
@@ -356,6 +277,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         var staging = target + ".staging-" + Guid.NewGuid().ToString("N");
         var backup = target + ".backup-" + Guid.NewGuid().ToString("N");
         InstalledAdapterPackage? previous = null;
+        var previousProtocolEnabled = IsProtocolEnabled(package.Id);
         try
         {
             previous = ReadInstalled(target);
@@ -367,7 +289,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             PreserveUserFiles(target, staging);
             File.WriteAllText(
                 Path.Combine(staging, "adapter.json"),
-                JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, enabled, package.Name, package.Version, package.Description, package.Platform)));
+                JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, package.Name, package.Version, package.Description, package.Platform)));
 
             if (Directory.Exists(target)) Directory.Move(target, backup);
             Directory.Move(staging, target);
@@ -375,6 +297,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             if (previous is null) EnsureInstanceConfig(installed);
             try
             {
+                SetPackageEnabled(package.Id, enabled);
                 if (enabled || activateWhenDisabled) await activate(installed).ConfigureAwait(false);
                 TryDeleteDirectory(backup);
                 return new AdapterInstallResult(installed, null);
@@ -388,6 +311,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             {
                 TryDeleteDirectory(target);
                 if (Directory.Exists(backup)) Directory.Move(backup, target);
+                SetPackageEnabled(package.Id, previousProtocolEnabled);
                 if (previous is not null && restore is not null)
                 {
                     var restored = ReadInstalled(target);
@@ -416,12 +340,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         }
     }
 
-    public void SetEnabled(string id, bool enabled)
-    {
-        var installed = Get(id) ?? throw new InvalidOperationException($"未安装 Adapter: {id}");
-        File.WriteAllText(Path.Combine(GetAdapterDirectory(installed.Id), "adapter.json"),
-            JsonSerializer.Serialize(new AdapterManifest(installed.Id, Path.GetRelativePath(GetAdapterDirectory(installed.Id), installed.AssemblyPath), enabled, installed.Name, installed.Version, installed.Description, installed.Platform)));
-    }
+    public void SetEnabled(string id, bool enabled) => SetPackageEnabled(id, enabled);
 
     /// <summary>
     /// Stages a package in <c>.update/&lt;id&gt;/</c> when the running version cannot be released; the next
@@ -438,7 +357,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             : Path.GetRelativePath(FindExtractRoot(package.EntryAssemblyPath), package.EntryAssemblyPath);
         File.WriteAllText(
             Path.Combine(staging, "adapter.json"),
-            JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, enabled, package.Name, package.Version, package.Description, package.Platform)));
+            JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, package.Name, package.Version, package.Description, package.Platform)));
         StagedComponentUpdates.WriteTarget(staging, GetAdapterDirectory(package.Id));
     }
 
@@ -455,6 +374,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         var path = GetAdapterDirectory(id);
         if (!IsStrictChild(_root, path)) throw new InvalidOperationException("拒绝删除 Adapter 根目录之外的路径。");
         StagedComponentUpdates.DiscardStaged(_root, id);
+        if (Get(id) is not null) SetPackageEnabled(id, false);
         if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
     }
 
@@ -469,7 +389,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 !string.Equals(Path.GetFileName(directory), manifest.Id, StringComparison.OrdinalIgnoreCase)) return null;
             var assemblyPath = Path.GetFullPath(Path.Combine(directory, manifest.Entry));
             if (!IsUnder(directory, assemblyPath) || !File.Exists(assemblyPath)) return null;
-            return new InstalledAdapterPackage(manifest.Id, assemblyPath, manifest.Enabled, manifest.Name ?? manifest.Id, manifest.Version ?? "1.0.0", manifest.Description, manifest.Platform);
+            return new InstalledAdapterPackage(manifest.Id, assemblyPath, IsProtocolEnabled(manifest.Id), manifest.Name ?? manifest.Id, manifest.Version ?? "1.0.0", manifest.Description, manifest.Platform);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -588,7 +508,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
-    private sealed record AdapterManifest(string Id, string Entry, bool Enabled, string? Name = null, string? Version = null, string? Description = null, string? Platform = null);
+    private sealed record AdapterManifest(string Id, string Entry, string? Name = null, string? Version = null, string? Description = null, string? Platform = null);
 }
 
 internal sealed record AdapterPackageProbe(string Id, string MinimumApiVersion, string MaximumApiVersion, string EntryAssemblyPath, string Type, IReadOnlyList<string> SharedAssemblies, string Name, string Version, string? Description, string? Platform);
@@ -597,7 +517,6 @@ internal sealed record AdapterInstallResult(InstalledAdapterPackage Package, str
 
 internal sealed record InstalledAdapterPackage(string Id, string AssemblyPath, bool Enabled, string Name, string Version, string? Description, string? Platform);
 
-internal sealed record AdapterPackageState(bool Enabled);
 
 /// <param name="Implicit">An older config without [[instances]]: the file root is this instance's config.</param>
 internal sealed record InstalledAdapterInstance(string Id, string PackageId, string AssemblyPath, string ConfigPath, bool Enabled, string Name, bool PackageEnabled = true, bool Implicit = false)

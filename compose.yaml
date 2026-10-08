@@ -2,6 +2,7 @@ name: shirobot
 
 services:
   shirobot:
+    container_name: shirobot
     image: ghcr.io/shirokaproject/shirobot:${SHIROBOT_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped

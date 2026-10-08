@@ -146,7 +146,25 @@ internal static class UpdateIntegration
                 finally { File.WriteAllText(path, original); }
                 return new { package_toml = true, no_default = true, web_and_file_share_state = true, duplicate_validation = true };
             });
-            await Scenario("legacy-instance-migration", async host =>
+            await Scenario("package-switch-main-protocols", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                var corePath = Path.Combine(host.Root, "config.toml");
+                var instance = host.AdapterPackages.GetInstance(AdapterId)!;
+                var instanceConfig = File.ReadAllText(instance.ConfigPath);
+                await host.PostAsync($"/adapter-packages/{AdapterId}/stop", new { });
+                Check(!host.AdapterPackages.IsPackageEnabled(host.AdapterPackages.Get(AdapterId)!) &&
+                    !host.Adapters.LoadedIds.Contains(AdapterId), "Package stop did not remove protocols or stop the instance");
+                Check(File.ReadAllText(instance.ConfigPath) == instanceConfig && host.AdapterPackages.GetInstance(AdapterId)!.Enabled,
+                    "Package stop altered instance configuration/switch");
+                await host.PostAsync($"/adapter-packages/{AdapterId}/start", new { });
+                Check(File.ReadAllText(corePath).Contains(AdapterId) && host.Adapters.LoadedIds.Contains(AdapterId),
+                    "Package start did not persist protocols and load the enabled instance");
+                Check(new AdapterPackageManager(Path.Combine(host.Root, "adapters"), corePath).GetInstance(AdapterId)!.Active,
+                    "Reloaded configuration lost package/instance switches");
+                return new { protocols_authoritative = true, instance_config_preserved = true, http_start_stop = true };
+            });
+            await Scenario("legacy-instance-state-ignored", async host =>
             {
                 await host.InstallOldAsync("adapters", Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
                 await host.Adapters.StopAsync();
@@ -161,12 +179,14 @@ internal static class UpdateIntegration
                     new Dictionary<string, object?> { ["id"] = AdapterId, ["package_id"] = AdapterId, ["enabled"] = true },
                     new Dictionary<string, object?> { ["id"] = "legacy-extra", ["package_id"] = AdapterId, ["enabled"] = false }
                 });
+                var originalCore = File.ReadAllText(corePath);
                 host.AdapterPackages.InitializeInstances();
-                Check(host.AdapterPackages.ListInstances().Count == 2 && !File.ReadAllText(corePath).Contains("adapter_instances"), "Legacy registry not migrated/removed");
-                Check(AdapterInstanceStore.GetConfig(path, "legacy-extra")["bot"]?.ToString() == "legacy-extra" && AdapterInstanceStore.GetConfig(path, AdapterId)["bot"]?.ToString() == "legacy-default", "Migration lost credentials/config");
-                host.AdapterPackages.InitializeInstances();
-                Check(host.AdapterPackages.ListInstances().Count == 2, "Migration is not idempotent");
-                return new { root_registry_migrated = true, configs_preserved = true, idempotent = true };
+                Check(host.AdapterPackages.ListInstances().Count == 1 && File.ReadAllText(corePath) == originalCore,
+                    "Legacy registry affected instances or was migrated");
+                Check(!host.AdapterPackages.ListInstances().Single().Enabled &&
+                    AdapterInstanceStore.GetConfig(path, AdapterId)["bot"]?.ToString() == "legacy-default", "Current instance config was altered");
+                return new { legacy_registry_ignored = true, current_config_preserved = true };
+
             });
             await Scenario("multi-instance-package-update", async host =>
             {

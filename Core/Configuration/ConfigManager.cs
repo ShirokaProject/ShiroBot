@@ -14,7 +14,7 @@ namespace ShiroBot.Configuration;
 public class CoreConfig
 {
     /// <summary>并行加载的 Adapter 名称或 DLL 路径。</summary>
-    [ConfigField("仅用于开发：额外加载未安装成包的独立 Adapter DLL 名称或路径。已安装的适配器在 Dashboard 适配器页管理。", Label = "Adapters", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
+    [ConfigField("适配器包总开关：列出的包 ID 才允许启动，空列表全部关闭；也可填写开发用独立 DLL 路径。Dashboard 适配器页开关保存到此列表。", Label = "启用的适配器包", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
     [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupIcon = "settings", GroupDescription = "运行时行为与日志设置。", GroupOrder = 10, Order = 20)]
@@ -332,7 +332,7 @@ public class ConfigManager(string? coreConfigPath = null)
             document = SyntaxParser.ParseStrict(toml);
         }
         var edits = new List<TomlEdit>();
-        Migrate(document.KeyValues, "protocol", "protocols");
+        // Only protocols controls adapter packages; the old protocol key is ignored.
         foreach (var table in document.Tables)
         {
             if (string.Equals(table.Name?.ToString().Trim(), "api", StringComparison.OrdinalIgnoreCase))

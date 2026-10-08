@@ -41,8 +41,11 @@ public sealed record MessageEvent : BotEvent
 /// <summary>
 /// 发送消息的结果。
 /// </summary>
+/// <remarks>文件上传发布成功时，平台可能不返回消息 ID，此时 MessageId 为空、Reference 为 null。</remarks>
 public sealed record SentMessage(string MessageId)
 {
+    public FileUploadResult? UploadedFile { get; init; }
+
     public IReadOnlyList<MessageTransformation> Transformations { get; init; } = [];
 
     public MessageReference? Reference { get; init; }

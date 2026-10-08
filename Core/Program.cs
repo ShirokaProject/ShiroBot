@@ -148,6 +148,7 @@ public static class Program
                 Directory.CreateDirectory(pluginRootPath);
             }
 
+            StartupTempCleanup.Run(BasePath, pluginRootPath);
             var deletedPlugins = StagedComponentUpdates.ApplyStagedDeletions(pluginRootPath);
             foreach (var id in deletedPlugins.Applied) CH.Success($"已删除待卸载插件: {id}");
             foreach (var (id, error) in deletedPlugins.Failed) CH.Warning($"删除插件 {id} 失败，下次启动将重试: {error}");
@@ -171,7 +172,7 @@ public static class Program
 
             var adapterPackages = new AdapterPackageManager(adapterRoot, coreConfigPath);
             ReportStagedUpdates("Adapter", adapterPackages.ApplyStagedUpdates());
-            adapterPackages.InitializeInstances(coreConfig.Protocols.Concat(parserResult.GetValue(adapterOption) ?? []));
+            adapterPackages.InitializeInstances();
             var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption), adapterPackages);
 
             // ─── BotContext + 基础设施 ───
@@ -248,9 +249,7 @@ public static class Program
             commandHandler.SetAdapterCommands(adapterManager, null, adapterPackages);
             if (adapterPaths.Count > 0 || adapterPackages.ListInstances().Any(instance => instance.Active))
             {
-                var instances = adapterPackages.ListInstances().Where(instance => instance.Active ||
-                    instance.Implicit &&
-                    adapterPaths.Contains(instance.AssemblyPath, StringComparer.OrdinalIgnoreCase)).ToArray();
+                var instances = adapterPackages.ListInstances().Where(instance => instance.Active).ToArray();
                 var installedPaths = adapterPackages.List().Select(package => package.AssemblyPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 await adapterManager.LoadAsync(adapterPaths.Where(path => !installedPaths.Contains(path))).ConfigureAwait(false);
                 foreach (var instance in instances)

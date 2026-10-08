@@ -129,6 +129,8 @@ internal static class HostSelfUpdater
         {
             try { Directory.Delete(workRoot, recursive: true); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            StartupTempCleanup.DeleteEmpty(Path.GetDirectoryName(workRoot)!);
+            StartupTempCleanup.DeleteEmpty(Path.Combine(directory, ".tmp"));
         }
 
         var restart = powerControl.Restart();

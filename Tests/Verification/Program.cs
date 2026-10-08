@@ -64,6 +64,44 @@ if (args is ["--update-integration", var fixtureDirectory])
     Console.WriteLine("Deferred plugin deletion retry and path validation verification passed.");
 }
 
+{
+    var root = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
+    var plugins = Path.Combine(root, "plugins");
+    var work = Path.Combine(root, ".tmp", "ShiroBot.Update", Guid.NewGuid().ToString("N"), "extract");
+    var temp = Path.Combine(plugins, "Sample", ".tmp");
+    Directory.CreateDirectory(work);
+    Directory.CreateDirectory(temp);
+    File.WriteAllText(Path.Combine(work, "host"), "abandoned");
+    foreach (var extension in new[] { "package", "replacement", "backup" })
+        File.WriteAllText(Path.Combine(temp, $"Sample.dll.{Guid.NewGuid():N}.{extension}"), "abandoned");
+    var userFile = Path.Combine(temp, "user.package");
+    File.WriteAllText(userFile, "keep");
+    var markers = new[]
+    {
+        Path.Combine(plugins, "Sample", ".shirobot-package-files"),
+        Path.Combine(plugins, "Sample", ".shirobot", "native", ".complete"),
+        Path.Combine(plugins, ".update", "Sample", "package.zip")
+    };
+    foreach (var marker in markers)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+        File.WriteAllText(marker, "keep");
+    }
+    try
+    {
+        StartupTempCleanup.Run(root, plugins);
+        if (Directory.Exists(Path.Combine(root, ".tmp")) ||
+            !Directory.EnumerateFiles(temp).SequenceEqual([userFile]) || markers.Any(path => !File.Exists(path)))
+            throw new InvalidOperationException("Startup cleanup removed useful files or retained abandoned updater work.");
+        File.Delete(userFile);
+        StartupTempCleanup.Run(root, plugins);
+        StartupTempCleanup.Run(root, plugins);
+        if (Directory.Exists(temp)) throw new InvalidOperationException("Startup cleanup retained an empty temporary directory.");
+    }
+    finally { Directory.Delete(root, recursive: true); }
+    Console.WriteLine("Startup updater temporary file cleanup verification passed.");
+}
+
 var serviceRegistry = new PluginServiceRegistry();
 using var providerServices = new PluginServiceScope(serviceRegistry, "provider");
 using var consumerServices = new PluginServiceScope(serviceRegistry, "consumer");
@@ -382,7 +420,7 @@ Console.WriteLine("Component API version verification passed.");
 Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.0.0.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.1.0.0");
     AssertAssemblyVersion(typeof(QGroup).Assembly, "1.0.0.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "0.9.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "0.9.0.0");
@@ -1102,7 +1140,19 @@ try
     if (firstContext.Load<VerificationComponentConfig>().Mode != "first account" || secondContext.Load<VerificationComponentConfig>().Mode != "second account")
         throw new InvalidOperationException("SDK configuration escaped its instance scope.");
     AssertThrows<InvalidOperationException>(() => externalPackages.CreateInstance("verification", "EXTERNAL-INSTANCE", null));
-    if (!first.PackageEnabled || !first.Active) throw new InvalidOperationException("A package without a master switch did not default to on.");
+    if (first.PackageEnabled || first.Active) throw new InvalidOperationException("Empty protocols must disable packages.");
+    File.WriteAllText(Path.Combine(Path.GetDirectoryName(first.ConfigPath)!, ".shirobot-adapter-state.json"), "{\"Enabled\":true}");
+    if (externalPackages.GetInstance(first.Id)!.Active) throw new InvalidOperationException("Legacy package state was not ignored.");
+    File.WriteAllText(externalCorePath, "# Preserve unrelated settings\nprotocols = [\"OtherAdapter\"]\nfuture_value = 42\n");
+    externalPackages.SetPackageEnabled("verification", true);
+    externalPackages.SetPackageEnabled("VERIFICATION", true);
+    var enabledCore = File.ReadAllText(externalCorePath);
+    AssertContains(enabledCore, "OtherAdapter");
+    AssertContains(enabledCore, "future_value = 42");
+    AssertSingle(enabledCore, "\"verification\"");
+    if (!new AdapterPackageManager(adapterPackageRoot, externalCorePath).GetInstance(first.Id)!.Active)
+        throw new InvalidOperationException("Restart did not restore protocols and instance switches.");
+    if (!externalPackages.GetInstance(first.Id)!.Active) throw new InvalidOperationException("Protocols did not enable the instance.");
     externalPackages.SetPackageEnabled("verification", false);
     var gated = externalPackages.GetInstance(first.Id)!;
     if (gated.PackageEnabled || gated.Active || !gated.Enabled)
@@ -1137,7 +1187,7 @@ try
     implicitPackages.SetInstanceEnabled(implicitInstance.Id, !implicitInstance.Enabled);
     implicitPackages.SetPackageEnabled("verification", false);
     implicitPackages.SetPackageEnabled("verification", true);
-    if (File.ReadAllText(packageConfigPath) != loadedConfig || !loadedConfig.StartsWith(legacyConfig) || implicitPackages.GetInstance("verification")!.Enabled == implicitInstance.Enabled)
+    if (!File.ReadAllText(packageConfigPath).Contains("enabled = true") || !loadedConfig.StartsWith(legacyConfig) || implicitPackages.GetInstance("verification")!.Enabled == implicitInstance.Enabled)
         throw new InvalidOperationException("Switches rewrote an implicit config or did not persist.");
     implicitPackages.SetInstanceEnabled(implicitInstance.Id, implicitInstance.Enabled);
     implicitPackages.CreateInstance("verification", "second-account", null);
@@ -1241,7 +1291,7 @@ try
     var stagedAdapter = adapterPackage.ApplyStagedUpdates();
     if (!stagedAdapter.Applied.SequenceEqual(["verification"]) || stagedAdapter.Failed.Count != 0 ||
         adapterPackage.HasStagedUpdate("verification") ||
-        adapterPackage.Get("verification") is not { Enabled: true } appliedAdapter ||
+        adapterPackage.Get("verification") is not { Enabled: false } appliedAdapter ||
         File.ReadAllText(Path.Combine(Path.GetDirectoryName(appliedAdapter.AssemblyPath)!, "config.toml")) != "app_id = \"\"")
         throw new InvalidOperationException("Staged adapter update was not applied at startup, or replaced the user's config.toml.");
     adapterPackage.StageUpdate(zipProbe, enabled: true);
@@ -1640,7 +1690,7 @@ try
         """);
     var coreManager = new ConfigManager(coreConfigPath);
     var coreConfig = await coreManager.LoadCoreConfig();
-    if (!coreConfig.Protocols.SequenceEqual(["LegacyAdapter"]) ||
+    if (coreConfig.Protocols.Length != 0 ||
         !coreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7001"]))
     {
         throw new InvalidOperationException("Legacy core settings were not migrated to array settings.");
@@ -1652,12 +1702,11 @@ try
 
     var preservedCoreToml = File.ReadAllText(coreConfigPath);
     AssertContains(preservedCoreToml, "enable_log = false");
-    AssertContains(preservedCoreToml, "protocols = [\"LegacyAdapter\"]");
+    AssertContains(preservedCoreToml, "protocols = []");
     AssertContains(preservedCoreToml, "listen_urls = [\"http://127.0.0.1:7999\"]");
     AssertSingle(preservedCoreToml, "[plugin_routes.default]");
     AssertSingle(preservedCoreToml, "[api]");
-    if (preservedCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
-        preservedCoreToml.Contains("listen_url =", StringComparison.Ordinal))
+    if (preservedCoreToml.Contains("listen_url =", StringComparison.Ordinal))
     {
         throw new InvalidOperationException("Legacy core keys remained after migration.");
     }
@@ -1719,7 +1768,7 @@ try
         """);
     var malformedManager = new ConfigManager(malformedCorePath);
     var repairedCoreConfig = await malformedManager.LoadCoreConfig();
-    if (!repairedCoreConfig.Protocols.SequenceEqual(["LegacyAdapter"]) ||
+    if (repairedCoreConfig.Protocols.Length != 0 ||
         !repairedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7021"]) ||
         !repairedCoreConfig.PluginRoutes.Default.Groups.SequenceEqual(["915449089"]))
     {

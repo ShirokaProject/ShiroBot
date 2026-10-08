@@ -33,7 +33,7 @@ public sealed class ExamplePlugin : PluginBase;
 共享的 SDK 与 Model 程序集版本表示组件所需的最低宿主 ABI。兼容系列内，新宿主可满足相同或更旧 ABI；依赖更新 ABI 的组件需要更新宿主。
 
 本次 QQ Model 直接升级到 **1.0.0.0**：数值 ID 改为字符串，官方群管理并入 `IQGroupApi`，旧接口删除。
-SDK 与全部内置 Model 分别要求 ABI 主版本匹配；当前 SDK 和 QQ Model 均为 1.0.0.0，引用旧 SDK 或 QQ Model 的组件需重新编译。
+SDK 与全部内置 Model 分别要求 ABI 主版本匹配；当前 SDK 为 1.1.0.0，QQ Model 为 1.0.0.0，引用旧 SDK 或 QQ Model 的组件需重新编译。
 本轮宿主与 SDK 版本为 `0.9.8`，下面表格记录各产品版本的共享程序集 ABI。具体接口见[QQ 接口审阅](/plugin/qq-interface-review)。
 
 ## 版本对照
@@ -42,7 +42,7 @@ NuGet 包版本跟随宿主发布版本。ABI 版本只在对应程序集的公�
 
 | ShiroBot.SDK（NuGet） | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
-| 0.9.8 | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.8（已发布） | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.6 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.5 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
@@ -67,3 +67,7 @@ using (Context.UseInstance("discord-work"))
 宿主检查入口和可解析私有依赖的静态引用；运行后动态加载或反射产生的依赖仍受加载时 ABI 检查约束。
 公开签名基线位于 `Tests/ApiBaseline`，固定旧组件 DLL 位于 `Tests/AbiFixtures/frozen`。
 详见[适配器实例与后台发送](/plugin/apis#适配器实例与后台发送)。
+
+## 开发中的通用文件服务
+
+新增可选 `IFileService`、文件上传请求/结果及 `SentMessage.UploadedFile`，SDK ABI 为 `1.1.0.0`。此次为兼容的增量：QQ Model ABI 不变，旧 SDK 1.0 组件可继续加载；引用 SDK 1.1 的组件需要更新宿主。产品版本尚未发布，不覆盖上表的已发布记录。

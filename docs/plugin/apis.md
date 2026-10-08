@@ -165,3 +165,12 @@ SDK 0.9.8 将 SDK 与 QQ Model ABI 主版本升为 1.0.0.0。引用旧 ABI 的�
 ## SDK 0.9.8 富消息与互动
 
 普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/rich-messages)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。
+
+## 通用文件上传与发送
+
+直接发送文件优先使用 `Context.Message.ReplyAsync(message, new FileSegment(fileUri) { FileName = "report.pdf" })`，并检查 `SentMessage.IsSuccess`。
+Milky 将单独的文件段映射到群/私聊文件上传；它不返回消息 ID，成功结果的 `UploadedFile` 包含文件 ID，`MessageId` 为空且 `Reference` 为 null。文件 ID 不能用于撤回消息或订阅引用回复。Milky 当前不自动拆分文本与文件混合消息。
+
+需要单独上传时使用 `Context.GetAdapterExtension<IFileService>()`，在当前实例作用域内调用 `UploadAsync(channel, request)`。先检查 `GetFileCapabilities(channel).CanUpload`。
+Milky 的 `UploadPublishes`/结果 `IsPublished` 为 true，上传已向接收者发布文件；官方为 false，返回的是尚未发送的媒体凭据。不能仅凭上传成功向用户报告已经发送，也不能跨实例或会话复用文件 ID。通用接口尚未提供上传凭据的后续发送方法。
+QQ `IQFileApi` 保持独立并保留原有方法；Milky 的两个入口共享上传实现。

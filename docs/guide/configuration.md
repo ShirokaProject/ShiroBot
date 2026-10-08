@@ -43,7 +43,7 @@ key = ""
 | `avalonia_theme` | `Auto` | `Light`、`Dark` 或 `Auto`（按时间切换，18:00–6:00 为深色） |
 | `owner_list` | `[]` | 所有者身份列表（`instanceId:userId`）；自动拥有管理员权限，`Context.IsOwner` 和 `Context.IsAdmin` 均返回 `true` |
 | `admin_list` | `[]` | 管理员身份列表（`instanceId:userId`）；owner 无需重复填写，插件通过 `Context.IsAdmin` 判断 |
-| `protocols` | `[]` | 仅用于开发：额外加载未安装成适配器包的独立 DLL（名称或路径），见下文 |
+| `protocols` | `[]` | 适配器包总开关：填写启用的包 ID，空列表全部关闭；也可填写开发用独立 DLL 路径 |
 
 账号 ID 按平台原样填写，写成字符串：QQ 号、开放平台 OpenID、Telegram 用户名等都可以，不要求是数字。
 
@@ -51,7 +51,7 @@ key = ""
 
 ### 开发时加载独立适配器 DLL
 
-已安装的适配器及其实例在 Dashboard「适配器」页或 [CLI](/adapter/deployment) 管理，是否启动由实例开关和适配器总开关决定，不需要也不应写进 `protocols`；Dashboard 的配置中心不显示此项。
+已安装包的总开关只由主配置 `protocols` 管理，例如 `protocols = ["qq-official", "milky"]`。Dashboard 打开包时添加其 ID，关闭时移除；包内实例的 `enabled` 与连接配置保存在适配器自己的 `config.toml`。只有包 ID 已列入且实例启用时才启动。旧总开关文件和旧实例注册表不读取、不迁移。手工修改总开关在重启时应用，Dashboard 开关立即操作运行状态。
 
 开发适配器时，可以不打包安装，直接加载一个 DLL：
 
@@ -170,7 +170,7 @@ timeout_seconds = 15
 
 宿主自己的 `CoreConfig` 也是显式配置模型，使用 `ConfigModel` / `ConfigField` 描述默认项和 Schema。Core 在服务启动前读取；启动后由 `CoreConfigWatcher` 按宿主运行时规则应用变更。它复用同一 TOML 存储和配置上下文，不包含按插件 ID 分支的默认值或字段校验。
 
-配置 API：`GET/PATCH /api/v1/config` 管理宿主配置。GET 返回 `{ schema, config }`：`config` 使用 CoreConfig 对应的 snake_case 嵌套结构，`schema` 提供可编辑字段、默认值和分类元数据（稳定 ID、名称、图标、说明与顺序）。PATCH 请求使用 `{ "config": { ... } }`，字段键与 Schema 一致；Dashboard 按该 Schema 展示和生成更新内容，不维护另一份宿主配置字段表。开发用 `protocols` 和由专门路由 API 管理的 `plugin_routes` 不包含在可编辑 Schema 中。
+配置 API：`GET/PATCH /api/v1/config` 管理宿主配置。GET 返回 `{ schema, config }`：`config` 使用 CoreConfig 对应的 snake_case 嵌套结构，`schema` 提供可编辑字段、默认值和分类元数据（稳定 ID、名称、图标、说明与顺序）。PATCH 请求使用 `{ "config": { ... } }`，字段键与 Schema 一致；Dashboard 按该 Schema 展示和生成更新内容，不维护另一份宿主配置字段表。由适配器总开关 API 管理的 `protocols` 和由专门路由 API 管理的 `plugin_routes` 不包含在可编辑 Schema 中。
 
 `GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和旧组件仅保存文件的情况。
 

@@ -68,7 +68,7 @@ enabled = false
 
 ID 在所有适配器包之间唯一，忽略大小写，最多 64 个字符，允许英文字母、数字、点、横线和下划线。name 可省略，enabled 默认 false。`instances = []` 表示只安装程序集，不启动实例。手动修改清单或启用状态后重启生效；运行实例的连接配置支持 SDK 配置监听。WebUI 和 CLI 写回同一份文件。ZIP 入口在子目录时，配置仍保存在适配器包根目录，不随入口 DLL 路径变化。
 
-首次启动会迁移旧的根配置 `adapter_instances` 和 `.instances/` 中的连接配置，保留原实例 ID 和启用状态；迁移成功后移除根配置中的实例清单。只有一个默认实例、没有 `[[instances]]` 的旧 `config.toml` 不迁移，按单实例运行；新增实例（或重命名、删除该实例）时才改写为 `[[instances]]`。被替换的旧适配器配置备份为 `config.toml.pre-instances.bak`。适配器总开关保存在包目录的 `.shirobot-adapter-state.json`，不写入 `config.toml`。备份部署时保留整个 `adapters/`。
+适配器总开关只保存在宿主主配置的 `protocols`，实例开关只保存在适配器 `config.toml` 的 `[[instances]]` 中。旧 `.shirobot-adapter-state.json`、根配置实例清单和 `.instances/` 注册表不再读取或迁移。单实例平铺配置的开关使用该文件根级 `enabled`；添加第二个实例时才展开为 `[[instances]]`。备份时保留宿主主配置和整个 `adapters/`。
 
 更新程序集处理该包下全部运行实例，保留所有实例的配置和启用状态；无法热替换时暂存到下次重启。删除实例只删除该条实例及连接配置，最后一个实例删除后仍保留包；「删除适配器包」才删除程序集和全部实例。
 
@@ -92,7 +92,7 @@ ID 在所有适配器包之间唯一，忽略大小写，最多 64 个字符，�
 
 离线命令修改文件，应在宿主停止时使用。也可直接编辑上述 `[[instances]]` TOML，无需 WebUI。`adapter remove <实例 ID>` 只删除实例；`adapter remove-package <包 ID>` 删除包及全部实例。运行中的交互式控制台支持 `adapter create`、`adapter config`、`adapter start`、`adapter stop` 和 `adapter remove`。
 
-主配置的 `protocols` 和 `--adapter` 只用于开发时直接加载未安装的独立 DLL；已安装包的实例由实例开关控制，不要在这里重复声明。Dashboard 配置中心不显示 `protocols`，需要时直接编辑 `config.toml`。
+主配置 `protocols` 是已安装适配器包的总开关，使用包 ID，例如 `protocols = ["qq-official"]`。实例是否启动还取决于适配器配置中的 `enabled`。`protocols` 也可包含开发用独立 DLL 路径，`--adapter` 可用于加载独立 DLL，但不绕过已安装包的总开关。
 
 ## 开发时加载独立 DLL
 

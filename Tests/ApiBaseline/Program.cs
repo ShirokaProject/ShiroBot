@@ -32,7 +32,7 @@ foreach (var assembly in assemblies)
     }
 }
 // Every asynchronous QQ capability must accept cancellation (DisposeAsync is the inherited lifecycle exception).
-foreach (var type in typeof(IQGroupApi).Assembly.GetExportedTypes().Where(t => t.IsInterface).Concat(new[] { typeof(IMessageService), typeof(IChannelService), typeof(IUserService), typeof(IMessageInteractionService), typeof(IMessageReactionService) }))
+foreach (var type in typeof(IQGroupApi).Assembly.GetExportedTypes().Where(t => t.IsInterface).Concat(new[] { typeof(IMessageService), typeof(IChannelService), typeof(IUserService), typeof(IMessageInteractionService), typeof(IMessageReactionService), typeof(IFileService) }))
     foreach (var method in type.GetMethods().Where(m => typeof(Task).IsAssignableFrom(m.ReturnType)))
         if (!method.GetParameters().Any(p => p.ParameterType == typeof(CancellationToken))) throw new InvalidOperationException("Missing CancellationToken: " + type.Name + "." + method.Name);
 var path = Path.GetFullPath(args.Length > 1 ? args[1] : "Tests/ApiBaseline/PublicApi.json");
