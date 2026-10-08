@@ -25,14 +25,15 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(routePrefix);
+        ArgumentNullException.ThrowIfNull(routePrefix);
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
-        var ownerRoutePrefix = GetOwnerRoutePrefix(ownerId);
         routePrefix = NormalizeRoutePrefix(routePrefix);
+        var routeBase = GetOwnerRoutePrefix(ownerId);
+        if (routePrefix.Length > 0) routeBase += "/" + routePrefix;
         var fullPath = Path.GetFullPath(filePath);
-        var token = CreateUniqueToken(ownerRoutePrefix, routePrefix);
-        var routePath = $"{ownerRoutePrefix}/{routePrefix}/{token}";
+        var token = CreateUniqueToken(routeBase);
+        var routePath = $"{routeBase}/{token}";
         var expiresAt = expiresAfter is { TotalSeconds: > 0 }
             ? DateTimeOffset.UtcNow.Add(expiresAfter.Value)
             : DateTimeOffset.MaxValue;
@@ -148,12 +149,12 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
         return HttpMethods.IsHead(normalizedMethod) && _routes.TryGetValue(CreateRouteKey(HttpMethods.Get, routePath), out route!);
     }
 
-    private string CreateUniqueToken(string ownerRoutePrefix, string routePrefix)
+    private string CreateUniqueToken(string routeBase)
     {
         for (var i = 0; i < 32; i++)
         {
             var token = GenerateShortToken();
-            if (!_files.ContainsKey($"{ownerRoutePrefix}/{routePrefix}/{token}")) return token;
+            if (!_files.ContainsKey($"{routeBase}/{token}")) return token;
         }
 
         return Guid.NewGuid().ToString("N")[..8];

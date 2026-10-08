@@ -186,6 +186,35 @@ Console.WriteLine("Plugin ID directory discovery verification passed.");
 Console.WriteLine("Plugin config TOML model verification passed.");
 Console.WriteLine("Plugin config nested patch verification passed.");
 
+{
+    var filePath = Path.GetTempFileName();
+    try
+    {
+        var web = new WebHostContext("http://127.0.0.1:7001", true);
+        var url = new Uri(web.RegisterFile("JmParser", string.Empty, filePath, contentType: "application/pdf"));
+        if (!System.Text.RegularExpressions.Regex.IsMatch(url.AbsolutePath, @"^/plugin/JmParser/[a-z0-9]{4,8}$"))
+            throw new InvalidOperationException("Empty file prefix did not preserve owner isolation with a short token.");
+        var legacy = new Uri(web.RegisterFile("OtherPlugin", "pdf", filePath));
+        if (!legacy.AbsolutePath.StartsWith("/plugin/OtherPlugin/pdf/", StringComparison.Ordinal))
+            throw new InvalidOperationException("Existing file route prefixes changed.");
+        var request = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        request.Request.Method = "GET";
+        request.Request.Path = url.AbsolutePath;
+        if (await web.HandleRequest(request) is not Microsoft.AspNetCore.Http.HttpResults.PhysicalFileHttpResult)
+            throw new InvalidOperationException("Short file URL did not resolve to the registered file.");
+        web.UnregisterOwner("JmParser");
+        if (await web.HandleRequest(request) is not Microsoft.AspNetCore.Http.HttpResults.NotFound)
+            throw new InvalidOperationException("Short file URL survived owner unload.");
+        var expired = new Uri(web.RegisterFile("JmParser", "", filePath, TimeSpan.FromTicks(1)));
+        await Task.Delay(10);
+        request.Request.Path = expired.AbsolutePath;
+        if (await web.HandleRequest(request) is not Microsoft.AspNetCore.Http.HttpResults.NotFound)
+            throw new InvalidOperationException("Short file expiration was not enforced.");
+    }
+    finally { File.Delete(filePath); }
+    Console.WriteLine("Short owner-scoped file route, existing prefix, unload and expiration verification passed.");
+}
+
 ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
 ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
 AssertThrows<InvalidOperationException>(() =>
