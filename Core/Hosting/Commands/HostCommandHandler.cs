@@ -295,7 +295,7 @@ internal sealed class HostCommandHandler(
                     var package = packages?.GetInstance(input[2]) ?? throw new InvalidOperationException($"未安装 Adapter: {input[2]}");
                     if (!package.PackageEnabled) throw new InvalidOperationException($"适配器包 {package.PackageId} 已关闭，请先打开适配器。");
                     if (_reloadCoordinator is not null)
-                        await _reloadCoordinator.ExecuteAdapterMutationAsync(() => manager.LoadInstanceAsync(package));
+                        await _reloadCoordinator.ExecuteAdapterStartAsync(() => manager.LoadInstanceAsync(package));
                     else
                         await manager.LoadInstanceAsync(package);
                     packages!.SetInstanceEnabled(package.Id, true);

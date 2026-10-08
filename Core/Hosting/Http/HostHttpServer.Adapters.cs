@@ -86,7 +86,7 @@ internal sealed partial class HostHttpServer
                 {
                     AdapterInstanceStore.Patch(configPath, id, path => ApplyComponentConfigPatch(configManager, path, configPatch,
                         GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id))));
-                    var applied = await reloadCoordinator.ExecuteAdapterMutationAsync(
+                    var applied = await reloadCoordinator.ExecuteAdapterStartAsync(
                         () => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
                     return Results.Ok(new
                     {
@@ -370,7 +370,7 @@ internal sealed partial class HostHttpServer
             {
                 var instance = adapterPackages.GetInstance(id); if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
                 if (!instance.PackageEnabled) return Results.Conflict(new { ok = false, error = "adapter_package_disabled", message = "适配器已关闭，请先打开适配器。", restartRequired = false });
-                await reloadCoordinator.ExecuteAdapterMutationAsync(async () => { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); adapterPackages.SetInstanceEnabled(instance.Id, true); }).ConfigureAwait(false);
+                await reloadCoordinator.ExecuteAdapterStartAsync(async () => { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); adapterPackages.SetInstanceEnabled(instance.Id, true); }).ConfigureAwait(false);
                 return Results.Ok(new { ok = true, restartRequired = false });
             }
             catch (Exception ex) { return AdapterOperationError("adapter_start_failed", ex); }
@@ -384,7 +384,7 @@ internal sealed partial class HostHttpServer
             {
                 if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
                 var failed = new List<string>();
-                await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+                await reloadCoordinator.ExecuteAdapterStartAsync(async () =>
                 {
                     adapterPackages.SetPackageEnabled(id, true);
                     foreach (var instance in adapterPackages.ListInstances().Where(item => string.Equals(item.PackageId, id, StringComparison.OrdinalIgnoreCase) && item.Enabled))
