@@ -168,6 +168,31 @@ jobs:
           path: artifacts/archives/*.zip
           if-no-files-found: error
 
+      - name: Publish layered container files
+        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
+        run: |
+          set -euo pipefail
+          runtime='${{ matrix.runtime }}'
+          arch=amd64
+          if [ "$runtime" = linux-musl-arm64 ]; then arch=arm64; fi
+          dotnet publish "${{ env.HOST_PROJECT }}" \
+            --configuration "${{ env.CONFIGURATION }}" \
+            --runtime "$runtime" --self-contained false \
+            --output "artifacts/container-publish/$arch" \
+            /p:ContinuousIntegrationBuild=true /p:RequireDashboard=true \
+            /p:DashboardDistPath="$GITHUB_WORKSPACE/Core/Assets/dashboard" \
+            /p:PublishSingleFile=false /p:IncludeNativeLibrariesForSelfExtract=false \
+            /p:DebugType=none /p:CopyOutputSymbolsToPublishDirectory=false
+          sh scripts/split-container-publish.sh "artifacts/container-publish/$arch" "artifacts/docker/$arch"
+
+      - name: Upload container files
+        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shirobot-container-${{ matrix.runtime }}
+          path: artifacts/docker/
+          if-no-files-found: error
+
   docker:
     name: Publish Docker image
     runs-on: ubuntu-latest
@@ -179,23 +204,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download Alpine framework-dependent hosts
+      - name: Download layered container files
         uses: actions/download-artifact@v4
         with:
-          pattern: shirobot-host-linux-musl-*64-framework-dependent
-          path: artifacts/archives
+          pattern: shirobot-container-linux-musl-*64
+          path: artifacts/docker
           merge-multiple: true
 
-      - name: Stage binaries per image architecture
+      - name: Normalize downloaded container files
         run: |
           set -euo pipefail
 
-          for pair in x64:amd64 arm64:arm64; do
-            runtime="${pair%%:*}"
-            arch="${pair##*:}"
-            mkdir -p "artifacts/docker/${arch}"
-            unzip -q -o "artifacts/archives/shirobot-host-linux-musl-${runtime}-framework-dependent.zip" -d "artifacts/docker/${arch}"
-            chmod +x "artifacts/docker/${arch}/ShiroBot"
+          for arch in amd64 arm64; do
+            test -f "artifacts/docker/$arch/application/ShiroBot.dll"
+            find "artifacts/docker/$arch" -type f -exec chmod 644 {} +
+            find "artifacts/docker/$arch" -type d -exec chmod 755 {} +
+            chmod +x "artifacts/docker/$arch/application/ShiroBot"
           done
 
       - name: Resolve image name
@@ -229,6 +253,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Containerfile
           target: prebuilt
           platforms: linux/amd64,linux/arm64
           push: true

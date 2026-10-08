@@ -9,7 +9,8 @@ services:
     ports:
       - "127.0.0.1:7001:7001"
     volumes:
-      - shirobot-data:/data
+      - shirobot_data:/data
 
 volumes:
-  shirobot-data:
+  shirobot_data:
+    name: shirobot_data

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using ShiroBot.Metadata;
 
 namespace ShiroBot.Hosting.Runtime;
 
@@ -92,6 +93,7 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
             {
                 runtime = HostEnvironmentInfo.Create(),
                 bot_version = BotVersion,
+                sdk_abi_version = BotMetadataProvider.SdkAbiVersion,
                 uptime_seconds = (long)(DateTimeOffset.UtcNow - StartedAt).TotalSeconds,
                 plugins_count = PluginsCount,
                 models_count = ModelsCount,

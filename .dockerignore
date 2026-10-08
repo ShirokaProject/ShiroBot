@@ -3,9 +3,12 @@
 .idea/
 **/bin/
 **/obj/
-artifacts/release/
+artifacts/*
+!artifacts/docker/
+artifacts/docker/*
+!artifacts/docker/amd64/
+!artifacts/docker/arm64/
 docker-data/
-Core/Assets/dashboard/
 *.binlog
 *.user
 config.toml

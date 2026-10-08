@@ -33,8 +33,10 @@ dotnet run --project Tests/Verification/ShiroBot.Verification.csproj
 ## 本地构建镜像
 
 ```bash
-docker build -t shirobot:local .
+podman build -f Containerfile -t shirobot:local .
 ```
+
+Docker 也可使用 `docker build -f Containerfile -t shirobot:local .`。容器版使用依赖框架的多文件发布，将第三方依赖与宿主程序分别放在镜像层中；依赖内容不变时可复用原层。普通下载版仍使用单文件发布。
 
 ## 文档
 

@@ -7,7 +7,7 @@ internal static class BotMetadataProvider
 {
     private static string BotVersion => GetVersion(typeof(Program).Assembly);
 
-    private static string SdkVersion => GetVersion(typeof(BotEvent).Assembly);
+    internal static string SdkAbiVersion => typeof(BotEvent).Assembly.GetName().Version?.ToString() ?? "unknown";
 
     private static string CommitShortHash
     {
@@ -26,7 +26,7 @@ internal static class BotMetadataProvider
     }
 
     internal static string StartupVersionText =>
-        $"当前 ShiroBot 版本: {BotVersion} | SDK 版本: {SdkVersion} | Commit: {CommitShortHash}";
+        $"当前 ShiroBot 版本: {BotVersion} | SDK ABI: {SdkAbiVersion} | Commit: {CommitShortHash}";
 
     private static string GetVersion(Assembly assembly)
     {
