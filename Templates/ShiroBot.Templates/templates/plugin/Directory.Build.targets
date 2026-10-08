@@ -1,0 +1,10 @@
+<Project>
+  <!-- Debug launch profiles start the managed host directly for IDE Hot Reload. -->
+  <Target Name="PrepareShiroBotDevelopmentHost" AfterTargets="Build"
+          Condition="'$(Configuration)' == 'Debug' and '$(DesignTimeBuild)' != 'true'">
+    <Exec Condition="'$(OS)' != 'Windows_NT'" WorkingDirectory="$(MSBuildProjectDirectory)"
+          Command="/bin/sh &quot;$(MSBuildProjectDirectory)/dev.sh&quot; --prepare --no-build" />
+    <Exec Condition="'$(OS)' == 'Windows_NT'" WorkingDirectory="$(MSBuildProjectDirectory)"
+          Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/dev.ps1&quot; --prepare --no-build" />
+  </Target>
+</Project>

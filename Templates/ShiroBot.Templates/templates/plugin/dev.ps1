@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+$prepareOnly = ($args.Count -gt 0 -and $args[0] -eq '--prepare')
+$skipBuild = ($args -contains '--no-build')
 # Windows PowerShell 5.1 downloads far slower while drawing the progress bar.
 $ProgressPreference = 'SilentlyContinue'
 Set-Location $PSScriptRoot
@@ -16,8 +18,10 @@ $versionFile = Join-Path $cacheDir '.host-version'
 $archiveName = "shirobot-host-$rid-framework-dependent.zip"
 $archive = Join-Path $cacheDir $archiveName
 
-dotnet build PluginTemplate.csproj -c Release
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if (-not $skipBuild) {
+    dotnet build PluginTemplate.csproj -c Debug -p:ShiroBotPluginPackagingEnabled=false
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 
 $installedVersion = if (Test-Path $versionFile) { "$(Get-Content $versionFile -Raw)".Trim() } else { '' }
 if (-not (Test-Path $hostExe) -or $installedVersion -ne $sdkVersion) {
@@ -32,7 +36,7 @@ if (-not (Test-Path $hostExe) -or $installedVersion -ne $sdkVersion) {
 }
 
 $pluginDir = Join-Path $cacheDir 'plugins/PluginTemplate'
-$buildDir = (Resolve-Path 'bin/Release/net10.0').Path
+$buildDir = (Resolve-Path 'bin/Debug/net10.0').Path
 $manifest = Join-Path $pluginDir '.shirobot-dev-files'
 New-Item -ItemType Directory -Force $pluginDir | Out-Null
 # Remove files copied by the previous run that the build no longer produces. Files the
@@ -51,6 +55,16 @@ Copy-Item "$buildDir/*" $pluginDir -Recurse -Force
 Get-ChildItem -LiteralPath $buildDir -Recurse -File | Where-Object { $_.Name -ne 'config.toml' } |
     ForEach-Object { $_.FullName.Substring($buildDir.Length).TrimStart('\', '/') -replace '\\', '/' } |
     Set-Content -LiteralPath $manifest -Encoding UTF8
+
+$configPath = Join-Path $cacheDir 'config.toml'
+if (-not (Test-Path $configPath)) {
+    Set-Content -Path $configPath -Value "protocols = []`n`n[api]`nenable = true`nlisten_urls = [`"http://127.0.0.1:7002`"]" -Encoding UTF8
+}
+
+if ($prepareOnly) {
+    Write-Host "ShiroBot v$sdkVersion is ready. Use the Rider Run button to start it."
+    exit 0
+}
 
 Write-Host "Starting ShiroBot v$sdkVersion with PluginTemplate..."
 Push-Location $cacheDir

@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "ShiroBot": {
+      "commandName": "Executable",
+      "executablePath": "/bin/sh",
+      "commandLineArgs": "\"$(MSBuildProjectDirectory)/dev.sh\" --no-console",
+      "workingDirectory": "$(MSBuildProjectDirectory)"
+    },
+    "ShiroBot Debug": {
+      "commandName": "Executable",
+      "executablePath": "$(MSBuildProjectDirectory)/.shirobot-dev/host/$(NETCoreSdkRuntimeIdentifier)/ShiroBot",
+      "commandLineArgs": "--no-console",
+      "workingDirectory": "$(MSBuildProjectDirectory)/.shirobot-dev/host/$(NETCoreSdkRuntimeIdentifier)"
+    }
+  }
+}

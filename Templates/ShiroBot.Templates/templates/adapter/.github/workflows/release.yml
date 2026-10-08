@@ -27,9 +27,12 @@ jobs:
         run: dotnet restore AdapterTemplate.csproj
       - name: Build
         run: dotnet build AdapterTemplate.csproj -c Release --no-restore /p:ContinuousIntegrationBuild=true
+      - name: Build development test plugin
+        run: dotnet build TestPlugin/AdapterTemplate.TestPlugin.csproj -c Release /p:ContinuousIntegrationBuild=true
       - name: Package
         run: |
           test -f bin/Release/net10.0/AdapterTemplate.dll
+          test ! -f bin/Release/net10.0/AdapterTemplate.TestPlugin.dll
           mkdir -p artifacts
           (cd bin/Release/net10.0 && zip -qr "$GITHUB_WORKSPACE/artifacts/AdapterTemplate.zip" .)
           cp bin/Release/net10.0/AdapterTemplate.dll artifacts/AdapterTemplate.dll

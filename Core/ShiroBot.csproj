@@ -12,13 +12,7 @@
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
     </PropertyGroup>
 
-    <PropertyGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='DebugPlugin' or '$(Configuration)'=='DebugAdapter' or '$(Configuration)'=='DebugAll'">
-        <OutputPath>bin\Debug\</OutputPath>
-    </PropertyGroup>
-
     <PropertyGroup>
-        <ManagedAdapterDebugDir>$(MSBuildProjectDirectory)\bin\Debug\$(TargetFramework)\adapters\ShiroBot.DemoAdapter</ManagedAdapterDebugDir>
-
         <!-- Dashboard 前端以成品 dist 形式从 Shirobot.Dashboard 仓的 Release 拉取，并嵌入宿主程序集。 -->
         <ShirobotDashboardVersion Condition="'$(ShirobotDashboardVersion)' == ''">$(ShiroBotProductVersion)</ShirobotDashboardVersion>
         <ShirobotDashboardRepo Condition="'$(ShirobotDashboardRepo)' == ''">ShirokaProject/Shirobot.Dashboard</ShirobotDashboardRepo>
@@ -38,14 +32,16 @@
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <Deterministic>true</Deterministic>
+        <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+        <!-- Keep Chinese satellites; English normally comes from neutral resources. -->
+        <SatelliteResourceLanguages>zh-Hans;zh-Hant;en</SatelliteResourceLanguages>
         <PublishReadyToRun>false</PublishReadyToRun>
-        <SelfContained>false</SelfContained>
         <PublishSingleFile>true</PublishSingleFile>
         <PublishAot>false</PublishAot>
         <PublishTrimmed>false</PublishTrimmed>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
         <DebuggerSupport>false</DebuggerSupport>
-        <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
         <ServerGarbageCollection>true</ServerGarbageCollection>
     </PropertyGroup>
 
@@ -69,11 +65,6 @@
         <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
             <_Parameter1>ShiroBot.RuntimeIdentifier</_Parameter1>
             <_Parameter2>$(RuntimeIdentifier)</_Parameter2>
-        </AssemblyAttribute>
-        <!-- Release builds record when they were built; local builds skip it so they stay incremental. -->
-        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(ContinuousIntegrationBuild)' == 'true'">
-            <_Parameter1>ShiroBot.BuildTimeUtc</_Parameter1>
-            <_Parameter2>$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))</_Parameter2>
         </AssemblyAttribute>
     </ItemGroup>
 

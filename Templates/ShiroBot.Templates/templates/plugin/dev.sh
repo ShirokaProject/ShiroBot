@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
+prepare_only=false
+skip_build=false
+if [ "${1:-}" = "--prepare" ]; then prepare_only=true; shift; fi
+if [ "${1:-}" = "--no-build" ]; then skip_build=true; shift; fi
+
 cd "$(dirname "$0")"
 
 sdk_version=$(sed -n 's/.*PackageVersion Include="ShiroBot.SDK" Version="\([^"]*\)".*/\1/p' Directory.Packages.props)
@@ -31,7 +36,9 @@ host_exe="$cache_dir/ShiroBot"
 version_file="$cache_dir/.host-version"
 archive="$cache_dir/shirobot-host-$rid-framework-dependent.zip"
 
-dotnet build PluginTemplate.csproj -c Release
+if [ "$skip_build" = false ]; then
+  dotnet build PluginTemplate.csproj -c Debug -p:ShiroBotPluginPackagingEnabled=false
+fi
 
 installed_version=$(cat "$version_file" 2>/dev/null || true)
 if [ ! -f "$host_exe" ] || [ "$installed_version" != "$sdk_version" ]; then
@@ -47,7 +54,7 @@ if [ ! -f "$host_exe" ] || [ "$installed_version" != "$sdk_version" ]; then
 fi
 
 plugin_dir="$cache_dir/plugins/PluginTemplate"
-build_dir="bin/Release/net10.0"
+build_dir="bin/Debug/net10.0"
 manifest="$plugin_dir/.shirobot-dev-files"
 mkdir -p "$plugin_dir"
 # Remove files copied by the previous run that the build no longer produces. Files the
@@ -61,6 +68,16 @@ fi
 cp -R "$build_dir/." "$plugin_dir/"
 # config.toml is never listed, so a user-edited config is not deleted if the build stops emitting one.
 (cd "$build_dir" && find . -type f ! -name config.toml | sed 's#^\./##') > "$manifest"
+
+# Development uses a separate port from the standard container deployment.
+if [ ! -f "$cache_dir/config.toml" ]; then
+  printf 'protocols = []\n\n[api]\nenable = true\nlisten_urls = ["http://127.0.0.1:7002"]\n' > "$cache_dir/config.toml"
+fi
+
+if [ "$prepare_only" = true ]; then
+  echo "ShiroBot v$sdk_version is ready. Use the Rider Run button to start it."
+  exit 0
+fi
 
 echo "Starting ShiroBot v$sdk_version with PluginTemplate..."
 cd "$cache_dir"

@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
+    <ShiroBotPluginPackagingEnabled Condition="'$(Configuration)' == 'Release'">true</ShiroBotPluginPackagingEnabled>
     <!--#if (useQq)-->
     <ShiroBotPluginSharedAssemblies>ShiroBot.Model.QQ</ShiroBotPluginSharedAssemblies>
     <!--#endif-->
@@ -18,6 +18,11 @@
 
   <ItemGroup>
     <PackageReference Include="ShiroBot.SDK" />
+    <Compile Remove="TestPlugin/**/*.cs" />
+    <!-- Build the test plugin for local development without linking it into the adapter. -->
+    <ProjectReference Include="TestPlugin/AdapterTemplate.TestPlugin.csproj"
+                      Condition="'$(Configuration)' == 'Debug'"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>

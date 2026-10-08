@@ -125,10 +125,22 @@ jobs:
           set -euo pipefail
           template_root="$RUNNER_TEMP/template-smoke"
           dotnet new install artifacts/nuget/ShiroBot.Templates.${SHIROBOT_PRODUCT_VERSION}.nupkg --force
-          dotnet new shirobot-plugin -n TemplatePlugin --platform qq -o "$template_root/TemplatePlugin"
-          dotnet new shirobot-adapter -n TemplateAdapter --platform discord -o "$template_root/TemplateAdapter"
+          # Exit 105 means the project was created but its optional scripts were denied.
+          create_template() {
+            local result=0
+            dotnet new "$@" --allow-scripts no || result=$?
+            if [ "$result" -ne 0 ] && [ "$result" -ne 105 ]; then return "$result"; fi
+          }
+          create_template shirobot-plugin -n TemplatePlugin --platform qq -o "$template_root/TemplatePlugin"
+          create_template shirobot-adapter -n TemplateAdapter --platform discord -o "$template_root/TemplateAdapter"
+          grep -Fq "PackageVersion Include=\"ShiroBot.SDK\" Version=\"${SHIROBOT_PRODUCT_VERSION}\"" "$template_root/TemplatePlugin/Directory.Packages.props"
+          grep -Fq "PackageVersion Include=\"ShiroBot.SDK\" Version=\"${SHIROBOT_PRODUCT_VERSION}\"" "$template_root/TemplateAdapter/Directory.Packages.props"
           test -f "$template_root/TemplatePlugin/.github/workflows/release.yml"
           test -f "$template_root/TemplateAdapter/.github/workflows/release.yml"
+          test -f "$template_root/TemplatePlugin/Properties/launchSettings.json"
+          test -f "$template_root/TemplateAdapter/Properties/launchSettings.json"
+          test -f "$template_root/TemplateAdapter/TemplateAdapter.slnx"
+          test -f "$template_root/TemplateAdapter/TestPlugin/TemplateAdapter.TestPlugin.csproj"
           grep -q 'dotnet build TemplatePlugin.csproj' "$template_root/TemplatePlugin/.github/workflows/release.yml"
           grep -q 'dotnet build TemplateAdapter.csproj' "$template_root/TemplateAdapter/.github/workflows/release.yml"
           dotnet build "$template_root/TemplatePlugin/TemplatePlugin.csproj" -c Release \
@@ -139,6 +151,10 @@ jobs:
             --source https://api.nuget.org/v3/index.json
           test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.SDK.dll"
           test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.Model.QQ.dll"
+          dotnet build "$template_root/TemplateAdapter/TestPlugin/TemplateAdapter.TestPlugin.csproj" -c Release \
+            --source "$GITHUB_WORKSPACE/artifacts/nuget" \
+            --source https://api.nuget.org/v3/index.json
+          test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/TemplateAdapter.TestPlugin.dll"
           test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/ShiroBot.SDK.dll"
           test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/ShiroBot.Model.Discord.dll"
 

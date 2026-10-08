@@ -1,7 +1,11 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "ShirokaProject",
-  "classifications": ["ShiroBot", "Adapter", "Library"],
+  "classifications": [
+    "ShiroBot",
+    "Adapter",
+    "Library"
+  ],
   "identity": "ShirokaProject.ShiroBot.Templates.Adapter.CSharp",
   "name": "ShiroBot Adapter",
   "shortName": "shirobot-adapter",
@@ -38,10 +42,22 @@
       "defaultValue": "generic",
       "replaces": "template-platform",
       "choices": [
-        { "choice": "generic", "description": "Start with platform-neutral SDK contracts." },
-        { "choice": "qq", "description": "Reference and require ShiroBot.Model.QQ." },
-        { "choice": "discord", "description": "Reference and require ShiroBot.Model.Discord." },
-        { "choice": "telegram", "description": "Reference and require ShiroBot.Model.Telegram." }
+        {
+          "choice": "generic",
+          "description": "Start with platform-neutral SDK contracts."
+        },
+        {
+          "choice": "qq",
+          "description": "Reference and require ShiroBot.Model.QQ."
+        },
+        {
+          "choice": "discord",
+          "description": "Reference and require ShiroBot.Model.Discord."
+        },
+        {
+          "choice": "telegram",
+          "description": "Reference and require ShiroBot.Model.Telegram."
+        }
       ]
     },
     "useQq": {
@@ -55,6 +71,83 @@
     "useTelegram": {
       "type": "computed",
       "value": "(platform == \"telegram\")"
+    },
+    "operatingSystem": {
+      "type": "bind",
+      "binding": "env:OS",
+      "defaultValue": "Unix"
+    },
+    "isWindows": {
+      "type": "computed",
+      "value": "(operatingSystem == \"Windows_NT\")"
     }
-  }
+  },
+  "primaryOutputs": [
+    {
+      "path": "AdapterTemplate.slnx"
+    },
+    {
+      "path": "AdapterTemplate.csproj"
+    }
+  ],
+  "postActions": [
+    {
+      "condition": "(operatingSystem != \"Windows_NT\")",
+      "description": "Build the component and download its matching ShiroBot development host without starting it.",
+      "actionId": "3A7C4B45-1F5D-4A30-959A-51B88E82B5D2",
+      "continueOnError": true,
+      "args": {
+        "executable": "/bin/sh",
+        "args": "dev.sh --prepare",
+        "redirectStandardOutput": false,
+        "redirectStandardError": false
+      },
+      "manualInstructions": [
+        {
+          "text": "Run /bin/sh dev.sh --prepare, then select the ShiroBot profile in Rider and click Run."
+        }
+      ]
+    },
+    {
+      "condition": "(operatingSystem == \"Windows_NT\")",
+      "description": "Build the component and download its matching ShiroBot development host without starting it.",
+      "actionId": "3A7C4B45-1F5D-4A30-959A-51B88E82B5D2",
+      "continueOnError": true,
+      "args": {
+        "executable": "powershell.exe",
+        "args": "-NoProfile -ExecutionPolicy Bypass -File dev.ps1 --prepare",
+        "redirectStandardOutput": false,
+        "redirectStandardError": false
+      },
+      "manualInstructions": [
+        {
+          "text": "Run powershell.exe -NoProfile -ExecutionPolicy Bypass -File dev.ps1 --prepare, then select the ShiroBot profile in Rider and click Run."
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "condition": "isWindows",
+          "exclude": [
+            "Properties/launchSettings.Unix.json"
+          ],
+          "rename": {
+            "Properties/launchSettings.Windows.json": "Properties/launchSettings.json"
+          }
+        },
+        {
+          "condition": "(!isWindows)",
+          "exclude": [
+            "Properties/launchSettings.Windows.json"
+          ],
+          "rename": {
+            "Properties/launchSettings.Unix.json": "Properties/launchSettings.json"
+          }
+        }
+      ]
+    }
+  ]
 }

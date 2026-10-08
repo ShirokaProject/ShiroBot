@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AdapterTemplate.csproj" />
+  <Project Path="TestPlugin/AdapterTemplate.TestPlugin.csproj" />
+</Solution>
