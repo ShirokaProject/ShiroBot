@@ -39,3 +39,9 @@ until the developer upgrades it.
 Both generated projects include `.github/workflows/release.yml`. It builds on pushes and pull
 requests and publishes the DLL plus a ZIP of the full Release build output when a matching `v*` tag is
 pushed. Update the component's `Version` metadata before tagging.
+
+For SDK 0.9.9, install `ShiroBot.Templates` 0.9.10. The NuGet template package 0.9.9
+contains unresolved SDK version placeholders; the 0.9.10 template patch fixes them while
+continuing to reference SDK 0.9.9. Template patch versions can therefore differ from SDK
+versions. The next SDK release must publish a fresh template version rather than reusing
+0.9.10; `publish-nuget.yml` accepts `template_version` for this purpose.
