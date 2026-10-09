@@ -34,7 +34,7 @@ jobs:
           test -f bin/Release/net10.0/AdapterTemplate.dll
           test ! -f bin/Release/net10.0/AdapterTemplate.TestPlugin.dll
           mkdir -p artifacts
-          (cd bin/Release/net10.0 && zip -qr "$GITHUB_WORKSPACE/artifacts/AdapterTemplate.zip" .)
+          (cd bin/Release/net10.0 && zip -qr "$GITHUB_WORKSPACE/artifacts/AdapterTemplate.zip" . -x '*.[pP][dD][bB]')
           cp bin/Release/net10.0/AdapterTemplate.dll artifacts/AdapterTemplate.dll
       - uses: actions/upload-artifact@v4
         with:

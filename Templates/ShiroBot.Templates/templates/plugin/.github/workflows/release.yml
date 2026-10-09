@@ -31,7 +31,7 @@ jobs:
         run: |
           test -f bin/Release/net10.0/PluginTemplate.dll
           mkdir -p artifacts
-          (cd bin/Release/net10.0 && zip -qr "$GITHUB_WORKSPACE/artifacts/PluginTemplate.zip" .)
+          (cd bin/Release/net10.0 && zip -qr "$GITHUB_WORKSPACE/artifacts/PluginTemplate.zip" . -x '*.[pP][dD][bB]')
           cp bin/Release/net10.0/PluginTemplate.dll artifacts/PluginTemplate.dll
       - uses: actions/upload-artifact@v4
         with:
