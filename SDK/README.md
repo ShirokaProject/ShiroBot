@@ -15,11 +15,13 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 The package version follows the ShiroBot host release. Each contract assembly in the package has its
 own ABI version, which only increases when its public contracts change. A plugin built against this
 package requires compatible ABI major versions and the same or newer ABI within each major series.
-The current development branch breaks SDK and QQ Model ABI to 1.0.0.0. Rebuild components;
-old static SDK/Model references are rejected before component activation.
+SDK 0.9.9 adds common file uploads with SDK ABI 1.1.0.0; QQ Model stays at ABI 1.0.0.0.
+Components referencing SDK ABI 1.0 remain compatible. Components built against ABI 1.1 require
+host 0.9.9 or newer. SDK/Model ABI 0.x references remain rejected before activation.
 
 | ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
+| 0.9.9 | 0.9.2 | 1.1.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.8 | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.6 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |

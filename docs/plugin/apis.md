@@ -157,7 +157,7 @@ using (Context.UseInstance("qq-work"))
 SDK 0.9.8 将 SDK 与 QQ Model ABI 主版本升为 1.0.0.0。引用旧 ABI 的插件会在激活前被拒绝，必须迁移并重新编译；`UsePlatform` 已删除，使用 `UseInstance` 选择实例。插件缓存、定时任务和持久身份也应携带 InstanceId，不能仅按平台保存。
 
 ::: info 版本范围
-实例接口、自动回复和同 DLL 多配置管理从宿主/SDK v0.9.7 开始提供，同时移除了 `UsePlatform`。v0.9.6 及更早版本使用平台作用域；本轮面向 SDK 0.9.8 的插件使用 `UseInstance`，并遵守新的 SDK / QQ Model ABI 和消息引用契约。0.9.8 当前仅本地构建，尚未公开发布。
+实例接口、自动回复和同 DLL 多配置管理从宿主/SDK v0.9.7 开始提供，同时移除了 `UsePlatform`。v0.9.6 及更早版本使用平台作用域；本轮面向 SDK 0.9.8 的插件使用 `UseInstance`，并遵守新的 SDK / QQ Model ABI 和消息引用契约。0.9.8 已公开发布；0.9.9 在 SDK ABI 1.1 中新增通用文件上传能力。
 :::
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。

@@ -15,7 +15,7 @@
     <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>0.9.8 is a breaking SDK/QQ contract migration: scoped user identities and channel-scoped message references, opaque string IDs, unified QQ group APIs, cancellable operations, explicit batch outcomes, unknown values and three-state updates. Adds common Markdown, buttons/interactions, cards with explicit fallbacks, target message capabilities and optional reactions. Rebuild plugins and adapters. ABI: SDK $(ShiroBotSdkAbiVersion), QQ Model $(ShiroBotQqModelAbiVersion), Discord Model $(ShiroBotDiscordModelAbiVersion), Telegram Model $(ShiroBotTelegramModelAbiVersion); ShiroBot API 0.9.2.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.9.9 adds optional common file uploads (IFileService, FileUploadRequest/FileUploadResult, SentMessage.UploadedFile), scoped upload routing, improved development templates and Avalonia previewer opt-in evaluation. SDK ABI 1.1 is compatible with SDK ABI 1.0 components; new ABI 1.1 components require host 0.9.9 or newer. QQ Model ABI remains 1.0. ABI: SDK $(ShiroBotSdkAbiVersion), QQ Model $(ShiroBotQqModelAbiVersion), Discord Model $(ShiroBotDiscordModelAbiVersion), Telegram Model $(ShiroBotTelegramModelAbiVersion); ShiroBot API 0.9.2.</PackageReleaseNotes>
     <NoWarn>$(NoWarn);NU5104;NU5128</NoWarn>
   </PropertyGroup>
 
