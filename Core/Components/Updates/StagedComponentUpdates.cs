@@ -30,6 +30,9 @@ internal static class StagedComponentUpdates
     // Package defaults only seed a fresh install; existing user settings always win.
     private static readonly HashSet<string> PreservedFiles = new(StringComparer.OrdinalIgnoreCase) { "config.toml" };
 
+    private static readonly HashSet<string> UserDirectories = new(StringComparer.OrdinalIgnoreCase)
+        { "cookies", "data", "cache", "tmp", "logs" };
+
     public static string GetStagingDirectory(string componentRoot, string id) =>
         Path.Combine(Path.GetFullPath(componentRoot), DirectoryName, id);
 
@@ -122,6 +125,14 @@ internal static class StagedComponentUpdates
 
         var newFiles = EnumeratePackageFiles(source).ToArray();
         var previousFiles = ReadPackageFiles(target);
+        // Never adopt an existing user file merely because a later package ships the same path.
+        // Legacy installs without a manifest still need their managed program assemblies replaced.
+        var legacyWithoutManifest = !File.Exists(Path.Combine(target, PackageFilesName));
+        var collisions = newFiles.Where(file => File.Exists(Path.Combine(target, file)) &&
+            !previousFiles.Contains(file, StringComparer.OrdinalIgnoreCase) &&
+            !(legacyWithoutManifest && string.IsNullOrEmpty(Path.GetDirectoryName(file)) &&
+              string.Equals(Path.GetExtension(file), ".dll", StringComparison.OrdinalIgnoreCase)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var removedFiles = previousFiles.Except(newFiles, StringComparer.OrdinalIgnoreCase)
             .Where(file => !IsPreservedUserFile(file))
             .ToArray();
@@ -134,7 +145,7 @@ internal static class StagedComponentUpdates
             {
                 var path = Path.Combine(target, relative);
                 if (!IsUnder(target, path) || !File.Exists(path)) continue;
-                if (IsPreservedUserFile(relative)) continue;
+                if (IsPreservedUserFile(relative) || collisions.Contains(relative)) continue;
                 File.Move(path, path + BackupSuffix, overwrite: true);
                 movedAside.Add(path);
             }
@@ -144,7 +155,7 @@ internal static class StagedComponentUpdates
                 var destination = Path.Combine(target, relative);
                 if (!IsUnder(target, destination)) continue;
                 // Defaults must never overwrite credentials or configuration from an earlier install.
-                if (IsPreservedUserFile(relative) && File.Exists(destination)) continue;
+                if ((IsPreservedUserFile(relative) || collisions.Contains(relative)) && File.Exists(destination)) continue;
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(Path.Combine(source, relative), destination, overwrite: false);
                 written.Add(destination);
@@ -157,7 +168,7 @@ internal static class StagedComponentUpdates
                 movedAside.Add(manifestPath);
             }
             written.Add(manifestPath);
-            File.WriteAllLines(manifestPath, newFiles.Where(file => !IsPreservedUserFile(file)));
+            File.WriteAllLines(manifestPath, newFiles.Where(file => !IsPreservedUserFile(file) && !collisions.Contains(file)));
         }
         catch
         {
@@ -247,7 +258,7 @@ internal static class StagedComponentUpdates
 
     private static bool IsPreservedUserFile(string relative) =>
         PreservedFiles.Contains(Path.GetFileName(relative)) ||
-        relative.Replace('\\', '/').StartsWith("cookies/", StringComparison.OrdinalIgnoreCase);
+        UserDirectories.Contains(relative.Replace('\\', '/').Split('/')[0]);
 
     private static string[] ReadPackageFiles(string target)
     {

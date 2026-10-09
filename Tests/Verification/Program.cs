@@ -1392,6 +1392,18 @@ try
         Directory.CreateDirectory(Path.Combine(installedDir, "data"));
         File.WriteAllText(Path.Combine(installedDir, "data", "history.jsonl"), "keep");
 
+        File.WriteAllText(Path.Combine(installedDir, "notes.txt"), "user-notes");
+        File.WriteAllText(Path.Combine(v2, "notes.txt"), "package-notes");
+        File.WriteAllText(Path.Combine(installedDir, "user-tool.dll"), "user-dll");
+        File.WriteAllText(Path.Combine(v2, "user-tool.dll"), "package-dll");
+        foreach (var name in new[] { "data", "cache", "tmp", "logs" })
+        {
+            Directory.CreateDirectory(Path.Combine(installedDir, name));
+            Directory.CreateDirectory(Path.Combine(v2, name));
+            File.WriteAllText(Path.Combine(installedDir, name, "state.json"), "user-state");
+            File.WriteAllText(Path.Combine(v2, name, "state.json"), "package-state");
+            File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName), [$"{name}/state.json"]);
+        }
         File.WriteAllText(Path.Combine(v2, "Sample.dll"), "v2");
         File.WriteAllText(Path.Combine(v2, "runtimes", "native.so"), "v2-native");
         File.WriteAllText(Path.Combine(v2, "config.toml"), "seed = 1");
@@ -1408,6 +1420,14 @@ try
             File.ReadAllText(Path.Combine(installedDir, "config.toml")) != "seed = 2 # user edit" ||
             File.ReadAllText(Path.Combine(installedDir, "data", "history.jsonl")) != "keep")
             throw new InvalidOperationException("Package replacement touched plugin data, config, or kept a dropped file.");
+
+        if (File.ReadAllText(Path.Combine(installedDir, "user-tool.dll")) != "user-dll" ||
+            File.ReadAllText(Path.Combine(installedDir, "notes.txt")) != "user-notes" ||
+            File.ReadAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName)).Contains("notes.txt"))
+            throw new InvalidOperationException("Package adopted or overwrote an unowned user file.");
+        foreach (var name in new[] { "data", "cache", "tmp", "logs" })
+            if (File.ReadAllText(Path.Combine(installedDir, name, "state.json")) != "user-state")
+                throw new InvalidOperationException("Package overwrote a reserved runtime directory.");
 
         // A failing replacement leaves the installed files exactly as they were.
         var v3 = Path.Combine(tempRoot, "staged-v3");
@@ -1445,6 +1465,7 @@ try
             File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v4" ||
             File.Exists(Path.Combine(installedDir, "runtimes", "native.so")) ||
             File.ReadAllText(Path.Combine(installedDir, "data", "history.jsonl")) != "keep" ||
+            File.ReadAllText(Path.Combine(installedDir, "notes.txt")) != "user-notes" ||
             File.ReadAllText(cookiePath) != "user-cookie" ||
             Directory.Exists(Path.Combine(componentRoot, StagedComponentUpdates.DirectoryName)))
             throw new InvalidOperationException("Staged component update was not applied and cleaned up.");
