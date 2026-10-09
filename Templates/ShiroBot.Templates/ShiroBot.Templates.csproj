@@ -43,7 +43,7 @@
              Query="/Project/ItemGroup/PackageVersion[@Include='ShiroBot.SDK']/@Version"
              Value="$(ShiroBotProductVersion)" />
     <ItemGroup>
-      <Content Remove="templates/plugin/Directory.Packages.props;templates/adapter/Directory.Packages.props" />
+      <Content Remove="@(Content)" Condition="'%(Content.Filename)%(Content.Extension)' == 'Directory.Packages.props'" />
       <Content Include="$(_TemplateSdkVersionDir)/plugin/Directory.Packages.props" PackagePath="content/templates/plugin/" />
       <Content Include="$(_TemplateSdkVersionDir)/adapter/Directory.Packages.props" PackagePath="content/templates/adapter/" />
     </ItemGroup>

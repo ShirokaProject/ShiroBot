@@ -10,6 +10,10 @@ on:
         description: SDK package version, for example 0.9.5
         required: true
         type: string
+      template_version:
+        description: Optional template-only package version (SDK version stays unchanged)
+        required: false
+        type: string
 
 jobs:
   publish:
@@ -41,6 +45,11 @@ jobs:
             $tag = '${{ github.ref_name }}'
             "value=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
           }
+          $templateVersion = '${{ inputs.template_version }}'
+          if ([string]::IsNullOrWhiteSpace($templateVersion)) {
+            $templateVersion = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.version }}' } else { '${{ github.ref_name }}'.TrimStart('v') }
+          }
+          "template=$templateVersion" >> $env:GITHUB_OUTPUT
 
       - name: Restore
         run: dotnet restore .\Shirobot.slnx
@@ -70,7 +79,25 @@ jobs:
       - name: Pack SDK packages
         run: |
            dotnet pack .\Packaging\ShiroBot.SDK.Package\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
-           dotnet pack .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release -o artifacts\nuget --no-build --no-restore
+           dotnet pack .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release -o artifacts\nuget --no-build --no-restore -p:Version=${{ steps.version.outputs.template }}
+
+      - name: Validate packed template SDK references
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $package = Join-Path $PWD 'artifacts/nuget/ShiroBot.Templates.${{ steps.version.outputs.template }}.nupkg'
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($package)
+          try {
+            foreach ($kind in @('plugin', 'adapter')) {
+              $entry = $zip.GetEntry("content/templates/$kind/Directory.Packages.props")
+              if ($null -eq $entry) { throw "Missing $kind SDK references in template package." }
+              $reader = [System.IO.StreamReader]::new($entry.Open())
+              try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+              if (!$text.Contains('Include="ShiroBot.SDK" Version="${{ steps.version.outputs.value }}"')) {
+                throw "Incorrect $kind SDK version in template package: $text"
+              }
+            }
+          } finally { $zip.Dispose() }
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
@@ -89,4 +116,4 @@ jobs:
       - name: Push to NuGet.org
         run: |
            dotnet nuget push artifacts\nuget\ShiroBot.SDK.${{ steps.version.outputs.value }}.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
-           dotnet nuget push artifacts\nuget\ShiroBot.Templates.${{ steps.version.outputs.value }}.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+           dotnet nuget push artifacts\nuget\ShiroBot.Templates.${{ steps.version.outputs.template }}.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
