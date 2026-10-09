@@ -1374,9 +1374,18 @@ try
         File.WriteAllText(Path.Combine(v1, "Sample.dll"), "v1");
         File.WriteAllText(Path.Combine(v1, "Old.dll"), "v1-only");
         File.WriteAllText(Path.Combine(v1, "config.toml"), "seed = 1");
+        Directory.CreateDirectory(Path.Combine(v1, "cookies"));
+        File.WriteAllText(Path.Combine(v1, "cookies", "bilibili.txt"), "seed-cookie");
         StagedComponentUpdates.ApplyPackage(v1, installedDir);
         if (File.ReadAllText(Path.Combine(installedDir, "config.toml")) != "seed = 1")
             throw new InvalidOperationException("A package config.toml did not seed a fresh install.");
+
+        var cookiePath = Path.Combine(installedDir, "cookies", "bilibili.txt");
+        if (File.ReadAllText(cookiePath) != "seed-cookie")
+            throw new InvalidOperationException("Cookie defaults did not seed a fresh install.");
+        File.WriteAllText(cookiePath, "user-cookie");
+        // Simulate the ownership list written by hosts that treated credentials as package assets.
+        File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName), ["cookies/bilibili.txt"]);
 
         // The plugin's own state appears next to the package files.
         File.WriteAllText(Path.Combine(installedDir, "config.toml"), "seed = 2 # user edit");
@@ -1386,7 +1395,13 @@ try
         File.WriteAllText(Path.Combine(v2, "Sample.dll"), "v2");
         File.WriteAllText(Path.Combine(v2, "runtimes", "native.so"), "v2-native");
         File.WriteAllText(Path.Combine(v2, "config.toml"), "seed = 1");
+        Directory.CreateDirectory(Path.Combine(v2, "cookies"));
+        File.WriteAllText(Path.Combine(v2, "cookies", "bilibili.txt"), "");
         StagedComponentUpdates.ApplyPackage(v2, installedDir);
+        if (File.ReadAllText(cookiePath) != "user-cookie" ||
+            File.ReadAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName)).Any(x => x.StartsWith("cookies/", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("Package defaults overwrote credentials or retained credential ownership.");
+        File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName), ["cookies/bilibili.txt"]);
         if (File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v2" ||
             File.Exists(Path.Combine(installedDir, "Old.dll")) ||
             !File.Exists(Path.Combine(installedDir, "runtimes", "native.so")) ||
@@ -1430,6 +1445,7 @@ try
             File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v4" ||
             File.Exists(Path.Combine(installedDir, "runtimes", "native.so")) ||
             File.ReadAllText(Path.Combine(installedDir, "data", "history.jsonl")) != "keep" ||
+            File.ReadAllText(cookiePath) != "user-cookie" ||
             Directory.Exists(Path.Combine(componentRoot, StagedComponentUpdates.DirectoryName)))
             throw new InvalidOperationException("Staged component update was not applied and cleaned up.");
     }

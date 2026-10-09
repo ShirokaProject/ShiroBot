@@ -27,7 +27,7 @@ internal static class StagedComponentUpdates
     private const string TargetFileName = ".shirobot-update-target";
     private const string BackupSuffix = ".shirobot-old";
 
-    // Never shipped by a package update, so a user's edited copy always wins.
+    // Package defaults only seed a fresh install; existing user settings always win.
     private static readonly HashSet<string> PreservedFiles = new(StringComparer.OrdinalIgnoreCase) { "config.toml" };
 
     public static string GetStagingDirectory(string componentRoot, string id) =>
@@ -123,7 +123,7 @@ internal static class StagedComponentUpdates
         var newFiles = EnumeratePackageFiles(source).ToArray();
         var previousFiles = ReadPackageFiles(target);
         var removedFiles = previousFiles.Except(newFiles, StringComparer.OrdinalIgnoreCase)
-            .Where(file => !PreservedFiles.Contains(Path.GetFileName(file)))
+            .Where(file => !IsPreservedUserFile(file))
             .ToArray();
 
         var movedAside = new List<string>();
@@ -134,7 +134,7 @@ internal static class StagedComponentUpdates
             {
                 var path = Path.Combine(target, relative);
                 if (!IsUnder(target, path) || !File.Exists(path)) continue;
-                if (PreservedFiles.Contains(Path.GetFileName(relative)) && newFiles.Contains(relative, StringComparer.OrdinalIgnoreCase)) continue;
+                if (IsPreservedUserFile(relative)) continue;
                 File.Move(path, path + BackupSuffix, overwrite: true);
                 movedAside.Add(path);
             }
@@ -143,8 +143,8 @@ internal static class StagedComponentUpdates
             {
                 var destination = Path.Combine(target, relative);
                 if (!IsUnder(target, destination)) continue;
-                // A package-provided config.toml only seeds a fresh install; it never replaces the user's.
-                if (PreservedFiles.Contains(Path.GetFileName(relative)) && File.Exists(destination)) continue;
+                // Defaults must never overwrite credentials or configuration from an earlier install.
+                if (IsPreservedUserFile(relative) && File.Exists(destination)) continue;
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(Path.Combine(source, relative), destination, overwrite: false);
                 written.Add(destination);
@@ -157,7 +157,7 @@ internal static class StagedComponentUpdates
                 movedAside.Add(manifestPath);
             }
             written.Add(manifestPath);
-            File.WriteAllLines(manifestPath, newFiles);
+            File.WriteAllLines(manifestPath, newFiles.Where(file => !IsPreservedUserFile(file)));
         }
         catch
         {
@@ -244,6 +244,10 @@ internal static class StagedComponentUpdates
                            !string.Equals(file, LegacyEntryFileName, StringComparison.Ordinal) &&
                            !string.Equals(file, DeleteTargetFileName, StringComparison.Ordinal))
             .OrderBy(file => file, StringComparer.Ordinal);
+
+    private static bool IsPreservedUserFile(string relative) =>
+        PreservedFiles.Contains(Path.GetFileName(relative)) ||
+        relative.Replace('\\', '/').StartsWith("cookies/", StringComparison.OrdinalIgnoreCase);
 
     private static string[] ReadPackageFiles(string target)
     {
