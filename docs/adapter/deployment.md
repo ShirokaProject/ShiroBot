@@ -43,10 +43,11 @@ adapters/ExampleAdapter/runtimes/...
 同一包的实例共用程序集文件，拥有独立适配器对象和可回收程序集上下文。实例清单、名称、启用状态和各自的连接配置全部保存在该包目录的 `config.toml`：
 
 ```text
-adapters/milky/adapter.json
 adapters/milky/ShiroBot.Adapter.Milky.dll
 adapters/milky/config.toml
 ```
+
+包 ID、入口 DLL、名称和版本由程序集元数据识别，扫描结果缓存在宿主 `cache/adapters/` 下。缓存可删除；缺失、损坏或 DLL 变化时会重新扫描，不影响配置和实例开关。旧的包目录 `adapter.json` 在成功识别后自动清理。
 
 ```toml
 [[instances]]

@@ -68,8 +68,7 @@ fi
 cp -R "$build_dir/." "$adapter_dir/"
 # config.toml is never listed, so a user-edited config is not deleted if the build stops emitting one.
 (cd "$build_dir" && find . -type f ! -name config.toml | sed 's#^\./##') > "$manifest"
-# Register the build as an installed, enabled adapter so the host and Dashboard manage it normally.
-printf '{"Id":"AdapterTemplate","Entry":"AdapterTemplate.dll","Enabled":true}\n' > "$adapter_dir/adapter.json"
+# The host discovers the adapter entry from DLL metadata; no package-local manifest is needed.
 
 plugin_dir="$cache_dir/plugins/AdapterTemplate.TestPlugin"
 build_dir="TestPlugin/bin/Debug/net10.0"

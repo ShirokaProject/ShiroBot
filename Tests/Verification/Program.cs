@@ -1149,6 +1149,42 @@ try
     if (adapterPackage.Get("verification") is not { Enabled: true } || !File.Exists(firstInstall.AssemblyPath))
         throw new InvalidOperationException("Adapter DLL install verification failed.");
 
+    var metadataCacheRoot = Path.Combine(tempRoot, "cache", "adapters");
+    var packageDirectory = Path.GetDirectoryName(firstInstall.AssemblyPath)!;
+    if (File.Exists(Path.Combine(packageDirectory, "adapter.json")) || !Directory.EnumerateFiles(metadataCacheRoot, "*.json").Any())
+        throw new InvalidOperationException("Adapter metadata was not stored exclusively in the host cache.");
+    var originalConfig = File.ReadAllText(Path.Combine(packageDirectory, "config.toml"));
+    Directory.Delete(metadataCacheRoot, recursive: true);
+    if (new AdapterPackageManager(adapterPackageRoot).Get("verification") is not { Enabled: true } ||
+        originalConfig != File.ReadAllText(Path.Combine(packageDirectory, "config.toml")))
+        throw new InvalidOperationException("Clearing adapter metadata cache lost package identity, switches or configuration.");
+    var metadataCacheFile = Directory.EnumerateFiles(metadataCacheRoot, "*.json").Single();
+    File.WriteAllText(metadataCacheFile, "invalid json");
+    File.WriteAllText(Path.Combine(packageDirectory, "adapter.json"), "{\"Id\":\"wrong\",\"Entry\":\"missing.dll\"}");
+    if (adapterPackage.Get("verification") is null || File.Exists(Path.Combine(packageDirectory, "adapter.json")))
+        throw new InvalidOperationException("Corrupt cache or obsolete package manifest prevented DLL-based discovery.");
+    var nestedEntry = Path.Combine(packageDirectory, "nested", "adapter.dll");
+    Directory.CreateDirectory(Path.GetDirectoryName(nestedEntry)!);
+    File.Move(firstInstall.AssemblyPath, nestedEntry);
+    if (adapterPackage.Get("verification")?.AssemblyPath != nestedEntry)
+        throw new InvalidOperationException("Adapter cache kept a stale entry path after a DLL move.");
+    var duplicateEntry = Path.Combine(packageDirectory, "duplicate.dll");
+    File.Copy(nestedEntry, duplicateEntry);
+    if (adapterPackage.Get("verification") is not null)
+        throw new InvalidOperationException("Adapter discovery accepted ambiguous entry DLLs through stale cache.");
+    File.Delete(duplicateEntry);
+    Directory.Delete(metadataCacheRoot, recursive: true);
+    File.WriteAllText(metadataCacheRoot, "Cache directory temporarily unavailable");
+    try
+    {
+        if (adapterPackage.Get("verification")?.AssemblyPath != nestedEntry)
+            throw new InvalidOperationException("Adapter loading required a writable metadata cache.");
+    }
+    finally { File.Delete(metadataCacheRoot); }
+    File.Move(nestedEntry, firstInstall.AssemblyPath);
+    Directory.Delete(Path.GetDirectoryName(nestedEntry)!);
+    Console.WriteLine("Adapter metadata cache reconstruction, invalidation and unavailable-cache verification passed.");
+
     // New packages do not create implicit bots; all instances share the package config.
     if (adapterPackage.ListInstances().Count != 0) throw new InvalidOperationException("Fresh installation created a default instance.");
     var externalCorePath = Path.Combine(tempRoot, "data", "custom.toml");

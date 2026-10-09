@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Plugins.Compatibility;
@@ -232,8 +234,6 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 package.EntryAssemblyPath);
             if (package.Type == "dll") entryRelativePath = Path.GetFileName(package.EntryAssemblyPath);
             PreserveUserFiles(target, staging);
-            var manifest = new AdapterManifest(package.Id, entryRelativePath, package.Name, package.Version, package.Description, package.Platform);
-            File.WriteAllText(Path.Combine(staging, "adapter.json"), JsonSerializer.Serialize(manifest));
 
             if (Directory.Exists(target)) Directory.Move(target, backup);
             try
@@ -287,9 +287,6 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 package.EntryAssemblyPath);
             if (package.Type == "dll") entryRelativePath = Path.GetFileName(package.EntryAssemblyPath);
             PreserveUserFiles(target, staging);
-            File.WriteAllText(
-                Path.Combine(staging, "adapter.json"),
-                JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, package.Name, package.Version, package.Description, package.Platform)));
 
             if (Directory.Exists(target)) Directory.Move(target, backup);
             Directory.Move(staging, target);
@@ -352,12 +349,6 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         var staging = StagedComponentUpdates.GetStagingDirectory(_root, package.Id);
         TryDeleteDirectory(staging);
         CopyPackageFiles(package, staging);
-        var entryRelativePath = package.Type == "dll"
-            ? Path.GetFileName(package.EntryAssemblyPath)
-            : Path.GetRelativePath(FindExtractRoot(package.EntryAssemblyPath), package.EntryAssemblyPath);
-        File.WriteAllText(
-            Path.Combine(staging, "adapter.json"),
-            JsonSerializer.Serialize(new AdapterManifest(package.Id, entryRelativePath, package.Name, package.Version, package.Description, package.Platform)));
         StagedComponentUpdates.WriteTarget(staging, GetAdapterDirectory(package.Id));
     }
 
@@ -376,26 +367,82 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         StagedComponentUpdates.DiscardStaged(_root, id);
         if (Get(id) is not null) SetPackageEnabled(id, false);
         if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        TryDeleteCacheFile(GetMetadataCachePath(path));
+    }
+
+    private string GetMetadataCachePath(string directory)
+    {
+        // Include the full package path so separate adapter roots cannot share stale metadata.
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory))));
+        return Path.Combine(Path.GetDirectoryName(_root)!, "cache", "adapters", key + ".json");
     }
 
     private InstalledAdapterPackage? ReadInstalled(string directory)
     {
         try
         {
-            var manifestPath = Path.Combine(directory, "adapter.json");
-            if (!File.Exists(manifestPath)) return null;
-            var manifest = JsonSerializer.Deserialize<AdapterManifest>(File.ReadAllText(manifestPath));
-            if (manifest is null || string.IsNullOrWhiteSpace(manifest.Id) || string.IsNullOrWhiteSpace(manifest.Entry) ||
-                !string.Equals(Path.GetFileName(directory), manifest.Id, StringComparison.OrdinalIgnoreCase)) return null;
-            var assemblyPath = Path.GetFullPath(Path.Combine(directory, manifest.Entry));
-            if (!IsUnder(directory, assemblyPath) || !File.Exists(assemblyPath)) return null;
-            return new InstalledAdapterPackage(manifest.Id, assemblyPath, IsProtocolEnabled(manifest.Id), manifest.Name ?? manifest.Id, manifest.Version ?? "1.0.0", manifest.Description, manifest.Platform);
+            var id = Path.GetFileName(directory);
+            if (id.StartsWith('.')) return null;
+            var files = Directory.EnumerateFiles(directory, "*.dll", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .Select(path => new FileInfo(path))
+                .Select(file => new AssemblyStamp(Path.GetRelativePath(directory, file.FullName), file.Length, file.LastWriteTimeUtc.Ticks))
+                .ToArray();
+            var cachePath = GetMetadataCachePath(directory);
+            AdapterManifest? manifest = null;
+            try
+            {
+                if (File.Exists(cachePath))
+                {
+                    var cached = JsonSerializer.Deserialize<AdapterMetadataCache>(File.ReadAllText(cachePath));
+                    if (cached?.Files is not null && cached.Files.SequenceEqual(files)) manifest = cached.Manifest;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+
+            if (manifest is null || !string.Equals(manifest.Id, id, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(manifest.Entry) || !files.Any(file => file.Path == manifest.Entry))
+            {
+                var entries = files.Select(file => (file.Path, Metadata: AdapterContractProbe.ReadMetadata(Path.Combine(directory, file.Path))))
+                    .Where(entry => entry.Metadata is not null).ToArray();
+                if (entries.Length != 1 || !string.Equals(entries[0].Metadata!.Id, id, StringComparison.OrdinalIgnoreCase)) return null;
+                var metadata = entries[0].Metadata!;
+                manifest = new AdapterManifest(metadata.Id, entries[0].Path, metadata.Name, metadata.Version, metadata.Description, metadata.Protocol);
+                TryWriteMetadataCache(cachePath, new AdapterMetadataCache(manifest, files));
+            }
+
+            // The former package-local manifest is redundant; never use it as configuration.
+            TryDeleteCacheFile(Path.Combine(directory, "adapter.json"));
+            return new InstalledAdapterPackage(manifest.Id, Path.Combine(directory, manifest.Entry), IsProtocolEnabled(manifest.Id),
+                manifest.Name ?? manifest.Id, manifest.Version ?? "1.0.0", manifest.Description, manifest.Platform);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
         {
             return null;
         }
     }
+
+    private static void TryWriteMetadataCache(string path, AdapterMetadataCache cache)
+    {
+        var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(temporary, JsonSerializer.Serialize(cache));
+            File.Move(temporary, path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        finally { TryDeleteCacheFile(temporary); }
+    }
+
+    private static void TryDeleteCacheFile(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    private sealed record AssemblyStamp(string Path, long Length, long LastWriteTicks);
+    private sealed record AdapterMetadataCache(AdapterManifest Manifest, AssemblyStamp[] Files);
 
     private static string FindSingleEntryAssembly(string root)
     {
@@ -445,7 +492,8 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             {
                 var relative = Path.GetRelativePath(sourceRoot, source);
                 // Package ownership is recorded by the host, never taken from an uploaded manifest.
-                if (relative == StagedComponentUpdates.PackageFilesName) continue;
+                if (relative == StagedComponentUpdates.PackageFilesName ||
+                    relative.Equals("adapter.json", StringComparison.OrdinalIgnoreCase)) continue;
                 var destination = Path.Combine(target, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(source, destination);

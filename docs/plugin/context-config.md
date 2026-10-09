@@ -107,6 +107,8 @@ Directory.CreateDirectory(cacheDirectory);
 
 即使单 DLL 位于 `plugins` 根目录，宿主也会为它提供稳定的 `plugins/<插件 ID>` 数据目录。
 
+当前 SDK 没有单独的 `CacheDirectory` API，插件使用上述 `Context.PluginDirectory` 下的 `cache` 子目录。该目录由插件创建和清理，只存放可重建数据；数据库、订阅和用户配置等持久数据不要放入缓存。宿主自身的 `cache/adapters` 用于适配器包元数据，不供插件存储数据。
+
 ## 日志
 
 ```csharp

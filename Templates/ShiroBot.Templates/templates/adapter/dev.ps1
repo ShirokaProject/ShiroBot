@@ -55,8 +55,7 @@ Copy-Item "$buildDir/*" $adapterDir -Recurse -Force
 Get-ChildItem -LiteralPath $buildDir -Recurse -File | Where-Object { $_.Name -ne 'config.toml' } |
     ForEach-Object { $_.FullName.Substring($buildDir.Length).TrimStart('\', '/') -replace '\\', '/' } |
     Set-Content -LiteralPath $manifest -Encoding UTF8
-# Register the build as an installed, enabled adapter so the host and Dashboard manage it normally.
-Set-Content -Path (Join-Path $adapterDir 'adapter.json') -Value '{"Id":"AdapterTemplate","Entry":"AdapterTemplate.dll","Enabled":true}' -Encoding ASCII
+# The host discovers the adapter entry from DLL metadata; no package-local manifest is needed.
 
 $pluginDir = Join-Path $cacheDir 'plugins/AdapterTemplate.TestPlugin'
 $buildDir = (Resolve-Path 'TestPlugin/bin/Debug/net10.0').Path
