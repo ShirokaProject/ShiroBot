@@ -66,20 +66,30 @@ jobs:
 
       - name: Build
         timeout-minutes: 5
-        run: dotnet build .\Shirobot.slnx -c Release --no-restore
+        shell: pwsh
+        run: |
+          if ('${{ inputs.template_version }}' -eq '') {
+            dotnet build .\Shirobot.slnx -c Release --no-restore
+          } else {
+            dotnet build .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release --no-restore
+          }
 
       - name: Install lifecycle diagnostics
+        if: inputs.template_version == ''
         run: dotnet tool install --global dotnet-dump
 
       - name: Verify
+        if: inputs.template_version == ''
         timeout-minutes: 5
         env:
           SHIROBOT_LIFECYCLE_DIAGNOSTICS: 'true'
         run: dotnet run --project .\Tests\Verification\ShiroBot.Verification.csproj -c Release --no-build
       - name: Pack SDK packages
-        run: |
-           dotnet pack .\Packaging\ShiroBot.SDK.Package\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
-           dotnet pack .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release -o artifacts\nuget --no-build --no-restore -p:Version=${{ steps.version.outputs.template }}
+        if: inputs.template_version == ''
+        run: dotnet pack .\Packaging\ShiroBot.SDK.Package\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
+
+      - name: Pack template package
+        run: dotnet pack .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release -o artifacts\nuget --no-build --no-restore -p:Version=${{ steps.version.outputs.template }}
 
       - name: Validate packed template SDK references
         shell: pwsh
@@ -99,6 +109,22 @@ jobs:
             }
           } finally { $zip.Dispose() }
 
+      - name: Verify template project generation
+        shell: pwsh
+        run: |
+          $package = Join-Path $PWD 'artifacts/nuget/ShiroBot.Templates.${{ steps.version.outputs.template }}.nupkg'
+          dotnet new install $package --force
+          if ($LASTEXITCODE -ne 0) { throw 'Template installation failed.' }
+          foreach ($kind in @('plugin', 'adapter')) {
+            $output = Join-Path $env:RUNNER_TEMP "template-smoke-$kind"
+            dotnet new "shirobot-$kind" -n SmokeProject -o $output --allow-scripts no
+            if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 105) { throw "$kind template creation failed." }
+            $props = Get-Content (Join-Path $output 'Directory.Packages.props') -Raw
+            if (!$props.Contains('Include="ShiroBot.SDK" Version="${{ steps.version.outputs.value }}"')) { throw "$kind generated SDK reference is incorrect." }
+            if (!(Test-Path (Join-Path $output 'Properties/launchSettings.json'))) { throw "$kind launch settings missing." }
+          }
+          exit 0
+
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -115,5 +141,7 @@ jobs:
 
       - name: Push to NuGet.org
         run: |
+           if ('${{ inputs.template_version }}' -eq '') {
            dotnet nuget push artifacts\nuget\ShiroBot.SDK.${{ steps.version.outputs.value }}.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+           }
            dotnet nuget push artifacts\nuget\ShiroBot.Templates.${{ steps.version.outputs.template }}.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
