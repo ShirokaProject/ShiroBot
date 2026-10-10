@@ -5,15 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ShiroBotPluginPackagingEnabled Condition="'$(Configuration)' == 'Release'">true</ShiroBotPluginPackagingEnabled>
-    <!--#if (useQq)-->
-    <ShiroBotPluginSharedAssemblies>ShiroBot.Model.QQ</ShiroBotPluginSharedAssemblies>
-    <!--#endif-->
-    <!--#if (useDiscord)-->
-    <ShiroBotPluginSharedAssemblies>ShiroBot.Model.Discord</ShiroBotPluginSharedAssemblies>
-    <!--#endif-->
-    <!--#if (useTelegram)-->
-    <ShiroBotPluginSharedAssemblies>ShiroBot.Model.Telegram</ShiroBotPluginSharedAssemblies>
-    <!--#endif-->
+    <!-- All bundled Models are host-provided, including ones this component does not use. -->
+    <ShiroBotPluginSharedAssemblies>ShiroBot.Model.QQ;ShiroBot.Model.Discord;ShiroBot.Model.Telegram</ShiroBotPluginSharedAssemblies>
   </PropertyGroup>
 
   <ItemGroup>

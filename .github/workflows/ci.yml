@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [master]
@@ -115,6 +116,9 @@ jobs:
             --source https://api.nuget.org/v3/index.json
           test -f "$RUNNER_TEMP/package-smoke/publish/Smoke.dll"
           test ! -f "$RUNNER_TEMP/package-smoke/publish/ShiroBot.SDK.dll"
+          test ! -f "$RUNNER_TEMP/package-smoke/publish/ShiroBot.Model.QQ.dll"
+          test ! -f "$RUNNER_TEMP/package-smoke/publish/ShiroBot.Model.Discord.dll"
+          test ! -f "$RUNNER_TEMP/package-smoke/publish/ShiroBot.Model.Telegram.dll"
           test ! -f "$RUNNER_TEMP/package-smoke/publish/ShiroBot.AvaloniaSdk.dll"
           test ! -f "$RUNNER_TEMP/package-smoke/publish/Avalonia.dll"
           test ! -d "$RUNNER_TEMP/package-smoke/publish/runtimes"

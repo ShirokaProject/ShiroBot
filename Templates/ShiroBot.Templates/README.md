@@ -45,3 +45,24 @@ contains unresolved SDK version placeholders; the 0.9.10 template patch fixes th
 continuing to reference SDK 0.9.9. Template patch versions can therefore differ from SDK
 versions. The next SDK release must publish a fresh template version rather than reusing
 0.9.10; `publish-nuget.yml` accepts `template_version` for this purpose.
+
+
+## NuGet release gate
+
+Tag releases call `publish-nuget.yml` only after every host runtime build and container build
+succeeds; GitHub Release publication waits for NuGet publication too. The NuGet workflow
+completes the reusable host CI, the Windows Release solution build and
+verification, package content checks, and eight generated consumer builds (plugin and adapter,
+each using generic, QQ, Discord, and Telegram contracts) before its publish job can run.
+Normal releases build consumers against the exact SDK package being released, from an isolated
+local feed and package cache. A template-only patch verifies its consumers against the already
+published SDK version.
+
+Only verified artifacts are passed to publication, with SHA-256 checksums checked again after
+download. Before obtaining upload credentials, the workflow checks every intended package
+version on NuGet.org. Existing versions or a failed version query stop the entire publication;
+it does not use `--skip-duplicate` to silently continue. Concurrent release runs are serialized.
+
+NuGet.org does not offer an atomic transaction across SDK and template packages. Preflight
+prevents known version collisions, but an upload/network failure can still leave one package
+published; the workflow reports failure instead of treating a partial release as success.
