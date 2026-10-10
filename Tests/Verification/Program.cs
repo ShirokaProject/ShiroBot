@@ -1834,15 +1834,17 @@ try
     string staleDirectory;
     using (var temporaryManager = new ShiroBot.Hosting.Files.TemporaryFileManager(tempCache, time))
     {
-        var owner = temporaryManager.ForOwner("plugin/../one");
-        var firstTemp = owner.CreateDirectory(TimeSpan.FromMinutes(1));
-        var secondTemp = temporaryManager.ForOwner("plugin-two").CreateDirectory(TimeSpan.FromMinutes(2));
+        var temporaryBot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), temporaryFiles: temporaryManager);
+        using var temporaryPlugin = new PluginContext(temporaryBot, "temp-plugin", Path.Combine(tempRoot, "temp-plugin"), new HostLogHub(), new PluginServiceRegistry());
+        IBotContext temporaryContext = temporaryPlugin;
+        var firstTemp = temporaryContext.CreateTempDirectory(TimeSpan.FromMinutes(1));
+        var secondTemp = temporaryManager.CreateDirectory("plugin-two", TimeSpan.FromMinutes(2));
         File.WriteAllText(Path.Combine(firstTemp.Path, "download.bin"), "temporary");
         File.WriteAllText(Path.Combine(secondTemp.Path, "download.bin"), "temporary");
         if (firstTemp.Path == secondTemp.Path || firstTemp.ExpiresAt != time.GetUtcNow().AddMinutes(1) ||
             !Path.GetFullPath(firstTemp.Path).StartsWith(Path.Combine(tempCache, "plugin-temp") + Path.DirectorySeparatorChar))
             throw new InvalidOperationException("Plugin temporary paths are not unique, contained or time-bound.");
-        AssertThrows<ArgumentOutOfRangeException>(() => owner.CreateDirectory(TimeSpan.Zero));
+        AssertThrows<ArgumentOutOfRangeException>(() => temporaryManager.CreateDirectory("plugin/../one", TimeSpan.Zero));
         time.Advance(TimeSpan.FromSeconds(59));
         temporaryManager.CleanupExpired();
         if (!Directory.Exists(firstTemp.Path)) throw new InvalidOperationException("Temporary files expired early.");
@@ -1851,6 +1853,8 @@ try
         if (Directory.Exists(firstTemp.Path) || !Directory.Exists(secondTemp.Path))
             throw new InvalidOperationException("Expiry cleanup touched another directory or failed to remove expired files.");
         staleDirectory = secondTemp.Path;
+        temporaryPlugin.Dispose();
+        AssertThrows<ObjectDisposedException>(() => temporaryContext.CreateTempDirectory(TimeSpan.FromMinutes(1)));
     }
     if (Directory.Exists(staleDirectory)) throw new InvalidOperationException("Host shutdown did not clean temporary files.");
     // Simulate a crashed previous process, which could not Dispose its manager.

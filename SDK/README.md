@@ -16,7 +16,7 @@ The package version follows the ShiroBot host release. Each contract assembly in
 own ABI version, which only increases when its public contracts change. A plugin built against this
 package requires compatible ABI major versions and the same or newer ABI within each major series.
 SDK 1.0.0 adds host-managed temporary directories (SDK ABI 1.2.0.0). QQ, Discord and
-Telegram Model ABI versions are 1.0.0.0. Components using TemporaryFiles require host 1.0.0.
+Telegram Model ABI versions are 1.0.0.0. Components using CreateTempDirectory require host 1.0.0.
 Package versions follow the 1.0 release series; ABI numbers track each assembly's contracts.
 
 | ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
@@ -457,7 +457,7 @@ is versioned with the shared SDK contract; SDK and Model ABI major series must m
 ## Host-managed temporary files (1.0)
 
 ```csharp
-var temporary = Context.TemporaryFiles.CreateDirectory(TimeSpan.FromMinutes(10));
+var temporary = Context.CreateTempDirectory(TimeSpan.FromMinutes(10));
 var filePath = Path.Combine(temporary.Path, "card.png");
 await File.WriteAllBytesAsync(filePath, pngBytes, cancellationToken);
 // Use/upload the file before temporary.ExpiresAt; the host owns deletion.

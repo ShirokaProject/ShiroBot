@@ -37,16 +37,11 @@ internal sealed class TemporaryFileManager : IDisposable
         _timer = _time.CreateTimer(_ => CleanupExpired(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
-    public ITemporaryFileContext ForOwner(string owner)
+    public TemporaryDirectory CreateDirectory(string owner, TimeSpan retention)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(owner);
         // IDs cannot introduce separators or collide through filename normalization.
         var ownerHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(owner))).ToLowerInvariant();
-        return new OwnerContext(this, ownerHash);
-    }
-
-    private TemporaryDirectory Create(string owner, TimeSpan retention)
-    {
         if (retention <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(retention), "Retention must be positive.");
         lock (_lock)
         {
@@ -54,7 +49,7 @@ internal sealed class TemporaryFileManager : IDisposable
             var expiresAt = _time.GetUtcNow().Add(retention);
             EnsureRootIsNotLink();
             // Use a flat unique directory so one plugin cannot name another plugin's directory.
-            var path = Path.Combine(_root, owner + "-" + Guid.NewGuid().ToString("N"));
+            var path = Path.Combine(_root, ownerHash + "-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(path);
             _directories.Add(path, expiresAt);
             return new TemporaryDirectory(path, expiresAt);
@@ -120,10 +115,5 @@ internal sealed class TemporaryFileManager : IDisposable
             foreach (var path in _directories.Keys) TryDeleteDirectory(path);
             _directories.Clear();
         }
-    }
-
-    private sealed class OwnerContext(TemporaryFileManager manager, string owner) : ITemporaryFileContext
-    {
-        public TemporaryDirectory CreateDirectory(TimeSpan retention) => manager.Create(owner, retention);
     }
 }

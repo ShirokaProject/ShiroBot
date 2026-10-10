@@ -77,6 +77,6 @@ using (Context.UseInstance("discord-work"))
 
 ## 1.0.0 临时目录服务
 
-新增 `IBotContext.TemporaryFiles`、`ITemporaryFileContext.CreateDirectory(TimeSpan)` 与
+新增 `IBotContext.CreateTempDirectory(TimeSpan)` 与
 `TemporaryDirectory(Path, ExpiresAt)`。新接口要求 SDK ABI 1.2 与宿主 1.0.0；目录保留时长、定时清理和重启清理语义见[宿主上下文](/plugin/context-config)。
 QQ Model ABI 保持 1.0，Discord/Telegram Model 进入 1.0 主版本，其旧 0.x ABI 组件需要按 SDK 1.0.0 重新构建。

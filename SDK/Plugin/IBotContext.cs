@@ -31,8 +31,12 @@ public interface IBotContext
     public IConfigContext Config { get; }
     public IWebHostContext WebHost { get; }
     public IPluginServices Services { get; }
-    /// <summary>创建由宿主统一清理的临时目录；保留时长由插件在创建时声明。</summary>
-    public ITemporaryFileContext TemporaryFiles { get; }
+    /// <summary>
+    /// 创建插件独立临时目录，保留时长必须大于零，从创建时开始计算。
+    /// 宿主每 30 秒清理到期目录，文件占用时重试；退出和下次启动清理遗留目录。
+    /// 目录位于宿主 cache/plugin-temp，不用于持久数据，无需插件删除或 Dispose。
+    /// </summary>
+    public TemporaryDirectory CreateTempDirectory(TimeSpan retention);
     public string PluginDirectory { get; }
     public IReadOnlyList<UserReference> OwnerList { get; }
     public IReadOnlyList<UserReference> AdminList { get; }

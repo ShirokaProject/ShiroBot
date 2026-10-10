@@ -177,7 +177,7 @@ SDK 的 `IMessageService`、`IChannelService`、`IUserService` 异步操作均�
 ## 宿主管理的临时目录（SDK 1.0.0）
 
 ```csharp
-var temp = Context.TemporaryFiles.CreateDirectory(TimeSpan.FromMinutes(10));
+var temp = Context.CreateTempDirectory(TimeSpan.FromMinutes(10));
 var path = Path.Combine(temp.Path, "video.mp4");
 // 下载、渲染或写入到 path，并在 temp.ExpiresAt 前发送。
 // 无需插件删除目录或 Dispose；到期由宿主统一清理。

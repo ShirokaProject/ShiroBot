@@ -26,8 +26,12 @@ internal sealed class PluginContext : IBotContext, IDisposable
     public IUpdater Updater => BotContext.Updater;
     public IWebHostContext WebHost => BotContext.WebHost;
     public IPluginServices Services { get; }
-    public ITemporaryFileContext TemporaryFiles => BotContext.TemporaryFiles?.ForOwner(_pluginName)
-        ?? throw new InvalidOperationException("Host temporary file service was not initialized.");
+    public TemporaryDirectory CreateTempDirectory(TimeSpan retention)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        return (BotContext.TemporaryFiles ?? throw new InvalidOperationException("Host temporary file service was not initialized."))
+            .CreateDirectory(_pluginName, retention);
+    }
     public string PluginDirectory { get; }
     public IConfigContext Config { get; private set; }
     public IReadOnlyList<UserReference> OwnerList => BotContext.OwnerList;
