@@ -152,12 +152,14 @@ Debug 构建使用独立 DLL 和 portable PDB，方便断点调试；Release 构
 模板项目附带 `scripts/dev.sh`（macOS / Linux）与 `scripts/dev.ps1`（Windows）。在项目目录运行：
 
 ```bash
-sh scripts/dev.sh --no-console
+sh scripts/dev.sh
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev.ps1 --no-console
+powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 ```
+
+Run、Debug 和脚本启动默认允许控制台交互；需要关闭输入时才手动传入 `--no-console`。
 
 脚本会 Debug 构建、准备宿主、复制插件并启动。只准备、不启动时加 `--prepare`。`.shirobot-dev/` 已被 `.gitignore` 忽略。升级 SDK 后会更新宿主程序，保留配置、适配器和插件数据。常规开发时修改代码后停止宿主，再重新构建并运行。
 

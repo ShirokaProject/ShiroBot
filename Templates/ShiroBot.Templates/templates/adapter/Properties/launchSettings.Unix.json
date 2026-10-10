@@ -3,7 +3,7 @@
     "ShiroBot": {
       "commandName": "Executable",
       "executablePath": "$(MSBuildProjectDirectory)/.shirobot-dev/host/$(NETCoreSdkRuntimeIdentifier)/ShiroBot",
-      "commandLineArgs": "--no-console",
+      "commandLineArgs": "",
       "workingDirectory": "$(MSBuildProjectDirectory)/.shirobot-dev/host/$(NETCoreSdkRuntimeIdentifier)"
     }
   }

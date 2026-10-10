@@ -19,7 +19,7 @@ To try the plugin in a local ShiroBot host, run `sh scripts/dev.sh` on macOS/Lin
 `powershell -ExecutionPolicy Bypass -File scripts/dev.ps1` on Windows. The script builds the plugin,
 downloads the host release matching the pinned `ShiroBot.SDK` version, installs the build output
 into `.shirobot-dev/`, and starts the host. Pass host options after the script name, for example
-`sh scripts/dev.sh --no-console`. The host and its local configuration stay in `.shirobot-dev/` and are
+`sh scripts/dev.sh`. The host and its local configuration stay in `.shirobot-dev/` and are
 ignored by Git. When the pinned SDK version changes, only the host executable is replaced;
 configuration, adapters and plugin data are kept.
 Each run removes files that an earlier run copied but the build no longer produces; files the
@@ -51,3 +51,5 @@ and runtime configuration; Debug keeps its dependencies. Existing projects must 
 SDK 0.9.9 or newer and enable `ShiroBotAvaloniaPreviewerSupport` for Debug. Release
 continues to use component packaging. Linked AXAML files must belong to this project
 through its `AvaloniaXaml` items.
+
+Run and Debug enable console input by default. Pass `--no-console` explicitly only when you want to disable console interaction.
