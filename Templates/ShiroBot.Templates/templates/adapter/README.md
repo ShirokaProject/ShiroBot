@@ -52,3 +52,10 @@ Open `http://127.0.0.1:7002/dashboard/` after launch. The API login token is gen
 in the development host's `config.toml` under `[api].token`. Configure and connect an
 adapter instance before testing chat commands. See the host documentation's plugin
 quick start for the complete Run/Debug and local development version setup.
+
+AXAML preview support is enabled in Debug. Build once, then select this project in
+Rider's AXAML preview project selector. The SDK generates the designer entry point
+and runtime configuration; Debug keeps its dependencies. Existing projects must use
+SDK 0.9.9 or newer and enable `ShiroBotAvaloniaPreviewerSupport` for Debug. Release
+continues to use component packaging. Linked AXAML files must belong to this project
+through its `AvaloniaXaml` items.

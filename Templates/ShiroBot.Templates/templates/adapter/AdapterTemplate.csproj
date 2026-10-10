@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Debug keeps the designer entry point and dependencies for AXAML preview. -->
+    <ShiroBotAvaloniaPreviewerSupport Condition="'$(Configuration)' == 'Debug'">true</ShiroBotAvaloniaPreviewerSupport>
     <ShiroBotPluginPackagingEnabled Condition="'$(Configuration)' == 'Release'">true</ShiroBotPluginPackagingEnabled>
     <!-- All bundled Models are host-provided, including ones this component does not use. -->
     <ShiroBotPluginSharedAssemblies>ShiroBot.Model.QQ;ShiroBot.Model.Discord;ShiroBot.Model.Telegram</ShiroBotPluginSharedAssemblies>

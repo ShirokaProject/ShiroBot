@@ -6,13 +6,39 @@ ShiroBot 在宿主默认加载上下文中统一提供 Avalonia 12.1、SkiaSharp
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="0.9.8" />
+  <PackageReference Include="ShiroBot.SDK" Version="1.0.0" />
 </ItemGroup>
 ```
 
 `ShiroBot.SDK` 会传递 Avalonia 编译类型和 AXAML build targets；运行时程序集由宿主共享。SDK 自动打包会移除 `Avalonia*`、`SkiaSharp*`、`HarfBuzzSharp*`、`MicroCom*` 及相关 runtime/native 资产。
 
 公共渲染 API 暂时保留 `ShiroBot.AvaloniaSdk` 命名空间以减少源码迁移；该命名空间中的类型现在由 `ShiroBot.SDK.dll` 提供。插件项目只需引用一个 `ShiroBot.SDK` 包。
+
+## Rider AXAML 预览
+
+新模板在 **Debug** 配置默认启用预览支持。先还原 NuGet 并 Debug 构建一次，
+再打开项目中的 `.axaml` 文件，在预览器项目选择框选插件项目。
+预览和插件 Run / Debug 是不同入口：卡片预览使用 SDK 生成的设计入口，
+运行配置仍直接启动 ShiroBot 宿主。
+
+已有项目需使用 SDK 0.9.9 或更新版本，并在项目中添加：
+
+```xml
+<PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+  <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
+  <ShiroBotPluginPackagingEnabled>false</ShiroBotPluginPackagingEnabled>
+</PropertyGroup>
+```
+
+SDK 会生成 `BuildAvaloniaApp` 设计入口和 `.runtimeconfig.json`；Debug 输出保留
+预览依赖与 PDB。Release 仍按插件分发规则打包，不需要把预览依赖部署到宿主。
+如项目已有 Avalonia 启动入口，保留自己的 `StartupObject`，并提供 `BuildAvaloniaApp`。
+
+出现 **No project** 时，先确认不是仍在引用缺少设计入口的 SDK 0.9.8，
+再检查 IDE 当前使用 Debug 配置并已重新加载/还原项目。
+通过链接引入的 AXAML 也必须出现在插件项目的 `AvaloniaXaml` 项中，
+预览器选择的是包含该文件的插件项目，而非依赖库或宿主。
+预览数据可在 AXAML 中用 `Design.DataContext` 设置，避免在设计模式访问网络或宿主上下文。
 
 ## 创建控件
 

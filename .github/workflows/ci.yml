@@ -110,6 +110,15 @@ jobs:
           </UserControl>
           EOF
 
+          # The designer needs an unmerged executable assembly, entry point and runtime config.
+          dotnet build "$RUNNER_TEMP/package-smoke/Smoke.csproj" -c Debug \
+            -p:ShiroBotPluginPackagingEnabled=false \
+            --source "$GITHUB_WORKSPACE/artifacts/nuget" \
+            --source https://api.nuget.org/v3/index.json
+          test -f "$RUNNER_TEMP/package-smoke/bin/Debug/net10.0/Smoke.runtimeconfig.json"
+          test -f "$RUNNER_TEMP/package-smoke/bin/Debug/net10.0/Avalonia.DesignerSupport.dll"
+          test -f "$RUNNER_TEMP/package-smoke/obj/Debug/net10.0/ShiroBot.AvaloniaSdk.DesignerPreviewEntryPoint.g.cs"
+
           dotnet publish "$RUNNER_TEMP/package-smoke/Smoke.csproj" -c Release \
             -o "$RUNNER_TEMP/package-smoke/publish" \
             --source "$GITHUB_WORKSPACE/artifacts/nuget" \
@@ -143,6 +152,8 @@ jobs:
           test -f "$template_root/TemplateAdapter/.github/workflows/release.yml"
           test -f "$template_root/TemplatePlugin/Properties/launchSettings.json"
           test -f "$template_root/TemplateAdapter/Properties/launchSettings.json"
+          grep -q '<ShiroBotAvaloniaPreviewerSupport .*true</ShiroBotAvaloniaPreviewerSupport>' "$template_root/TemplatePlugin/TemplatePlugin.csproj"
+          grep -q '<ShiroBotAvaloniaPreviewerSupport .*true</ShiroBotAvaloniaPreviewerSupport>' "$template_root/TemplateAdapter/TemplateAdapter.csproj"
           test -f "$template_root/TemplateAdapter/TemplateAdapter.slnx"
           test -f "$template_root/TemplateAdapter/TestPlugin/TemplateAdapter.TestPlugin.csproj"
           grep -q 'dotnet build TemplatePlugin.csproj' "$template_root/TemplatePlugin/.github/workflows/release.yml"
