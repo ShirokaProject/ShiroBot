@@ -40,7 +40,8 @@ public static class Program
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<HeadlessHostApp>()
             .UseSkia()
-            .UseHarfBuzz();
+            .UseHarfBuzz()
+            .ConfigureFonts(SystemFontConfiguration.Apply);
 
     public static async Task Main(string[] args)
     {

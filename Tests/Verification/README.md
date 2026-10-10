@@ -2,6 +2,18 @@
 
 Run the standard checks with `dotnet run --project Tests/Verification`.
 
+For system-font selection and actual Avalonia headless rendering checks:
+
+```sh
+dotnet run --project Tests/Verification -- --avalonia-fonts
+```
+
+This checks the Windows, macOS and Linux font preferences, missing-font fallback,
+theme resources, and the baselines of mixed Chinese/numeric and numeric-only
+metrics. Run it again with `SHIROBOT_DEFAULT_FONT_FAMILY` set to an installed font
+to verify the explicit override. Without an installed supported CJK font, the
+alignment check is skipped and the platform default is preserved.
+
 For the installed old-version → requested new-version integration checks:
 
 ```sh

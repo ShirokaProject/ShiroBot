@@ -49,7 +49,9 @@ internal sealed class AvaloniaHostBootstrapper : IDisposable
     {
         try
         {
-            var builder = AppBuilder.Configure<HeadlessHostApp>().UseSkia();
+            var builder = AppBuilder.Configure<HeadlessHostApp>()
+                .UseSkia()
+                .ConfigureFonts(SystemFontConfiguration.Apply);
             var defaultFamily = Environment.GetEnvironmentVariable("SHIROBOT_DEFAULT_FONT_FAMILY");
             var emojiFamily = Environment.GetEnvironmentVariable("SHIROBOT_EMOJI_FONT_FAMILY");
             if (!string.IsNullOrWhiteSpace(defaultFamily) || !string.IsNullOrWhiteSpace(emojiFamily))
