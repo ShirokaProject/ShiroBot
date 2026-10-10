@@ -27,6 +27,12 @@ using ShiroBot.Plugins.Compatibility;
 using ShiroBot.SharedContractPluginProbe;
 
 [assembly: ShiroBotApiCompatibility("0.9", "0.9")]
+if (args is ["--config-reload"])
+{
+    await CoreConfigReloadVerification.RunAsync();
+    return;
+}
+
 if (args is ["--avalonia-fonts"])
 {
     await AvaloniaFontVerification.RunAsync();

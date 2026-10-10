@@ -34,6 +34,8 @@ public static class Updater
         _githubProxy = githubProxy;
     }
 
+    internal static void SetGithubProxy(string? githubProxy) => Volatile.Write(ref _githubProxy, githubProxy);
+
     public static async Task<GitHubReleaseUpdate?> CheckGitHubReleaseAsync(
         string repository,
         string currentVersion,
@@ -587,9 +589,10 @@ public static class Updater
 
     private static string ApplyGithubProxy(string url)
     {
-        if (string.IsNullOrWhiteSpace(_githubProxy)) return url;
+        var proxy = Volatile.Read(ref _githubProxy);
+        if (string.IsNullOrWhiteSpace(proxy)) return url;
 
-        return _githubProxy.TrimEnd('/') + "/" + url;
+        return proxy.TrimEnd('/') + "/" + url;
     }
 }
 

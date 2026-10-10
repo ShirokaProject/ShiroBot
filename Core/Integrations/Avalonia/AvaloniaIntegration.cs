@@ -127,7 +127,8 @@ public static class AvaloniaIntegration
         return theme switch
         {
             RenderTheme.Dark => ThemeVariant.Dark,
-            RenderTheme.Auto => IsDarkByClock() ? ThemeVariant.Dark : ThemeVariant.Light,
+            // Auto follows the host setting; the host's Auto mode resolves by the clock.
+            RenderTheme.Auto => ResolveThemeVariant(),
             _ => ThemeVariant.Light
         };
     }

@@ -1,6 +1,7 @@
 using ShiroBot.Hosting.Context;
 using CH = ShiroBot.Console.ConsoleOutput;
 using ShiroBot.Integrations.Avalonia;
+using ShiroBot.Update;
 
 namespace ShiroBot.Configuration;
 
@@ -26,6 +27,8 @@ internal sealed class CoreConfigWatcher : IDisposable
 
         // Validate both lists before applying either permission or any runtime settings.
         foreach (var entry in updated.OwnerList.Concat(updated.AdminList)) ShiroBot.SDK.Models.UserReference.Parse(entry);
+        if (!string.IsNullOrWhiteSpace(active.Api.Token) && string.IsNullOrWhiteSpace(updated.Api.Token))
+            throw new InvalidOperationException("运行中的 API 令牌不能设为空；修改未应用。");
         var changes = new List<string>();
 
         if (!ArrayEquals(active.OwnerList, updated.OwnerList))
@@ -67,6 +70,36 @@ internal sealed class CoreConfigWatcher : IDisposable
             active.AvaloniaTheme = updated.AvaloniaTheme;
             AvaloniaIntegration.SetThemeMode(updated.AvaloniaTheme);
             changes.Add($"avalonia_theme={updated.AvaloniaTheme}");
+        }
+
+        if (!string.Equals(active.GithubProxy, updated.GithubProxy, StringComparison.Ordinal))
+        {
+            active.GithubProxy = updated.GithubProxy;
+            Updater.SetGithubProxy(updated.GithubProxy);
+            changes.Add("github_proxy");
+        }
+
+        if (!string.Equals(active.HostUpdateRepository, updated.HostUpdateRepository, StringComparison.Ordinal))
+        {
+            active.HostUpdateRepository = updated.HostUpdateRepository;
+            changes.Add("host_update_repository");
+        }
+
+        if (!string.Equals(active.Api.Token, updated.Api.Token, StringComparison.Ordinal))
+        {
+            active.Api.Token = updated.Api.Token;
+            changes.Add("api.token");
+        }
+
+        if (active.Api.Enable != updated.Api.Enable || active.Api.EnableDashboard != updated.Api.EnableDashboard
+            || !ArrayEquals(active.Api.ListenUrls, updated.Api.ListenUrls)
+            || !ArrayEquals(active.Api.PublicBaseUrl, updated.Api.PublicBaseUrl))
+        {
+            active.Api.Enable = updated.Api.Enable;
+            active.Api.EnableDashboard = updated.Api.EnableDashboard;
+            active.Api.ListenUrls = updated.Api.ListenUrls;
+            active.Api.PublicBaseUrl = updated.Api.PublicBaseUrl;
+            changes.Add("api 服务与地址设置(下次启动生效)");
         }
 
         if (!active.Protocols.SequenceEqual(updated.Protocols, StringComparer.OrdinalIgnoreCase))

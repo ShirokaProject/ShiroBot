@@ -2,6 +2,12 @@
 
 ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.toml`，文件保存后部分设置会自动热更新。
 
+保存后，`enable_log`、`showid`、`owner_list`、`admin_list`、`plugin_routes`、`github_proxy` 和 `api.token` 会自动应用。`host_update_repository` 会在下次检查更新时读取新值。
+
+`avalonia_theme` 会影响下一次使用 `RenderTheme.Auto` 的卡片渲染；宿主设为 `Auto` 时才按时间切换。插件显式指定 `RenderTheme.Light` 或 `RenderTheme.Dark` 时优先使用插件的设置，已经发送的图片不会改变。
+
+手工修改 `protocols`、`disable_console_input`、`api.enable`、`api.enable_dashboard`、`api.listen_urls` 或 `api.public_base_url` 后需重启宿主。Dashboard 的适配器启停操作会额外更新运行状态。
+
 ## 完整示例
 
 ```toml
