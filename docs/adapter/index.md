@@ -8,10 +8,12 @@
 
 ```bash
 dotnet new install ShiroBot.Templates
-dotnet new shirobot-adapter -n MyQqAdapter --platform qq --creator "Your Name"
+dotnet new shirobot-adapter -n MyQqAdapter --platform qq --creator "Your Name" --allow-scripts yes
 ```
 
 `--platform` 可选 `generic`、`qq`、`discord`、`telegram`。模板生成 `IBotAdapter` 骨架、SDK 引用和对应的内置 Model 依赖声明。若手动创建项目，需引用与宿主版本匹配的 `ShiroBot.SDK`，并在适配器类上标注 `BotAdapterAttribute`。示例仓库见 [DemoAdapter](https://github.com/ShirokaProject/Shirobot.Adapter.DemoAdapter)。
+
+Rider 中将构建配置设为 **Debug**，首次先构建项目，再选择 **ShiroBot**，直接点击 Run 或 Debug。模板自动选择系统和宿主架构，无需单独的 Debug 配置；保留“启动前构建”步骤。打开生成的解决方案可同时开发适配器与 `TestPlugin`，构建适配器时会准备二者的开发运行文件。连接目标平台后发送 `#ping`、`#adapter-info` 或 `#adapter-echo hello` 验证消息接收、模型映射和发送路径；在适配器事件处理方法设置断点可以检查输入。
 
 模板附带 `dev.sh` / `dev.ps1`：编译后把适配器安装为已启用的 Adapter，并启动与 SDK 版本一致的本地宿主（位于 `.shirobot-dev/`），可以直接在 Dashboard 中修改它的配置。用法与[插件的本地调试](/plugin/#本地调试)相同。
 

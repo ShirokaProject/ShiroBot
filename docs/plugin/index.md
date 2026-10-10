@@ -12,7 +12,7 @@
 
 ```bash
 dotnet new install ShiroBot.Templates
-dotnet new shirobot-plugin -n HelloPlugin --creator "Your Name"
+dotnet new shirobot-plugin -n HelloPlugin --creator "Your Name" --allow-scripts yes
 cd HelloPlugin
 ```
 
@@ -120,17 +120,52 @@ load HelloPlugin
 
 ### 本地调试
 
-模板项目附带 `dev.sh`（macOS / Linux）与 `dev.ps1`（Windows）。脚本会编译插件，下载与 `ShiroBot.SDK` 版本一致的宿主到 `.shirobot-dev/`，安装编译结果后启动宿主：
+#### Rider：直接 Run / Debug
+
+1. 打开生成的项目或解决方案。通过 Rider 的新建项目窗口选择 **ShiroBot Plugin** 也可以；是否将解决方案和项目放在同一目录不影响运行。
+2. 将构建配置设为 **Debug**，保留运行配置中的“启动前构建”步骤。
+3. 首次使用先构建项目。如果创建项目时没有执行准备脚本，Debug 构建会自动下载与 `Directory.Packages.props` 中 SDK 版本匹配的宿主，并复制插件及调试符号。
+4. 选择唯一的 **ShiroBot** 运行配置，点击三角形运行，或点击小虫子调试。该配置直接启动 .NET 宿主，Run 与 Debug 共用，不需要再选择单独的 Debug 配置。
+5. 在 `Plugin.cs` 的 `ping` 处理方法中设置断点。到开发宿主的 Dashboard 添加并启用适配器实例，连接机器人后发送 `#ping`；插件会回复 `pong`，调试时会命中断点。
+
+创建项目时自动选择当前操作系统，宿主架构由当前 .NET SDK 的 RID 决定，例如 `osx-arm64`。`Properties/launchSettings.json` 定义启动入口；开发宿主位于项目目录下的 `.shirobot-dev/host/<RID>/`。
+
+新开发宿主的 Dashboard 地址是 `http://127.0.0.1:7002/dashboard/`，登录 Token 首次启动时自动生成，保存在该开发宿主的 `config.toml` 的 `[api].token` 中。没有适配器连接时，宿主能加载插件，但不会产生聊天消息供插件响应。
+
+Debug 构建使用独立 DLL 和 portable PDB，方便断点调试；Release 构建使用分发打包规则。C# Hot Reload 是否能应用取决于 IDE 和修改类型，不能应用时停止宿主、重新构建并启动。Release 包不包含 PDB。
+
+#### 命令行启动
+
+模板项目附带 `dev.sh`（macOS / Linux）与 `dev.ps1`（Windows）。在项目目录运行：
 
 ```bash
 sh dev.sh --no-console
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File dev.ps1
+powershell -ExecutionPolicy Bypass -File dev.ps1 --no-console
 ```
 
-`.shirobot-dev/` 已被 `.gitignore` 忽略。升级 SDK 版本后只会替换宿主程序，配置、适配器和插件数据都会保留。修改插件后先停止宿主再重新运行脚本。
+脚本会 Debug 构建、准备宿主、复制插件并启动。只准备、不启动时加 `--prepare`。`.shirobot-dev/` 已被 `.gitignore` 忽略。升级 SDK 后会更新宿主程序，保留配置、适配器和插件数据。常规开发时修改代码后停止宿主，再重新构建并运行。
+
+#### 常见启动问题
+
+| 现象 | 处理 |
+| --- | --- |
+| Rider 显示“无效的可执行文件路径” | 先执行一次 Debug 构建，确认 `.shirobot-dev/host/<RID>/ShiroBot`（Windows 为 `ShiroBot.exe`）存在，再启动。 |
+| 下载宿主返回 404 | 核对 SDK 版本是否已有同版本宿主 Release；未发布的开发版需要自行准备本地宿主，不能从 Release 自动下载。 |
+| 断点没有绑定 | 确认是 Debug 构建、通过小虫子启动，并且复制了对应 DLL/PDB。等待插件加载，再触发对应消息。 |
+| 宿主启动但 `#ping` 没有响应 | 检查适配器实例是否已连接、插件是否启用，以及路由是否允许该会话。 |
+| 提示端口被占用 | 停止另一个开发宿主，或修改开发宿主 `config.toml` 中的 `[api].listen_urls`。 |
+
+#### 测试尚未发布的宿主 / SDK
+
+这只适用于开发版本测试，正式发布的版本不需要手动准备：
+
+1. 从同一份源码构建 SDK 和 Templates NuGet 包，将模板包用 `dotnet new install <模板包路径>` 安装；给生成项目配置本地 NuGet 源，确保 SDK 从该目录还原。已有同版本本地 SDK 缓存时，确认没有继续使用旧构建。
+2. 从对应源码发布当前系统/架构的宿主，将发布目录中的文件放入项目的 `.shirobot-dev/host/<RID>/`，保留可执行权限。
+3. 在该目录创建 `.host-version` 文本文件，内容为 `Directory.Packages.props` 中的 SDK 产品版本，例如 `1.0.0`。脚本仅在可执行文件存在且版本标记匹配时跳过自动下载。
+4. 再执行 Debug 构建并使用同一个 **ShiroBot** 配置调试。不要用旧版本宿主冒充新的 SDK 版本。
 
 使用 `dotnet new shirobot-plugin` 生成的项目会带 `.github/workflows/release.yml`。推送代码或提交 PR 时自动构建；将 `Plugin.cs` 中的 `Version` 改为目标版本后推送同版本 tag（如 `v1.0.0`），Action 会把 Release 构建输出的 ZIP 和入口 DLL 上传到 GitHub Release。
 

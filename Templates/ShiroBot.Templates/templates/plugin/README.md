@@ -30,3 +30,17 @@ Before releasing, set the `Version` in `Plugin.cs` to the version you want, then
 tag such as `v1.0.0`. GitHub Actions will publish a ZIP and the plugin DLL to GitHub Releases.
 The ZIP contains the complete Release build output; install the DLL directly only when no extra files
 are needed. GitHub Actions must be enabled for the repository.
+
+## First launch troubleshooting
+
+If Rider reports an invalid executable path, build the project in Debug first and
+check that `.shirobot-dev/host/<RID>/ShiroBot` (`ShiroBot.exe` on Windows) exists.
+Host downloads require a published release matching the SDK product version. A 404 for
+an unreleased SDK version requires a locally built matching host, not an older release.
+Copy its publish output into that host directory and write the matching SDK product
+version into `.host-version` to skip downloading. Keep the host executable permission.
+
+Open `http://127.0.0.1:7002/dashboard/` after launch. The API login token is generated
+in the development host's `config.toml` under `[api].token`. Configure and connect an
+adapter instance before testing chat commands. See the host documentation's plugin
+quick start for the complete Run/Debug and local development version setup.
