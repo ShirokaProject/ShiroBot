@@ -221,6 +221,28 @@ Console.WriteLine("Plugin config nested patch verification passed.");
     Console.WriteLine("Short owner-scoped file route, existing prefix, unload and expiration verification passed.");
 }
 
+{
+    var assembly = typeof(ShiroBot.ExternalConfigPluginProbe.ProbePlugin).Assembly;
+    var before = ShiroBot.ExternalConfigModelProbe.Settings.Constructions;
+    var metadataSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(assembly.Location));
+    if (ShiroBot.ExternalConfigModelProbe.Settings.Constructions != before)
+        throw new InvalidOperationException("External config metadata inspection executed a constructor.");
+    var loadedSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(assembly));
+    foreach (var schema in new[] { metadataSchema, loadedSchema })
+    {
+        if (schema.Count != 2 || schema["cookie"].GetProperty("label").GetString() != "登录凭据" ||
+            schema["cookie"].GetProperty("description").GetString() != "完整 Cookie，留空禁用。" ||
+            schema["cookie"].GetProperty("type").GetString() != "password" ||
+            schema["cookie"].GetProperty("group_id").GetString() != "cookies" ||
+            schema["cookie"].GetProperty("group_label").GetString() != "Cookie")
+            throw new InvalidOperationException("External config schema lost labels, descriptions, password type or groups.");
+    }
+    if (metadataSchema["retries"].GetProperty("default_value").GetInt32() != 0 ||
+        loadedSchema["retries"].GetProperty("default_value").GetInt32() != 5)
+        throw new InvalidOperationException("External config defaults did not respect the loaded/unloaded boundary.");
+    Console.WriteLine("External assembly config schema verification passed.");
+}
+
 ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
 ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
 AssertThrows<InvalidOperationException>(() =>

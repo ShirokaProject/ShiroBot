@@ -119,6 +119,20 @@ internal sealed partial class HostHttpServer
     {
         try
         {
+            if (loadedAssembly is not null)
+            {
+                var configType = FindDeclaredConfigType(loadedAssembly);
+                if (configType is not null && configType.Assembly.TryGetRawMetadata(out var configBlob, out var configLength))
+                {
+                    try
+                    {
+                        return BuildComponentConfigSchema(new MetadataReader(configBlob, configLength),
+                            configType.Assembly, configType.FullName);
+                    }
+                    finally { GC.KeepAlive(configType.Assembly); }
+                }
+            }
+
             if (loadedAssembly is not null && loadedAssembly.TryGetRawMetadata(out var blob, out var length))
             {
                 try
@@ -133,6 +147,14 @@ internal sealed partial class HostHttpServer
 
             if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath)) return [];
 
+            var declaredConfig = FindDeclaredConfigMetadata(assemblyPath);
+            if (declaredConfig is not null)
+            {
+                using var configStream = File.OpenRead(declaredConfig.Value.Path);
+                using var configPe = new PEReader(configStream);
+                return BuildComponentConfigSchema(configPe.GetMetadataReader(), null, declaredConfig.Value.Name);
+            }
+
             using var stream = File.OpenRead(assemblyPath);
             using var peReader = new PEReader(stream);
             if (!peReader.HasMetadata) return [];
@@ -144,12 +166,24 @@ internal sealed partial class HostHttpServer
         }
     }
 
-    private static object[] BuildComponentConfigSchema(MetadataReader reader, Assembly? loadedAssembly)
+    private static object[] BuildComponentConfigSchema(MetadataReader reader, Assembly? loadedAssembly, string? declaredTypeName = null)
     {
         TypeDefinitionHandle configTypeHandle = default;
         foreach (var typeHandle in reader.TypeDefinitions)
         {
             var type = reader.GetTypeDefinition(typeHandle);
+            if (declaredTypeName is not null)
+            {
+                var ns = reader.GetString(type.Namespace);
+                var name = reader.GetString(type.Name);
+                if ((string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}") == declaredTypeName)
+                {
+                    configTypeHandle = typeHandle;
+                    break;
+                }
+                continue;
+            }
+
             var explicitlyMarked = type.GetCustomAttributes().Any(attributeHandle =>
             {
                 var attribute = reader.GetCustomAttribute(attributeHandle);
