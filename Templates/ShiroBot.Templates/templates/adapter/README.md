@@ -7,17 +7,16 @@ mapped message fields), and `adapter-echo <text>` (sends the text back). Impleme
 adapter's receive/send paths, then send these commands from the target platform.
 `TestPlugin` is a separate project and is excluded from the adapter Release package.
 
-In Rider, select `ShiroBot` in the top-right run selector
-and click Run. The profiles in `Properties/launchSettings.json` call the development scripts.
+In Rider, select `ShiroBot` in the top-right run selector and set the IDE build
+configuration to Debug. Use the same profile for Run or Debug: it starts the managed
+host directly, so the Debug button can attach the .NET debugger for plugin/adapter
+breakpoints and C# Hot Reload. Keep the configuration's build-before-launch step enabled.
+Debug builds automatically prepare the host and install component DLLs with portable
+symbols and no assembly merging before launch. Release builds retain distribution packaging.
 After project creation, allow the template setup script to prepare the component and download
 the matching host without starting it. On the CLI, use `--allow-scripts yes`; if your IDE skips
-setup, the first Run downloads the host automatically. You can also prepare it separately
+setup, the first Debug build prepares the host automatically. You can also prepare it separately
 with `sh dev.sh --prepare` or `powershell -ExecutionPolicy Bypass -File dev.ps1 --prepare`.
-The Run button builds the component in Debug with portable symbols and no assembly merging,
-then starts the prepared host. Release builds retain the distribution packaging.
-For breakpoints and C# Hot Reload, choose `ShiroBot Debug` and click Debug with the IDE
-build configuration set to Debug. This profile starts the managed host directly; the Debug
-build prepares its component files beforehand. The script-based `ShiroBot` profile is for Run.
 New development hosts use port 7002; existing local configuration is preserved.
 
 Build the adapter with `dotnet build -c Release`. Implement platform connectivity in `Adapter.cs`,

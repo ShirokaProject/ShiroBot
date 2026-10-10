@@ -19,11 +19,12 @@ dotnet new shirobot-adapter -n MyAdapter --platform discord --creator "Your Name
 ```
 
 With scripts allowed, project creation builds the component and downloads the matching
-development host without starting it. Open the project in Rider and click the `ShiroBot` Run
-configuration. If the IDE skips preparation, the first Run downloads the host automatically.
-For breakpoints and C# Hot Reload, select `ShiroBot Debug` and start Debug with the IDE
-build configuration set to Debug. This starts the managed host directly; Debug builds
-prepare the host and install unmerged component DLLs with portable symbols automatically.
+development host without starting it. Open the project in Rider, set the IDE build
+configuration to Debug, and select `ShiroBot`. The same profile supports both Run and Debug
+and starts the managed host directly. Keep build-before-launch enabled so Debug builds
+prepare the host and install component DLLs with portable symbols automatically.
+If project creation skips preparation, the first Debug build downloads the host.
+Use the Debug button for breakpoints and C# Hot Reload; no separate Debug profile is needed.
 Release builds retain distribution packaging. New development hosts use port 7002.
 
 Adapter projects include a solution and a separate `TestPlugin` project for checking

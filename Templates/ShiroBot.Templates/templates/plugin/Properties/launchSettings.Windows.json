@@ -2,12 +2,6 @@
   "profiles": {
     "ShiroBot": {
       "commandName": "Executable",
-      "executablePath": "powershell.exe",
-      "commandLineArgs": "-NoProfile -ExecutionPolicy Bypass -File \"$(MSBuildProjectDirectory)/dev.ps1\" --no-console",
-      "workingDirectory": "$(MSBuildProjectDirectory)"
-    },
-    "ShiroBot Debug": {
-      "commandName": "Executable",
       "executablePath": "$(MSBuildProjectDirectory)/.shirobot-dev/host/$(NETCoreSdkRuntimeIdentifier)/ShiroBot.exe",
       "commandLineArgs": "--no-console",
       "workingDirectory": "$(MSBuildProjectDirectory)/.shirobot-dev/host/$(NETCoreSdkRuntimeIdentifier)"
