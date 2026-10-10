@@ -268,6 +268,13 @@ public static class ConsoleOutput
 
     private static void UpdateInlineCompletion()
     {
+        var input = InputBuffer.ToString().TrimStart();
+        if (input.Length == 0)
+        {
+            _inlineCompletionSuffix = string.Empty;
+            return;
+        }
+
         if (_completionProvider is not null)
         {
             _completionOptions = _completionProvider();
@@ -275,13 +282,6 @@ public static class ConsoleOutput
 
         var completions = _completionOptions;
         if (completions is null || completions.Count == 0)
-        {
-            _inlineCompletionSuffix = string.Empty;
-            return;
-        }
-
-        var input = InputBuffer.ToString().TrimStart();
-        if (input.Length == 0)
         {
             _inlineCompletionSuffix = string.Empty;
             return;

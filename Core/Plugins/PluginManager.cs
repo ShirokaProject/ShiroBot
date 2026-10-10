@@ -77,7 +77,7 @@ internal sealed class PluginManager(
 
     private ModelPackageRegistry ModelPackages { get; } = modelPackages;
 
-    public static IEnumerable<string> EnumeratePluginEntryAssemblies(string pluginRoot)
+    public static IEnumerable<string> EnumeratePluginEntryAssemblies(string pluginRoot, bool probeMetadata = true)
     {
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -104,7 +104,7 @@ internal sealed class PluginManager(
                          .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
                 var normalizedPath = Path.GetFullPath(dll);
-                if (TryProbePluginInfo(normalizedPath) is not null && yieldedPaths.Add(normalizedPath))
+                if ((!probeMetadata || TryProbePluginInfo(normalizedPath) is not null) && yieldedPaths.Add(normalizedPath))
                 {
                     yield return normalizedPath;
                 }
@@ -465,7 +465,7 @@ internal sealed class PluginManager(
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var entry in EnumeratePluginEntryAssemblies(pluginRoot).Where(yieldedPaths.Add))
+        foreach (var entry in EnumeratePluginEntryAssemblies(pluginRoot, probeMetadata: false).Where(yieldedPaths.Add))
         {
             yield return entry;
         }
