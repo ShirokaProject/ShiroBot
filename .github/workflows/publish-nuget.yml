@@ -23,6 +23,11 @@ on:
         description: Optional template-only package version (SDK version stays unchanged)
         required: false
         type: string
+      test_only:
+        description: Only build and verify; never log in or publish to NuGet
+        required: false
+        default: true
+        type: boolean
 
 # Only one NuGet publication may pass the version preflight at a time.
 concurrency:
@@ -132,6 +137,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: inputs.test_only != true
     # No credentials or upload until host CI and every package/consumer check succeeds.
     needs: [verify-core, validate]
     runs-on: windows-latest

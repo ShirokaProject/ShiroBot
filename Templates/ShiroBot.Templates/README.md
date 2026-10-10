@@ -66,3 +66,10 @@ it does not use `--skip-duplicate` to silently continue. Concurrent release runs
 NuGet.org does not offer an atomic transaction across SDK and template packages. Preflight
 prevents known version collisions, but an upload/network failure can still leave one package
 published; the workflow reports failure instead of treating a partial release as success.
+
+
+To run a full pre-release test without publishing, manually dispatch `publish-nuget.yml`
+with the current product `version`, leave `template_version` empty, and enable `test_only`
+(the manual-run default). This runs host CI, SDK/template packaging and generated consumer
+verification, and uploads test artifacts to Actions only. The publish job, NuGet login,
+NuGet upload, tags and GitHub Releases are not executed.
