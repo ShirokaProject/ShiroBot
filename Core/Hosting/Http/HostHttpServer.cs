@@ -79,7 +79,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
 
         app.UseWebSockets();
         app.UseCors(ApiCorsPolicyName);
-        MapDashboardAssets(app);
+        if (config.EnableDashboard) MapDashboardAssets(app);
         MapApiEndpoints(
             app, config, configManager, configPath, pluginManager, eventDispatcher,
             routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator, adapterPackages, powerControl);

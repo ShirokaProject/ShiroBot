@@ -24,6 +24,7 @@ groups = [10001, 10002]
 
 [api]
 enable = true
+enable_dashboard = true # 内嵌 Dashboard 开关，修改后重启生效
 listen_urls = ["http://127.0.0.1:7001"]
 public_base_url = ""
 
@@ -131,6 +132,7 @@ enable = true
 key = ""
 ```
 
+- `enable_dashboard` 默认为 `true`。设为 `false` 后不提供宿主 `/dashboard` 页面及其静态资源；HTTP API 和插件 Web 路由仍可使用，适合使用独立部署的 Dashboard。修改后重启宿主生效。`api.enable = false` 则关闭整个 HTTP 服务。
 - `listen_urls` 是监听地址列表；只监听一个地址时也写成单元素数组，默认为 `["http://127.0.0.1:7001"]`。
 - 旧配置中的 `protocol` 和 `api.listen_url` 会在读取时迁移为数组字段。
 - `public_base_url` 是反向代理后的外部地址，会提供给插件的 `Context.WebHost`。

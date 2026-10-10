@@ -292,7 +292,8 @@ public static class Program
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
-                CH.Success("Dashboard 地址: " + webPublicBaseUrl.TrimEnd('/') + "/dashboard/");
+                if (coreConfig.Api.EnableDashboard)
+                    CH.Success("Dashboard 地址: " + webPublicBaseUrl.TrimEnd('/') + "/dashboard/");
                 if (coreConfig.Api.Auth.Enable)
                 {
                     CH.Warning("API 鉴权密钥: " + coreConfig.Api.Auth.Key);

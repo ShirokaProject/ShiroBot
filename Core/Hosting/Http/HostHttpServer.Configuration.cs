@@ -188,6 +188,12 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "api.enable", apiEnable);
         }
 
+        if (TryGetBool(apiPatch, "enable_dashboard", out var enableDashboard))
+        {
+            currentApiConfig.EnableDashboard = enableDashboard;
+            configManager.SetConfigValue(configPath, "api.enable_dashboard", enableDashboard);
+        }
+
         if (TryGetStringArray(apiPatch, "listen_urls", out var listenUrls))
         {
             currentApiConfig.ListenUrls = listenUrls;

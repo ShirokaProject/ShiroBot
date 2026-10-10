@@ -1797,6 +1797,9 @@ try
     {
         throw new InvalidOperationException("Legacy core settings were not migrated to array settings.");
     }
+    if (!coreConfig.Api.EnableDashboard)
+        throw new InvalidOperationException("Existing configs must keep Dashboard enabled by default.");
+    coreConfig.Api.EnableDashboard = false;
     coreConfig.EnableLog = false;
     coreConfig.Api.ListenUrls = ["http://127.0.0.1:7999"];
     coreManager.SaveConfig(coreConfigPath, coreConfig);
@@ -1804,6 +1807,7 @@ try
 
     var preservedCoreToml = File.ReadAllText(coreConfigPath);
     AssertContains(preservedCoreToml, "enable_log = false");
+    AssertContains(preservedCoreToml, "enable_dashboard = false");
     AssertContains(preservedCoreToml, "protocols = []");
     AssertContains(preservedCoreToml, "listen_urls = [\"http://127.0.0.1:7999\"]");
     AssertSingle(preservedCoreToml, "[plugin_routes.default]");
@@ -1818,7 +1822,7 @@ try
     AssertContains(preservedCoreToml, "value = 9");
     AssertSingle(preservedCoreToml, "# preserved core comment");
     var reloadedCoreConfig = await coreManager.LoadCoreConfig();
-    if (reloadedCoreConfig.EnableLog ||
+    if (reloadedCoreConfig.Api.EnableDashboard || reloadedCoreConfig.EnableLog ||
         !reloadedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7999"]))
     {
         throw new InvalidOperationException("Preserved core TOML did not deserialize with the saved values.");
@@ -1829,6 +1833,7 @@ try
     await new ConfigManager(newCorePath).LoadCoreConfig();
     var newCoreToml = File.ReadAllText(newCorePath);
     AssertContains(newCoreToml, "protocols = []");
+    AssertContains(newCoreToml, "enable_dashboard = true");
     AssertContains(newCoreToml, "listen_urls = [\"http://127.0.0.1:7001\"]");
     if (newCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
         newCoreToml.Contains("listen_url =", StringComparison.Ordinal))

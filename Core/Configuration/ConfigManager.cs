@@ -63,6 +63,9 @@ public class ApiHostConfig
     [ConfigField("启用 Dashboard 和外部工具访问主程序的 HTTP API。")]
     public bool Enable { get; set; } = true;
 
+    [ConfigField("启用宿主内嵌 Dashboard 页面。默认开启；修改后重启宿主生效。关闭后 HTTP API 和插件 Web 路由仍可使用。", Label = "内嵌 Dashboard")]
+    public bool EnableDashboard { get; set; } = true;
+
     [ConfigField("API 服务监听的地址列表。", Type = "array")]
     public string[] ListenUrls { get; set; } = [DefaultListenUrl];
 
