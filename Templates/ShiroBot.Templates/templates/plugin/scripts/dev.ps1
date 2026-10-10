@@ -3,7 +3,8 @@ $prepareOnly = ($args.Count -gt 0 -and $args[0] -eq '--prepare')
 $skipBuild = ($args -contains '--no-build')
 # Windows PowerShell 5.1 downloads far slower while drawing the progress bar.
 $ProgressPreference = 'SilentlyContinue'
-Set-Location $PSScriptRoot
+$projectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $projectRoot
 
 [xml]$packages = Get-Content Directory.Packages.props -Raw
 $sdkVersion = @($packages.Project.ItemGroup.PackageVersion | Where-Object { $_.Include -eq 'ShiroBot.SDK' } | Select-Object -First 1).Version
@@ -12,7 +13,7 @@ if (-not $sdkVersion) { throw 'Cannot read ShiroBot.SDK version from Directory.P
 $architecture = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
 $rid = "win-$architecture"
 # The host directory is not versioned: config.toml, plugins/ and adapters/ survive SDK upgrades.
-$cacheDir = Join-Path $PSScriptRoot ".shirobot-dev/host/$rid"
+$cacheDir = Join-Path $projectRoot ".shirobot-dev/host/$rid"
 $hostExe = Join-Path $cacheDir 'ShiroBot.exe'
 $versionFile = Join-Path $cacheDir '.host-version'
 $archiveName = "shirobot-host-$rid-framework-dependent.zip"

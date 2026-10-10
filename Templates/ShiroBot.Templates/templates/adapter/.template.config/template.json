@@ -98,13 +98,13 @@
       "continueOnError": true,
       "args": {
         "executable": "/bin/sh",
-        "args": "dev.sh --prepare",
+        "args": "scripts/dev.sh --prepare",
         "redirectStandardOutput": false,
         "redirectStandardError": false
       },
       "manualInstructions": [
         {
-          "text": "Run /bin/sh dev.sh --prepare, then select the ShiroBot profile in Rider and click Run."
+          "text": "Run /bin/sh scripts/dev.sh --prepare, then select the ShiroBot profile in Rider and click Run."
         }
       ]
     },
@@ -115,13 +115,13 @@
       "continueOnError": true,
       "args": {
         "executable": "powershell.exe",
-        "args": "-NoProfile -ExecutionPolicy Bypass -File dev.ps1 --prepare",
+        "args": "-NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 --prepare",
         "redirectStandardOutput": false,
         "redirectStandardError": false
       },
       "manualInstructions": [
         {
-          "text": "Run powershell.exe -NoProfile -ExecutionPolicy Bypass -File dev.ps1 --prepare, then select the ShiroBot profile in Rider and click Run."
+          "text": "Run powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 --prepare, then select the ShiroBot profile in Rider and click Run."
         }
       ]
     }

@@ -16,9 +16,22 @@ dotnet new shirobot-plugin -n HelloPlugin --creator "Your Name" --allow-scripts 
 cd HelloPlugin
 ```
 
+生成项目的结构如下，命令均从项目根目录执行：
+
+```text
+HelloPlugin/
+├── src/Plugin.cs
+├── scripts/dev.sh
+├── scripts/dev.ps1
+├── Properties/launchSettings.json
+├── HelloPlugin.csproj
+├── Directory.Packages.props
+└── Directory.Build.targets
+```
+
 也可以参考示例仓库：[DemoPlugin](https://github.com/ShirokaProject/Shirobot.Plugin.DemoPlugin)、[AvaloniaDemo](https://github.com/ShirokaProject/Shirobot.Plugin.AvaloniaDemo)。
 
-模板生成 `HelloPlugin.csproj`、`Plugin.cs` 和 `Directory.Packages.props`，后者指定 SDK 包版本。默认的 `Plugin.cs` 已包含一个回复 `pong` 的 `ping` 命令。`ShiroBot.SDK` 包已经包含 QQ、Discord 和 Telegram 的 Model，使用它们不需要再安装 NuGet 包。`--platform qq`、`--platform discord` 或 `--platform telegram` 会在生成的 `Plugin.cs` 中声明对应的运行时 Model 依赖；省略时仍可使用通用 SDK 类型。
+模板生成 `HelloPlugin.csproj`、`src/Plugin.cs` 和 `Directory.Packages.props`，后者指定 SDK 包版本。默认的 `src/Plugin.cs` 已包含一个回复 `pong` 的 `ping` 命令。`ShiroBot.SDK` 包已经包含 QQ、Discord 和 Telegram 的 Model，使用它们不需要再安装 NuGet 包。`--platform qq`、`--platform discord` 或 `--platform telegram` 会在生成的 `src/Plugin.cs` 中声明对应的运行时 Model 依赖；省略时仍可使用通用 SDK 类型。
 
 ::: warning 使用 NuGet 引用
 自动 ILRepack 和 native 清单来自 SDK 包内的 `buildTransitive`。直接 `ProjectReference` 到 `ShiroBot.SDK.csproj` 不会导入已打包的自动化目标，最终分发测试必须使用 NuGet 包。
@@ -26,7 +39,7 @@ cd HelloPlugin
 
 ## 编写插件
 
-打开模板生成的 `Plugin.cs`，把默认的 `ping` 路由改成群聊和私聊命令：
+打开模板生成的 `src/Plugin.cs`，把默认的 `ping` 路由改成群聊和私聊命令：
 
 ```csharp
 using ShiroBot.SDK.Abstractions;
@@ -126,7 +139,7 @@ load HelloPlugin
 2. 将构建配置设为 **Debug**，保留运行配置中的“启动前构建”步骤。
 3. 首次使用先构建项目。如果创建项目时没有执行准备脚本，Debug 构建会自动下载与 `Directory.Packages.props` 中 SDK 版本匹配的宿主，并复制插件及调试符号。
 4. 选择唯一的 **ShiroBot** 运行配置，点击三角形运行，或点击小虫子调试。该配置直接启动 .NET 宿主，Run 与 Debug 共用，不需要再选择单独的 Debug 配置。
-5. 在 `Plugin.cs` 的 `ping` 处理方法中设置断点。到开发宿主的 Dashboard 添加并启用适配器实例，连接机器人后发送 `#ping`；插件会回复 `pong`，调试时会命中断点。
+5. 在 `src/Plugin.cs` 的 `ping` 处理方法中设置断点。到开发宿主的 Dashboard 添加并启用适配器实例，连接机器人后发送 `#ping`；插件会回复 `pong`，调试时会命中断点。
 
 创建项目时自动选择当前操作系统，宿主架构由当前 .NET SDK 的 RID 决定，例如 `osx-arm64`。`Properties/launchSettings.json` 定义启动入口；开发宿主位于项目目录下的 `.shirobot-dev/host/<RID>/`。
 
@@ -136,14 +149,14 @@ Debug 构建使用独立 DLL 和 portable PDB，方便断点调试；Release 构
 
 #### 命令行启动
 
-模板项目附带 `dev.sh`（macOS / Linux）与 `dev.ps1`（Windows）。在项目目录运行：
+模板项目附带 `scripts/dev.sh`（macOS / Linux）与 `scripts/dev.ps1`（Windows）。在项目目录运行：
 
 ```bash
-sh dev.sh --no-console
+sh scripts/dev.sh --no-console
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File dev.ps1 --no-console
+powershell -ExecutionPolicy Bypass -File scripts/dev.ps1 --no-console
 ```
 
 脚本会 Debug 构建、准备宿主、复制插件并启动。只准备、不启动时加 `--prepare`。`.shirobot-dev/` 已被 `.gitignore` 忽略。升级 SDK 后会更新宿主程序，保留配置、适配器和插件数据。常规开发时修改代码后停止宿主，再重新构建并运行。
@@ -154,6 +167,7 @@ powershell -ExecutionPolicy Bypass -File dev.ps1 --no-console
 | --- | --- |
 | Rider 显示“无效的可执行文件路径” | 先执行一次 Debug 构建，确认 `.shirobot-dev/host/<RID>/ShiroBot`（Windows 为 `ShiroBot.exe`）存在，再启动。 |
 | 下载宿主返回 404 | 核对 SDK 版本是否已有同版本宿主 Release；未发布的开发版需要自行准备本地宿主，不能从 Release 自动下载。 |
+| 点击 Debug 后仍使用旧插件 | 检查启动前 Build；Rider 启用 ReSharper Build 时可能跳过自定义构建步骤，可在 Toolset and Build 关闭 Use ReSharper Build，让 MSBuild 执行构建与复制。 |
 | 断点没有绑定 | 确认是 Debug 构建、通过小虫子启动，并且复制了对应 DLL/PDB。等待插件加载，再触发对应消息。 |
 | 宿主启动但 `#ping` 没有响应 | 检查适配器实例是否已连接、插件是否启用，以及路由是否允许该会话。 |
 | 提示端口被占用 | 停止另一个开发宿主，或修改开发宿主 `config.toml` 中的 `[api].listen_urls`。 |
@@ -167,7 +181,7 @@ powershell -ExecutionPolicy Bypass -File dev.ps1 --no-console
 3. 在该目录创建 `.host-version` 文本文件，内容为 `Directory.Packages.props` 中的 SDK 产品版本，例如 `1.0.0`。脚本仅在可执行文件存在且版本标记匹配时跳过自动下载。
 4. 再执行 Debug 构建并使用同一个 **ShiroBot** 配置调试。不要用旧版本宿主冒充新的 SDK 版本。
 
-使用 `dotnet new shirobot-plugin` 生成的项目会带 `.github/workflows/release.yml`。推送代码或提交 PR 时自动构建；将 `Plugin.cs` 中的 `Version` 改为目标版本后推送同版本 tag（如 `v1.0.0`），Action 会把 Release 构建输出的 ZIP 和入口 DLL 上传到 GitHub Release。
+使用 `dotnet new shirobot-plugin` 生成的项目会带 `.github/workflows/release.yml`。推送代码或提交 PR 时自动构建；将 `src/Plugin.cs` 中的 `Version` 改为目标版本后推送同版本 tag（如 `v1.0.0`），Action 会把 Release 构建输出的 ZIP 和入口 DLL 上传到 GitHub Release。
 
 ## 上架插件市场
 

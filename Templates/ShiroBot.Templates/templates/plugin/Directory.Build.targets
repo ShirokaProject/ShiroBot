@@ -3,8 +3,8 @@
   <Target Name="PrepareShiroBotDevelopmentHost" AfterTargets="Build"
           Condition="'$(Configuration)' == 'Debug' and '$(DesignTimeBuild)' != 'true'">
     <Exec Condition="'$(OS)' != 'Windows_NT'" WorkingDirectory="$(MSBuildProjectDirectory)"
-          Command="/bin/sh &quot;$(MSBuildProjectDirectory)/dev.sh&quot; --prepare --no-build" />
+          Command="/bin/sh &quot;$(MSBuildProjectDirectory)/scripts/dev.sh&quot; --prepare --no-build" />
     <Exec Condition="'$(OS)' == 'Windows_NT'" WorkingDirectory="$(MSBuildProjectDirectory)"
-          Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/dev.ps1&quot; --prepare --no-build" />
+          Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/scripts/dev.ps1&quot; --prepare --no-build" />
   </Target>
 </Project>

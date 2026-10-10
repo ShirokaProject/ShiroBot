@@ -76,3 +76,11 @@ verification, and uploads test artifacts to Actions only. The publish job, NuGet
 NuGet upload, tags and GitHub Releases are not executed.
 
 The next coordinated host, SDK and template release is 1.0.0. All generated projects pin SDK 1.0.0 when the template package is packed for that release; no package has been published by this source change.
+
+## Generated project layout
+
+Source files are under `src/` (`src/Plugin.cs` or `src/Adapter.cs`). Development
+scripts are under `scripts/`. The project file, central package versions, build
+targets, README and `Properties/launchSettings.json` remain at the project root.
+The adapter's `TestPlugin` has its own `src/Plugin.cs`. Run the development scripts
+from the project root; they resolve their project directory even when invoked elsewhere.

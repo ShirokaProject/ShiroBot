@@ -6,7 +6,7 @@ skip_build=false
 if [ "${1:-}" = "--prepare" ]; then prepare_only=true; shift; fi
 if [ "${1:-}" = "--no-build" ]; then skip_build=true; shift; fi
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 sdk_version=$(sed -n 's/.*PackageVersion Include="ShiroBot.SDK" Version="\([^"]*\)".*/\1/p' Directory.Packages.props)
 if [ -z "$sdk_version" ]; then
@@ -37,7 +37,7 @@ version_file="$cache_dir/.host-version"
 archive="$cache_dir/shirobot-host-$rid-framework-dependent.zip"
 
 if [ "$skip_build" = false ]; then
-  dotnet build PluginTemplate.csproj -c Debug -p:ShiroBotPluginPackagingEnabled=false
+  dotnet build AdapterTemplate.csproj -c Debug -p:ShiroBotPluginPackagingEnabled=false
 fi
 
 installed_version=$(cat "$version_file" 2>/dev/null || true)
@@ -53,12 +53,29 @@ if [ ! -f "$host_exe" ] || [ "$installed_version" != "$sdk_version" ]; then
   printf '%s\n' "$sdk_version" > "$version_file"
 fi
 
-plugin_dir="$cache_dir/plugins/PluginTemplate"
+adapter_dir="$cache_dir/adapters/AdapterTemplate"
 build_dir="bin/Debug/net10.0"
+manifest="$adapter_dir/.shirobot-dev-files"
+mkdir -p "$adapter_dir"
+# Remove files copied by the previous run that the build no longer produces. Files the
+# adapter or host created there (config.toml, data, .shirobot/native, ...) are never touched.
+if [ -f "$manifest" ]; then
+  while IFS= read -r file; do
+    case "$file" in ""|*..*) continue ;; esac
+    [ -e "$build_dir/$file" ] || rm -f "$adapter_dir/$file"
+  done < "$manifest"
+fi
+cp -R "$build_dir/." "$adapter_dir/"
+# config.toml is never listed, so a user-edited config is not deleted if the build stops emitting one.
+(cd "$build_dir" && find . -type f ! -name config.toml | sed 's#^\./##') > "$manifest"
+# The host discovers the adapter entry from DLL metadata; no package-local manifest is needed.
+
+plugin_dir="$cache_dir/plugins/AdapterTemplate.TestPlugin"
+build_dir="TestPlugin/bin/Debug/net10.0"
 manifest="$plugin_dir/.shirobot-dev-files"
 mkdir -p "$plugin_dir"
 # Remove files copied by the previous run that the build no longer produces. Files the
-# plugin or host created there (config.toml, data, .shirobot/native, ...) are never touched.
+# adapter or host created there (config.toml, data, .shirobot/native, ...) are never touched.
 if [ -f "$manifest" ]; then
   while IFS= read -r file; do
     case "$file" in ""|*..*) continue ;; esac
@@ -69,9 +86,8 @@ cp -R "$build_dir/." "$plugin_dir/"
 # config.toml is never listed, so a user-edited config is not deleted if the build stops emitting one.
 (cd "$build_dir" && find . -type f ! -name config.toml | sed 's#^\./##') > "$manifest"
 
-# Development uses a separate port from the standard container deployment.
 if [ ! -f "$cache_dir/config.toml" ]; then
-  printf 'protocols = []\n\n[api]\nenable = true\nlisten_urls = ["http://127.0.0.1:7002"]\n' > "$cache_dir/config.toml"
+  printf 'protocols = ["AdapterTemplate"]\n\n[api]\nenable = true\nlisten_urls = ["http://127.0.0.1:7002"]\n' > "$cache_dir/config.toml"
 fi
 
 if [ "$prepare_only" = true ]; then
@@ -79,6 +95,6 @@ if [ "$prepare_only" = true ]; then
   exit 0
 fi
 
-echo "Starting ShiroBot v$sdk_version with PluginTemplate..."
+echo "Starting ShiroBot v$sdk_version with AdapterTemplate..."
 cd "$cache_dir"
 exec ./ShiroBot "$@"
