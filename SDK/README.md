@@ -7,7 +7,7 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="0.9.8" />
+<PackageReference Include="ShiroBot.SDK" Version="1.0.0" />
 ```
 
 ## Version and ABI
@@ -15,12 +15,13 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 The package version follows the ShiroBot host release. Each contract assembly in the package has its
 own ABI version, which only increases when its public contracts change. A plugin built against this
 package requires compatible ABI major versions and the same or newer ABI within each major series.
-SDK 0.9.9 adds common file uploads with SDK ABI 1.1.0.0; QQ Model stays at ABI 1.0.0.0.
-Components referencing SDK ABI 1.0 remain compatible. Components built against ABI 1.1 require
-host 0.9.9 or newer. SDK/Model ABI 0.x references remain rejected before activation.
+SDK 1.0.0 adds host-managed temporary directories (SDK ABI 1.2.0.0). QQ, Discord and
+Telegram Model ABI versions are 1.0.0.0. Components using TemporaryFiles require host 1.0.0.
+Package versions follow the 1.0 release series; ABI numbers track each assembly's contracts.
 
 | ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
+| 1.0.0 | 1.0 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 0.9.9 | 0.9.2 | 1.1.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.8 | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
@@ -451,3 +452,20 @@ is versioned with the shared SDK contract; SDK and Model ABI major series must m
 
 
 通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](../docs/plugin/rich-messages.md)。
+
+
+## Host-managed temporary files (1.0)
+
+```csharp
+var temporary = Context.TemporaryFiles.CreateDirectory(TimeSpan.FromMinutes(10));
+var filePath = Path.Combine(temporary.Path, "card.png");
+await File.WriteAllBytesAsync(filePath, pngBytes, cancellationToken);
+// Use/upload the file before temporary.ExpiresAt; the host owns deletion.
+```
+
+Each call creates a unique directory under host `cache/plugin-temp`, scoped to the plugin.
+Retention starts at directory creation and must be positive. The host checks expiry every 30 seconds,
+retries locked directories, cleans on shutdown, and removes all previous-process leftovers before
+loading plugins at the next startup (even if their retention has not expired). This is disposable
+working storage, not a persistent cache. Store subscriptions, credentials and other durable state
+in plugin data/config instead. Other folders under host cache are not purged by this service.

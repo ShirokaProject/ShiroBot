@@ -4,7 +4,7 @@ namespace ShiroBot.SDK.Core;
 public static class ShiroBotApi
 {
     /// <summary>The API version implemented by this SDK and its matching host.</summary>
-    public const string CurrentVersion = "0.9.2";
+    public const string CurrentVersion = "1.0";
 }
 
 /// <summary>Declares the minimum required API and the newest API version tested by a component.</summary>

@@ -31,6 +31,8 @@ public interface IBotContext
     public IConfigContext Config { get; }
     public IWebHostContext WebHost { get; }
     public IPluginServices Services { get; }
+    /// <summary>创建由宿主统一清理的临时目录；保留时长由插件在创建时声明。</summary>
+    public ITemporaryFileContext TemporaryFiles { get; }
     public string PluginDirectory { get; }
     public IReadOnlyList<UserReference> OwnerList { get; }
     public IReadOnlyList<UserReference> AdminList { get; }

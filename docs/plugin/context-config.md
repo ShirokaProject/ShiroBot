@@ -172,3 +172,19 @@ SDK 的 `IMessageService`、`IChannelService`、`IUserService` 异步操作均�
 插件发布包应仅包含程序和必要的静态资源，不要打包空 Cookie 文件。新插件应把可编辑的 Cookie 放在配置中（字段使用 `ConfigField(Type = "password")`），并明确配置文件中的值仍为明文。已有非空 Cookie 文件应进行一次性、不删除原文件的迁移；主动清空配置后不能再次自动导入旧凭据。迁移完成标记属于持久数据，不应放进可清理的缓存目录。
 
 未被旧安装清单登记的同名用户文件也不会被新包覆盖或认领；旧版无清单安装的 DLL 仍可更新。程序静态资源请放在独立的资源目录，避免使用上述运行数据目录。
+
+
+## 宿主管理的临时目录（SDK 1.0.0）
+
+```csharp
+var temp = Context.TemporaryFiles.CreateDirectory(TimeSpan.FromMinutes(10));
+var path = Path.Combine(temp.Path, "video.mp4");
+// 下载、渲染或写入到 path，并在 temp.ExpiresAt 前发送。
+// 无需插件删除目录或 Dispose；到期由宿主统一清理。
+```
+
+每次调用生成独立目录，位于宿主 `cache/plugin-temp`，插件不能通过参数指定其他插件的目录。
+保留时长必须大于零，从创建时开始计算；宿主每 30 秒扫描到期目录，文件被占用时后续重试。
+Ctrl+C/正常退出时尝试清理；强制终止时遗留的文件，下次启动会在加载插件之前全部清理，未到期也不续存。
+清理只针对专用临时区，不影响 `cache/adapters`、Cookie 或插件持久数据。订阅记录、登录凭据等不要保存在临时目录。
+新接口要求宿主 1.0.0；不需要升级适配器才能使用宿主提供的此服务。

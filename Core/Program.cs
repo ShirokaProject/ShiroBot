@@ -1,3 +1,4 @@
+using ShiroBot.Hosting.Files;
 using System.CommandLine;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -68,6 +69,7 @@ public static class Program
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
         HostHttpServer? hostHttpServer = null;
+        TemporaryFileManager? temporaryFiles = null;
         AdapterManager? adapterManager = null;
         ComponentFileWatcher? componentWatcher = null;
         var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
@@ -106,6 +108,7 @@ public static class Program
 
         try
         {
+            temporaryFiles = new TemporaryFileManager(Path.Combine(AppContext.BaseDirectory, "cache"));
             // ─── 核心配置 ───
             var coreConfigPath = Path.Combine(BasePath, "config.toml");
             var configuredCoreConfigPath = parserResult.GetValue(configOption);
@@ -178,7 +181,7 @@ public static class Program
             // ─── BotContext + 基础设施 ───
             var webPublicBaseUrl = coreConfig.Api.GetPrimaryBaseUrl();
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
-            botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub);
+            botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub, temporaryFiles);
             Updater.Initialize(
                 () => botContext.OwnerList.Where(entry => botContext.GetAdapterInstances().Any(instance =>
                     string.Equals(instance.Id, entry.InstanceId, StringComparison.OrdinalIgnoreCase)))
@@ -386,6 +389,7 @@ public static class Program
 
             // Hot unload performs plugin cleanup and collectible ALC checks. Process teardown
             // releases the remaining plugin and adapter contexts directly.
+            temporaryFiles?.Dispose();
             if (powerControl.ExitCode != 0) Environment.ExitCode = powerControl.ExitCode;
             powerControl.CompleteRestart();
         }

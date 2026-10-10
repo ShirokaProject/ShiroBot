@@ -73,3 +73,5 @@ with the current product `version`, leave `template_version` empty, and enable `
 (the manual-run default). This runs host CI, SDK/template packaging and generated consumer
 verification, and uploads test artifacts to Actions only. The publish job, NuGet login,
 NuGet upload, tags and GitHub Releases are not executed.
+
+The next coordinated host, SDK and template release is 1.0.0. All generated projects pin SDK 1.0.0 when the template package is packed for that release; no package has been published by this source change.

@@ -1,4 +1,5 @@
 using System.Reflection;
+using ShiroBot.Hosting.Files;
 using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
@@ -28,9 +29,10 @@ internal sealed class BotContext
     }
 
     public BotContext(IBotAdapter? adapter, IReadOnlyList<string> ownerList, IReadOnlyList<string> adminList,
-        IWebHostContext webHost, HostLogHub? logHub = null)
+        IWebHostContext webHost, HostLogHub? logHub = null, TemporaryFileManager? temporaryFiles = null)
     {
         _logHub = logHub;
+        TemporaryFiles = temporaryFiles;
         if (adapter is not null) _adapters = [CreateRegistration(adapter, adapter.Platform, null)];
         Channel = new SwitchableChannelService(this);
         User = new SwitchableUserService(this);
@@ -55,6 +57,7 @@ internal sealed class BotContext
     public IUserService User { get; }
     public IUpdater Updater { get; }
     public IWebHostContext WebHost { get; }
+    internal TemporaryFileManager? TemporaryFiles { get; }
 
     public IReadOnlyList<UserReference> OwnerList => Volatile.Read(ref _ownerList);
     public IReadOnlyList<UserReference> AdminList => Volatile.Read(ref _adminList);

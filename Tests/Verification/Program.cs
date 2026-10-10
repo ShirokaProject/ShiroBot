@@ -218,7 +218,7 @@ Console.WriteLine("Plugin config nested patch verification passed.");
 ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
 ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
 AssertThrows<InvalidOperationException>(() =>
-    ComponentApiCompatibility.EnsureCompatible("Plugin", "future", "0.10", "0.10"));
+    ComponentApiCompatibility.EnsureCompatible("Plugin", "future", "1.1", "1.1"));
 AssertThrows<InvalidOperationException>(() =>
     ComponentApiCompatibility.EnsureCompatible("Plugin", "invalid", "0.9", "0.8"));
 AssertThrows<InvalidOperationException>(() =>
@@ -449,10 +449,10 @@ Console.WriteLine("Component API version verification passed.");
 Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.1.0.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.2.0.0");
     AssertAssemblyVersion(typeof(QGroup).Assembly, "1.0.0.0");
-    AssertAssemblyVersion(typeof(DiscordUser).Assembly, "0.9.0.0");
-    AssertAssemblyVersion(typeof(TelegramUser).Assembly, "0.9.0.0");
+    AssertAssemblyVersion(typeof(DiscordUser).Assembly, "1.0.0.0");
+    AssertAssemblyVersion(typeof(TelegramUser).Assembly, "1.0.0.0");
 
     var sharedAssemblies = new SharedAssemblyResolver();
     var modelRegistry = new ModelPackageRegistry(sharedAssemblies);
@@ -1827,6 +1827,57 @@ try
     }
     Console.WriteLine("Core config preserving-save verification passed.");
 
+    var tempCache = Path.Combine(tempRoot, "temporary-cache");
+    Directory.CreateDirectory(Path.Combine(tempCache, "adapters"));
+    File.WriteAllText(Path.Combine(tempCache, "adapters", "metadata.json"), "keep");
+    var time = new TemporaryFilesTestClock();
+    string staleDirectory;
+    using (var temporaryManager = new ShiroBot.Hosting.Files.TemporaryFileManager(tempCache, time))
+    {
+        var owner = temporaryManager.ForOwner("plugin/../one");
+        var firstTemp = owner.CreateDirectory(TimeSpan.FromMinutes(1));
+        var secondTemp = temporaryManager.ForOwner("plugin-two").CreateDirectory(TimeSpan.FromMinutes(2));
+        File.WriteAllText(Path.Combine(firstTemp.Path, "download.bin"), "temporary");
+        File.WriteAllText(Path.Combine(secondTemp.Path, "download.bin"), "temporary");
+        if (firstTemp.Path == secondTemp.Path || firstTemp.ExpiresAt != time.GetUtcNow().AddMinutes(1) ||
+            !Path.GetFullPath(firstTemp.Path).StartsWith(Path.Combine(tempCache, "plugin-temp") + Path.DirectorySeparatorChar))
+            throw new InvalidOperationException("Plugin temporary paths are not unique, contained or time-bound.");
+        AssertThrows<ArgumentOutOfRangeException>(() => owner.CreateDirectory(TimeSpan.Zero));
+        time.Advance(TimeSpan.FromSeconds(59));
+        temporaryManager.CleanupExpired();
+        if (!Directory.Exists(firstTemp.Path)) throw new InvalidOperationException("Temporary files expired early.");
+        time.Advance(TimeSpan.FromSeconds(1));
+        temporaryManager.CleanupExpired();
+        if (Directory.Exists(firstTemp.Path) || !Directory.Exists(secondTemp.Path))
+            throw new InvalidOperationException("Expiry cleanup touched another directory or failed to remove expired files.");
+        staleDirectory = secondTemp.Path;
+    }
+    if (Directory.Exists(staleDirectory)) throw new InvalidOperationException("Host shutdown did not clean temporary files.");
+    // Simulate a crashed previous process, which could not Dispose its manager.
+    staleDirectory = Path.Combine(tempCache, "plugin-temp", "previous-process");
+    Directory.CreateDirectory(staleDirectory);
+    File.WriteAllText(Path.Combine(staleDirectory, "stale.bin"), "stale");
+    using (var restarted = new ShiroBot.Hosting.Files.TemporaryFileManager(tempCache, time))
+    {
+        if (Directory.Exists(staleDirectory) || File.ReadAllText(Path.Combine(tempCache, "adapters", "metadata.json")) != "keep")
+            throw new InvalidOperationException("Startup must clean only temporary cache leftovers.");
+    }
+    if (!OperatingSystem.IsWindows())
+    {
+        var linkedCache = Path.Combine(tempRoot, "linked-cache");
+        var persistent = Path.Combine(tempRoot, "persistent-files");
+        Directory.CreateDirectory(linkedCache);
+        Directory.CreateDirectory(persistent);
+        File.WriteAllText(Path.Combine(persistent, "keep.txt"), "keep");
+        var link = Path.Combine(linkedCache, "plugin-temp");
+        Directory.CreateSymbolicLink(link, persistent);
+        AssertThrows<IOException>(() => new ShiroBot.Hosting.Files.TemporaryFileManager(linkedCache, time));
+        if (File.ReadAllText(Path.Combine(persistent, "keep.txt")) != "keep")
+            throw new InvalidOperationException("Startup followed a temporary-root symlink into persistent files.");
+        Directory.Delete(link);
+    }
+    Console.WriteLine("Host-managed temporary directory isolation, expiry, shutdown and crash recovery verification passed.");
+
     var publicUrlsPath = Path.Combine(tempRoot, "public-urls.toml");
     File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = [\"https://primary.example.com\"]\ntoken = \"test-token\"\n");
     var publicUrlsManager = new ConfigManager(publicUrlsPath);
@@ -2437,4 +2488,11 @@ internal sealed class VerificationEventService : IEventService
             await handler(botEvent);
         }
     }
+}
+
+internal sealed class TemporaryFilesTestClock : TimeProvider
+{
+    private DateTimeOffset _now = new(2026, 10, 10, 0, 0, 0, TimeSpan.Zero);
+    public override DateTimeOffset GetUtcNow() => _now;
+    public void Advance(TimeSpan duration) => _now += duration;
 }
