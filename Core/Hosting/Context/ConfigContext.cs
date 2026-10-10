@@ -80,14 +80,26 @@ internal sealed class ConfigContext : IConfigContext
 
     public T Load<T>() where T : class, new()
     {
-        if (_instanceId is not null) return AdapterInstanceStore.Load<T>(ConfigPath, _instanceId);
-        return _configManager.LoadConfig<T>(ConfigPath, _displayName) ?? new();
+        TraceConfig("load begin", typeof(T));
+        var result = _instanceId is not null
+            ? AdapterInstanceStore.Load<T>(ConfigPath, _instanceId)
+            : _configManager.LoadConfig<T>(ConfigPath, _displayName) ?? new();
+        TraceConfig("load completed", typeof(T));
+        return result;
     }
 
     public void Save<T>(T config) where T : class
     {
+        TraceConfig("save begin", typeof(T));
         if (_instanceId is not null) AdapterInstanceStore.Save(ConfigPath, _instanceId, config);
         else _configManager.SaveConfig(ConfigPath, config);
+        TraceConfig("save completed", typeof(T));
+    }
+
+    private void TraceConfig(string stage, Type configType)
+    {
+        if (string.Equals(Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS"), "true", StringComparison.OrdinalIgnoreCase))
+            global::System.Console.WriteLine($"Config probe [{_instanceId ?? _displayName}]: {stage}: {configType.FullName}");
     }
 
     public void SetValue(string keyPath, object? value)

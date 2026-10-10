@@ -109,7 +109,7 @@ jobs:
         timeout-minutes: 5
         env:
           SHIROBOT_LIFECYCLE_DIAGNOSTICS: 'true'
-        run: dotnet run --project .\Tests\Verification\ShiroBot.Verification.csproj -c Release --no-build
+        run: .\.github\scripts\run_windows_verification.ps1
 
       - name: Pack SDK packages
         if: inputs.template_version == ''

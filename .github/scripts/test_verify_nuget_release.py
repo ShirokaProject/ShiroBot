@@ -12,6 +12,15 @@ import verify_nuget_release as release
 
 
 class ReleaseGateTests(unittest.TestCase):
+    def test_consumer_builds_do_not_keep_build_servers_running(self):
+        with patch.object(release.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            release.run_dotnet(["publish", "consumer.csproj"])
+            command = run.call_args.args[0]
+            self.assertIn("--disable-build-servers", command)
+            self.assertIn("-p:UseSharedCompilation=false", command)
+            self.assertIn("-nodeReuse:false", command)
+
     def test_template_version_conflict_blocks_sdk_upload_too(self):
         requests = []
         def response(url, **kwargs):

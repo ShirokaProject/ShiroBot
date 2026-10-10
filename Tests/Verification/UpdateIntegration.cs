@@ -367,16 +367,15 @@ internal static class UpdateIntegration
                 try { response = await host.UpdateAdapterAsync(); }
                 finally { _pinnedAdapter = null; }
                 Check(response.GetProperty("pending_restart").GetBoolean(), "Pinned adapter assembly did not cause staging");
-                host.AssertAdapterVersion("1.0.0");
+                Check(host.Adapters.GetSnapshot().Any(item => item.Id == AdapterId && !item.Loaded && item.RestartRequired),
+                    "Pinned stopped adapter was restarted during staging");
                 Check(host.AdapterPackages.HasStagedUpdate(AdapterId), "Missing staged adapter");
-                await host.Adapters.StopAsync();
+                await host.Adapters.StopForShutdownAsync();
                 var applied = host.AdapterPackages.ApplyStagedUpdates();
                 Check(applied.Applied.Contains(AdapterId) && applied.Failed.Count == 0, "Startup could not apply staged adapter");
-                var package = host.AdapterPackages.Get(AdapterId)!;
-                await host.Adapters.LoadByIdAsync(AdapterId, package.AssemblyPath);
-                host.AssertAdapterVersion("2.0.0");
+                await host.AssertFreshAdapterStartupAsync(1);
                 host.AssertPackage("adapters", AdapterId);
-                return new { pending_restart = true, old_version_kept = true, startup_version = "2.0.0" };
+                return new { pending_restart = true, stopped_instance_not_restarted = true, startup_version = "2.0.0" };
             });
             await Scenario("multi-instance-staged-update", async host =>
             {
@@ -389,16 +388,15 @@ internal static class UpdateIntegration
                 try { response = await host.UpdateAdapterAsync(); }
                 finally { _pinnedAdapter = null; }
                 Check(response.GetProperty("pending_restart").GetBoolean(), "Pinned sibling did not stage the whole package");
-                Check(host.Adapters.GetSnapshot().Count(item => item.Loaded && item.Version == "1.0.0") == 2,
-                    "Staging failed to keep/restore all current instances");
-                await host.Adapters.StopAsync();
+                Check(host.Adapters.GetSnapshot().Count(item => item.Loaded && item.Version == "1.0.0") == 1 &&
+                    host.Adapters.GetSnapshot().Any(item => item.Id == AdapterId && !item.Loaded && item.RestartRequired),
+                    "Staging restarted a resident instance or disrupted an unaffected sibling");
+                await host.Adapters.StopForShutdownAsync();
                 var applied = host.AdapterPackages.ApplyStagedUpdates();
                 Check(applied.Applied.Contains(AdapterId) && applied.Failed.Count == 0, "Multi-instance staged package failed to apply");
-                foreach (var instance in host.AdapterPackages.ListInstances().Where(item => item.Enabled)) await host.Adapters.LoadInstanceAsync(instance);
-                Check(host.Adapters.GetSnapshot().Count == 2 && host.Adapters.GetSnapshot().All(item => item.Version == "2.0.0"),
-                    "Staged update did not restore both instances on the new DLL");
+                await host.AssertFreshAdapterStartupAsync(2);
                 foreach (var instance in host.AdapterPackages.ListInstances()) Check(File.ReadAllText(instance.ConfigPath).Contains(instance.Id), "Staged update lost config");
-                return new { package_staged = true, both_old_instances_kept = true, both_new_instances_restored = true, configs_preserved = true };
+                return new { package_staged = true, unaffected_instance_kept = true, both_new_instances_restored = true, configs_preserved = true };
             });
             await Scenario("adapter-shutdown", async host =>
             {
@@ -523,7 +521,7 @@ internal static class UpdateIntegration
             var plugins = new PluginManager(context, shared, models, runtime, logs) { PluginRootPath = pluginRoot };
             var adapters = new AdapterManager(adapterRoot, shared, models, context, new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
             var packages = new AdapterPackageManager(adapterRoot);
-            var coordinator = new ComponentReloadCoordinator(adapters, plugins, dispatcher, config.PluginRoutes);
+            var coordinator = new ComponentReloadCoordinator(adapters);
             var commands = new HostCommandHandler(plugins, dispatcher, config.PluginRoutes, config, configManager, configPath);
             commands.SetAdapterCommands(adapters, coordinator, packages);
             plugins.EnableFileHotReload(dispatcher, config.PluginRoutes);
@@ -576,6 +574,27 @@ internal static class UpdateIntegration
             Check(Plugins.GetLoadedPluginSnapshot().Single(plugin => plugin.Name == PluginId).Version == version, "Running plugin version did not match " + version);
         public void AssertAdapterVersion(string version) =>
             Check(Adapters.GetSnapshot().Single(adapter => adapter.Id == AdapterId).Version == version, "Running adapter version did not match " + version + ": " + JsonSerializer.Serialize(Adapters.GetSnapshot()));
+        public async Task AssertFreshAdapterStartupAsync(int count)
+        {
+            // Restart uses a new manager; resident-assembly errors belong to the old process.
+            var shared = new SharedAssemblyResolver();
+            var models = new ModelPackageRegistry(shared);
+            var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
+            var logs = new HostLogHub();
+            var runtime = new HostRuntimeState(DateTimeOffset.UtcNow);
+            var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
+            var adapters = new AdapterManager(Path.Combine(Root, "adapters"), shared, models, context,
+                new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
+            try
+            {
+                foreach (var instance in AdapterPackages.ListInstances().Where(item => item.Enabled))
+                    await adapters.LoadInstanceAsync(instance);
+                Check(adapters.GetSnapshot().Count == count &&
+                    adapters.GetSnapshot().All(item => item.Loaded && item.Version == "2.0.0"),
+                    "Staged update did not restore enabled instances on fresh startup");
+            }
+            finally { await adapters.StopForShutdownAsync(); }
+        }
         public void SeedUserFiles(string component, string id)
         {
             var folder = component == "adapters"

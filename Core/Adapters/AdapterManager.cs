@@ -373,6 +373,15 @@ internal sealed class AdapterManager(
             probeInfo.MinimumApiVersion,
             probeInfo.MaximumApiVersion);
 
+        // A stopped but still referenced instance must not get a second live replacement.
+        // Keep this guard before dependency setup, DLL activation and StartAsync.
+        instanceId ??= probeInfo.Id;
+        lock (_sync)
+        {
+            if (_restartRequiredErrors.Contains(instanceId))
+                throw new ComponentUnloadPendingException($"Adapter 实例 {instanceId} 的旧程序集尚未释放，请重启宿主后再启动或替换。");
+        }
+
         foreach (var contractName in probeInfo.SharedAssemblies)
         {
             if (modelPackages.ContainsAssembly(contractName)) continue;
@@ -641,7 +650,7 @@ internal sealed class AdapterManager(
         {
             _errors[id] = exception.Message;
             if (exception is ComponentUnloadPendingException) _restartRequiredErrors.Add(id);
-            else _restartRequiredErrors.Remove(id);
+            // Other errors must not clear the requirement to restart a resident old instance.
         }
     }
 

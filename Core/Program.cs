@@ -47,6 +47,24 @@ public static class Program
     {
         if (await TryRunAdapterManagementCommandAsync(args).ConfigureAwait(false)) return;
         await HostPowerControl.WaitForPredecessorAsync().ConfigureAwait(false);
+        HostDirectoryLock? acquiredLock;
+        try
+        {
+            acquiredLock = HostDirectoryLock.TryAcquire(BasePath);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            global::System.Console.Error.WriteLine("无法锁定宿主运行目录: " + error.Message);
+            Environment.ExitCode = 1;
+            return;
+        }
+        if (acquiredLock is null)
+        {
+            global::System.Console.Error.WriteLine($"此目录已有 ShiroBot 正在运行，不能重复启动: {BasePath}");
+            Environment.ExitCode = 1;
+            return;
+        }
+        using var directoryLock = acquiredLock;
         HostSelfUpdater.CleanupPrevious();
 
         var logHub = new HostLogHub();
@@ -267,11 +285,7 @@ public static class Program
                 runtimeState.RecordEvent("以无 adapter 模式启动");
             }
 
-            var reloadCoordinator = new ComponentReloadCoordinator(
-                adapterManager,
-                pluginManager,
-                hostEventDispatcher,
-                groupRoutePolicy);
+            var reloadCoordinator = new ComponentReloadCoordinator(adapterManager);
             commandHandler.SetAdapterCommands(adapterManager, reloadCoordinator, adapterPackages);
             commandHandler.SetPowerControl(powerControl);
             componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
@@ -392,6 +406,9 @@ public static class Program
             // releases the remaining plugin and adapter contexts directly.
             temporaryFiles?.Dispose();
             if (powerControl.ExitCode != 0) Environment.ExitCode = powerControl.ExitCode;
+            // Unix restart uses exec rather than returning from Main. Release only after all
+            // cleanup, so the replacement can acquire the same directory lock.
+            directoryLock.Dispose();
             powerControl.CompleteRestart();
         }
     }

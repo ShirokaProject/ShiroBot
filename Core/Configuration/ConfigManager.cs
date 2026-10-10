@@ -80,6 +80,7 @@ public class ApiHostConfig
 
 public class PluginRouteConfig
 {
+    [ConfigField("未单独配置路由的插件使用此规则。", Label = "默认插件路由", Type = "section", Order = 30)]
     public PluginRouteRuleConfig Default { get; set; } = new();
 
     public Dictionary<string, PluginRouteRuleConfig> Plugins { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -108,8 +109,10 @@ public class PluginRouteConfig
 
 public class PluginRouteRuleConfig
 {
+    [ConfigField("blacklist：除列表中的群外全部允许；whitelist：仅允许列表中的群。", Label = "默认路由模式", Options = new string[] { "blacklist", "whitelist" }, Order = 30)]
     public string Mode { get; init; } = "whitelist";
 
+    [ConfigField("默认路由使用的群 ID 列表；黑名单为空时允许所有群，白名单为空时不允许任何群。", Label = "默认路由群组", Type = "array", Order = 40)]
     public string[] Groups { get; init; } = [];
 
     public bool IsMatch(string groupId)

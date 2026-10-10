@@ -21,7 +21,7 @@ public sealed class AdapterLifecycleProbe : IBotAdapter, IConfigurableAdapter,
     public ConfigApplyMode ApplyMode => ConfigApplyMode.Live;
     public async Task StartAsync() => await Task.Delay(10).ConfigureAwait(false);
     public async Task StopAsync() => await Task.Delay(10).ConfigureAwait(false);
-    public TService? GetExtension<TService>() where TService : class => null;
+    public TService? GetExtension<TService>() where TService : class => this as TService;
     public Task OnConfigLoadedAsync(AdapterLifecycleProbeConfig config, CancellationToken cancellationToken)
     {
         CurrentConfigValue = config;

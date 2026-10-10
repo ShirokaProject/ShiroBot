@@ -57,6 +57,9 @@ def validate_packages(directory, packages, sdk_version):
 
 
 def run_dotnet(arguments, cwd=None, allowed_codes=(0,)):
+    if arguments[0] in ("restore", "build", "publish", "pack"):
+        # Windows build servers can keep Avalonia task DLLs in the isolated package cache locked.
+        arguments = [*arguments, "--disable-build-servers", "-p:UseSharedCompilation=false", "-nodeReuse:false"]
     result = subprocess.run(["dotnet", *arguments], cwd=cwd, check=False)
     if result.returncode not in allowed_codes:
         # Never include command arguments: nuget push arguments contain the short-lived API key.
@@ -65,7 +68,9 @@ def run_dotnet(arguments, cwd=None, allowed_codes=(0,)):
 
 def verify_consumers(directory, sdk_version, template_version, template_only):
     package = (directory / f"ShiroBot.Templates.{template_version}.nupkg").resolve()
-    with tempfile.TemporaryDirectory(prefix="shirobot-nuget-consumers-") as temporary:
+    # Leftover task-process file locks are cleanup failures, not consumer validation failures.
+    # All build errors still propagate and prevent the verified-checksum marker being written.
+    with tempfile.TemporaryDirectory(prefix="shirobot-nuget-consumers-", ignore_cleanup_errors=True) as temporary:
         root = Path(temporary)
         hive = root / "hive"
         run_dotnet(["new", "install", str(package), "--force", "--debug:custom-hive", str(hive)])

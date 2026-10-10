@@ -284,13 +284,14 @@ internal sealed partial class HostHttpServer
                     catch (Exception ex) when (existing is not null &&
                                                ex is ComponentUnloadPendingException or IOException or UnauthorizedAccessException)
                     {
-                        // The running copy cannot be released (a referenced assembly, a locked file): hand the
-                        // new version to the next start and keep the current one serving until then.
+                        // Stage the new version for restart. Never restart an instance whose stopped
+                        // assembly remains referenced; unaffected instances can keep serving.
                         pendingReason = ex.Message;
                         adapterPackages.StageUpdate(probe, existing.Enabled);
                         foreach (var previous in runningInstances)
                         {
                             if (adapterManager.LoadedIds.Contains(previous.Id, StringComparer.OrdinalIgnoreCase)) continue;
+                            if (adapterManager.GetSnapshot().Any(item => item.Id == previous.Id && item.RestartRequired)) continue;
                             try { await adapterManager.LoadInstanceAsync(previous).ConfigureAwait(false); }
                             catch (Exception reloadError) { BotLog.Warning($"重新启动当前版本 Adapter {previous.Id} 失败: {reloadError.Message}"); }
                         }
@@ -308,7 +309,7 @@ internal sealed partial class HostHttpServer
                         restarted = false,
                         pending_restart = true,
                         reason = pendingReason,
-                        message = $"当前版本无法热替换，新版本 {probe.Version} 已暂存，将在下次重启宿主时替换。重启前当前版本继续运行。"
+                        message = $"当前版本无法热替换，新版本 {probe.Version} 已暂存，将在下次重启宿主时替换。无法释放程序集的实例已停止，其他运行中的实例不受影响。"
                     });
                 }
                 var installed = result.Package;

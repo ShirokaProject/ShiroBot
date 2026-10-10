@@ -27,6 +27,18 @@ using ShiroBot.Plugins.Compatibility;
 using ShiroBot.SharedContractPluginProbe;
 
 [assembly: ShiroBotApiCompatibility("0.9", "0.9")]
+if (args is ["--directory-lock-probe", var lockDirectory, var holdLock])
+{
+    using var held = HostDirectoryLock.TryAcquire(lockDirectory);
+    if (held is null) { Environment.ExitCode = 73; return; }
+    if (holdLock == "hold")
+    {
+        Console.WriteLine("LOCKED");
+        await Console.In.ReadLineAsync();
+    }
+    return;
+}
+
 if (args is ["--config-reload"])
 {
     await CoreConfigReloadVerification.RunAsync();
@@ -50,6 +62,19 @@ if (args is ["--update-integration", var fixtureDirectory])
     await UpdateIntegration.RunAsync(fixtureDirectory);
     return;
 }
+
+if (args is ["--adapter-reload-isolation"])
+{
+    Console.WriteLine($"Verification runtime: {Environment.Version}");
+    await AdapterReloadIsolationVerification.RunAsync();
+    return;
+}
+
+await HostDirectoryLockVerification.RunAsync();
+// TODO(#5): Remove isolated Windows runtime exception once the upstream .NET fix is verified.
+// https://github.com/ShirokaProject/ShiroBot/issues/5
+if (args is not ["--without-adapter-reload-isolation"])
+    await AdapterReloadIsolationVerification.RunAsync();
 
 {
     var deletionRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));

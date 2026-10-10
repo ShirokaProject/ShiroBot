@@ -91,7 +91,10 @@ internal sealed partial class HostHttpServer
 
     private static object[] GetCoreConfigSchema() => GetComponentConfigSchema(typeof(CoreConfig).Assembly)
         .OfType<ConfigSchemaItem>()
-        .Where(item => item.Key is not "protocols" and not "plugin_routes")
+        .Where(item => item.Key is not "protocols")
+        .Select(item => item.Key == "plugin_routes"
+            ? item with { Fields = item.Fields?.Where(field => field.Key == "default").ToArray() }
+            : item)
         .Cast<object>()
         .ToArray();
 
@@ -110,6 +113,26 @@ internal sealed partial class HostHttpServer
         if (patch.TryGetProperty("api", out var requestedApi) && requestedApi.ValueKind == JsonValueKind.Object &&
             TryGetString(requestedApi, "token", out var requestedToken) && string.IsNullOrWhiteSpace(requestedToken))
             throw new InvalidOperationException("运行中的 API 令牌不能设为空；可在控制台执行 api token 生成新令牌。");
+        string? defaultRouteMode = null;
+        string[]? defaultRouteGroups = null;
+        if (patch.TryGetProperty("plugin_routes", out var routesPatch))
+        {
+            if (routesPatch.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("plugin_routes 必须是对象。");
+            if (routesPatch.TryGetProperty("default", out var defaultPatch))
+            {
+                if (defaultPatch.ValueKind != JsonValueKind.Object)
+                    throw new InvalidOperationException("plugin_routes.default 必须是对象。");
+                if (TryGetString(defaultPatch, "mode", out var mode))
+                {
+                    defaultRouteMode = NormalizePluginRouteMode(mode);
+                    if (defaultRouteMode == "default")
+                        throw new InvalidOperationException("默认路由模式只能是 whitelist 或 blacklist。");
+                }
+                if (TryGetIdArray(defaultPatch, "groups", out var groups))
+                    defaultRouteGroups = groups.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct().ToArray();
+            }
+        }
         // Validated before anything is written, so a rejected value leaves the file untouched.
         var hasShowid = TryGetBool(patch, "showid", out var showid);
         var hasOwners = TryGetIdArray(patch, "owner_list", out var ownerList);
@@ -133,6 +156,11 @@ internal sealed partial class HostHttpServer
                 _ => throw new InvalidOperationException("avalonia_theme 只能是 Light、Dark 或 Auto。")
             }
             : null;
+
+        if (defaultRouteMode is not null)
+            configManager.SetConfigValue(configPath, "plugin_routes.default.mode", defaultRouteMode);
+        if (defaultRouteGroups is not null)
+            configManager.SetConfigValue(configPath, "plugin_routes.default.groups", defaultRouteGroups);
 
         if (hasShowid) configManager.SetConfigValue(configPath, "showid", showid);
 
