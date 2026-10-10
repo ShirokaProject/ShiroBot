@@ -14,6 +14,13 @@ avalonia_theme = "Auto"
 owner_list = ["qq-work:123456789"]
 admin_list = ["qq-official:06E88C1E2090950724B8D9E8A4E097E3"]
 
+[api]
+enable = true
+enable_dashboard = true # 内嵌 Dashboard 开关，修改后重启生效
+listen_urls = ["http://127.0.0.1:7001"]
+public_base_url = []
+token = ""
+
 [plugin_routes.default]
 mode = "blacklist"
 groups = []
@@ -22,12 +29,6 @@ groups = []
 mode = "whitelist"
 groups = [10001, 10002]
 
-[api]
-enable = true
-enable_dashboard = true # 内嵌 Dashboard 开关，修改后重启生效
-listen_urls = ["http://127.0.0.1:7001"]
-public_base_url = []
-token = ""
 ```
 
 ## 基础设置
@@ -128,8 +129,7 @@ token = ""
 
 - `enable_dashboard` 默认为 `true`。设为 `false` 后不提供宿主 `/dashboard` 页面及其静态资源；HTTP API 和插件 Web 路由仍可使用，适合使用独立部署的 Dashboard。修改后重启宿主生效。`api.enable = false` 则关闭整个 HTTP 服务。
 - `listen_urls` 是监听地址列表；只监听一个地址时也写成单元素数组，默认为 `["http://127.0.0.1:7001"]`。
-- 旧配置中的 `protocol` 和 `api.listen_url` 会在读取时迁移为数组字段。
-- `public_base_url` 是反向代理后的外部地址数组，插件 `Context.WebHost` 生成链接使用第一个非空地址；空数组使用第一个监听地址。也接受单个字符串（包括 `""`），读取时规范为数组。额外的公开地址需要自行配置 DNS、反向代理，数组本身不会新增监听或执行负载均衡。
+- `public_base_url` 是反向代理后的外部地址数组，插件 `Context.WebHost` 生成链接使用第一个非空地址；空数组使用第一个监听地址。只接受数组，不兼容旧字符串格式。额外的公开地址需要自行配置 DNS、反向代理，数组本身不会新增监听或执行负载均衡。
 - API 始终要求鉴权，配置使用 `[api].token`，不再提供 `[api.auth]` 或关闭鉴权的开关。`token` 为空时，宿主启动会自动生成随机令牌并写回配置；运行时不能通过配置 API 将令牌设为空。旧 `api.auth.key` 不再读取，需要将原值手动填入 `api.token`。
 
 使用 Nginx、Caddy 等反向代理时，应同时配置 TLS 和访问控制。
@@ -172,3 +172,5 @@ timeout_seconds = 15
 
 权限配置不接受裸用户 ID。冒号等保留字符按 URI 组件编码，例如用户 ID 内的 `:` 写成 `%3A`。
 相同用户在两个实例共享权限时，分别配置两个条目；不同平台的相同 ID 不再互相授予权限。
+
+开发期间仅支持当前宿主配置格式，不迁移旧字段、不修复旧版重复配置段。`protocols`、`listen_urls`、`public_base_url` 均使用数组，鉴权令牌使用 `api.token`。新生成配置将 `[api]` 放在 `[plugin_routes]` 之前；保存已有配置仍保留用户的段落顺序和注释。

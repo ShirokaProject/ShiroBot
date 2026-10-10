@@ -1772,7 +1772,6 @@ try
     Directory.CreateDirectory(Path.GetDirectoryName(coreConfigPath)!);
     File.WriteAllText(coreConfigPath, """
         # preserved core comment
-        protocol = "LegacyAdapter"
         protocols = []
         enable_log = true
         future_core_value = "keep"
@@ -1783,8 +1782,7 @@ try
 
         [api]
         enable = true
-        listen_url = "http://127.0.0.1:7001"
-        listen_urls = []
+        listen_urls = ["http://127.0.0.1:7001"]
         future_api_value = "keep"
 
         [future_core_section]
@@ -1795,7 +1793,7 @@ try
     if (coreConfig.Protocols.Length != 0 ||
         !coreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7001"]))
     {
-        throw new InvalidOperationException("Legacy core settings were not migrated to array settings.");
+        throw new InvalidOperationException("Current core array settings were not loaded.");
     }
     if (!coreConfig.Api.EnableDashboard)
         throw new InvalidOperationException("Existing configs must keep Dashboard enabled by default.");
@@ -1830,12 +1828,12 @@ try
     Console.WriteLine("Core config preserving-save verification passed.");
 
     var publicUrlsPath = Path.Combine(tempRoot, "public-urls.toml");
-    File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = \"https://primary.example.com\"\ntoken = \"test-token\"\n");
+    File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = [\"https://primary.example.com\"]\ntoken = \"test-token\"\n");
     var publicUrlsManager = new ConfigManager(publicUrlsPath);
     var publicUrlsConfig = await publicUrlsManager.LoadCoreConfig();
     if (!publicUrlsConfig.Api.PublicBaseUrl.SequenceEqual(["https://primary.example.com"]) ||
         publicUrlsConfig.Api.Token != "test-token")
-        throw new InvalidOperationException("Single public URL or flattened API token failed to load.");
+        throw new InvalidOperationException("Public URL array or flattened API token failed to load.");
     publicUrlsConfig.Api.PublicBaseUrl = ["https://primary.example.com", "https://backup.example.com"];
     publicUrlsManager.SaveConfig(publicUrlsPath, publicUrlsConfig);
     publicUrlsConfig = await publicUrlsManager.LoadCoreConfig();
@@ -1862,6 +1860,7 @@ try
     var newCoreToml = File.ReadAllText(newCorePath);
     AssertContains(newCoreToml, "protocols = []");
     AssertContains(newCoreToml, "enable_dashboard = true");
+    AssertBefore(newCoreToml, "[api]", "[plugin_routes.default]");
     AssertContains(newCoreToml, "listen_urls = [\"http://127.0.0.1:7001\"]");
     if (newCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
         newCoreToml.Contains("listen_url =", StringComparison.Ordinal))
@@ -1869,51 +1868,14 @@ try
         throw new InvalidOperationException("New core TOML contains legacy single-value keys.");
     }
 
-    var emptyLegacyPath = Path.Combine(tempRoot, "empty-legacy-core", "config.toml");
-    Directory.CreateDirectory(Path.GetDirectoryName(emptyLegacyPath)!);
-    File.WriteAllText(emptyLegacyPath, "protocol = \"\"\nprotocols = []\n");
-    if ((await new ConfigManager(emptyLegacyPath).LoadCoreConfig()).Protocols.Length != 0)
-        throw new InvalidOperationException("Empty legacy adapter setting became a nonempty adapter list.");
-
-    var malformedCorePath = Path.Combine(tempRoot, "malformed-core", "config.toml");
-    Directory.CreateDirectory(Path.GetDirectoryName(malformedCorePath)!);
-    File.WriteAllText(malformedCorePath, """
-        protocol = "LegacyAdapter"
-        protocols = []
-
-        [plugin_routes.default]
-        mode = "blacklist"
-        groups = []
-        listen_urls = []
-
-        [api]
-        enable = true
-        listen_url = "http://127.0.0.1:7021"
-        listen_urls = []
-
-        [api.auth]
-        enable = true
-        key = "example"
-
-        [plugin_routes]
-
-        [plugin_routes.default]
-        mode = "whitelist"
-        groups = ["915449089"]
-        """);
-    var malformedManager = new ConfigManager(malformedCorePath);
-    var repairedCoreConfig = await malformedManager.LoadCoreConfig();
-    if (repairedCoreConfig.Protocols.Length != 0 ||
-        !repairedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7021"]) ||
-        !repairedCoreConfig.PluginRoutes.Default.Groups.SequenceEqual(["915449089"]))
+    var invalidPublicUrlsPath = Path.Combine(tempRoot, "invalid-public-urls.toml");
+    File.WriteAllText(invalidPublicUrlsPath, "[api]\npublic_base_url = \"https://legacy.example.com\"\n");
+    try
     {
-        throw new InvalidOperationException("Generated duplicate core section was not repaired without losing settings.");
+        await new ConfigManager(invalidPublicUrlsPath).LoadCoreConfig();
+        throw new InvalidOperationException("Old scalar public URLs must not be accepted.");
     }
-    var repairedToml = File.ReadAllText(malformedCorePath);
-    AssertSingle(repairedToml, "[plugin_routes.default]");
-    await malformedManager.LoadCoreConfig();
-    if (File.ReadAllText(malformedCorePath) != repairedToml)
-        throw new InvalidOperationException("Core config migration was not idempotent.");
+    catch (Exception error) when (error.Message.StartsWith("加载配置时出错:", StringComparison.Ordinal)) { }
 
     async Task<LoadedPluginHandle> CreatePluginHandleAsync(
         IBotPlugin plugin,
