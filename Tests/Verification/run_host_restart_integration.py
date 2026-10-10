@@ -76,9 +76,7 @@ host_update_repository = "ShirokaProject/ShiroBot"
 [api]
 enable = true
 listen_urls = ["http://127.0.0.1:{args.port}"]
-[api.auth]
-enable = true
-key = "{key}"
+token = "{key}"
 ''')
     (root / 'plugins').mkdir()
     command = [str(executable), '--config', str(config), '--adapter', str(root / 'no-adapter.dll'),

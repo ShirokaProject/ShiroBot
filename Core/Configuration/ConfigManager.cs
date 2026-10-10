@@ -69,20 +69,14 @@ public class ApiHostConfig
     [ConfigField("API 服务监听的地址列表。", Type = "array")]
     public string[] ListenUrls { get; set; } = [DefaultListenUrl];
 
-    [ConfigField("反向代理后的外部基础 URL；留空表示不设置。")]
-    public string? PublicBaseUrl { get; set; }
+    [ConfigField("API 鉴权令牌，始终启用鉴权；留空时启动自动生成并保存。", Type = "password")]
+    public string Token { get; set; } = string.Empty;
 
-    [ConfigField("HTTP API 身份验证设置。", Type = "section")]
-    public ApiAuthConfig Auth { get; set; } = new();
-}
+    [ConfigField("反向代理后的外部基础 URL 列表；插件生成链接使用第一个非空地址，空列表使用监听地址。", Type = "array")]
+    public string[] PublicBaseUrl { get; set; } = [];
 
-public class ApiAuthConfig
-{
-    [ConfigField("访问 API 时是否要求 Bearer 令牌。")]
-    public bool Enable { get; set; } = true;
-
-    [ConfigField("客户端登录和访问 API 使用的密钥。", Type = "password")]
-    public string Key { get; set; } = string.Empty;
+    public string GetPrimaryBaseUrl() => PublicBaseUrl.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url))
+        ?? ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? DefaultListenUrl;
 }
 
 public class PluginRouteConfig
@@ -339,7 +333,17 @@ public class ConfigManager(string? coreConfigPath = null)
         foreach (var table in document.Tables)
         {
             if (string.Equals(table.Name?.ToString().Trim(), "api", StringComparison.OrdinalIgnoreCase))
+            {
                 Migrate(table.Items, "listen_url", "listen_urls");
+                var entry = table.Items.FirstOrDefault(item => item.Key?.ToString().Trim() == "public_base_url");
+                if (entry?.Value is { } value)
+                {
+                    var literal = toml.Substring(value.Span.Offset, value.Span.Length).Trim();
+                    if (!literal.StartsWith('['))
+                        edits.Add(new TomlEdit(value.Span.Offset, value.Span.Length,
+                            literal is "\"\"" or "''" ? "[]" : "[" + literal + "]", edits.Count));
+                }
+            }
         }
 
         var normalized = toml;
@@ -498,7 +502,8 @@ public class ConfigManager(string? coreConfigPath = null)
             if (additions.Length > 0)
             {
                 var prefix = insertion > 0 && current[insertion - 1] != '\n' ? newline : string.Empty;
-                edits.Add(new TomlEdit(insertion, 0, prefix + additions.ToString(), edits.Count));
+                // Existing-section fields must precede any new tables appended at the same offset.
+                edits.Add(new TomlEdit(insertion, 0, prefix + additions.ToString(), -1));
             }
         }
 

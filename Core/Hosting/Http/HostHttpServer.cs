@@ -210,16 +210,15 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
             api = new
             {
                 enabled = config.Enable,
-                auth_enabled = config.Auth.Enable
+                auth_enabled = true
             }
         }));
     }
 
     private static bool IsAuthorized(HttpContext context, ApiHostConfig config)
     {
-        if (!config.Auth.Enable) return true;
 
-        var expected = config.Auth.Key;
+        var expected = config.Token;
         if (string.IsNullOrWhiteSpace(expected)) return false;
 
         var authorization = context.Request.Headers.Authorization.ToString();
@@ -243,13 +242,12 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
 
     private static bool IsBearerAuthorized(HttpContext context, ApiHostConfig config)
     {
-        if (!config.Auth.Enable) return true;
 
         var authorization = context.Request.Headers.Authorization.ToString();
         if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return false;
 
         var provided = authorization["Bearer ".Length..].Trim();
-        return !string.IsNullOrWhiteSpace(config.Auth.Key) && FixedTimeEquals(provided, config.Auth.Key);
+        return !string.IsNullOrWhiteSpace(config.Token) && FixedTimeEquals(provided, config.Token);
     }
 
     private static bool FixedTimeEquals(string provided, string expected)

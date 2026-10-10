@@ -26,11 +26,8 @@ groups = [10001, 10002]
 enable = true
 enable_dashboard = true # 内嵌 Dashboard 开关，修改后重启生效
 listen_urls = ["http://127.0.0.1:7001"]
-public_base_url = ""
-
-[api.auth]
-enable = true
-key = ""
+public_base_url = []
+token = ""
 ```
 
 ## 基础设置
@@ -125,20 +122,17 @@ groups = [10001, 10002]
 [api]
 enable = true
 listen_urls = ["http://127.0.0.1:7001", "http://[::1]:7001"]
-public_base_url = "https://bot.example.com"
-
-[api.auth]
-enable = true
-key = ""
+public_base_url = ["https://bot.example.com", "https://bot-backup.example.com"]
+token = ""
 ```
 
 - `enable_dashboard` 默认为 `true`。设为 `false` 后不提供宿主 `/dashboard` 页面及其静态资源；HTTP API 和插件 Web 路由仍可使用，适合使用独立部署的 Dashboard。修改后重启宿主生效。`api.enable = false` 则关闭整个 HTTP 服务。
 - `listen_urls` 是监听地址列表；只监听一个地址时也写成单元素数组，默认为 `["http://127.0.0.1:7001"]`。
 - 旧配置中的 `protocol` 和 `api.listen_url` 会在读取时迁移为数组字段。
-- `public_base_url` 是反向代理后的外部地址，会提供给插件的 `Context.WebHost`。
-- 开启鉴权且 `key` 为空时，宿主会自动生成随机密钥并写回配置。
+- `public_base_url` 是反向代理后的外部地址数组，插件 `Context.WebHost` 生成链接使用第一个非空地址；空数组使用第一个监听地址。也接受单个字符串（包括 `""`），读取时规范为数组。额外的公开地址需要自行配置 DNS、反向代理，数组本身不会新增监听或执行负载均衡。
+- API 始终要求鉴权，配置使用 `[api].token`，不再提供 `[api.auth]` 或关闭鉴权的开关。`token` 为空时，宿主启动会自动生成随机令牌并写回配置；运行时不能通过配置 API 将令牌设为空。旧 `api.auth.key` 不再读取，需要将原值手动填入 `api.token`。
 
-不要在公网监听时关闭鉴权。使用 Nginx、Caddy 等反向代理时，应同时配置 TLS 和访问控制。
+使用 Nginx、Caddy 等反向代理时，应同时配置 TLS 和访问控制。
 
 ## 适配器和插件配置
 

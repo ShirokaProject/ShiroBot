@@ -12,7 +12,7 @@ public interface IConfigContext
 
     /// <summary>
     /// Updates one TOML value while preserving unrelated comments and formatting when possible.
-    /// Use dotted paths for nested tables, for example: api.auth.key.
+    /// Use dotted paths for nested tables, for example: api.token.
     /// </summary>
     void SetValue(string keyPath, object? value);
 

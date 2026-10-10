@@ -1829,6 +1829,34 @@ try
     }
     Console.WriteLine("Core config preserving-save verification passed.");
 
+    var publicUrlsPath = Path.Combine(tempRoot, "public-urls.toml");
+    File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = \"https://primary.example.com\"\ntoken = \"test-token\"\n");
+    var publicUrlsManager = new ConfigManager(publicUrlsPath);
+    var publicUrlsConfig = await publicUrlsManager.LoadCoreConfig();
+    if (!publicUrlsConfig.Api.PublicBaseUrl.SequenceEqual(["https://primary.example.com"]) ||
+        publicUrlsConfig.Api.Token != "test-token")
+        throw new InvalidOperationException("Single public URL or flattened API token failed to load.");
+    publicUrlsConfig.Api.PublicBaseUrl = ["https://primary.example.com", "https://backup.example.com"];
+    publicUrlsManager.SaveConfig(publicUrlsPath, publicUrlsConfig);
+    publicUrlsConfig = await publicUrlsManager.LoadCoreConfig();
+    if (publicUrlsConfig.Api.PublicBaseUrl.Length != 2 || publicUrlsConfig.Api.GetPrimaryBaseUrl() != "https://primary.example.com")
+        throw new InvalidOperationException("Multiple public URLs did not round-trip or select their primary address.");
+    var authorize = typeof(HostHttpServer).GetMethod("IsAuthorized", BindingFlags.Static | BindingFlags.NonPublic)!;
+    var anonymous = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+    if ((bool)authorize.Invoke(null, [anonymous, publicUrlsConfig.Api])!)
+        throw new InvalidOperationException("Anonymous API access must always be denied.");
+    anonymous.Request.Headers.Authorization = "Bearer test-token";
+    if (!(bool)authorize.Invoke(null, [anonymous, publicUrlsConfig.Api])!)
+        throw new InvalidOperationException("Flattened API token was not accepted.");
+    publicUrlsConfig.Api.Token = "";
+    if ((bool)authorize.Invoke(null, [anonymous, publicUrlsConfig.Api])!)
+        throw new InvalidOperationException("An empty configured token must never disable authentication.");
+    publicUrlsConfig.Api.PublicBaseUrl = [];
+    publicUrlsConfig.Api.ListenUrls = ["http://127.0.0.1:8001"];
+    if (publicUrlsConfig.Api.GetPrimaryBaseUrl() != "http://127.0.0.1:8001")
+        throw new InvalidOperationException("Empty public URLs did not fall back to a listener.");
+    Console.WriteLine("Mandatory flat API token and multiple public base URLs verification passed.");
+
     var newCorePath = Path.Combine(tempRoot, "new-core", "config.toml");
     await new ConfigManager(newCorePath).LoadCoreConfig();
     var newCoreToml = File.ReadAllText(newCorePath);

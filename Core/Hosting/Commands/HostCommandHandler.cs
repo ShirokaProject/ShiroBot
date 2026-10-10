@@ -216,10 +216,9 @@ internal sealed class HostCommandHandler(
             return "用法: api | api token | api token <密钥>";
         }
 
-        coreConfig.Api.Auth.Key = splitInput.Length >= 3
+        coreConfig.Api.Token = splitInput.Length >= 3
             ? splitInput[2]
             : GenerateApiKey();
-        coreConfig.Api.Auth.Enable = true;
         configManager.SaveConfig(configPath, coreConfig);
 
         return "API 鉴权密钥已更新。" + Environment.NewLine + BuildApiInfoText();
@@ -227,17 +226,15 @@ internal sealed class HostCommandHandler(
 
     private string BuildApiInfoText()
     {
-        var baseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
-            ? coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? ApiHostConfig.DefaultListenUrl
-            : coreConfig.Api.PublicBaseUrl;
+        var baseUrl = coreConfig.Api.GetPrimaryBaseUrl();
 
         return new StringBuilder()
             .AppendLine("API 信息")
             .AppendLine(new string('-', 24))
             .AppendLine("启用: " + coreConfig.Api.Enable)
             .AppendLine("地址: " + baseUrl)
-            .AppendLine("鉴权: " + coreConfig.Api.Auth.Enable)
-            .AppendLine("密钥: " + (coreConfig.Api.Auth.Enable ? coreConfig.Api.Auth.Key : "未启用"))
+            .AppendLine("鉴权: 始终开启")
+            .AppendLine("密钥: " + coreConfig.Api.Token)
             .AppendLine("调用: Authorization: Bearer <key>")
             .ToString()
             .TrimEnd();

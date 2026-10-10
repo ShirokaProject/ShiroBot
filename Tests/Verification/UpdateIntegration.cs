@@ -512,7 +512,7 @@ internal static class UpdateIntegration
             var configPath = Path.Combine(root, "config.toml");
             await File.WriteAllTextAsync(configPath, "protocols = []\nhost_update_repository = \"\"\n");
             var configManager = new ConfigManager(configPath);
-            var config = new CoreConfig { Api = new ApiHostConfig { ListenUrls = [origin], Auth = new ApiAuthConfig { Key = "integration-test-key" } } };
+            var config = new CoreConfig { Api = new ApiHostConfig { ListenUrls = [origin], Token = "integration-test-key" } };
             var web = new WebHostContext(origin, true);
             var context = new BotContext(null, [], [], web);
             var runtime = new HostRuntimeState(DateTimeOffset.UtcNow);

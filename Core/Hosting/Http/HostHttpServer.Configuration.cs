@@ -107,6 +107,9 @@ internal sealed partial class HostHttpServer
         ConfigManager configManager,
         string configPath)
     {
+        if (patch.TryGetProperty("api", out var requestedApi) && requestedApi.ValueKind == JsonValueKind.Object &&
+            TryGetString(requestedApi, "token", out var requestedToken) && string.IsNullOrWhiteSpace(requestedToken))
+            throw new InvalidOperationException("运行中的 API 令牌不能设为空；可在控制台执行 api token 生成新令牌。");
         // Validated before anything is written, so a rejected value leaves the file untouched.
         var hasShowid = TryGetBool(patch, "showid", out var showid);
         var hasOwners = TryGetIdArray(patch, "owner_list", out var ownerList);
@@ -200,28 +203,16 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "api.listen_urls", listenUrls);
         }
 
-        if (TryGetNullableString(apiPatch, "public_base_url", out var publicBaseUrl))
+        if (TryGetStringArray(apiPatch, "public_base_url", out var publicBaseUrl))
         {
             currentApiConfig.PublicBaseUrl = publicBaseUrl;
-            configManager.SetConfigValue(configPath, "api.public_base_url", publicBaseUrl ?? string.Empty);
+            configManager.SetConfigValue(configPath, "api.public_base_url", publicBaseUrl);
         }
 
-        if (apiPatch.TryGetProperty("auth", out var authPatch))
+        if (TryGetString(apiPatch, "token", out var token))
         {
-            if (authPatch.ValueKind != JsonValueKind.Object)
-                throw new InvalidOperationException("api.auth 配置必须是对象");
-
-            if (TryGetBool(authPatch, "enable", out var authEnable))
-            {
-                currentApiConfig.Auth.Enable = authEnable;
-                configManager.SetConfigValue(configPath, "api.auth.enable", authEnable);
-            }
-
-            if (TryGetString(authPatch, "key", out var token))
-            {
-                currentApiConfig.Auth.Key = token;
-                configManager.SetConfigValue(configPath, "api.auth.key", token);
-            }
+            currentApiConfig.Token = token;
+            configManager.SetConfigValue(configPath, "api.token", token);
         }
     }
 

@@ -176,9 +176,7 @@ public static class Program
             var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption), adapterPackages);
 
             // ─── BotContext + 基础设施 ───
-            var webPublicBaseUrl = string.IsNullOrWhiteSpace(coreConfig.Api.PublicBaseUrl)
-                ? coreConfig.Api.ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? ApiHostConfig.DefaultListenUrl
-                : coreConfig.Api.PublicBaseUrl;
+            var webPublicBaseUrl = coreConfig.Api.GetPrimaryBaseUrl();
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
             botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub);
             Updater.Initialize(
@@ -294,10 +292,7 @@ public static class Program
                 CH.Success("API 地址: " + webPublicBaseUrl);
                 if (coreConfig.Api.EnableDashboard)
                     CH.Success("Dashboard 地址: " + webPublicBaseUrl.TrimEnd('/') + "/dashboard/");
-                if (coreConfig.Api.Auth.Enable)
-                {
-                    CH.Warning("API 鉴权密钥: " + coreConfig.Api.Auth.Key);
-                }
+                CH.Warning("API 鉴权密钥: " + coreConfig.Api.Token);
             }
 
             // ─── 控制台交互 ───
@@ -406,11 +401,11 @@ public static class Program
 
     private static void EnsureApiAuthKey(CoreConfig coreConfig, ConfigManager manager, string configPath)
     {
-        if (!coreConfig.Api.Auth.Enable || !string.IsNullOrWhiteSpace(coreConfig.Api.Auth.Key)) return;
+        if (!string.IsNullOrWhiteSpace(coreConfig.Api.Token)) return;
 
         Span<byte> bytes = stackalloc byte[32];
         RandomNumberGenerator.Fill(bytes);
-        coreConfig.Api.Auth.Key = Convert.ToHexString(bytes).ToLowerInvariant();
+        coreConfig.Api.Token = Convert.ToHexString(bytes).ToLowerInvariant();
         manager.SaveConfig(configPath, coreConfig);
     }
 
