@@ -18,10 +18,10 @@ env:
 jobs:
   prepare:
     name: Prepare shared assets
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Validate release version
         run: |
@@ -31,7 +31,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6.0.0
         with:
           global-json-file: global.json
 
@@ -81,7 +81,7 @@ jobs:
           echo "已获取 Dashboard v${version} 成品资源"
 
       - name: Upload dashboard assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: dashboard-assets
           path: Core/Assets/dashboard/**
@@ -89,7 +89,7 @@ jobs:
 
   publish-host:
     name: Publish ${{ matrix.runtime }} ${{ matrix.publish_kind }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
     strategy:
       fail-fast: false
@@ -98,15 +98,15 @@ jobs:
         publish_kind: [framework-dependent, self-contained]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6.0.0
         with:
           global-json-file: global.json
 
       - name: Download dashboard assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.2
         with:
           name: dashboard-assets
           path: Core/Assets/dashboard
@@ -153,7 +153,7 @@ jobs:
           (cd "$output_dir" && zip -9 -j "$archive_path" "$host_exe")
 
       - name: Upload host archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: shirobot-host-${{ matrix.runtime }}-${{ matrix.publish_kind }}
           path: artifacts/archives/*.zip
@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload container files
         if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: shirobot-container-${{ matrix.runtime }}
           path: artifacts/docker/
@@ -186,17 +186,17 @@ jobs:
 
   docker:
     name: Publish Docker image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: publish-host
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Download layered container files
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: shirobot-container-linux-musl-*64
           path: artifacts/docker
@@ -219,7 +219,7 @@ jobs:
 
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
@@ -228,20 +228,20 @@ jobs:
             type=raw,value=latest
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4.4.0
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4.4.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           file: Containerfile
@@ -266,22 +266,22 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [prepare, publish-host, docker, nuget]
     steps:
       - name: Checkout release history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Download NuGet packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.2
         with:
           name: validated-nuget-packages
           path: artifacts/nuget
 
       - name: Download host archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: shirobot-host-*
           path: artifacts/archives
