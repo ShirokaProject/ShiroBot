@@ -42,7 +42,7 @@ await Context.Message.SendMessageAsync(
 
 ## 事件
 
-所有事件继承 `BotEvent`，包含 `Platform`、`SelfId` 和可选 `Raw`；v0.9.7 起增加 `InstanceId`：
+所有事件继承 `BotEvent`，包含 `Platform`、`SelfId` 和可选 `Raw`和 `InstanceId`：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -66,7 +66,7 @@ await Context.Message.SendMessageAsync(
 
 ### QQ 群管理与事件
 
-QQ Model ABI 1.0.0.0 统一使用字符串 ID，直接替换旧接口，引用 QQ Model 的插件和适配器需重新编译。
+QQ Model ABI 1.0.0.0 统一使用字符串 ID；引用 QQ Model 0.x ABI 的插件和适配器需迁移并重新编译。
 群信息、成员查询、禁言、踢人和入群审批统一通过 `GetAdapterExtension<IQGroupApi>()` 获取。
 使用 `Capabilities` 检查适配器实现的操作；平台权限仍由 QQ 控制。
 自动审批策略和白名单通过 `IQGroupApprovalStrategyApi` 探测。

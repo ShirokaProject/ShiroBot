@@ -41,12 +41,9 @@ Both generated projects include `.github/workflows/release.yml`. It builds on pu
 requests and publishes the DLL plus a ZIP of the full Release build output when a matching `v*` tag is
 pushed. Update the component's `Version` metadata before tagging.
 
-For SDK 0.9.9, install `ShiroBot.Templates` 0.9.10. The NuGet template package 0.9.9
-contains unresolved SDK version placeholders; the 0.9.10 template patch fixes them while
-continuing to reference SDK 0.9.9. Template patch versions can therefore differ from SDK
-versions. The next SDK release must publish a fresh template version rather than reusing
-0.9.10; `publish-nuget.yml` accepts `template_version` for this purpose.
-
+ShiroBot.SDK and ShiroBot.Templates 1.0.0 are published. Use the 1.0.0 templates
+for new projects; generated projects reference SDK 1.0.0. Template-only fixes may
+use a different patch version while retaining the matching SDK reference.
 
 ## NuGet release gate
 
@@ -55,6 +52,9 @@ succeeds; GitHub Release publication waits for NuGet publication too. The NuGet 
 completes the reusable host CI, the Windows Release solution build and
 verification, package content checks, and eight generated consumer builds (plugin and adapter,
 each using generic, QQ, Discord, and Telegram contracts) before its publish job can run.
+The isolated Windows adapter-reload probe has a narrowly scoped exception for the
+known .NET 10.0.0–10.0.12 runtime hang; other verification failures remain blocking.
+See [host issue #5](https://github.com/ShirokaProject/ShiroBot/issues/5).
 Normal releases build consumers against the exact SDK package being released, from an isolated
 local feed and package cache. A template-only patch verifies its consumers against the already
 published SDK version.
@@ -75,7 +75,8 @@ with the current product `version`, leave `template_version` empty, and enable `
 verification, and uploads test artifacts to Actions only. The publish job, NuGet login,
 NuGet upload, tags and GitHub Releases are not executed.
 
-The next coordinated host, SDK and template release is 1.0.0. All generated projects pin SDK 1.0.0 when the template package is packed for that release; no package has been published by this source change.
+The coordinated host, SDK and template release is 1.0.0. Generated projects pin
+SDK 1.0.0; upgrade existing projects explicitly when adopting newer SDK APIs.
 
 ## Generated project layout
 

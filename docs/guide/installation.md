@@ -111,7 +111,7 @@ framework-dependent 发布包仍然直接运行 `ShiroBot` / `ShiroBot.exe`，�
 
 首次启动后检查以下内容：
 
-- `config.toml` 已生成并填写 `protocol`、所有者账号等信息。
+- `config.toml` 已生成并配置 `protocols`、所有者身份及适配器实例等信息。
 - 适配器自己的 TOML 配置已经填写。
 - 日志中出现“加载适配器成功”。
 - 日志中出现插件加载列表。
@@ -158,7 +158,7 @@ docker compose logs -f shirobot
   ```
 
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
-- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=0.9.7` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=1.0.0` 后再执行 `docker compose pull` 和 `docker compose up -d`。
 
 备份数据卷：
 

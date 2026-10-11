@@ -47,7 +47,7 @@ using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
-[assembly: ShiroBotApiCompatibility("0.9.2", "0.9.2")]
+[assembly: ShiroBotApiCompatibility("1.0", "1.0")]
 
 namespace HelloPlugin;
 
@@ -203,7 +203,7 @@ ShiroBot 的插件市场读取 [awesome-shirobot](https://github.com/ShirokaProj
      "repository": "https://github.com/YOUR_NAME/HelloPlugin",
      "license": "NOASSERTION",
      "compatibility": {
-       "shirobot": ">=0.9.4",
+       "shirobot": ">=1.0.0",
        "framework": "net10.0"
      },
      "release": { "required": true, "assetPattern": "HelloPlugin.zip" },

@@ -22,6 +22,12 @@ Package versions follow the 1.0 release series; ABI numbers track each assembly'
 | ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- | --- |
 | 1.0.0 | 1.0 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
+
+<details>
+<summary>Pre-1.0 version history (migration reference)</summary>
+
+| ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
+| --- | --- | --- | --- | --- | --- |
 | 0.9.9 | 0.9.2 | 1.1.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.8 | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
@@ -31,6 +37,8 @@ Package versions follow the 1.0 release series; ABI numbers track each assembly'
 | 0.9.3 | 0.9 | 0.9.1.0 | 0.9.1.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.2 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
 | 0.9.1 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
+
+</details>
 
 `ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build
 support. Plugins only need this single package, including plugins that render Avalonia controls.
@@ -399,7 +407,7 @@ BotLog.Error("operation failed");
 Admin helpers:
 
 ```csharp
-if (!Context.IsAdmin(message.SenderId))
+if (!Context.IsAdmin(message.Sender.Id))
 {
     await Context.Message.ReplyAsync(message, "permission denied");
     return;

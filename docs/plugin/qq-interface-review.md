@@ -1,7 +1,7 @@
 # QQ 接口审阅（ABI 1.0）
 
-本次直接破坏旧 QQ Model ABI：`ShiroBot.Model.QQ` 为 **1.0.0.0**，不提供旧接口过渡。
-宿主 SDK ABI 同时升级为 **1.0.0.0**；所有引用旧 SDK 或 QQ Model 的组件必须重新编译。
+`ShiroBot.Model.QQ` 当前 ABI 为 **1.0.0.0**，用户、群与消息 ID 统一使用不透明字符串。
+宿主 1.0.0 提供 SDK ABI **1.2.0.0**；引用 SDK 或 QQ Model 0.x ABI 的组件必须重新编译。下方的旧类型名称仅用于迁移对照，不属于当前 API。
 宿主会拒绝加载引用旧 QQ Model ABI 的组件，避免运行后才报签名错误。
 
 ## 插件入口
@@ -83,7 +83,7 @@ Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QM
 数值计数、枚举、大小和时间仍保持原有语义；文件大小仍为 `long`。
 `QSentMessage.MessageId`、原生消息发送的返回 ID 也改为字符串。
 
-## 本轮补齐的语义
+## 当前契约语义
 
 - SDK 身份使用 `UserReference`，权限按实例隔离；消息引用包含会话。
 - 所有 QQ 异步服务方法都有 `CancellationToken`；SDK 消息、群/频道、用户服务及带引用的路由也支持取消。

@@ -81,7 +81,7 @@ protocols = ["MyAdapter"]
 
 ## 适配器实例清单
 
-v0.9.7 起把实例清单和连接配置放在各适配器自己的 `config.toml` 中，主配置不再保存实例。安装包后，在 Dashboard 展开适配器并添加唯一 ID，或直接编辑文件：
+把实例清单和连接配置放在各适配器自己的 `config.toml` 中，主配置不再保存实例。安装包后，在 Dashboard 展开适配器并添加唯一 ID，或直接编辑文件：
 
 ```toml
 [[instances]]
@@ -191,4 +191,4 @@ timeout_seconds = 15
 权限配置不接受裸用户 ID。冒号等保留字符按 URI 组件编码，例如用户 ID 内的 `:` 写成 `%3A`。
 相同用户在两个实例共享权限时，分别配置两个条目；不同平台的相同 ID 不再互相授予权限。
 
-开发期间仅支持当前宿主配置格式，不迁移旧字段、不修复旧版重复配置段。`protocols`、`listen_urls`、`public_base_url` 均使用数组，鉴权令牌使用 `api.token`。新生成配置将 `[api]` 放在 `[plugin_routes]` 之前；保存已有配置仍保留用户的段落顺序和注释。
+1.0 仅支持当前宿主配置格式，不迁移旧字段、不修复旧版重复配置段。`protocols`、`listen_urls`、`public_base_url` 均使用数组，鉴权令牌使用 `api.token`。新生成配置将 `[api]` 放在 `[plugin_routes]` 之前；保存已有配置仍保留用户的段落顺序和注释。

@@ -16,9 +16,9 @@ await Context.Message.ReplyAsync(message, "收到");
 await Context.Message.QuoteReplyAsync(message, "引用这条消息");
 
 var sent = await Context.Message.SendGroupMessageAsync(groupId, "已发送");
-if (sent.IsSuccess)
+if (sent.Reference is { } reference)
 {
-    await Context.Message.DeleteMessageAsync(Channel.Group(groupId), sent.MessageId);
+    await Context.Message.DeleteMessageAsync(reference);
 }
 ```
 
@@ -46,11 +46,11 @@ var member = await Context.Channel.GetMemberAsync(groupId, userId);
 using ShiroBot.Model.QQ;
 
 var groupApi = Context.GetAdapterExtension<IQGroupApi>();
-if (groupApi is not null && long.TryParse(groupId, out var qqGroupId))
-    await groupApi.SendNudgeAsync(qqGroupId, userId: 123456789);
+if (groupApi?.Capabilities.HasFlag(QGroupCapabilities.Nudge) == true)
+    await groupApi.SendNudgeAsync(groupId, userId);
 ```
 
-可选扩展未实现时返回 `null`。例如 Milky 可以实现 `IQGroupApi`，QQ 官方适配器可以实现 `IQOfficialMessageApi`。分别参见 [QQ 特有能力](/plugin/qq-model)与[官方 Markdown 与按钮](/plugin/qq-official)。
+可选扩展未实现时返回 `null`。Milky 和 QQ 官方适配器共用 `IQGroupApi`，通过 `Capabilities` 区分支持的操作。QQ 官方消息专有功能通过 `IQOfficialMessageApi` 提供。QQ 的用户、群和消息 ID 均使用字符串，插件无需转换成数字；ID 仍属于原适配器实例，不能跨平台互换。分别参见 [QQ 特有能力](/plugin/qq-model)与[官方 Markdown 与按钮](/plugin/qq-official)。
 
 ## 适配器实例与后台发送
 
@@ -65,7 +65,7 @@ using (Context.UseInstance("milky"))
 }
 ```
 
-适配器**包 ID** 来自 `BotAdapter` 声明，表示安装的 DLL；**实例 ID** 表示运行的一份适配器及其配置。新安装的包没有实例，在 Dashboard 适配器列表展开包后点击「添加实例」创建，例如 `milky`、`qq-work`、`qq-home`，不需要再次上传 DLL；实例 ID 在宿主内唯一，可在实例的「配置 → 实例」中修改。没有 `[[instances]]` 的旧配置按单实例运行，实例 ID 等于包 ID。
+适配器**包 ID** 来自 `BotAdapter` 声明，表示安装的 DLL；**实例 ID** 表示运行的一份适配器及其配置。新安装的包没有实例，在 Dashboard 适配器列表展开包后点击「添加实例」创建，例如 `milky`、`qq-work`、`qq-home`，不需要再次上传 DLL；实例 ID 在宿主内唯一，可在实例的「配置 → 实例」中修改。实例清单保存在适配器的 `config.toml` 中。
 
 ### 获取适配器与实例信息
 
@@ -94,7 +94,7 @@ if (target is not null)
 BotLog.Info($"消息来自 {Context.AdapterInstance?.Name}（{Context.AdapterInstance?.AdapterName}）");
 ```
 
-只列出运行中的实例；已停止、被总开关关闭或未加载的实例不在其中。旧宿主上 `AdapterInstance` 为 `null`、`GetAdapterInstances()` 返回空列表。
+只列出运行中的实例；已停止、被总开关关闭或未加载的实例不在其中。没有运行实例时，`AdapterInstance` 为 `null`、`GetAdapterInstances()` 返回空列表。
 
 ### 按来源回复
 
@@ -108,7 +108,7 @@ await Context.Message.ReplyAsync(message, "图片", new ImageSegment("https://ex
 await Context.Message.ReplyAsync(savedMessage, "处理完成");
 ```
 
-入站事件的 `InstanceId` 由宿主写入。上述回复只在调用期间选择来源实例，完成或失败后恢复外层选择。来源实例已停止、删除或未加载时抛出异常，不会误发到其他实例。自行构造的消息若没有 InstanceId，回退到 Platform：该平台只有一个运行实例时可以回复，否则抛出异常。
+入站事件的 `InstanceId` 由宿主写入。上述回复只在调用期间选择来源实例，完成或失败后恢复外层选择。来源实例已停止、删除或未加载时抛出异常，不会误发到其他实例。保存消息时应保留 `InstanceId`、`Channel` 和 `MessageId`。`message.Reference`、富消息回复及按消息撤回要求完整来源；不要自行构造缺少 `InstanceId` 的消息。
 
 ### 指定实例调用服务
 
@@ -120,7 +120,8 @@ using (Context.UseInstance("qq-work"))
     var self = await Context.User.GetSelfAsync();
     var members = await Context.Channel.GetMembersAsync(groupId);
     var sent = await Context.Message.SendGroupMessageAsync(groupId, "工作提醒");
-    await Context.Message.DeleteMessageAsync(Channel.Group(groupId), sent.MessageId);
+    if (sent.Reference is { } reference)
+        await Context.Message.DeleteMessageAsync(reference);
 }
 
 // 保存的事件用于查询、撤回等操作时，明确选择其来源。
@@ -131,7 +132,7 @@ using (Context.UseInstance(savedMessage.InstanceId!))
 }
 ```
 
-自动选择来源仅适用于 `ReplyAsync` 和 `QuoteReplyAsync`；`DeleteMessageAsync(message)` 同样使用完整消息引用进行路由；保存后台目标时可以使用 `ChannelReference` / `MessageReference`。仅有 groupId、userId、Channel 或 MessageId 不能自行推断适配器。
+`ReplyAsync`、`QuoteReplyAsync`、`DeleteMessageAsync(message)` 和接收 `MessageReference` 的查询、撤回接口按来源实例路由；保存后台目标时可以使用 `ChannelReference` / `MessageReference`。仅有 groupId、userId、Channel 或 MessageId 不能自行推断适配器。
 
 只能按实例 ID 选择实例，`UsePlatform` 已移除；需要按平台或协议挑选时，从 `Context.GetAdapterInstances()` 中筛选后传其 `Id`。独立后台任务、加载钩子及 Dashboard Action 没有来源事件时，未显式选择就使用第一个已加载适配器；给指定账号发消息不要依赖加载顺序。
 
@@ -150,19 +151,15 @@ using (Context.UseInstance("qq-work"))
 }
 ```
 
-### 多实例状态与旧插件兼容性
+### 多实例状态隔离
 
 需要按机器人隔离的缓存、任务或去重记录，用 `(InstanceId, ChannelId)`、`(InstanceId, Channel, MessageId)` 等键。只用 Platform、SelfId 或群号不能区分同平台同账号的多个实例；`(Platform, SelfId)` 表示平台账号，InstanceId 表示运行来源。
 
-SDK 0.9.8 将 SDK 与 QQ Model ABI 主版本升为 1.0.0.0。引用旧 ABI 的插件会在激活前被拒绝，必须迁移并重新编译；`UsePlatform` 已删除，使用 `UseInstance` 选择实例。插件缓存、定时任务和持久身份也应携带 InstanceId，不能仅按平台保存。
-
-::: info 版本范围
-实例接口、自动回复和同 DLL 多配置管理从宿主/SDK v0.9.7 开始提供，同时移除了 `UsePlatform`。v0.9.6 及更早版本使用平台作用域；本轮面向 SDK 0.9.8 的插件使用 `UseInstance`，并遵守新的 SDK / QQ Model ABI 和消息引用契约。0.9.8 已公开发布；0.9.9 在 SDK ABI 1.1 中新增通用文件上传能力。
-:::
+当前 SDK 使用 `UseInstance` 选择实例。旧组件迁移与 ABI 加载规则见[API 兼容性与版本](/plugin/api-compatibility)。
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。
 
-## SDK 0.9.8 富消息与互动
+## 通用富消息与互动
 
 普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/rich-messages)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。
 

@@ -7,9 +7,9 @@
 | 属性 | 用途 |
 | --- | --- |
 | `Context.Platform` | 当前实例的平台类型，例如 qq 或 qq-official |
-| `Context.InstanceId` | 当前适配器运行实例 ID（v0.9.7 起） |
-| `Context.UseInstance(id)` | 临时选择指定实例，作用域结束后恢复（v0.9.7 起） |
-| `Context.AdapterInstance` / `Context.GetAdapterInstances()` | 当前实例与全部运行实例的信息（v0.9.7 起） |
+| `Context.InstanceId` | 当前适配器运行实例 ID |
+| `Context.UseInstance(id)` | 临时选择指定实例，作用域结束后恢复 |
+| `Context.AdapterInstance` / `Context.GetAdapterInstances()` | 当前实例与全部运行实例的信息 |
 | `Context.Message` | 发送、回复、撤回、查询消息 |
 | `Context.Channel` | 群或频道信息与成员管理 |
 | `Context.User` | 机器人、用户和好友信息与请求 |
@@ -18,6 +18,8 @@
 | `Context.WebHost` | 宿主 HTTP 服务与公开地址 |
 | `Context.Updater` | 插件更新能力 |
 | `Context.Render` | 可选图片渲染服务 |
+| `Context.Services` | 发布、调用其他插件的共享服务 |
+| `Context.CreateTempDirectory(retention)` | 创建由宿主按保留时长清理的临时目录 |
 | `Context.PluginDirectory` | 插件稳定数据目录 |
 | `Context.OwnerList` | 宿主所有者身份列表（`UserReference`） |
 | `Context.AdminList` | 宿主管理员身份列表（`UserReference`） |
@@ -58,34 +60,31 @@ public sealed class HelloConfig
 }
 ```
 
-加载并监听配置：
+使用 `PluginBase<TConfig>`，由宿主加载配置、保存默认值并管理热更新：
 
 ```csharp
-private HelloConfig _config = new();
-private IDisposable? _configWatcher;
-
-protected override Task LoadAsync()
+[BotPlugin("HelloPlugin")]
+public sealed class HelloPlugin : PluginBase<HelloConfig>
 {
-    _config = Context.Config.Load<HelloConfig>();
-    Context.Config.Save(_config);
-
-    _configWatcher = Context.Config.Watch<HelloConfig>(updated =>
+    protected override Task OnConfigLoadedAsync(
+        HelloConfig config, CancellationToken cancellationToken)
     {
-        _config = updated;
+        BotLog.Info($"配置已加载，回复文本：{Settings.ReplyText}");
+        return Task.CompletedTask;
+    }
+
+    protected override Task OnConfigChangedAsync(
+        HelloConfig previous, HelloConfig current, CancellationToken cancellationToken)
+    {
         BotLog.Info("配置已热更新");
-    });
-
-    return Task.CompletedTask;
-}
-
-protected override Task OnUnloadAsync()
-{
-    _configWatcher?.Dispose();
-    return Task.CompletedTask;
+        return Task.CompletedTask;
+    }
 }
 ```
 
-`Watch<T>()` 返回的订阅必须释放，否则文件监听器会阻止插件完整卸载。
+业务代码通过 `Settings` 读取当前配置。配置类型可以位于共享项目；宿主沿 `IConfigurableComponent<TConfig>` 读取实际类型的字段元数据，Dashboard 会显示中文名称、说明和分组。
+
+需要自行管理额外配置时，可使用 `Context.Config.Load<T>()`、`Save<T>()` 和 `Watch<T>()`。手动创建的订阅应在卸载时释放；普通配置无需另建监听器。
 
 `Config.Save<T>()` 和首次 `Config.Load<T>()` 生成文件时，会把顶层属性的 `ConfigFieldAttribute` 写到对应 snake_case 键上方。`Label`、`Description`、`Options`、`Min`/`Max` 和 `Placeholder` 会转换为合法 `#` 注释；重复保存不会重复堆叠注释。
 
@@ -139,7 +138,7 @@ var subscription = Context.Message.SubscribeReply(
 
 默认在匹配一次后自动释放。长期订阅应保存返回值，并在插件卸载时主动 `Dispose()`。
 
-## 身份与消息作用域（SDK ABI 1.0）
+## 身份与消息作用域
 
 `UserReference(InstanceId, UserId)` 用于保存身份。`IsOwner(userId)` / `IsAdmin(userId)` 自动使用当前实例；
 后台权限检查可以传 `UserReference`。`OwnerList` / `AdminList` 是带实例的身份列表，Owner 自动继承 Admin。

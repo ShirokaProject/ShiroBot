@@ -90,7 +90,7 @@ var request = new OutgoingMessage
     Segments = [new MarkdownSegment("请选择操作")],
     Buttons = new([
         new([
-            new("docs", "文档", new OpenUrlAction("https://shirobot.net/")),
+            new("docs", "文档", new OpenUrlAction("https://docs.shiroka.org/")),
             new("refresh", "刷新", new CallbackAction("refresh"))
         ])
     ])
@@ -161,4 +161,4 @@ if (reactions is not null)
 | 通用 Reaction | 群聊/私聊暂未实现 | 群聊支持 Unicode 与平台表情 |
 | 互动回复 | 文本或 Markdown | 不支持 |
 
-官方通用按钮映射声明最多 5 行、每行 5 个按钮，按钮不能和媒体混发；通用请求最多一段媒体，普通文本最多 5000 字符。QQ 专属模板键盘、Ark、特殊按钮参数等仍保留 QQ Model 扩展。Typing、流式回复、通用审批和文件存储服务不在本轮实现范围。
+官方通用按钮映射声明最多 5 行、每行 5 个按钮，按钮不能和媒体混发；通用请求最多一段媒体，普通文本最多 5000 字符。QQ 专属模板键盘、Ark、特殊按钮参数等仍保留 QQ Model 扩展。Typing、流式回复、通用审批和文件存储服务尚未提供通用接口。
