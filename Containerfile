@@ -32,9 +32,9 @@ COPY docker/entrypoint.sh /usr/local/bin/shirobot-entrypoint
 COPY docker/config.container.toml /app/config.container.toml
 LABEL org.opencontainers.image.source="https://github.com/ShirokaProject/ShiroBot"
 RUN chmod +x /usr/local/bin/shirobot-entrypoint \
-    && mkdir -p /data/adapters /data/plugins \
+    && mkdir -p /data/adapters /data/plugins /app/cache \
     && ln -s /data/adapters /app/adapters \
-    && chown -R 1654:1654 /data
+    && chown -R 1654:1654 /data /app/cache
 USER 1654:1654
 VOLUME ["/data"]
 EXPOSE 7001

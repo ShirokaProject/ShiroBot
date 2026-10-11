@@ -184,10 +184,17 @@ jobs:
           path: artifacts/docker/
           if-no-files-found: error
 
+  verify-container:
+    needs: publish-host
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/verify-container.yml
+
   docker:
     name: Publish Docker image
     runs-on: ubuntu-24.04
-    needs: publish-host
+    needs: [publish-host, verify-container]
     permissions:
       contents: read
       packages: write

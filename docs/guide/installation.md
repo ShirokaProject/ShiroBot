@@ -149,7 +149,8 @@ docker compose up -d
 docker compose logs -f shirobot
 ```
 
-- 数据保存在命名卷 `shirobot_shirobot-data` 中，挂载到容器的 `/data`：`config.toml`、`plugins/`、`adapters/` 都在这里，重建或升级容器不会删除。`compose.yaml` 固定了项目名 `shirobot`，在哪个目录启动都使用同一个卷。
+- 数据保存在命名卷 `shirobot_data` 中，挂载到容器的 `/data`：`config.toml`、`plugins/`、`adapters/` 都在这里，重建或升级容器不会删除。`compose.yaml` 显式指定卷名 `shirobot_data`，在哪个目录启动都使用同一个卷。
+- 容器以非 root 用户运行；`/app/cache` 是可写的临时缓存目录，重建容器时可以丢弃，配置和插件数据仍保存在 `/data`。
 - 首次启动会生成 `/data/config.toml` 和 API 鉴权密钥，密钥也会打印在日志里。
 - 插件和适配器建议在 Dashboard 中安装、配置。需要手动修改配置文件时，在容器内编辑（以容器用户身份写入，宿主保存配置时不会遇到权限问题）：
 
@@ -163,7 +164,7 @@ docker compose logs -f shirobot
 备份数据卷：
 
 ```bash
-docker run --rm -v shirobot_shirobot-data:/data:ro -v "$PWD":/backup alpine \
+docker run --rm -v shirobot_data:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/shirobot-data.tgz -C /data .
 ```
 
@@ -180,7 +181,7 @@ curl -O https://raw.githubusercontent.com/ShirokaProject/ShiroBot/master/compose
 docker compose up --no-start
 
 # 拷贝旧数据并交给容器用户（UID 1654）
-docker run --rm -v "$PWD/docker-data:/old:ro" -v shirobot_shirobot-data:/data alpine \
+docker run --rm -v "$PWD/docker-data:/old:ro" -v shirobot_data:/data alpine \
   sh -c 'cp -a /old/. /data/ && chown -R 1654:1654 /data'
 
 docker compose up -d

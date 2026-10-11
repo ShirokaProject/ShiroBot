@@ -1,0 +1,43 @@
+name: Verify container startup
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        type: number
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  startup:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id || github.run_id }}
+          pattern: shirobot-container-linux-musl-*64
+          path: artifacts/docker
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Verify startup on native hardware
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          image="shirobot-smoke:$ARCH"
+          docker buildx build --load --platform "linux/$ARCH" \
+            --target prebuilt -f Containerfile -t "$image" .
+          sh scripts/verify-container-startup.sh "$image" "linux/$ARCH"
