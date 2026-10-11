@@ -169,6 +169,16 @@ jobs:
           dotnet build "$template_root/TemplateAdapter/TemplateAdapter.csproj" -c Release \
             --source "$GITHUB_WORKSPACE/artifacts/nuget" \
             --source https://api.nuget.org/v3/index.json
+          for component in TemplatePlugin TemplateAdapter; do
+            component_root="$template_root/$component"
+            dotnet run --project "$component_root/scripts/version-check/VersionCheck.csproj" -c Release -- \
+              "$component_root/bin/Release/net10.0/$component.dll" 1.0.0 1.0.0
+            if dotnet run --project "$component_root/scripts/version-check/VersionCheck.csproj" -c Release --no-build -- \
+              "$component_root/bin/Release/net10.0/$component.dll" 1.0.0 9.9.9; then
+              echo "Version verifier accepted an incorrect release tag for $component" >&2
+              exit 1
+            fi
+          done
           test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.SDK.dll"
           test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.Model.QQ.dll"
           dotnet build "$template_root/TemplateAdapter/TestPlugin/TemplateAdapter.TestPlugin.csproj" -c Release \

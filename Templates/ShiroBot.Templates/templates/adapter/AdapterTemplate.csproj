@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <Version>TemplateVersion</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- Debug keeps the designer entry point and dependencies for AXAML preview. -->
@@ -13,6 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="ShiroBot.SDK" />
+    <Compile Remove="scripts/**/*.cs" />
     <Compile Remove="TestPlugin/**/*.cs" />
     <!-- Build the test plugin for local development without linking it into the adapter. -->
     <ProjectReference Include="TestPlugin/AdapterTemplate.TestPlugin.csproj"

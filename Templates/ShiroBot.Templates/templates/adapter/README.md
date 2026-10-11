@@ -34,7 +34,7 @@ Each run removes files that an earlier run copied but the build no longer produc
 adapter or host created in its directory are left alone. Re-run the script after changing the adapter; stop the host first.
 
 The generated `.github/workflows/release.yml` builds the project on pushes and pull requests.
-Before releasing, set the `Version` in `src/Adapter.cs` to the version you want, then push a matching
+Before releasing, set the project `<Version>` and the `BotAdapter.Version` in `src/Adapter.cs` to the same version, then push a matching
 tag such as `v1.0.0`. GitHub Actions will publish a ZIP and the adapter DLL to GitHub Releases.
 The ZIP contains the complete Release build output; install the DLL directly only when no extra files
 are needed. GitHub Actions must be enabled for the repository.
@@ -61,3 +61,5 @@ continues to use component packaging. Linked AXAML files must belong to this pro
 through its `AvaloniaXaml` items.
 
 Run and Debug enable console input by default. Pass `--no-console` explicitly only when you want to disable console interaction.
+
+Release builds verify the built DLL metadata and informational version against the evaluated project version. Tag builds also require the `v` tag version to match; a mismatch fails before packaging or publishing. The verifier reads PE metadata without executing component code.
