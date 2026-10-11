@@ -47,24 +47,36 @@ sudo apk add libstdc++ libgcc icu-libs fontconfig font-noto-cjk
 
 ## 准备目录
 
-解压后建议保持以下结构：
+解压后，安装组件并运行宿主时，常见目录结构如下。主程序按平台选择 `ShiroBot` 或 `ShiroBot.exe`，并非同时包含两者；运行时目录会按需生成。
 
 ```text
 ShiroBot/
-├── ShiroBot              # Linux / macOS
-├── ShiroBot.exe          # Windows
-├── config.toml
+├── ShiroBot / ShiroBot.exe   # Linux、macOS / Windows 主程序
+├── config.toml              # 宿主配置、API 令牌、权限及插件路由
 ├── adapters/
-│   └── MyAdapter/
+│   └── MyAdapter/            # 适配器包，同一包可配置多个实例
 │       ├── MyAdapter.dll
-│       └── config.toml
-└── plugins/
-    ├── HelloPlugin.dll
-    └── OtherPlugin/
-        └── OtherPlugin.dll
+│       └── config.toml       # 实例清单及各实例的连接配置
+├── plugins/
+│   └── HelloPlugin/          # Dashboard 安装时按插件 ID 创建
+│       ├── HelloPlugin.dll
+│       ├── config.toml       # 插件提供配置时生成
+│       ├── data/             # 插件持久数据（具体目录由插件决定）
+│       └── .shirobot/native/ # 按需下载的 native 依赖缓存
+└── cache/
+    ├── host.lock            # 单实例运行锁，退出后释放锁但保留文件
+    ├── adapters/            # 可重建的适配器包元数据
+    ├── plugin-marketplace.v1.json # 插件市场缓存，按需生成
+    └── plugin-temp/         # 插件调用 CreateTempDirectory 创建的临时目录
 ```
 
-`config.toml`、`adapters` 和 `plugins` 不存在时，宿主会按启动进度自动创建。没有适配器时宿主无法连接机器人协议。
+`config.toml`、`adapters/`、`plugins/` 和 `cache/` 由宿主按需创建，插件内部的数据目录由插件决定。没有已配置并运行的适配器实例时，宿主仍可启动 Dashboard，但不能连接机器人协议。
+
+配置和插件持久数据需要保留。`cache/plugin-temp/` 由宿主按保留时长清理，下次启动时也会清理遗留文件；其他缓存不采用这一清理规则。运行期间不要删除 `cache/host.lock`，否则可能破坏重复启动保护。
+
+单 DLL 插件也可以手动放在 `plugins/HelloPlugin.dll`，宿主仍为其提供 `plugins/<插件 ID>/` 数据目录。带私有依赖或静态资源的组件可以包含其他文件，不需要另行放入宿主共享的 SDK / Model DLL 或发布用 PDB。
+
+上述结构不要求存在 `backup/` 或 `diagnostics/`；自行保存的备份和诊断文件应单独保管。Docker 的主程序和缓存位于 `/app`，配置、适配器与插件持久数据位于挂载的数据卷 `/data`，详见[Docker 部署](#docker-部署)。
 
 ## 安装适配器
 
