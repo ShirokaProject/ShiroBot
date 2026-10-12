@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Headless;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -201,8 +200,8 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     window.Arrange(new Rect(size));
                     window.UpdateLayout();
 
-                    // 推动 headless 渲染时钟，确保至少完成一帧渲染。
-                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                    // RenderTargetBitmap renders the visual directly below. A headless
+                    // window frame here would allocate an additional, unused bitmap.
 
                     var renderScale = dpi / 96d;
                     var pixelWidth = (int)Math.Ceiling(finalWidth * renderScale);
