@@ -158,7 +158,9 @@ internal sealed partial class HostHttpServer
         var pluginRoot = Path.GetFullPath(pluginRootPath);
         if (!Directory.Exists(pluginRoot)) yield break;
 
-        foreach (var path in PluginManager.EnumeratePluginEntryAssemblies(pluginRoot))
+        // Probe through the manager's file-version cache below. The default enumerator
+        // probes DLLs itself, bypassing that cache on every Dashboard refresh.
+        foreach (var path in PluginManager.EnumeratePluginEntryAssemblies(pluginRoot, probeMetadata: false))
         {
             var info = pluginManager.TryProbePluginInfoFile(path);
             if (info is null) continue;

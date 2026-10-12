@@ -27,6 +27,12 @@ using ShiroBot.Plugins.Compatibility;
 using ShiroBot.SharedContractPluginProbe;
 
 [assembly: ShiroBotApiCompatibility("0.9", "0.9")]
+if (args is ["--plugin-list-benchmark", var fixtures, var requestCount])
+{
+    await PluginListBenchmark.RunAsync(fixtures, int.Parse(requestCount));
+    return;
+}
+
 if (args is ["--directory-lock-probe", var lockDirectory, var holdLock])
 {
     using var held = HostDirectoryLock.TryAcquire(lockDirectory);
