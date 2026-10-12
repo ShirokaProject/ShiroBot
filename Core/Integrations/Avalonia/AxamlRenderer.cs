@@ -52,6 +52,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             },
             opts.Dpi,
             opts.Theme,
+            SavePngBytes,
             ct);
     }
 
@@ -76,8 +77,15 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         AxamlRenderOptions? options = null,
         CancellationToken ct = default)
     {
-        var bytes = await RenderPngAsync(axaml, dataContext, options, ct).ConfigureAwait(false);
-        return await WritePngAndBuildUriAsync(bytes, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(axaml)) throw new ArgumentException("AXAML 文本不能为空。", nameof(axaml));
+        var opts = options ?? AxamlRenderOptions.Default;
+        return await RenderInternalAsync(() =>
+        {
+            if (AvaloniaRuntimeXamlLoader.Load(axaml) is not Control control)
+                throw new InvalidOperationException("AXAML 顶层节点必须是 Control。");
+            if (dataContext is not null) control.DataContext = dataContext;
+            return control;
+        }, opts.Dpi, opts.Theme, frame => SavePngFile(frame, ct), ct).ConfigureAwait(false);
     }
 
     public Task<byte[]> RenderControlPngAsync<TControl>(
@@ -100,6 +108,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             },
             opts.Dpi,
             opts.Theme,
+            SavePngBytes,
             ct);
     }
 
@@ -109,14 +118,20 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         CancellationToken ct = default)
         where TControl : Control, new()
     {
-        var bytes = await RenderControlPngAsync<TControl>(dataContext, options, ct).ConfigureAwait(false);
-        return await WritePngAndBuildUriAsync(bytes, ct).ConfigureAwait(false);
+        var opts = options ?? ControlRenderOptions.Default;
+        return await RenderInternalAsync(() =>
+        {
+            var control = new TControl();
+            if (dataContext is not null) control.DataContext = dataContext;
+            return control;
+        }, opts.Dpi, opts.Theme, frame => SavePngFile(frame, ct), ct).ConfigureAwait(false);
     }
 
-    private static Task<byte[]> RenderInternalAsync(
+    private static Task<TResult> RenderInternalAsync<TResult>(
         Func<Control> controlFactory,
         double dpi,
         RenderTheme theme,
+        Func<RenderTargetBitmap, TResult> save,
         CancellationToken ct)
     {
         if (dpi <= 0)
@@ -205,9 +220,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                         new Vector(96, 96));
                     frame.Render(renderRoot);
 
-                    using var ms = new MemoryStream();
-                    frame.Save(ms, PngBitmapEncoderOptions.Default);
-                    return ms.ToArray();
+                    return save(frame);
                 }
                 finally
                 {
@@ -254,11 +267,29 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         return result;
     }
 
-    private static async Task<string> WritePngAndBuildUriAsync(byte[] bytes, CancellationToken ct)
+    private static byte[] SavePngBytes(RenderTargetBitmap frame)
     {
+        using var stream = new MemoryStream();
+        frame.Save(stream, PngBitmapEncoderOptions.Default);
+        return stream.ToArray();
+    }
+
+    private static string SavePngFile(RenderTargetBitmap frame, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
         Directory.CreateDirectory(TempRoot);
         var path = Path.Combine(TempRoot, $"{Guid.NewGuid():N}.png");
-        await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
-        return new Uri(path).AbsoluteUri;
+        try
+        {
+            using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 65536))
+                frame.Save(stream, PngBitmapEncoderOptions.Default);
+            ct.ThrowIfCancellationRequested();
+            return new Uri(path).AbsoluteUri;
+        }
+        catch
+        {
+            File.Delete(path);
+            throw;
+        }
     }
 }

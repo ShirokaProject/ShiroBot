@@ -51,6 +51,12 @@ if (args is ["--config-reload"])
     return;
 }
 
+if (args is ["--avalonia-loh"])
+{
+    await AvaloniaLohVerification.RunAsync();
+    return;
+}
+
 if (args is ["--avalonia-fonts"])
 {
     await AvaloniaFontVerification.RunAsync();
