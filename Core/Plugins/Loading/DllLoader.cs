@@ -15,6 +15,8 @@ public class DllLoader<T>
     private readonly bool _collectible;
     private readonly SharedAssemblyResolver? _shared;
     private readonly PluginDependencyLayout _dependencyLayout;
+    private readonly bool _shadowCopy;
+    private string? _shadowRoot;
     private PluginAssemblyLoadContext? _alc;
     private WeakReference? _alcWeakReference;
 
@@ -31,11 +33,13 @@ public class DllLoader<T>
     internal DllLoader(
         bool collectible,
         SharedAssemblyResolver? shared,
-        PluginDependencyLayout? dependencies)
+        PluginDependencyLayout? dependencies,
+        bool shadowCopy = false)
     {
         _collectible = collectible;
         _shared = shared;
         _dependencyLayout = dependencies ?? PluginDependencyLayout.Empty;
+        _shadowCopy = shadowCopy;
     }
 
     /// <summary>
@@ -46,6 +50,9 @@ public class DllLoader<T>
     public T Load(string dllPath, string? typeFullName = null)
     {
         if (_shared is not null) ContractReferencePreflight.Validate(dllPath, _shared);
+        // The runtime can reuse a mapped image at the same path while an older ALC is alive.
+        // Each plugin load needs a distinct binary path, including its private dependencies.
+        if (_shadowCopy) dllPath = CreateReloadShadow(Path.GetFullPath(dllPath));
         _alc = new PluginAssemblyLoadContext(dllPath, _collectible, _shared, _dependencyLayout);
         _alcWeakReference = new WeakReference(_alc);
 
@@ -76,6 +83,7 @@ public class DllLoader<T>
             _alc.Unload();
         }
         _alc = null;
+        DeleteReloadShadow();
 
         return _alcWeakReference;
     }
@@ -127,11 +135,43 @@ public class DllLoader<T>
     //Dispose
     public void Unload()
     {
-        if (_alc is { IsCollectible: true })
+        BeginUnload();
+    }
+
+    private string CreateReloadShadow(string assemblyPath)
+    {
+        var sourceRoot = Path.GetDirectoryName(assemblyPath)!;
+        _shadowRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "plugin-reload", Guid.NewGuid().ToString("N"));
+        try
         {
-            _alc.Unload();
+            foreach (var source in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+            {
+                var extension = Path.GetExtension(source);
+                if (!extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
+                    !extension.Equals(".pdb", StringComparison.OrdinalIgnoreCase) &&
+                    !extension.Equals(".so", StringComparison.OrdinalIgnoreCase) &&
+                    !extension.Equals(".dylib", StringComparison.OrdinalIgnoreCase) &&
+                    !source.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase) &&
+                    !source.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase)) continue;
+                var target = Path.Combine(_shadowRoot, Path.GetRelativePath(sourceRoot, source));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(source, target);
+            }
+            return Path.Combine(_shadowRoot, Path.GetFileName(assemblyPath));
         }
-        _alc = null;
+        catch
+        {
+            DeleteReloadShadow();
+            throw;
+        }
+    }
+
+    private void DeleteReloadShadow()
+    {
+        if (_shadowRoot is null) return;
+        try { Directory.Delete(_shadowRoot, recursive: true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        _shadowRoot = null;
     }
 }
 

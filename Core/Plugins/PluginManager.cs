@@ -971,7 +971,7 @@ internal sealed class PluginManager(
     }
 
     private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null) =>
-        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies);
+        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies, shadowCopy: true);
 
     private IReadOnlyList<PreparedPlugin> PreparePluginLoadOrder(IReadOnlyList<string> pluginDlls)
     {
