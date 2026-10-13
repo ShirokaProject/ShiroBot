@@ -50,6 +50,9 @@ internal sealed class LoadedPluginHandle
         _context = context;
         _loader = loader;
         _assemblyPath = assemblyPath;
+        var source = new FileInfo(assemblyPath);
+        SourceLength = source.Length;
+        SourceLastWriteTimeUtc = source.LastWriteTimeUtc;
         _logHub = logHub;
 
         if (plugin is IConfigurableComponent configurable && context.Config is { ConfigPath.Length: > 0 })
@@ -90,6 +93,8 @@ internal sealed class LoadedPluginHandle
     public string? GithubRepo { get; }
     public IReadOnlyList<string> Dependencies { get; }
     public string AssemblyPath => _assemblyPath;
+    public long SourceLength { get; }
+    public DateTime SourceLastWriteTimeUtc { get; }
 
     /// <summary>The plugin's loaded assembly, or null once unloading has started.</summary>
     public Assembly? PluginAssembly
@@ -220,7 +225,7 @@ internal sealed class LoadedPluginHandle
 
     private static string Fingerprint(object? value, Type type)
     {
-        try { return JsonSerializer.Serialize(value, type); }
+        try { return JsonSerializer.Serialize(ConfigFingerprintValue.Create(value)); }
         catch { return RuntimeHelpers.GetHashCode(value ?? type).ToString(System.Globalization.CultureInfo.InvariantCulture); }
     }
 

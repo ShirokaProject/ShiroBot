@@ -265,6 +265,9 @@ internal sealed class PluginManager(
                     string.Equals(Path.GetFullPath(plugin.AssemblyPath), fullPath, StringComparison.OrdinalIgnoreCase));
                 if (loaded is not null)
                 {
+                    var source = new FileInfo(fullPath);
+                    if (source.Length == loaded.SourceLength && source.LastWriteTimeUtc == loaded.SourceLastWriteTimeUtc)
+                        return; // Coalesced directory notifications must not reload an unchanged DLL.
                     await ScheduleUnloadPluginByName(_hotReloadEventDispatcher, loaded.Name).ConfigureAwait(false);
                     await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath).ConfigureAwait(false);
                     CH.Success($"插件文件热重载成功: {loaded.Name}");

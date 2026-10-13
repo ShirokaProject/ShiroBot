@@ -45,6 +45,12 @@ if (args is ["--directory-lock-probe", var lockDirectory, var holdLock])
     return;
 }
 
+if (args is ["--config-fingerprint"])
+{
+    ConfigFingerprintVerification.Run();
+    return;
+}
+
 if (args is ["--config-reload"])
 {
     await CoreConfigReloadVerification.RunAsync();
