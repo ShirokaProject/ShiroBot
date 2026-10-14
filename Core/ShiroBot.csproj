@@ -10,6 +10,8 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Configurations>Debug;Release</Configurations>
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
+        <!-- Publish with the latest runtime patch supplied by the selected .NET 10 SDK. -->
+        <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <!-- Prefer Workstation GC for typical bot workloads and lower idle memory use. -->
         <ServerGarbageCollection Condition="'$(ServerGarbageCollection)' == ''">false</ServerGarbageCollection>
     </PropertyGroup>

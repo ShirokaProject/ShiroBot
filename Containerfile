@@ -1,4 +1,4 @@
-# Local source build: podman build -f Containerfile -t shirobot:local .
+# Local source build: podman build --pull=always -f Containerfile -t shirobot:local .
 # CI (.github/workflows/build.yml) uses the `prebuilt` target with multi-file container binaries in
 # artifacts/docker/<arch>/ and publishes a linux/amd64 + linux/arm64 image to ghcr.io.
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS publish

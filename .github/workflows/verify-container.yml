@@ -38,6 +38,6 @@ jobs:
         run: |
           set -euo pipefail
           image="shirobot-smoke:$ARCH"
-          docker buildx build --load --platform "linux/$ARCH" \
+          docker buildx build --pull --load --platform "linux/$ARCH" \
             --target prebuilt -f Containerfile -t "$image" .
           sh scripts/verify-container-startup.sh "$image" "linux/$ARCH"

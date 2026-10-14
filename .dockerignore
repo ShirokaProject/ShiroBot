@@ -1,6 +1,7 @@
 .git/
 .github/
 .idea/
+.local-diagnostics/
 **/bin/
 **/obj/
 artifacts/*

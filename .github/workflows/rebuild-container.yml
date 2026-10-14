@@ -78,6 +78,7 @@ jobs:
           file: Containerfile
           target: prebuilt
           platforms: linux/amd64,linux/arm64
+          pull: true
           push: true
           tags: |
             ${{ needs.resolve.outputs.image }}:${{ inputs.version }}

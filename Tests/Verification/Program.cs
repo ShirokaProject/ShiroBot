@@ -89,8 +89,6 @@ if (args is ["--adapter-reload-isolation"])
 }
 
 await HostDirectoryLockVerification.RunAsync();
-// TODO(#5): Remove isolated Windows runtime exception once the upstream .NET fix is verified.
-// https://github.com/ShirokaProject/ShiroBot/issues/5
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();
 
