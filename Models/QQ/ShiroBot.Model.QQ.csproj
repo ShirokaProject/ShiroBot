@@ -17,6 +17,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <AssemblyAttribute Include="ShiroBot.SDK.Core.ShiroBotPackageAttribute">
+            <_Parameter1>shirobot.model.qq</_Parameter1>
+            <_Parameter2>ShiroBot.SDK.Core.ShiroBotPackageKind.Model</_Parameter2>
+            <_Parameter2_IsLiteral>true</_Parameter2_IsLiteral>
+            <_Parameter3>$(ShiroBotProductVersion)</_Parameter3>
+        </AssemblyAttribute>
         <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" />
         <None Include="README.md" Pack="true" PackagePath="\" />
     </ItemGroup>
