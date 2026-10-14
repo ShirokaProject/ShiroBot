@@ -57,6 +57,12 @@ if (args is ["--config-reload"])
     return;
 }
 
+if (args is ["--toml-formatting"])
+{
+    TomlFormattingVerification.Run();
+    return;
+}
+
 if (args is ["--avalonia-loh"])
 {
     await AvaloniaLohVerification.RunAsync();
@@ -89,6 +95,7 @@ if (args is ["--adapter-reload-isolation"])
 }
 
 await HostDirectoryLockVerification.RunAsync();
+TomlFormattingVerification.Run();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();
 

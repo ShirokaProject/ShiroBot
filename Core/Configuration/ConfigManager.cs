@@ -646,8 +646,11 @@ public class ConfigManager(string? coreConfigPath = null)
             // Blocks go where the old tables were, else at the end; a table must not precede root keys it could capture.
             var shift = removals.Where(range => firstRemovedTable is { } first && range.Start < first).Sum(range => range.End - range.Start);
             var insertAt = firstRemovedTable is { } offset ? offset - shift : updated.Length;
-            var prefix = insertAt > 0 && updated[insertAt - 1] != '\n' ? newline + newline
-                : insertAt > 1 && updated[insertAt - 2] != '\n' ? newline : string.Empty;
+            var beforeBlock = updated.AsSpan(0, insertAt);
+            // Count complete line endings so CRLF's '\r' is not mistaken for a nonblank line.
+            var prefix = insertAt == 0 || beforeBlock.EndsWith(newline + newline, StringComparison.Ordinal)
+                ? string.Empty
+                : beforeBlock.EndsWith(newline, StringComparison.Ordinal) ? newline : newline + newline;
             // Keep exactly one blank line after the block: reuse the one already there.
             var suffix = insertAt < updated.Length && updated[insertAt] is not ('\n' or '\r') ? newline : string.Empty;
             updated = updated.Insert(insertAt, prefix + block.TrimEnd('\r', '\n') + newline + suffix);
