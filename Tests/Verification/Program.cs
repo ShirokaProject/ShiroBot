@@ -81,6 +81,12 @@ if (args is ["--plugin-migration", var migrationManifest])
     return;
 }
 
+if (args is ["--plugin-reload-version", var pluginFixtures])
+{
+    await PluginReloadVersionVerification.RunAsync(pluginFixtures);
+    return;
+}
+
 if (args is ["--update-integration", var fixtureDirectory])
 {
     await UpdateIntegration.RunAsync(fixtureDirectory);

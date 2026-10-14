@@ -26,6 +26,12 @@ internal static class BuildInfo
 public sealed class ProbePlugin : PluginBase
 {
     public override string Name => "update-probe.plugin";
+    protected override Task LoadAsync()
+    {
+        // Validate executing code, rather than only PE metadata in the installed package.
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(Context.Config.ConfigPath)!, "running-version.txt"), BuildInfo.Version);
+        return Task.CompletedTask;
+    }
     protected override Task OnUnloadAsync()
     {
         if (File.Exists(Path.Combine(Path.GetDirectoryName(Context.Config.ConfigPath)!, "hold-unload")))

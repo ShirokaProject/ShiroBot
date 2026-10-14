@@ -570,8 +570,13 @@ internal static class UpdateIntegration
         }
         public Task<string> ConsoleUpdateAsync(params string[] arguments) =>
             (Task<string>)typeof(HostCommandHandler).GetMethod("HandleUpdateCommandAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(Commands, [arguments])!;
-        public void AssertPluginVersion(string version) =>
-            Check(Plugins.GetLoadedPluginSnapshot().Single(plugin => plugin.Name == PluginId).Version == version, "Running plugin version did not match " + version);
+        public void AssertPluginVersion(string version)
+        {
+            var loaded = Plugins.GetLoadedPluginSnapshot().Single(plugin => plugin.Name == PluginId);
+            Check(loaded.Version == version, "Running plugin metadata did not match " + version);
+            Check(File.ReadAllText(Path.Combine(Path.GetDirectoryName(loaded.AssemblyPath)!, "running-version.txt")) == version,
+                "Executing plugin code did not match " + version);
+        }
         public void AssertAdapterVersion(string version) =>
             Check(Adapters.GetSnapshot().Single(adapter => adapter.Id == AdapterId).Version == version, "Running adapter version did not match " + version + ": " + JsonSerializer.Serialize(Adapters.GetSnapshot()));
         public async Task AssertFreshAdapterStartupAsync(int count)
