@@ -37,7 +37,7 @@ namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapPluginManagementEndpoints(RouteGroupBuilder api, ApiHostConfig config, ConfigManager configManager, string configPath, PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy)
+    private static void MapPluginManagementEndpoints(RouteGroupBuilder api, ApiHostConfig config, ConfigManager configManager, string configPath, PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy, HostRuntimeState runtimeState)
     {
         api.MapGet("/plugins/{id}", (string id) =>
         {
@@ -376,14 +376,19 @@ internal sealed partial class HostHttpServer
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return PendingDeletion(ex.Message); }
                 return Results.Ok(new { ok = true, message = $"插件 {canonicalId} 已删除" });
 
-                IResult PendingDeletion(string reason) => Results.Ok(new
+                IResult PendingDeletion(string reason)
                 {
-                    ok = true,
-                    pending_restart = true,
-                    pending_delete = true,
-                    reason,
-                    message = $"插件 {canonicalId} 暂时无法删除，已登记删除任务，将在下次重启宿主时删除。"
-                });
+                    runtimeState.RecommendRestart("plugin-delete:" + canonicalId,
+                        $"插件 {canonicalId} 的删除任务尚未完成，需要重启宿主完成清理。");
+                    return Results.Ok(new
+                    {
+                        ok = true,
+                        pending_restart = true,
+                        pending_delete = true,
+                        reason,
+                        message = $"插件 {canonicalId} 暂时无法删除，已登记删除任务，将在下次重启宿主时删除。"
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -426,6 +431,8 @@ internal sealed partial class HostHttpServer
             {
                 var result = await PluginUpdateService.ApplyAsync(pluginManager, eventDispatcher, routePolicy,
                     plugin.Name, update.AssetDownloadUrl, update.AssetName, update.LatestVersion, context.RequestAborted).ConfigureAwait(false);
+                if (result.PendingRestart)
+                    runtimeState.RecommendRestart("plugin-update:" + plugin.Name, result.Message);
                 return Results.Ok(new
                 {
                     ok = true,

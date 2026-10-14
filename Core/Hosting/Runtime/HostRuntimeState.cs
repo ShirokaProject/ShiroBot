@@ -96,9 +96,18 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         RecordEvent(message, "warning");
     }
 
-    public object CreateRestartNotice()
+    public object CreateRestartNotice(string? scope = null)
     {
-        lock (_lock) return new { recommended = _restartReasons.Count > 0, reasons = _restartReasons.Values.ToArray() };
+        lock (_lock)
+        {
+            var reasons = _restartReasons.Where(item => scope is null ||
+                (scope == "plugin" && (item.Key.StartsWith("plugin:", StringComparison.Ordinal) ||
+                    item.Key.StartsWith("plugin-", StringComparison.Ordinal) || item.Key == "shadow-cleanup")) ||
+                (scope == "adapter" && (item.Key.StartsWith("adapter:", StringComparison.Ordinal) ||
+                    item.Key.StartsWith("adapter-", StringComparison.Ordinal))))
+                .Select(item => item.Value).ToArray();
+            return new { recommended = reasons.Length > 0, reasons };
+        }
     }
 
     public object CreateOverview()

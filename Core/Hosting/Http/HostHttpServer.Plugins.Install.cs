@@ -38,7 +38,7 @@ namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapPluginInstallEndpoints(RouteGroupBuilder api, PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy)
+    private static void MapPluginInstallEndpoints(RouteGroupBuilder api, PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy, HostRuntimeState runtimeState)
     {
         api.MapPost("/plugins/upload", async (HttpContext context) =>
         {
@@ -172,6 +172,8 @@ internal sealed partial class HostHttpServer
                             pluginManager, eventDispatcher, routePolicy, package, installed, loaded).ConfigureAwait(false);
                         if (replacement.PendingReason is not null)
                         {
+                            runtimeState.RecommendRestart("plugin-update:" + package.Info.Id,
+                                $"插件 {package.Info.Id} 的新版本 {package.Info.Version} 已暂存，需要重启宿主完成更新。");
                             TryDeleteDirectory(uploadRoot);
                             return Results.Ok(new
                             {

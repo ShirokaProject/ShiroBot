@@ -301,6 +301,8 @@ internal sealed partial class HostHttpServer
                 TryDeleteDirectory(root);
                 if (result is null)
                 {
+                    runtimeState.RecommendRestart("adapter-update:" + probe.Id,
+                        $"适配器 {probe.Id} 的新版本 {probe.Version} 已暂存，需要重启宿主完成更新。");
                     return Results.Ok(new
                     {
                         ok = true,

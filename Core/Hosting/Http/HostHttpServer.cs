@@ -164,7 +164,10 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
 
         //概览
         api.MapGet("/overview", () => Results.Ok(runtimeState.CreateOverview()));
-        api.MapGet("/restart-notice", () => Results.Ok(runtimeState.CreateRestartNotice()));
+        api.MapGet("/restart-notice", (string? scope) =>
+            scope is null or "plugin" or "adapter"
+                ? Results.Ok(runtimeState.CreateRestartNotice(scope))
+                : Results.BadRequest(new { error = "invalid_scope", message = "scope 必须为 plugin 或 adapter。" }));
 
         // 重启 / 关机
         api.MapPost("/system/{action}", (string action) =>
@@ -200,8 +203,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         MapLogEndpoints(api, logHub);
 
         MapPluginCatalogEndpoints(api, pluginManager);
-        MapPluginInstallEndpoints(api, pluginManager, eventDispatcher, routePolicy);
-        MapPluginManagementEndpoints(api, config, configManager, configPath, pluginManager, eventDispatcher, routePolicy);
+        MapPluginInstallEndpoints(api, pluginManager, eventDispatcher, routePolicy, runtimeState);
+        MapPluginManagementEndpoints(api, config, configManager, configPath, pluginManager, eventDispatcher, routePolicy, runtimeState);
 
         api.MapGet("/status", () => Results.Ok(new
         {

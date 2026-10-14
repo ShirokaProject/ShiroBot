@@ -652,6 +652,8 @@ internal sealed class AdapterManager(
             if (exception is ComponentUnloadPendingException) _restartRequiredErrors.Add(id);
             // Other errors must not clear the requirement to restart a resident old instance.
         }
+        if (exception is ComponentUnloadPendingException)
+            runtimeState.RecommendRestart("adapter:" + id, $"适配器 {id} 的旧程序集仍未释放，建议重启宿主完成清理。");
     }
 
     private static string CreateReloadShadow(string assemblyPath)
