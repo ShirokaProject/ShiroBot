@@ -83,6 +83,7 @@ if (args is ["--plugin-migration", var migrationManifest])
 
 if (args is ["--shadow-cleanup"])
 {
+    RestartNoticeVerification.Run();
     DeferredShadowCleanupVerification.Run();
     return;
 }
@@ -106,6 +107,7 @@ if (args is ["--adapter-reload-isolation"])
     return;
 }
 
+RestartNoticeVerification.Run();
 DeferredShadowCleanupVerification.Run();
 await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();

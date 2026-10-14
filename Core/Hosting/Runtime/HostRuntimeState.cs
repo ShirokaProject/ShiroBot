@@ -13,6 +13,7 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
     private readonly Lock _lock = new();
     private readonly int[] _messageBuckets = new int[BucketCount];
     private readonly Queue<RuntimeEvent> _events = new();
+    private readonly Dictionary<string, string> _restartReasons = new(StringComparer.Ordinal);
     private long _messageCount;
     private RuntimeEvent? _latestError;
 
@@ -82,6 +83,22 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
                 _latestError = runtimeEvent;
             }
         }
+    }
+
+    public void RecommendRestart(string source, string message)
+    {
+        lock (_lock)
+        {
+            if (_restartReasons.TryGetValue(source, out var previous) && previous == message) return;
+            _restartReasons[source] = message;
+            while (_restartReasons.Count > MaxEvents) _restartReasons.Remove(_restartReasons.Keys.First());
+        }
+        RecordEvent(message, "warning");
+    }
+
+    public object CreateRestartNotice()
+    {
+        lock (_lock) return new { recommended = _restartReasons.Count > 0, reasons = _restartReasons.Values.ToArray() };
     }
 
     public object CreateOverview()

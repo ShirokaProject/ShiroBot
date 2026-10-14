@@ -164,6 +164,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
 
         //概览
         api.MapGet("/overview", () => Results.Ok(runtimeState.CreateOverview()));
+        api.MapGet("/restart-notice", () => Results.Ok(runtimeState.CreateRestartNotice()));
 
         // 重启 / 关机
         api.MapPost("/system/{action}", (string action) =>

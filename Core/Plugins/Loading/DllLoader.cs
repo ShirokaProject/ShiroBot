@@ -19,6 +19,7 @@ public class DllLoader<T>
     private readonly PluginDependencyLayout _dependencyLayout;
     private readonly bool _shadowCopy;
     private readonly string? _shadowCleanupRoot;
+    private readonly Action? _onShadowCleanupPending;
     private string? _shadowRoot;
     private PluginAssemblyLoadContext? _alc;
     private WeakReference? _alcWeakReference;
@@ -38,13 +39,15 @@ public class DllLoader<T>
         SharedAssemblyResolver? shared,
         PluginDependencyLayout? dependencies,
         bool shadowCopy = false,
-        string? shadowCleanupRoot = null)
+        string? shadowCleanupRoot = null,
+        Action? onShadowCleanupPending = null)
     {
         _collectible = collectible;
         _shared = shared;
         _dependencyLayout = dependencies ?? PluginDependencyLayout.Empty;
         _shadowCopy = shadowCopy;
         _shadowCleanupRoot = shadowCleanupRoot;
+        _onShadowCleanupPending = onShadowCleanupPending;
     }
 
     /// <summary>
@@ -187,10 +190,14 @@ public class DllLoader<T>
         {
             if (_shadowCleanupRoot is null) Directory.Delete(shadow, recursive: true);
             else if (DeferredShadowCleanup.DeleteOrStage(_shadowCleanupRoot, shadow) is { } pending)
+            {
+                _onShadowCleanupPending?.Invoke();
                 BotLog.Warning($"影子 DLL 清理失败，已登记到 {pending}，建议重启宿主；下次启动将重试清理。");
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
+            _onShadowCleanupPending?.Invoke();
             BotLog.Warning($"影子 DLL 清理或登记失败: {shadow} - {ex.Message}，建议重启宿主。");
         }
     }

@@ -604,13 +604,15 @@ internal sealed class PluginManager(
 
             if (unloadResult.Error is not null)
             {
-                CleanupShadowDirectory(unloadResult.ShadowDirectory);
+                CleanupShadowDirectory(unloadResult.ShadowDirectory, unloadResult.Name);
                 var restartRequired = unloadResult.Error is TimeoutException
                     ? " 宿主必须重启才能保证插件完全卸载。"
                     : string.Empty;
                 var error = $"插件卸载失败: {unloadResult.Name} - {unloadResult.Error.Message}{restartRequired}";
                 CH.Error(error);
                 runtimeState.RecordEvent(error, "error");
+                runtimeState.RecommendRestart("plugin:" + unloadResult.Name,
+                    $"插件 {unloadResult.Name} 未完成卸载，建议重启宿主后继续更新。");
                 return false;
             }
 
@@ -622,7 +624,7 @@ internal sealed class PluginManager(
 
             var assemblyUnloaded =
                 DllLoader<IBotPlugin>.WaitForUnload(unloadResult.AssemblyLoadContextWeakReference);
-            CleanupShadowDirectory(unloadResult.ShadowDirectory);
+            CleanupShadowDirectory(unloadResult.ShadowDirectory, unloadResult.Name);
             if (!assemblyUnloaded)
             {
                 var aliveObjects = new List<string>();
@@ -633,6 +635,8 @@ internal sealed class PluginManager(
                 if (aliveObjects.Count > 0)
                     CH.Warning($"热卸载诊断: {unloadResult.Name} 存活对象: {string.Join(", ", aliveObjects)}");
 
+                runtimeState.RecommendRestart("plugin:" + unloadResult.Name,
+                    $"插件 {unloadResult.Name} 的旧程序集仍未释放，建议重启宿主完成清理。");
                 CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})，建议重启宿主以释放旧程序集。");
                 return true;
             }
@@ -647,16 +651,22 @@ internal sealed class PluginManager(
         }
     }
 
-    private void CleanupShadowDirectory(string? shadowDirectory)
+    private void CleanupShadowDirectory(string? shadowDirectory, string pluginId)
     {
         if (shadowDirectory is null) return;
         try
         {
             if (DeferredShadowCleanup.DeleteOrStage(PluginRootPath, shadowDirectory) is { } pending)
+            {
+                runtimeState.RecommendRestart("plugin:" + pluginId,
+                    $"插件 {pluginId} 的旧文件尚未清理，建议重启宿主后完成清理。");
                 CH.Warning($"旧插件影子 DLL 清理失败，已登记到 {pending}，建议重启宿主；下次启动将重试清理。");
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
+            runtimeState.RecommendRestart("plugin:" + pluginId,
+                $"插件 {pluginId} 的旧文件未完成清理，建议重启宿主并检查文件占用。");
             CH.Warning($"旧插件影子 DLL 清理或登记失败: {shadowDirectory} - {ex.Message}，建议重启宿主。");
         }
     }
@@ -813,7 +823,7 @@ internal sealed class PluginManager(
                             actualDllPath,
                             pluginDirectory).ConfigureAwait(false);
                         ModelPackages.ValidateDependencies(actualDllPath);
-                        loader = CreateLoader(dependencies);
+                        loader = CreateLoader(dependencies, pluginInfo.Id);
                         plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
 
                         pluginContext = CreatePluginContext(
@@ -902,7 +912,7 @@ internal sealed class PluginManager(
                     actualDllPath,
                     pluginDirectory).ConfigureAwait(false);
                 ModelPackages.ValidateDependencies(actualDllPath);
-                loader = CreateLoader(dependencies);
+                loader = CreateLoader(dependencies, pluginInfo.Id);
                 plugin = loader.Load(actualDllPath, pluginInfo.TypeFullName);
 
                 pluginContext = CreatePluginContext(
@@ -989,8 +999,10 @@ internal sealed class PluginManager(
         }
     }
 
-    private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null) =>
-        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies, shadowCopy: true, shadowCleanupRoot: PluginRootPath);
+    private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null, string? pluginId = null) =>
+        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies, shadowCopy: true, shadowCleanupRoot: PluginRootPath,
+            onShadowCleanupPending: () => runtimeState.RecommendRestart("plugin:" + pluginId,
+                $"插件 {pluginId} 的旧文件尚未清理，建议重启宿主后完成清理。"));
 
     private IReadOnlyList<PreparedPlugin> PreparePluginLoadOrder(IReadOnlyList<string> pluginDlls)
     {

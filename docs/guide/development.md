@@ -49,4 +49,4 @@ npm run build   # 构建静态站点
 
 ## 发布
 
-推送 `v*` tag 后，GitHub Actions 会发布各平台安装包、NuGet 包与 Docker 镜像。在 `.github/release-notes/<tag>.md` 中编写的内容会作为该版本 Release 的更新日志。
+推送 `v*` tag 后，GitHub Actions 会发布各平台安装包、NuGet 包与 Docker 镜像。直接修改固定文件 `.github/release-notes.md`，其中内容会作为下次 Release 的更新日志，无需按 tag 新建文件。

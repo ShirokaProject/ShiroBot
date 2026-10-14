@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using ShiroBot.Configuration;
 using ShiroBot.Components.Updates;
 using ShiroBot.Hosting.Context;
@@ -41,6 +42,12 @@ internal static class PluginReloadVersionVerification
             if (result.PendingReason is not null) throw new Exception("Shadow-copied v1 prevented replacement: " + result.PendingReason);
             await plugins.ScheduleLoadPluginByName(dispatcher, new PluginRouteConfig(), "update-probe.plugin");
             AssertVersion("2.0.0");
+            using (var notice = JsonDocument.Parse(JsonSerializer.Serialize(runtime.CreateRestartNotice())))
+            {
+                if (!notice.RootElement.GetProperty("recommended").GetBoolean() ||
+                    !notice.RootElement.GetProperty("reasons")[0].GetString()!.Contains("update-probe.plugin"))
+                    throw new Exception("An old resident assembly must also recommend restart to the Dashboard.");
+            }
             if (ReferenceEquals(oldAssembly, plugins.GetLoadedPluginSnapshot().Single().PluginAssembly))
                 throw new Exception("Update reused the resident v1 assembly.");
             GC.KeepAlive(oldAssembly);

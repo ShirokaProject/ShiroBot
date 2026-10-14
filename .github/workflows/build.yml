@@ -304,7 +304,7 @@ jobs:
           tag='${{ github.ref_name }}'
           repo='${{ github.repository }}'
           base_url="https://github.com/${repo}/releases/download/${tag}"
-          notes_file=".github/release-notes/${tag}.md"
+          notes_file=".github/release-notes.md"
           previous_tag="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
           range="$tag"
           if [ -n "$previous_tag" ]; then
@@ -356,7 +356,7 @@ jobs:
             echo
             echo "### 更新日志"
             echo
-            # A hand-written changelog in .github/release-notes/<tag>.md replaces the commit list.
+            # A hand-written changelog in .github/release-notes.md replaces the commit list.
             if [ -f "$notes_file" ]; then
               cat "$notes_file"
               echo

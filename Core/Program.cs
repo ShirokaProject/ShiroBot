@@ -173,6 +173,8 @@ public static class Program
             StartupTempCleanup.Run(BasePath, pluginRootPath);
             var shadowCleanup = DeferredShadowCleanup.RetryPending(pluginRootPath);
             if (shadowCleanup.Applied > 0) CH.Success($"已清理 {shadowCleanup.Applied} 个遗留插件影子目录。");
+            if (shadowCleanup.Failed.Count > 0)
+                runtimeState.RecommendRestart("shadow-cleanup", "旧插件文件仍有待清理项，建议检查占用后重启宿主。");
             foreach (var (path, error) in shadowCleanup.Failed)
                 CH.Warning($"遗留插件影子目录清理失败，下次启动将重试: {path} - {error}");
             var deletedPlugins = StagedComponentUpdates.ApplyStagedDeletions(pluginRootPath);
