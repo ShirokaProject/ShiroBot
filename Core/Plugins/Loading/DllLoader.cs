@@ -1,5 +1,7 @@
 ﻿using System.Reflection;
 using System.Runtime.Loader;
+using ShiroBot.Components.Updates;
+using ShiroBot.SDK.Abstractions;
 
 namespace ShiroBot.Plugins.Loading;
 
@@ -16,6 +18,7 @@ public class DllLoader<T>
     private readonly SharedAssemblyResolver? _shared;
     private readonly PluginDependencyLayout _dependencyLayout;
     private readonly bool _shadowCopy;
+    private readonly string? _shadowCleanupRoot;
     private string? _shadowRoot;
     private PluginAssemblyLoadContext? _alc;
     private WeakReference? _alcWeakReference;
@@ -34,12 +37,14 @@ public class DllLoader<T>
         bool collectible,
         SharedAssemblyResolver? shared,
         PluginDependencyLayout? dependencies,
-        bool shadowCopy = false)
+        bool shadowCopy = false,
+        string? shadowCleanupRoot = null)
     {
         _collectible = collectible;
         _shared = shared;
         _dependencyLayout = dependencies ?? PluginDependencyLayout.Empty;
         _shadowCopy = shadowCopy;
+        _shadowCleanupRoot = shadowCleanupRoot;
     }
 
     /// <summary>
@@ -166,12 +171,28 @@ public class DllLoader<T>
         }
     }
 
-    private void DeleteReloadShadow()
+    internal string? DetachShadowDirectory()
     {
-        if (_shadowRoot is null) return;
-        try { Directory.Delete(_shadowRoot, recursive: true); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        var path = _shadowRoot;
         _shadowRoot = null;
+        return path;
+    }
+
+    private void DeleteReloadShadow() => CleanupDetachedShadow(DetachShadowDirectory());
+
+    internal void CleanupDetachedShadow(string? shadow)
+    {
+        if (shadow is null) return;
+        try
+        {
+            if (_shadowCleanupRoot is null) Directory.Delete(shadow, recursive: true);
+            else if (DeferredShadowCleanup.DeleteOrStage(_shadowCleanupRoot, shadow) is { } pending)
+                BotLog.Warning($"影子 DLL 清理失败，已登记到 {pending}，建议重启宿主；下次启动将重试清理。");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            BotLog.Warning($"影子 DLL 清理或登记失败: {shadow} - {ex.Message}，建议重启宿主。");
+        }
     }
 }
 

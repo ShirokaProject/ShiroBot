@@ -604,6 +604,7 @@ internal sealed class PluginManager(
 
             if (unloadResult.Error is not null)
             {
+                CleanupShadowDirectory(unloadResult.ShadowDirectory);
                 var restartRequired = unloadResult.Error is TimeoutException
                     ? " 宿主必须重启才能保证插件完全卸载。"
                     : string.Empty;
@@ -621,6 +622,7 @@ internal sealed class PluginManager(
 
             var assemblyUnloaded =
                 DllLoader<IBotPlugin>.WaitForUnload(unloadResult.AssemblyLoadContextWeakReference);
+            CleanupShadowDirectory(unloadResult.ShadowDirectory);
             if (!assemblyUnloaded)
             {
                 var aliveObjects = new List<string>();
@@ -631,7 +633,7 @@ internal sealed class PluginManager(
                 if (aliveObjects.Count > 0)
                     CH.Warning($"热卸载诊断: {unloadResult.Name} 存活对象: {string.Join(", ", aliveObjects)}");
 
-                CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})");
+                CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})，建议重启宿主以释放旧程序集。");
                 return true;
             }
 
@@ -642,6 +644,20 @@ internal sealed class PluginManager(
         finally
         {
             PluginLifecycleSemaphore.Release();
+        }
+    }
+
+    private void CleanupShadowDirectory(string? shadowDirectory)
+    {
+        if (shadowDirectory is null) return;
+        try
+        {
+            if (DeferredShadowCleanup.DeleteOrStage(PluginRootPath, shadowDirectory) is { } pending)
+                CH.Warning($"旧插件影子 DLL 清理失败，已登记到 {pending}，建议重启宿主；下次启动将重试清理。");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            CH.Warning($"旧插件影子 DLL 清理或登记失败: {shadowDirectory} - {ex.Message}，建议重启宿主。");
         }
     }
 
@@ -974,7 +990,7 @@ internal sealed class PluginManager(
     }
 
     private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null) =>
-        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies, shadowCopy: true);
+        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies, shadowCopy: true, shadowCleanupRoot: PluginRootPath);
 
     private IReadOnlyList<PreparedPlugin> PreparePluginLoadOrder(IReadOnlyList<string> pluginDlls)
     {

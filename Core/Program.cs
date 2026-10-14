@@ -171,6 +171,10 @@ public static class Program
             }
 
             StartupTempCleanup.Run(BasePath, pluginRootPath);
+            var shadowCleanup = DeferredShadowCleanup.RetryPending(pluginRootPath);
+            if (shadowCleanup.Applied > 0) CH.Success($"已清理 {shadowCleanup.Applied} 个遗留插件影子目录。");
+            foreach (var (path, error) in shadowCleanup.Failed)
+                CH.Warning($"遗留插件影子目录清理失败，下次启动将重试: {path} - {error}");
             var deletedPlugins = StagedComponentUpdates.ApplyStagedDeletions(pluginRootPath);
             foreach (var id in deletedPlugins.Applied) CH.Success($"已删除待卸载插件: {id}");
             foreach (var (id, error) in deletedPlugins.Failed) CH.Warning($"删除插件 {id} 失败，下次启动将重试: {error}");

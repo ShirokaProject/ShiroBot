@@ -1,5 +1,6 @@
 using System.Reflection;
 using ShiroBot.Configuration;
+using ShiroBot.Components.Updates;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Logging;
@@ -60,6 +61,7 @@ internal static class PluginReloadVersionVerification
         {
             oldAssembly = null;
             await plugins.UnloadAllAsync(dispatcher);
+            DeferredShadowCleanup.RetryPending(pluginRoot);
             Directory.Delete(root, recursive: true);
         }
 

@@ -81,6 +81,12 @@ if (args is ["--plugin-migration", var migrationManifest])
     return;
 }
 
+if (args is ["--shadow-cleanup"])
+{
+    DeferredShadowCleanupVerification.Run();
+    return;
+}
+
 if (args is ["--plugin-reload-version", var pluginFixtures])
 {
     await PluginReloadVersionVerification.RunAsync(pluginFixtures);
@@ -100,6 +106,7 @@ if (args is ["--adapter-reload-isolation"])
     return;
 }
 
+DeferredShadowCleanupVerification.Run();
 await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
 if (args is not ["--without-adapter-reload-isolation"])

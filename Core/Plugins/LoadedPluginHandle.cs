@@ -407,13 +407,14 @@ internal sealed class LoadedPluginHandle
         DllLoader<IBotPlugin>? loader)
     {
         await dispatchesDrained.ConfigureAwait(false);
-        await UnloadPluginCoreAsync(
+        var result = await UnloadPluginCoreAsync(
                 plugin,
                 context,
                 loader,
                 plugin is null ? null : new WeakReference(plugin),
                 context is null ? null : new WeakReference(context))
             .ConfigureAwait(false);
+        loader?.CleanupDetachedShadow(result.ShadowDirectory);
     }
 
     private async Task<PluginUnloadResult> UnloadPluginCoreAsync(
@@ -448,6 +449,7 @@ internal sealed class LoadedPluginHandle
 
             await unloadTask.ConfigureAwait(false);
             context?.Dispose();
+            var shadowDirectory = loader?.DetachShadowDirectory();
             var alcWeakReference = loader?.BeginUnload();
 
             return new PluginUnloadResult(
@@ -457,7 +459,8 @@ internal sealed class LoadedPluginHandle
                 alcWeakReference,
                 pluginWeakReference,
                 contextWeakReference,
-                null);
+                null,
+                shadowDirectory);
         }
         catch (Exception ex)
         {
@@ -501,7 +504,7 @@ internal sealed class LoadedPluginHandle
         Exception unloadException)
     {
         await dispatchesDrained.ConfigureAwait(false);
-        CompleteFailedUnload(
+        var result = CompleteFailedUnload(
             name,
             assemblyPath,
             pluginWeakReference,
@@ -509,6 +512,7 @@ internal sealed class LoadedPluginHandle
             context,
             loader,
             unloadException);
+        loader?.CleanupDetachedShadow(result.ShadowDirectory);
     }
 
     private PluginUnloadResult CreateTimeoutResult(
@@ -542,6 +546,7 @@ internal sealed class LoadedPluginHandle
             // Preserve the original unload failure.
         }
 
+        var shadowDirectory = loader?.DetachShadowDirectory();
         var alcWeakReference = loader?.BeginUnload();
 
         return new PluginUnloadResult(
@@ -551,7 +556,8 @@ internal sealed class LoadedPluginHandle
             alcWeakReference,
             pluginWeakReference,
             contextWeakReference,
-            unloadException);
+            unloadException,
+            shadowDirectory);
     }
 
     private static void ReleaseAvaloniaPluginResources(string? assemblyName)
@@ -567,6 +573,7 @@ internal sealed record PluginUnloadResult(
     WeakReference? AssemblyLoadContextWeakReference,
     WeakReference? PluginWeakReference,
     WeakReference? ContextWeakReference,
-    Exception? Error);
+    Exception? Error,
+    string? ShadowDirectory = null);
 
 internal sealed record PluginDispatchResult<TResult>(bool Dispatched, TResult? Result);

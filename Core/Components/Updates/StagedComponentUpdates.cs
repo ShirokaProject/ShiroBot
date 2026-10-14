@@ -204,6 +204,7 @@ internal static class StagedComponentUpdates
         foreach (var staging in Directory.EnumerateDirectories(stagingRoot))
         {
             var id = Path.GetFileName(staging);
+            if (id == DeferredShadowCleanup.DirectoryName) continue;
             if (File.Exists(Path.Combine(staging, DeleteTargetFileName))) continue;
             try
             {

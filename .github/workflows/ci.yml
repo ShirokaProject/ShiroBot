@@ -311,3 +311,17 @@ jobs:
           cat "$log_path"
           grep -q 'Component contract preflight failed before activation:' "$log_path"
           grep -q 'Version=0.8.0.0' "$log_path"
+
+  verify-shadow-cleanup-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+          dotnet-quality: ga
+      - name: Verify deferred shadow cleanup with a Windows file lock
+        run: dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release -- --shadow-cleanup
