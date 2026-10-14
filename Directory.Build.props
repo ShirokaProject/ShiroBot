@@ -1,9 +1,9 @@
 <Project>
   <PropertyGroup>
-    <ShiroBotProductVersion>1.0.0</ShiroBotProductVersion>
-    <ShiroBotFileVersion>1.0.0.0</ShiroBotFileVersion>
+    <ShiroBotProductVersion>1.0.1</ShiroBotProductVersion>
+    <ShiroBotFileVersion>1.0.1.0</ShiroBotFileVersion>
     <!-- 宿主内嵌的 Dashboard 前端版本，对应 Shirobot.Dashboard 仓的 v<T> release 产物。 -->
-    <ShirobotDashboardVersion>1.0.0</ShirobotDashboardVersion>
+    <ShirobotDashboardVersion>1.0.1</ShirobotDashboardVersion>
     <ShiroBotSdkAbiVersion>1.2.0.0</ShiroBotSdkAbiVersion>
     <ShiroBotQqModelAbiVersion>1.0.0.0</ShiroBotQqModelAbiVersion>
     <ShiroBotDiscordModelAbiVersion>1.0.0.0</ShiroBotDiscordModelAbiVersion>
