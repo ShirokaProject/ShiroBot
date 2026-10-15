@@ -7,7 +7,7 @@ public static class ShiroBotApi
     public const string CurrentVersion = "1.0";
 }
 
-/// <summary>Declares the minimum required API and the newest API version tested by a component.</summary>
+/// <summary>Legacy metadata retained for existing binaries. Current hosts ignore this declaration; use SDK and Model assembly ABI requirements.</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class ShiroBotApiCompatibilityAttribute(string minimumVersion, string maximumVersion) : Attribute
 {

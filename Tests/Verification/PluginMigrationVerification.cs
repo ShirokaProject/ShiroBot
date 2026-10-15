@@ -3,7 +3,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 using ShiroBot.Plugins.Loading;
-using ShiroBot.Plugins.Compatibility;
 using ShiroBot.Packages;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.SDK.Core;
@@ -42,8 +41,6 @@ internal static class PluginMigrationVerification
         {
             var plugin = loader.Load(path);
             var assembly = plugin.GetType().Assembly;
-            var api = assembly.GetCustomAttribute<ShiroBotApiCompatibilityAttribute>();
-            ComponentApiCompatibility.EnsureCompatible("Plugin", entry.Id, api?.MinimumVersion ?? "0.8", api?.MaximumVersion ?? "0.8");
             var types = assembly.GetTypes();
             foreach (var type in types)
             {

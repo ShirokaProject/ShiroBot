@@ -19,24 +19,25 @@ SDK 1.0.0 adds host-managed temporary directories (SDK ABI 1.2.0.0). QQ, Discord
 Telegram Model ABI versions are 1.0.0.0. Components using CreateTempDirectory require host 1.0.0.
 Package versions follow the 1.0 release series; ABI numbers track each assembly's contracts.
 
-| ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
-| --- | --- | --- | --- | --- | --- |
-| 1.0.0 | 1.0 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
+| ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
+| --- | --- | --- | --- | --- |
+| 1.0.1 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
+| 1.0.0 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
 <details>
 <summary>Pre-1.0 version history (migration reference)</summary>
 
-| ShiroBot.SDK (NuGet) | ShiroBot API | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
-| --- | --- | --- | --- | --- | --- |
-| 0.9.9 | 0.9.2 | 1.1.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.8 | 0.9.2 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.7 | 0.9.2 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.6 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.5 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.4 | 0.9.1 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.3 | 0.9 | 0.9.1.0 | 0.9.1.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.2 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.1 | 0.9 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
+| ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
+| --- | --- | --- | --- | --- |
+| 0.9.9 | 1.1.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.8 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.7 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.6 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.5 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.4 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.3 | 0.9.1.0 | 0.9.1.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.2 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
+| 0.9.1 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
 
 </details>
 

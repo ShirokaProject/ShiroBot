@@ -5,7 +5,6 @@ using ShiroBot.Hosting.Runtime;
 using ShiroBot.Packages;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Adapters.Compatibility;
-using ShiroBot.Plugins.Compatibility;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
@@ -367,11 +366,6 @@ internal sealed class AdapterManager(
             ?? throw new InvalidOperationException($"Adapter 未声明有效的 {nameof(BotAdapterAttribute)}。");
         if (!string.IsNullOrWhiteSpace(expectedId) && !string.Equals(expectedId, probeInfo.Id, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Adapter ID 不匹配: 期望 {expectedId}，实际 {probeInfo.Id}。");
-        ComponentApiCompatibility.EnsureCompatible(
-            "Adapter",
-            probeInfo.Id,
-            probeInfo.MinimumApiVersion,
-            probeInfo.MaximumApiVersion);
 
         // A stopped but still referenced instance must not get a second live replacement.
         // Keep this guard before dependency setup, DLL activation and StartAsync.

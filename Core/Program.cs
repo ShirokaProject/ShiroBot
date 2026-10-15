@@ -535,7 +535,7 @@ public static class Program
                     try
                     {
                         var probe = packages.Prepare(verifyPath, verifyRoot);
-                        global::System.Console.WriteLine($"Valid adapter package: {probe.Id} (API {probe.MinimumApiVersion}..{probe.MaximumApiVersion})");
+                        global::System.Console.WriteLine($"Valid adapter package: {probe.Id}");
                     }
                     finally
                     {

@@ -18,7 +18,6 @@
 | `QEventPayload` | 事件负载基类 | 由具体子类型决定 | 放在 `PlatformEvent.Raw` 中 |
 | `QOfficialMessageTarget` | 值对象 | `Scene`、`Id` | QQ 官方消息目标；单聊和群聊的 `Id` 为 openid |
 
-适配器如何将这些类型映射为通用 `MessageEvent`、`User`、`Channel`，见[适配不同 Model](/adapter/models)。
 
 ## 目前提供的功能
 

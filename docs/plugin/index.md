@@ -16,6 +16,13 @@ dotnet new shirobot-plugin -n HelloPlugin --creator "Your Name" --allow-scripts 
 cd HelloPlugin
 ```
 
+已安装过模板的用户可以用以下命令更新到最新版本：
+
+```bash
+dotnet new update --check-only  # 检查是否有更新
+dotnet new update               # 更新所有已安装的模板
+```
+
 生成项目的结构如下，命令均从项目根目录执行：
 
 ```text
@@ -29,9 +36,7 @@ HelloPlugin/
 └── Directory.Build.targets
 ```
 
-也可以参考示例仓库：[DemoPlugin](https://github.com/ShirokaProject/Shirobot.Plugin.DemoPlugin)、[AvaloniaDemo](https://github.com/ShirokaProject/Shirobot.Plugin.AvaloniaDemo)。
-
-模板生成 `HelloPlugin.csproj`、`src/Plugin.cs` 和 `Directory.Packages.props`，后者指定 SDK 包版本。默认的 `src/Plugin.cs` 已包含一个回复 `pong` 的 `ping` 命令。`ShiroBot.SDK` 包已经包含 QQ、Discord 和 Telegram 的 Model，使用它们不需要再安装 NuGet 包。`--platform qq`、`--platform discord` 或 `--platform telegram` 会在生成的 `src/Plugin.cs` 中声明对应的运行时 Model 依赖；省略时仍可使用通用 SDK 类型。
+模板生成 `HelloPlugin.csproj`、`src/Plugin.cs` 和 `Directory.Packages.props`，后者指定 SDK 包版本。默认的 `src/Plugin.cs` 已包含一个回复 `pong` 的 `ping` 命令。
 
 ::: warning 使用 NuGet 引用
 自动 ILRepack 和 native 清单来自 SDK 包内的 `buildTransitive`。直接 `ProjectReference` 到 `ShiroBot.SDK.csproj` 不会导入已打包的自动化目标，最终分发测试必须使用 NuGet 包。
@@ -47,13 +52,12 @@ using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
-[assembly: ShiroBotApiCompatibility("1.0", "1.0")]
 
 namespace HelloPlugin;
 
 [BotPlugin(
     "HelloPlugin",
-    Name = "Hello Plugin",
+    Name = "Hello 插件",
     Version = "1.0.0",
     Description = "ShiroBot 插件示例",
     Author = "YourName",
@@ -78,6 +82,19 @@ public sealed class Plugin : PluginBase
 ```
 
 `BotPlugin` 的第一个参数是稳定插件 ID，宿主使用它去重、热卸载、匹配群路由和创建数据目录。发布新版本时不要随意修改 ID。
+
+### 元数据字段
+
+| 字段 | 用途 |
+| --- | --- |
+| `id` | 稳定唯一 ID，必填 |
+| `Name` | 显示名称 |
+| `Version` | 插件版本 |
+| `Description` | 插件说明 |
+| `Author` | 作者 |
+| `Category` | 插件分类 |
+| `GithubRepo` | GitHub 仓库，例如 `owner/repo` |
+| `IsPluginSingleFile` | 告诉宿主该 DLL 可以直接在插件根目录加载 |
 
 ## 生命周期
 
@@ -123,13 +140,7 @@ bin/Release/net10.0/HelloPlugin.dll
 ShiroBot/plugins/HelloPlugin.dll
 ```
 
-启动宿主，或者在运行中的控制台执行：
-
-```text
-load HelloPlugin
-```
-
-然后发送 `#ping` 或 `#hello ShiroBot` 验证插件。
+启动宿主,将插件dll复制到plugins目录中加载。
 
 ### 本地调试
 
@@ -202,10 +213,6 @@ ShiroBot 的插件市场读取 [awesome-shirobot](https://github.com/ShirokaProj
      "authors": [{ "name": "Your Name", "url": "https://github.com/YOUR_NAME" }],
      "repository": "https://github.com/YOUR_NAME/HelloPlugin",
      "license": "NOASSERTION",
-     "compatibility": {
-       "shirobot": ">=1.0.0",
-       "framework": "net10.0"
-     },
      "release": { "required": true, "assetPattern": "HelloPlugin.zip" },
      "deprecated": false
    }
@@ -215,19 +222,6 @@ ShiroBot 的插件市场读取 [awesome-shirobot](https://github.com/ShirokaProj
 4. 在 `awesome-shirobot` 仓库根目录运行 `node scripts/build-market.mjs --validate-only`（需要 Node.js 24），然后向 `main` 提交 PR，在说明中写明插件用途、兼容版本、许可证和 Release 资产名。
 
 PR 合并后，市场清单会自动刷新；宿主缓存约 24 小时，可在 Dashboard 中手动刷新市场。市场条目的 `id` 与 `BotPlugin` ID 可以不同；若希望市场准确识别已安装插件，建议在 `BotPlugin` 元数据中设置 `GithubRepo = "YOUR_NAME/HelloPlugin"`，与清单的仓库地址对应。完整规则见 [awesome-shirobot README](https://github.com/ShirokaProject/awesome-shirobot#贡献条目)。
-
-## 元数据字段
-
-| 字段 | 用途 |
-| --- | --- |
-| `id` | 稳定唯一 ID，必填 |
-| `Name` | 显示名称 |
-| `Version` | 插件版本 |
-| `Description` | 插件说明 |
-| `Author` | 作者 |
-| `Category` | 插件分类 |
-| `GithubRepo` | GitHub 仓库，例如 `owner/repo` |
-| `IsPluginSingleFile` | 告诉宿主该 DLL 可以直接在插件根目录加载 |
 
 ## 插件操作
 

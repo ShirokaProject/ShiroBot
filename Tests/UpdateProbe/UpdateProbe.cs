@@ -23,8 +23,19 @@ internal static class BuildInfo
 
 [BotPlugin("update-probe.plugin", Name = "Update integration probe", Version = BuildInfo.Version,
     GithubRepo = "update-integration/plugin")]
-public sealed class ProbePlugin : PluginBase
+public sealed class ProbePlugin : PluginBase, IConfigurableComponent<ProbeConfig>
 {
+    public ProbeConfig CurrentConfigValue { get; private set; } = new();
+    public Task OnConfigLoadedAsync(ProbeConfig config, CancellationToken cancellationToken)
+    {
+        CurrentConfigValue = config;
+        return Task.CompletedTask;
+    }
+    public Task OnConfigChangedAsync(ProbeConfig previous, ProbeConfig current, CancellationToken cancellationToken)
+    {
+        CurrentConfigValue = current;
+        return Task.CompletedTask;
+    }
     public override string Name => "update-probe.plugin";
     protected override Task LoadAsync()
     {
@@ -38,6 +49,16 @@ public sealed class ProbePlugin : PluginBase
             throw new InvalidOperationException("Integration probe deliberately refused unload.");
         return Task.CompletedTask;
     }
+}
+
+public sealed class ProbeConfig
+{
+    [ConfigField("Preserved user setting")]
+    public int User { get; set; }
+#if PROBE_V2
+    [ConfigField("Added by the updated plugin", Type = "password", Group = "cookies", GroupLabel = "Cookie")]
+    public string Cookie { get; set; } = string.Empty;
+#endif
 }
 
 [BotAdapter(BuildInfo.AdapterId, Name = "Update integration adapter", Version = BuildInfo.Version,

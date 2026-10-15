@@ -26,9 +26,9 @@ ShiroBot 是一个基于 C# 和 .NET 10 的机器人宿主。宿主不直接绑�
 
 ## 统一宿主版本
 
-从 0.7.0 起，所有发布包都内置 Avalonia、Skia 和 HarfBuzz Headless 渲染。发布文件名只区分 RID 与运行时类型，不再区分 `full` / `lite`。
+所有发布包都内置 Avalonia、Skia 和 HarfBuzz Headless 渲染。发布文件名只区分 RID 与运行时类型。
 
-插件仍应检查 `Context.Render`，因为渲染初始化可能因平台 native 依赖或环境问题失败，但不再存在人为关闭 Avalonia 的宿主构建。
+插件仍应检查 `Context.Render`，因为渲染初始化可能因平台 native 依赖或环境问题失败，但不存在人为关闭 Avalonia 的宿主构建。
 
 ## 开发技术栈
 

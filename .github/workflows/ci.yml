@@ -27,9 +27,8 @@ jobs:
         run: |
           set -euo pipefail
           prop() { sed -n "s/.*<$1>\([^<]*\)<.*/\1/p" Directory.Build.props | head -1; }
-          api_version="$(sed -n 's/.*CurrentVersion = "\([^"]*\)".*/\1/p' SDK/Core/ShiroBotApi.cs)"
           echo "SHIROBOT_PRODUCT_VERSION=$(prop ShiroBotProductVersion)" >> "$GITHUB_ENV"
-          row="| ${api_version} | $(prop ShiroBotSdkAbiVersion) | $(prop ShiroBotQqModelAbiVersion) | $(prop ShiroBotDiscordModelAbiVersion) | $(prop ShiroBotTelegramModelAbiVersion) |"
+          row="| $(prop ShiroBotProductVersion) | $(prop ShiroBotSdkAbiVersion) | $(prop ShiroBotQqModelAbiVersion) | $(prop ShiroBotDiscordModelAbiVersion) | $(prop ShiroBotTelegramModelAbiVersion) |"
           for file in SDK/README.md docs/plugin/api-compatibility.md; do
             if ! grep -F -- "$row" "$file" > /dev/null; then
               echo "::error file=$file::Missing SDK/ABI version map row: $row"

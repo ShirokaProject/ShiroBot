@@ -52,7 +52,7 @@ export default defineConfig({
             { text: '通用富消息与互动', link: '/plugin/rich-messages' },
             { text: '插件操作与控制台', link: '/plugin/actions' },
             { text: '上下文、配置与日志', link: '/plugin/context-config' },
-            { text: 'API 兼容性与版本', link: '/plugin/api-compatibility' }
+            { text: 'ABI 兼容性与版本', link: '/plugin/api-compatibility' }
           ]
         },
         {

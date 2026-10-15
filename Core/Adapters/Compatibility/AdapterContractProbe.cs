@@ -29,7 +29,6 @@ internal static class AdapterContractProbe
             if (!peReader.HasMetadata) return null;
 
             var reader = peReader.GetMetadataReader();
-            var compatibility = ReadApiCompatibility(reader);
             AdapterProbeInfo? result = null;
             foreach (var typeHandle in reader.TypeDefinitions)
             {
@@ -55,8 +54,6 @@ internal static class AdapterContractProbe
                 result = new AdapterProbeInfo(
                     adapter.Id,
                     adapter.SharedAssemblies,
-                    compatibility.MinimumVersion,
-                    compatibility.MaximumVersion,
                     adapter.Name,
                     adapter.Version,
                     adapter.Description,
@@ -162,43 +159,6 @@ internal static class AdapterContractProbe
         return true;
     }
 
-    private static bool TryReadApiCompatibilityAttribute(
-        MetadataReader reader,
-        CustomAttributeHandle attributeHandle,
-        out RawApiCompatibilityAttribute attribute)
-    {
-        attribute = default;
-        var customAttribute = reader.GetCustomAttribute(attributeHandle);
-        if (!string.Equals(
-                GetAttributeTypeFullName(reader, customAttribute),
-                typeof(ShiroBotApiCompatibilityAttribute).FullName,
-                StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var blob = reader.GetBlobReader(customAttribute.Value);
-        if (blob.ReadUInt16() != 1) return false;
-        var minimumVersion = blob.ReadSerializedString();
-        var maximumVersion = blob.ReadSerializedString();
-        if (minimumVersion is null || maximumVersion is null) return false;
-        attribute = new RawApiCompatibilityAttribute(minimumVersion, maximumVersion);
-        return true;
-    }
-
-    private static RawApiCompatibilityAttribute ReadApiCompatibility(MetadataReader reader)
-    {
-        foreach (var attributeHandle in reader.GetAssemblyDefinition().GetCustomAttributes())
-        {
-            if (TryReadApiCompatibilityAttribute(reader, attributeHandle, out var compatibility))
-            {
-                return compatibility;
-            }
-        }
-
-        return new RawApiCompatibilityAttribute("0.8", "0.8");
-    }
-
     private static string? GetAttributeTypeFullName(MetadataReader reader, CustomAttribute attribute)
     {
         switch (attribute.Constructor.Kind)
@@ -224,8 +184,6 @@ internal static class AdapterContractProbe
     internal sealed record AdapterProbeInfo(
         string Id,
         IReadOnlyList<string> SharedAssemblies,
-        string MinimumApiVersion,
-        string MaximumApiVersion,
         string? Name,
         string? Version,
         string? Description,
@@ -234,5 +192,4 @@ internal static class AdapterContractProbe
     private readonly record struct RawAdapterAttribute(
         string Id, IReadOnlyList<string> SharedAssemblies, string? Name, string? Version, string? Description, string? Protocol);
 
-    private readonly record struct RawApiCompatibilityAttribute(string MinimumVersion, string MaximumVersion);
 }

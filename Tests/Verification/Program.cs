@@ -23,10 +23,10 @@ using ShiroBot.SDK.Plugin;
 using ShiroBot.Model.Discord;
 using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
-using ShiroBot.Plugins.Compatibility;
 using ShiroBot.SharedContractPluginProbe;
 
-[assembly: ShiroBotApiCompatibility("0.9", "0.9")]
+// Deliberately invalid legacy metadata: current hosts must never parse or enforce it.
+[assembly: ShiroBotApiCompatibility("legacy-ignored", "legacy-ignored")]
 if (args is ["--plugin-list-benchmark", var fixtures, var requestCount])
 {
     await PluginListBenchmark.RunAsync(fixtures, int.Parse(requestCount));
@@ -312,15 +312,6 @@ Console.WriteLine("Plugin config nested patch verification passed.");
     Console.WriteLine("External assembly config schema verification passed.");
 }
 
-ComponentApiCompatibility.EnsureCompatible("Plugin", "legacy", "0.8", "0.8.0");
-ComponentApiCompatibility.EnsureCompatible("Plugin", "current", "0.9", "0.9");
-AssertThrows<InvalidOperationException>(() =>
-    ComponentApiCompatibility.EnsureCompatible("Plugin", "future", "1.1", "1.1"));
-AssertThrows<InvalidOperationException>(() =>
-    ComponentApiCompatibility.EnsureCompatible("Plugin", "invalid", "0.9", "0.8"));
-AssertThrows<InvalidOperationException>(() =>
-    ComponentApiCompatibility.EnsureCompatible("Plugin", "malformed", "preview", "0.8"));
-Console.WriteLine("Component API version verification passed.");
 
 {
     var verificationAssembly = typeof(VerificationComponentConfig).Assembly;
@@ -1655,9 +1646,9 @@ try
     var queuedEventService = new VerificationEventService();
     var adapterProbe = AdapterContractProbe.ReadMetadata(typeof(VerificationAdapter).Assembly.Location)
                        ?? throw new InvalidOperationException("Adapter metadata probe failed.");
-    if (adapterProbe is not { Id: "verification", MinimumApiVersion: "0.9", MaximumApiVersion: "0.9" })
+    if (adapterProbe is not { Id: "verification" })
     {
-        throw new InvalidOperationException("Adapter API version metadata was read incorrectly.");
+        throw new InvalidOperationException("Adapter identity metadata was read incorrectly.");
     }
 
     var eventBridge = new AdapterEventBridge(eventDispatcher);

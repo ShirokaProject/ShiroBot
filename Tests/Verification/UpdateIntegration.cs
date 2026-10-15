@@ -217,10 +217,18 @@ internal static class UpdateIntegration
                 await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));
                 host.AssertPluginVersion("1.0.0");
                 host.SeedUserFiles("plugins", PluginId);
+                var oldAssembly = host.Plugins.GetLoadedPluginSnapshot().Single().PluginAssembly;
+                using var beforeConfig = await host.Client.GetAsync($"plugins/{PluginId}/config");
+                var before = await beforeConfig.Content.ReadFromJsonAsync<JsonElement>();
+                Check(!before.GetProperty("schema").EnumerateArray().Any(field => field.GetProperty("key").GetString() == "cookie"), "Old plugin unexpectedly exposes new config field");
                 var response = await host.PostAsync($"/plugins/{PluginId}/update", new { });
                 Check(!response.TryGetProperty("pending_restart", out var pending) || !pending.GetBoolean(), "Normal plugin update unexpectedly staged");
                 host.AssertPluginVersion("2.0.0");
                 host.AssertPackage("plugins", PluginId);
+                using var afterConfig = await host.Client.GetAsync($"plugins/{PluginId}/config");
+                var after = await afterConfig.Content.ReadFromJsonAsync<JsonElement>();
+                Check(after.GetProperty("schema").EnumerateArray().Any(field => field.GetProperty("key").GetString() == "cookie"), "Hot update retained old plugin config schema");
+                GC.KeepAlive(oldAssembly);
                 var latest = await host.PostAsync($"/plugins/{PluginId}/update", new { });
                 Check(latest.GetProperty("message").GetString()!.Contains("最新版本"), "Second plugin update was not a no-op");
                 return new { from = "1.0.0", to = "2.0.0", hot_replaced = true, config_and_data_preserved = true, already_latest = true };
@@ -228,6 +236,15 @@ internal static class UpdateIntegration
             await Scenario("plugin-console", async host =>
             {
                 await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));
+                // Reproduce unchanged size/timestamp metadata-cache collisions deterministically.
+                var entryPath = host.Plugins.GetLoadedPluginSnapshot().Single().AssemblyPath;
+                using (var updatedPackage = ZipFile.OpenRead(Path.Combine(packages, "v2.zip")))
+                {
+                    var updatedEntry = updatedPackage.Entries.Single(entry => entry.Name == "ShiroBot.UpdateProbe.dll");
+                    Check(new FileInfo(entryPath).Length == updatedEntry.Length, "Probe versions must have equal file length");
+                    File.SetLastWriteTimeUtc(entryPath, updatedEntry.LastWriteTime.UtcDateTime);
+                }
+                Check(host.Plugins.TryProbePluginInfoFile(entryPath)?.Version == "1.0.0", "Old metadata was not cached");
                 host.SeedUserFiles("plugins", PluginId);
                 var check = await host.ConsoleUpdateAsync("update", "check", "plugins");
                 var pending = Updater.GetPendingUpdates().Single(item => item.Name == PluginId);
@@ -616,7 +633,12 @@ internal static class UpdateIntegration
                 ? Path.GetDirectoryName(AdapterPackages.Get(id)!.AssemblyPath)!
                 : Path.Combine(Root, component, id);
             if (component == "adapters") Check(Convert.ToInt64(AdapterInstanceStore.GetConfig(AdapterPackages.GetInstance(id)!.ConfigPath, id)["user"]) == 42 && File.ReadAllText(AdapterPackages.GetInstance(id)!.ConfigPath).Contains("# retain me"), "Instance config was overwritten");
-            else Check(File.ReadAllText(Path.Combine(folder, "config.toml")) == "user = 42 # retain me\n", "User configuration was overwritten");
+            else
+            {
+                var configPath = Path.Combine(folder, "config.toml");
+                Check(Convert.ToInt64(HostHttpServer.LoadTomlObject(configPath)["user"]) == 42 &&
+                    File.ReadAllText(configPath).Contains("# retain me"), "User configuration was overwritten");
+            }
             Check(File.ReadAllText(Path.Combine(folder, "data", "user.txt")) == "keep-user-data", "User data was overwritten");
         }
         public void AssertPackage(string component, string id)

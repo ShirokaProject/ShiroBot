@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ShiroBot.Adapters.Compatibility;
-using ShiroBot.Plugins.Compatibility;
 using ShiroBot.Components.Updates;
 using ShiroBot.Configuration;
 using Tomlyn;
@@ -204,11 +203,8 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         var metadata = AdapterContractProbe.ReadMetadata(entryPath)
             ?? throw new InvalidOperationException("未找到有效的 BotAdapter 入口。");
         ValidateId(metadata.Id);
-        ComponentApiCompatibility.EnsureCompatible("Adapter", metadata.Id, metadata.MinimumApiVersion, metadata.MaximumApiVersion);
         return new AdapterPackageProbe(
             metadata.Id,
-            metadata.MinimumApiVersion,
-            metadata.MaximumApiVersion,
             entryPath,
             extension.TrimStart('.').ToLowerInvariant(),
             metadata.SharedAssemblies,
@@ -559,7 +555,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     private sealed record AdapterManifest(string Id, string Entry, string? Name = null, string? Version = null, string? Description = null, string? Platform = null);
 }
 
-internal sealed record AdapterPackageProbe(string Id, string MinimumApiVersion, string MaximumApiVersion, string EntryAssemblyPath, string Type, IReadOnlyList<string> SharedAssemblies, string Name, string Version, string? Description, string? Platform);
+internal sealed record AdapterPackageProbe(string Id, string EntryAssemblyPath, string Type, IReadOnlyList<string> SharedAssemblies, string Name, string Version, string? Description, string? Platform);
 /// <summary>Result of an install; <see cref="StartError"/> is set when a fresh install was kept but did not start.</summary>
 internal sealed record AdapterInstallResult(InstalledAdapterPackage Package, string? StartError);
 

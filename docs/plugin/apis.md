@@ -155,7 +155,7 @@ using (Context.UseInstance("qq-work"))
 
 需要按机器人隔离的缓存、任务或去重记录，用 `(InstanceId, ChannelId)`、`(InstanceId, Channel, MessageId)` 等键。只用 Platform、SelfId 或群号不能区分同平台同账号的多个实例；`(Platform, SelfId)` 表示平台账号，InstanceId 表示运行来源。
 
-当前 SDK 使用 `UseInstance` 选择实例。旧组件迁移与 ABI 加载规则见[API 兼容性与版本](/plugin/api-compatibility)。
+当前 SDK 使用 `UseInstance` 选择实例。旧组件迁移与 ABI 加载规则见[ABI 兼容性与版本](/plugin/api-compatibility)。
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。
 

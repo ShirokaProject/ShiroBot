@@ -1,7 +1,6 @@
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
 
-[assembly: ShiroBotApiCompatibility("1.0", "1.0")]
 
 namespace AdapterTemplate.TestPlugin;
 

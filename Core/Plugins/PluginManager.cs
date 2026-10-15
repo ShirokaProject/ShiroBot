@@ -7,7 +7,6 @@ using ShiroBot.Configuration;
 using ShiroBot.Packages;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Services;
-using ShiroBot.Plugins.Compatibility;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
 using System.Collections.Concurrent;
@@ -30,9 +29,7 @@ internal sealed record PluginProbeInfo(
     string? GithubRepo,
     bool IsPluginSingleFile,
     IReadOnlyList<string> SharedAssemblies,
-    IReadOnlyList<string> Dependencies,
-    string MinimumApiVersion = "0.8",
-    string MaximumApiVersion = "0.8");
+    IReadOnlyList<string> Dependencies);
 
 internal sealed record PluginProbeCacheEntry(long Length, DateTime LastWriteTimeUtc, PluginProbeInfo? Info);
 
@@ -714,6 +711,9 @@ internal sealed class PluginManager(
         await PluginLifecycleSemaphore.WaitAsync();
         try
         {
+            // An update may preserve file length and ZIP timestamps. Explicit loads
+            // must read fresh metadata even while file watcher events are suppressed.
+            foreach (var assemblyPath in candidateAssemblies) RemoveProbeCache(assemblyPath);
             await LoadPluginsAsync(
                 candidateAssemblies,
                 hostEventDispatcher,
@@ -790,11 +790,6 @@ internal sealed class PluginManager(
         {
             var actualDllPath = Path.GetFullPath(dll);
             var pluginInfo = preparedPluginInfo ?? ProbePluginInfo(actualDllPath);
-            ComponentApiCompatibility.EnsureCompatible(
-                "Plugin",
-                pluginInfo.Id,
-                pluginInfo.MinimumApiVersion,
-                pluginInfo.MaximumApiVersion);
 
             lock (PluginLifecycleLock)
             {
@@ -1017,19 +1012,6 @@ internal sealed class PluginManager(
                 continue;
             }
 
-            try
-            {
-                ComponentApiCompatibility.EnsureCompatible(
-                    "Plugin",
-                    info.Id,
-                    info.MinimumApiVersion,
-                    info.MaximumApiVersion);
-            }
-            catch (InvalidOperationException ex)
-            {
-                CH.Error(ex.Message);
-                continue;
-            }
 
             if (!plugins.TryAdd(info.Id, new PreparedPlugin(fullPath, info)))
             {
@@ -1368,7 +1350,6 @@ internal sealed class PluginManager(
             if (!peReader.HasMetadata) return null;
 
             var reader = peReader.GetMetadataReader();
-            var compatibility = ReadApiCompatibility(reader);
             foreach (var typeHandle in reader.TypeDefinitions)
             {
                 var type = reader.GetTypeDefinition(typeHandle);
@@ -1402,9 +1383,7 @@ internal sealed class PluginManager(
                     plugin.GithubRepo,
                     plugin.IsPluginSingleFile ?? false,
                     SplitList(plugin.SharedAssemblies),
-                    SplitList(plugin.Dependencies),
-                    compatibility.MinimumVersion,
-                    compatibility.MaximumVersion);
+                    SplitList(plugin.Dependencies));
             }
 
             return null;
@@ -1502,43 +1481,6 @@ internal sealed class PluginManager(
             sharedAssemblies,
             dependencies);
         return true;
-    }
-
-    private static bool TryReadApiCompatibilityAttribute(
-        MetadataReader reader,
-        CustomAttributeHandle attributeHandle,
-        out RawApiCompatibilityAttribute attribute)
-    {
-        attribute = default;
-        var customAttribute = reader.GetCustomAttribute(attributeHandle);
-        if (!string.Equals(
-                GetAttributeTypeFullName(reader, customAttribute),
-                typeof(ShiroBotApiCompatibilityAttribute).FullName,
-                StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var blob = reader.GetBlobReader(customAttribute.Value);
-        if (blob.ReadUInt16() != 1) return false;
-        var minimumVersion = blob.ReadSerializedString();
-        var maximumVersion = blob.ReadSerializedString();
-        if (minimumVersion is null || maximumVersion is null) return false;
-        attribute = new RawApiCompatibilityAttribute(minimumVersion, maximumVersion);
-        return true;
-    }
-
-    private static RawApiCompatibilityAttribute ReadApiCompatibility(MetadataReader reader)
-    {
-        foreach (var attributeHandle in reader.GetAssemblyDefinition().GetCustomAttributes())
-        {
-            if (TryReadApiCompatibilityAttribute(reader, attributeHandle, out var compatibility))
-            {
-                return compatibility;
-            }
-        }
-
-        return new RawApiCompatibilityAttribute("0.8", "0.8");
     }
 
     private static IReadOnlyList<string> SplitList(string? value) =>
@@ -1653,7 +1595,6 @@ internal sealed class PluginManager(
         string? SharedAssemblies,
         string? Dependencies);
 
-    private readonly record struct RawApiCompatibilityAttribute(string MinimumVersion, string MaximumVersion);
 
     private sealed record PreparedPlugin(string AssemblyPath, PluginProbeInfo Info);
 }

@@ -13,7 +13,7 @@
 - `docs`：本文档站（VitePress）。
 - Dashboard：宿主 Web 面板前端，位于独立仓库 [Shirobot.Dashboard](https://github.com/ShirokaProject/Shirobot.Dashboard)。
 
-NuGet 包版本由根目录 `Directory.Packages.props` 统一管理，项目文件只声明包引用。宿主、SDK 与 ABI 版本在 `Directory.Build.props` 中维护，对应关系见 [API 兼容性](/plugin/api-compatibility)。
+NuGet 包版本由根目录 `Directory.Packages.props` 统一管理，项目文件只声明包引用。宿主、SDK 与 ABI 版本在 `Directory.Build.props` 中维护，对应关系见 [ABI 兼容性](/plugin/api-compatibility)。
 
 插件和适配器在各自的独立仓库中开发，不纳入主仓库。宿主不扫描独立的 `models/` 目录，也不支持运行时安装第三方 Model；第三方平台能力应实现为适配器或插件。
 

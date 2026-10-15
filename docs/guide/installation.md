@@ -180,26 +180,8 @@ docker run --rm -v shirobot_data:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/shirobot-data.tgz -C /data .
 ```
 
-### 从 `./docker-data` 迁移
 
-0.9.7 之前的 `compose.yaml` 把数据挂载在本机的 `./docker-data` 目录。换用新的 `compose.yaml` 后会以全新数据启动，按下面步骤把旧数据拷进数据卷：
 
-```bash
-# 在旧的部署目录中停止旧容器
-docker compose down
-
-# 下载新的 compose.yaml 并创建数据卷（不启动）
-curl -O https://raw.githubusercontent.com/ShirokaProject/ShiroBot/master/compose.yaml
-docker compose up --no-start
-
-# 拷贝旧数据并交给容器用户（UID 1654）
-docker run --rm -v "$PWD/docker-data:/old:ro" -v shirobot_data:/data alpine \
-  sh -c 'cp -a /old/. /data/ && chown -R 1654:1654 /data'
-
-docker compose up -d
-```
-
-确认运行正常后，可以删除 `./docker-data`。
 
 不使用 compose 时：
 
