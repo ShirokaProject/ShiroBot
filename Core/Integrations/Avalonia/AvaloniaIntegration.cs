@@ -8,7 +8,7 @@ using ShiroBot.SDK.Plugin;
 namespace ShiroBot.Integrations.Avalonia;
 
 /// <summary>
-/// Avalonia 渲染集成模块。由宿主在启动时调用 <see cref="Initialize"/>，
+/// Avalonia 渲染集成模块。宿主启动时准备渲染上下文，首次渲染时启动 dispatcher，
 /// 关闭时调用 <see cref="Shutdown"/>。整个进程只允许一个 Avalonia 实例。
 ///
 /// 宿主把返回的 <see cref="IAvaloniaRenderContext"/> 通过 BotContext.AttachRenderer 暴露给所有插件。
@@ -19,6 +19,32 @@ public static class AvaloniaIntegration
     private static AvaloniaHostBootstrapper? _bootstrap;
     private static AxamlRenderer? _renderer;
     private static string _themeMode = "Light";
+
+    internal static IAvaloniaRenderContext PrepareRenderer(string? themeMode)
+    {
+        lock (Lock)
+        {
+            _themeMode = NormalizeThemeMode(themeMode);
+            // Bitmap decoding is supported before the first render. The application,
+            // Fluent resources, system fonts and dispatcher are needed only to render.
+            if (_renderer is null)
+            {
+                global::Avalonia.Skia.SkiaPlatform.Initialize();
+                _renderer = new AxamlRenderer();
+            }
+            return _renderer;
+        }
+    }
+
+    internal static void EnsureInitialized()
+    {
+        lock (Lock)
+        {
+            if (_bootstrap is null && Application.Current is null)
+                _bootstrap = AvaloniaHostBootstrapper.Start();
+            ApplyThemeMode();
+        }
+    }
 
     /// <summary>
     /// 启动 Avalonia headless dispatcher 并返回渲染上下文。重复调用返回同一实例。
@@ -34,7 +60,7 @@ public static class AvaloniaIntegration
 
             if (_renderer is not null)
             {
-                ApplyThemeMode();
+                EnsureInitialized();
                 return _renderer;
             }
 
@@ -61,6 +87,7 @@ public static class AvaloniaIntegration
     public static void ReleasePluginAssembly(string? assemblyName)
     {
         if (string.IsNullOrWhiteSpace(assemblyName)) return;
+        if (Application.Current is null) return;
 
         try
         {

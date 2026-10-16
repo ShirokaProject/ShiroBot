@@ -138,6 +138,9 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             throw new ArgumentOutOfRangeException(nameof(dpi), "DPI 必须为正数。");
         }
 
+        ct.ThrowIfCancellationRequested();
+        AvaloniaIntegration.EnsureInitialized();
+
         return Dispatcher.UIThread.InvokeAsync(
             () =>
             {

@@ -235,7 +235,7 @@ public static class Program
             // ─── Avalonia 渲染集成 ───
             try
             {
-                var avaloniaRenderer = AvaloniaIntegration.Initialize(coreConfig.AvaloniaTheme);
+                var avaloniaRenderer = AvaloniaIntegration.PrepareRenderer(coreConfig.AvaloniaTheme);
                 botContext.AttachRenderer(avaloniaRenderer);
                 sharedAssemblies.Register(
                     ["Avalonia", "SkiaSharp", "HarfBuzzSharp", "MicroCom"],

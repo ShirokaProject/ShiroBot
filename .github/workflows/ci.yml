@@ -42,6 +42,8 @@ jobs:
           set -euo pipefail
           dotnet build Shirobot.slnx -c Release
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
+          dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build -- --memory-retention
+          dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build -- --avalonia-lazy
           dotnet run --project Tests/ApiBaseline/ShiroBot.ApiBaseline.csproj -c Release
 
       - name: Pack SDK and smoke-test NuGet consumer

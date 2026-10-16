@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
@@ -46,9 +45,13 @@ internal sealed class HostLogHub
             }
         }
 
-        foreach (var subscriber in _subscribers.Values)
+        foreach (var (id, subscriber) in _subscribers)
         {
-            subscriber.Writer.TryWrite(entry);
+            if (!subscriber.Writer.TryWrite(entry))
+            {
+                subscriber.Writer.TryComplete(new IOException("Log client is too slow; reconnect to retrieve recent history."));
+                _subscribers.TryRemove(id, out _);
+            }
         }
     }
 
@@ -108,10 +111,11 @@ internal sealed class HostLogHub
         await SendAsync(webSocket, new { type = "history", data = GetHistory(source, tail) }, cancellationToken).ConfigureAwait(false);
 
         var id = Guid.NewGuid();
-        var channel = Channel.CreateUnbounded<LogEntry>(new UnboundedChannelOptions
+        var channel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(MaxHistory)
         {
             SingleReader = true,
-            SingleWriter = false
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.Wait
         });
         _subscribers[id] = channel;
 
@@ -138,8 +142,7 @@ internal sealed class HostLogHub
 
     private static async Task SendAsync(WebSocket webSocket, object payload, CancellationToken cancellationToken)
     {
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
-        var bytes = Encoding.UTF8.GetBytes(json);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
         await webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
     }
 

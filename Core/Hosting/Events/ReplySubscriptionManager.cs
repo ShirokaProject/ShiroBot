@@ -9,6 +9,28 @@ namespace ShiroBot.Hosting.Events;
 internal sealed class ReplySubscriptionManager
 {
     private readonly ConcurrentDictionary<Guid, ReplySubscription> _subscriptions = [];
+    private readonly Lock _expirationTimerLock = new();
+    private Timer? _expirationTimer;
+
+    private void EnsureExpirationTimer()
+    {
+        lock (_expirationTimerLock)
+        {
+            // The timer must not keep temporary BotContexts or unloaded plugins alive.
+            _expirationTimer ??= new Timer(static state =>
+            {
+                if (((WeakReference<ReplySubscriptionManager>)state!).TryGetTarget(out var manager))
+                    manager.RemoveExpired();
+            }, new WeakReference<ReplySubscriptionManager>(this), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+    }
+
+    private void RemoveExpired()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (_, subscription) in _subscriptions)
+            if (subscription.ExpiresAt is { } expiry && expiry <= now) subscription.Dispose();
+    }
 
     public IReplySubscription Subscribe(
         string ownerId,
@@ -30,6 +52,7 @@ internal sealed class ReplySubscriptionManager
             : DateTimeOffset.UtcNow.Add(duration);
         var subscription = new ReplySubscription(id, ownerId, message, expiresAt, handler, disposeOnReply, Remove);
         _subscriptions[id] = subscription;
+        if (expiresAt is not null) EnsureExpirationTimer();
         return subscription;
     }
 
@@ -37,11 +60,11 @@ internal sealed class ReplySubscriptionManager
     {
         if (string.IsNullOrWhiteSpace(ownerId)) return;
 
-        foreach (var (id, subscription) in _subscriptions.ToArray())
+        foreach (var (_, subscription) in _subscriptions)
         {
             if (string.Equals(subscription.OwnerId, ownerId, StringComparison.OrdinalIgnoreCase))
             {
-                _subscriptions.TryRemove(id, out _);
+                subscription.Dispose();
             }
         }
     }
@@ -53,22 +76,22 @@ internal sealed class ReplySubscriptionManager
         var reference = new MessageReference(message.InstanceId, message.Channel, quote.MessageId);
 
         var now = DateTimeOffset.UtcNow;
-        var matches = new List<ReplySubscription>();
-        foreach (var (id, subscription) in _subscriptions.ToArray())
+        var matches = new List<(ReplySubscription Subscription, ReplyMessageHandler Handler)>();
+        foreach (var (_, subscription) in _subscriptions)
         {
             if (subscription.ExpiresAt is not null && subscription.ExpiresAt <= now)
             {
-                _subscriptions.TryRemove(id, out _);
+                subscription.Dispose();
                 continue;
             }
 
-            if (subscription.Reference.Matches(reference))
+            if (subscription.Reference.Matches(reference) && subscription.Handler is { } handler)
             {
-                matches.Add(subscription);
+                matches.Add((subscription, handler));
             }
         }
 
-        foreach (var subscription in matches)
+        foreach (var (subscription, handler) in matches)
         {
             if (subscription.DisposeOnReply)
             {
@@ -77,7 +100,7 @@ internal sealed class ReplySubscriptionManager
 
             try
             {
-                await subscription.Handler(message).ConfigureAwait(false);
+                await handler(message).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -98,17 +121,19 @@ internal sealed class ReplySubscriptionManager
         Action<Guid> remove) : IReplySubscription
     {
         private int _disposed;
+        private ReplyMessageHandler? _handler = handler;
 
         public string OwnerId { get; } = ownerId;
         public MessageReference Reference { get; } = reference;
         public DateTimeOffset? ExpiresAt { get; } = expiresAt;
-        public ReplyMessageHandler Handler { get; } = handler;
+        public ReplyMessageHandler? Handler => Volatile.Read(ref _handler);
         public bool DisposeOnReply { get; } = disposeOnReply;
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
+                Interlocked.Exchange(ref _handler, null);
                 remove(id);
             }
         }

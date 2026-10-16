@@ -46,3 +46,19 @@ rebuilt new package. The expected latest release must match `--new-version`.
 The install directory must be stopped first. Existing configuration, plugins and
 adapters are preserved, a temporary test config disables adapter loading, and
 the newest executable is left installed with the test process stopped.
+
+首次渲染延迟初始化（独立进程运行）：
+
+```sh
+dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release -- --avalonia-lazy
+```
+
+覆盖首次渲染前 Bitmap 解码、取消请求不启动 Application、并发首次渲染与 PNG 一致性。
+
+回复订阅和日志慢客户端的内存保留回归：
+
+```sh
+dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release -- --memory-retention
+```
+
+覆盖无消息时到期清理、保留订阅句柄不再保留回调、卸载所属插件释放回调、定时器不保留临时上下文，以及慢日志订阅者的有界缓存。此验证中的强制 GC 仅用于检查对象可回收性。

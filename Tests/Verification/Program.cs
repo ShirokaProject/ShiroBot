@@ -63,6 +63,18 @@ if (args is ["--toml-formatting"])
     return;
 }
 
+if (args is ["--memory-retention"])
+{
+    await MemoryRetentionVerification.RunAsync();
+    return;
+}
+
+if (args is ["--avalonia-lazy"])
+{
+    await AvaloniaLazyVerification.RunAsync();
+    return;
+}
+
 if (args is ["--avalonia-loh"])
 {
     await AvaloniaLohVerification.RunAsync();
