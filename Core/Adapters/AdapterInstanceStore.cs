@@ -92,7 +92,7 @@ internal static class AdapterInstanceStore
             if (value is Dictionary<string, object?> nested && target.GetValueOrDefault(key) is Dictionary<string, object?> existing) Merge(existing, nested);
             else target[key] = value;
     }
-    private static TomlTable ToTomlTable(Dictionary<string, object?> values)
+    internal static TomlTable ToTomlTable(Dictionary<string, object?> values)
     {
         var table = new TomlTable();
         foreach (var (key, value) in values) if (value is not null) table[key] = ToTomlValue(value)!;

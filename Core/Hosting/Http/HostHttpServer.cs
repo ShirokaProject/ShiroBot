@@ -197,6 +197,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         MapHostUpdateEndpoints(api, configManager, powerControl);
 
         MapAdapterEndpoints(api, runtimeState, configManager, adapterManager, reloadCoordinator, adapterPackages);
+        MapRawConfigEndpoints(api, pluginManager, adapterPackages, adapterManager, reloadCoordinator);
 
         MapConfigurationEndpoints(api, config, configManager, configPath);
 

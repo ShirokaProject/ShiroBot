@@ -2076,6 +2076,14 @@ try
         throw new InvalidOperationException("Event route descriptors are wrong.");
     Console.WriteLine("Plugin listener descriptor verification passed.");
 
+    if (ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("# kept\nname = \"bot\"\n[api]\nkey = 1\n") is not null ||
+        ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("") is not null ||
+        ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("name = ") is null ||
+        ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("a = 1\na = 2\n") is null ||
+        ShiroBot.Hosting.Http.HostHttpServer.GetRawConfigRevision("a = 1") == ShiroBot.Hosting.Http.HostHttpServer.GetRawConfigRevision("a = 2"))
+        throw new InvalidOperationException("Raw config.toml validation accepted invalid TOML or rejected valid TOML.");
+    Console.WriteLine("Raw config.toml validation verification passed.");
+
     var overviewState = new HostRuntimeState(scheduledDay);
     overviewState.RecordEvent("plugin crashed", "error", scheduledDay);
     string OverviewHealth(DateTimeOffset now) =>
