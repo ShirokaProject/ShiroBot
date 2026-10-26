@@ -178,7 +178,7 @@ docker compose logs -f shirobot
   docker run --rm -v shirobot_data:/from:ro -v /srv/shirobot:/to alpine cp -a /from/. /to/
   ```
 
-- 首次启动会生成 `/data/config.toml` 和 API 鉴权密钥，密钥也会打印在日志里。
+- 首次启动会生成 `/data/config.toml` 和 API 鉴权密钥，密钥也会打印在日志里。日志中的 Dashboard 地址带有 `?token=` 参数，打开即可直接登录，登录后 Dashboard 会从地址栏移除密钥；日志包含密钥，不要公开分享。
 - 插件和适配器建议在 Dashboard 中安装、配置。需要手动修改配置文件时，在容器内编辑（以容器用户身份写入，宿主保存配置时不会遇到权限问题）：
 
   ```bash

@@ -97,6 +97,17 @@ public class ApiHostConfig
 
     public string GetPrimaryBaseUrl() => PublicBaseUrl.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url))
         ?? ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? DefaultListenUrl;
+
+    /// <summary>Dashboard link that signs in with the API token; the Dashboard removes it from the address bar.</summary>
+    public string GetDashboardLoginUrl() =>
+        ToBrowsableUrl(GetPrimaryBaseUrl()).TrimEnd('/') + "/dashboard/" +
+        (string.IsNullOrEmpty(Token) ? "" : "?token=" + Uri.EscapeDataString(Token));
+
+    // A wildcard listen address (0.0.0.0 in Docker) is not something a browser can open.
+    private static string ToBrowsableUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host is "0.0.0.0" or "[::]" or "::" or "+" or "*"
+            ? new UriBuilder(uri) { Host = "127.0.0.1" }.Uri.ToString()
+            : url;
 }
 
 public class PluginRouteConfig

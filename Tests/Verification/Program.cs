@@ -2084,6 +2084,14 @@ try
         throw new InvalidOperationException("Raw config.toml validation accepted invalid TOML or rejected valid TOML.");
     Console.WriteLine("Raw config.toml validation verification passed.");
 
+    var loginApi = new ApiHostConfig { ListenUrls = ["http://0.0.0.0:7001"], Token = "a b+c" };
+    var publicLoginApi = new ApiHostConfig { PublicBaseUrl = ["https://bot.example.com/shiro/"], Token = "k" };
+    if (loginApi.GetDashboardLoginUrl() != "http://127.0.0.1:7001/dashboard/?token=a%20b%2Bc" ||
+        publicLoginApi.GetDashboardLoginUrl() != "https://bot.example.com/shiro/dashboard/?token=k" ||
+        new ApiHostConfig { Token = "" }.GetDashboardLoginUrl() != "http://127.0.0.1:7001/dashboard/")
+        throw new InvalidOperationException("Dashboard login link is not browsable or does not carry an escaped token.");
+    Console.WriteLine("Dashboard login link verification passed.");
+
     var overviewState = new HostRuntimeState(scheduledDay);
     overviewState.RecordEvent("plugin crashed", "error", scheduledDay);
     string OverviewHealth(DateTimeOffset now) =>

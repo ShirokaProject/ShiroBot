@@ -228,11 +228,13 @@ internal sealed class HostCommandHandler(
     {
         var baseUrl = coreConfig.Api.GetPrimaryBaseUrl();
 
-        return new StringBuilder()
+        var text = new StringBuilder()
             .AppendLine("API 信息")
             .AppendLine(new string('-', 24))
             .AppendLine("启用: " + coreConfig.Api.Enable)
-            .AppendLine("地址: " + baseUrl)
+            .AppendLine("地址: " + baseUrl);
+        if (coreConfig.Api.EnableDashboard) text.AppendLine("Dashboard（直接登录）: " + coreConfig.Api.GetDashboardLoginUrl());
+        return text
             .AppendLine("鉴权: 始终开启")
             .AppendLine("密钥: " + coreConfig.Api.Token)
             .AppendLine("调用: Authorization: Bearer <key>")

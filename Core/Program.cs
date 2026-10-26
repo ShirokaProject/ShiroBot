@@ -329,7 +329,7 @@ public static class Program
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
                 if (coreConfig.Api.EnableDashboard)
-                    CH.Success("Dashboard 地址: " + webPublicBaseUrl.TrimEnd('/') + "/dashboard/");
+                    CH.Success("Dashboard 地址（点击直接登录）: " + coreConfig.Api.GetDashboardLoginUrl());
                 CH.Warning("API 鉴权密钥: " + coreConfig.Api.Token);
             }
 
