@@ -2001,6 +2001,42 @@ try
     }
     Console.WriteLine("Host-managed temporary directory isolation, expiry, shutdown and crash recovery verification passed.");
 
+    if (!AutoUpdateSchedule.TryParseTime("2:00", out var parsedTime) || parsedTime != new TimeOnly(2, 0) ||
+        !AutoUpdateSchedule.TryParseTime("23:59", out _) || AutoUpdateSchedule.TryParseTime("24:00", out _) ||
+        AutoUpdateSchedule.TryParseTime("2点", out _))
+        throw new InvalidOperationException("Auto-update time parsing accepted an invalid value or rejected a valid one.");
+    var scheduledDay = new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero);
+    if (!AutoUpdateSchedule.IsDue(scheduledDay.AddHours(2), parsedTime, null) ||
+        AutoUpdateSchedule.IsDue(scheduledDay.AddHours(2).AddMinutes(-1), parsedTime, null) ||
+        AutoUpdateSchedule.IsDue(scheduledDay.AddHours(3), parsedTime, null) ||
+        AutoUpdateSchedule.IsDue(scheduledDay.AddHours(2), parsedTime, DateOnly.FromDateTime(scheduledDay.DateTime)))
+        throw new InvalidOperationException("Auto-update schedule window is wrong.");
+
+    var autoUpdateState = Path.Combine(tempRoot, "auto-update", "last-run");
+    var autoUpdateConfig = new CoreConfig { AutoUpdate = true, AutoUpdateTime = "02:00" };
+    var autoUpdateClock = new AutoUpdateTestClock(scheduledDay.AddHours(2).AddMinutes(5));
+    var autoUpdateRuns = 0;
+    Task CountAutoUpdate(CancellationToken _) { autoUpdateRuns++; return Task.CompletedTask; }
+    using (var scheduler = new AutoUpdateScheduler(autoUpdateConfig, CountAutoUpdate, autoUpdateState, autoUpdateClock))
+    {
+        await scheduler.TickAsync();
+        await scheduler.TickAsync();
+    }
+    // The restart an update causes must not run it again the same day.
+    using (var restarted = new AutoUpdateScheduler(autoUpdateConfig, CountAutoUpdate, autoUpdateState, autoUpdateClock))
+    {
+        await restarted.TickAsync();
+        if (autoUpdateRuns != 1 || File.ReadAllText(autoUpdateState) != "2026-10-10")
+            throw new InvalidOperationException("Auto-update ran more than once a day or did not record its run.");
+        autoUpdateClock.Advance(TimeSpan.FromDays(1));
+        autoUpdateConfig.AutoUpdate = false;
+        await restarted.TickAsync();
+        autoUpdateConfig.AutoUpdate = true;
+        await restarted.TickAsync();
+        if (autoUpdateRuns != 2) throw new InvalidOperationException("Auto-update ignored its switch or skipped the next day.");
+    }
+    Console.WriteLine("Daily auto-update schedule verification passed.");
+
     var publicUrlsPath = Path.Combine(tempRoot, "public-urls.toml");
     File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = [\"https://primary.example.com\"]\ntoken = \"test-token\"\n");
     var publicUrlsManager = new ConfigManager(publicUrlsPath);
@@ -2611,6 +2647,14 @@ internal sealed class VerificationEventService : IEventService
             await handler(botEvent);
         }
     }
+}
+
+internal sealed class AutoUpdateTestClock(DateTimeOffset now) : TimeProvider
+{
+    private DateTimeOffset _now = now;
+    public override DateTimeOffset GetUtcNow() => _now;
+    public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+    public void Advance(TimeSpan duration) => _now += duration;
 }
 
 internal sealed class TemporaryFilesTestClock : TimeProvider

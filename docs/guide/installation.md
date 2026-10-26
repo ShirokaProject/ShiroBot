@@ -163,7 +163,7 @@ docker compose logs -f shirobot
 
 - 数据保存在命名卷 `shirobot_data` 中，挂载到容器的 `/data`：`config.toml`、`plugins/`、`adapters/` 都在这里，重建或升级容器不会删除。`compose.yaml` 显式指定卷名 `shirobot_data`，在哪个目录启动都使用同一个卷。
 - 容器以非 root 用户运行；`/app/cache` 是可写的临时缓存目录，重建容器时可以丢弃，配置和插件数据仍保存在 `/data`。
-- 协议端运行在宿主机上时，插件交给协议端的文件路径（如插件临时文件）默认位于容器内，宿主机上无法访问。取消 `compose.yaml` 中 `SHIROBOT_DATA_DIR` 和对应挂载的注释，把宿主目录以**相同路径**挂载并作为数据目录，容器内外的路径就一致了：
+- 协议端运行在宿主机上时，插件交给协议端的文件路径（如插件临时文件）默认位于容器内，宿主机上无法访问。取消 `compose.yaml` 中 `environment`、`SHIROBOT_DATA_DIR` 和对应挂载的注释，把宿主目录以**相同路径**挂载并作为数据目录，容器内外的路径就一致了：
 
   ```yaml
   environment:
@@ -187,6 +187,7 @@ docker compose logs -f shirobot
 
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
 - 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=1.0.0` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+- 容器默认使用 UTC 时区，自动更新时间（默认 `02:00`）也按 UTC 计算。需要按本地时间执行时，在 `compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`（文件中有注释示例）。
 - 可以直接在 Dashboard 中更新主程序：新版本下载到数据目录的 `host/`（默认 `/data/host`），先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose pull && docker compose up -d` 更新镜像。启动时如果镜像中的主程序不旧于 `host/` 中的版本，会删除该目录并使用镜像版本。
 
 备份数据卷：

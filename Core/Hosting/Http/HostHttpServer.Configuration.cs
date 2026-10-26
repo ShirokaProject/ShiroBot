@@ -157,6 +157,14 @@ internal sealed partial class HostHttpServer
             }
             : null;
 
+        string? autoUpdateTime = null;
+        if (TryGetString(patch, "auto_update_time", out var requestedUpdateTime))
+        {
+            autoUpdateTime = AutoUpdateSchedule.TryParseTime(requestedUpdateTime, out var parsedUpdateTime)
+                ? parsedUpdateTime.ToString("HH:mm", CultureInfo.InvariantCulture)
+                : throw new InvalidOperationException("auto_update_time 必须是 HH:mm 格式的时间，例如 02:00。");
+        }
+
         if (defaultRouteMode is not null)
             configManager.SetConfigValue(configPath, "plugin_routes.default.mode", defaultRouteMode);
         if (defaultRouteGroups is not null)
@@ -190,6 +198,13 @@ internal sealed partial class HostHttpServer
         {
             configManager.SetConfigValue(configPath, "host_update_repository", hostUpdateRepository);
         }
+
+        if (TryGetBool(patch, "auto_update", out var autoUpdate))
+            configManager.SetConfigValue(configPath, "auto_update", autoUpdate);
+        if (autoUpdateTime is not null)
+            configManager.SetConfigValue(configPath, "auto_update_time", autoUpdateTime);
+        if (TryGetBool(patch, "auto_update_restart_on_pending", out var restartOnPending))
+            configManager.SetConfigValue(configPath, "auto_update_restart_on_pending", restartOnPending);
 
         if (avaloniaTheme is not null)
         {

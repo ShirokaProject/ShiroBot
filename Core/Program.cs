@@ -97,6 +97,7 @@ public static class Program
         TemporaryFileManager? temporaryFiles = null;
         AdapterManager? adapterManager = null;
         ComponentFileWatcher? componentWatcher = null;
+        AutoUpdateScheduler? autoUpdates = null;
         var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
         var shutdownRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         PosixSignalRegistration? sigintRegistration = null;
@@ -317,6 +318,13 @@ public static class Program
                 reloadCoordinator,
                 adapterPackages,
                 powerControl);
+            var autoUpdateRunner = new AutoUpdateRunner(coreConfig, pluginManager, hostEventDispatcher, groupRoutePolicy,
+                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl);
+            autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
+                Path.Combine(BasePath, "cache", "auto-update-last-run"));
+            if (coreConfig.AutoUpdate)
+                CH.Info($"已开启自动更新，每天 {coreConfig.AutoUpdateTime} 检查插件、适配器和主程序更新。");
+
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
@@ -377,6 +385,7 @@ public static class Program
             sigintRegistration?.Dispose();
             sigtermRegistration?.Dispose();
 
+            autoUpdates?.Dispose();
             pluginManager?.BeginShutdown();
             componentWatcher?.Dispose();
             configWatcher?.Dispose();

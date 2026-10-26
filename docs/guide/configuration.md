@@ -2,7 +2,7 @@
 
 ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.toml`，文件保存后部分设置会自动热更新。
 
-保存后，`enable_log`、`showid`、`owner_list`、`admin_list`、`plugin_routes`、`github_proxy` 和 `api.token` 会自动应用。`host_update_repository` 会在下次检查更新时读取新值。
+保存后，`enable_log`、`showid`、`owner_list`、`admin_list`、`plugin_routes`、`github_proxy`、`auto_update` 系列设置和 `api.token` 会自动应用。`host_update_repository` 会在下次检查更新时读取新值。
 
 `avalonia_theme` 会影响下一次使用 `RenderTheme.Auto` 的卡片渲染；宿主设为 `Auto` 时才按时间切换。插件显式指定 `RenderTheme.Light` 或 `RenderTheme.Dark` 时优先使用插件的设置，已经发送的图片不会改变。
 
@@ -13,6 +13,18 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 启动、停止、重载或更新适配器不会自动重启插件。插件实例、配置监听及事件订阅保持不变，通用接口按 `InstanceId` 路由到重新加载的实例。重载期间目标实例可能暂时不可用，其他实例继续运行。
 
 如果插件缓存了 `GetAdapterExtension<T>()` 返回的对象，或适配器自身有未释放引用，旧程序集可能无法卸载。宿主会提示需要重启，阻止该实例重复加载；更新包可以暂存到重启时应用。不会为释放适配器引用而自动卸载所有插件。
+
+## 自动更新
+
+`auto_update` 开启后，宿主每天在 `auto_update_time`（默认 `02:00`）依次更新：
+
+1. 配置了 GitHub 仓库的已加载插件；
+2. 在适配器市场中有新版本的已安装适配器包（跳过预发布版本，下载时校验 SHA-256）；
+3. 主程序本身（与 Dashboard 中的主程序更新相同，新版本先试运行再替换，替换后自动重启）。
+
+插件或适配器当前版本无法热替换时，新版本会暂存到下次启动。`auto_update_restart_on_pending` 默认开启，此时自动更新结束后会重启宿主完成替换；关闭后只记录日志并在 Dashboard 中提示需要重启。主程序已更新并重启时会一并完成暂存的替换。
+
+执行时间使用宿主所在系统的本地时区。到点后一小时内宿主未运行时当天跳过；每天只执行一次，执行日期记录在 `cache/auto-update-last-run`，更新导致的重启不会在当天再次执行。单个插件或适配器更新失败只记录警告，不影响其他项目。
 
 ## 防止重复启动
 
@@ -27,6 +39,9 @@ enable_log = true
 disable_console_input = false
 github_proxy = ""
 host_update_repository = "ShirokaProject/ShiroBot"
+auto_update = false
+auto_update_time = "02:00"
+auto_update_restart_on_pending = true
 avalonia_theme = "Auto"
 
 owner_list = ["qq-work:123456789"]
@@ -57,6 +72,9 @@ groups = [10001, 10002]
 | `disable_console_input` | `false` | 是否禁用交互式控制台命令 |
 | `github_proxy` | 空 | GitHub 下载代理前缀 |
 | `host_update_repository` | `ShirokaProject/ShiroBot` | 宿主更新仓库 |
+| `auto_update` | `false` | 每天自动更新插件、适配器和主程序，见[自动更新](#自动更新) |
+| `auto_update_time` | `02:00` | 自动更新时间，`HH:mm`，宿主本地时区 |
+| `auto_update_restart_on_pending` | `true` | 自动更新中有插件或适配器无法热替换时，自动重启宿主完成更新 |
 | `avalonia_theme` | `Auto` | `Light`、`Dark` 或 `Auto`（按时间切换，18:00–6:00 为深色） |
 | `owner_list` | `[]` | 所有者身份列表（`instanceId:userId`）；自动拥有管理员权限，`Context.IsOwner` 和 `Context.IsAdmin` 均返回 `true` |
 | `admin_list` | `[]` | 管理员身份列表（`instanceId:userId`）；owner 无需重复填写，插件通过 `Context.IsAdmin` 判断 |

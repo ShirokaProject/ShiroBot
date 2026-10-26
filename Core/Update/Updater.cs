@@ -518,7 +518,7 @@ public static class Updater
             GetReleaseAssets(item));
     }
 
-    private static bool IsNewerVersion(string latestVersion, string currentVersion)
+    internal static bool IsNewerVersion(string latestVersion, string currentVersion)
     {
         var normalizedLatest = NormalizeVersion(latestVersion);
         var normalizedCurrent = NormalizeVersion(currentVersion);
