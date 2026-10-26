@@ -75,7 +75,9 @@ internal sealed partial class HostHttpServer
                 plugin_id = plugin.Id,
                 config = LoadTomlObject(pluginConfigPath),
                 schema = GetComponentConfigSchema(plugin.AssemblyPath, FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly),
-                routes = CreatePluginRouteResponse(routePolicy, plugin.Id)
+                routes = CreatePluginRouteResponse(routePolicy, plugin.Id),
+                // Whether the raw config.toml editor applies; a plugin without config has nothing to edit.
+                raw_config = PluginHasConfig(pluginManager, plugin, pluginConfigPath)
             });
         });
 

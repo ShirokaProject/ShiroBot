@@ -35,6 +35,7 @@ internal sealed partial class HostHttpServer
             var plugin = FindPluginForConfig(pluginManager, id);
             if (plugin is null) return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
             var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
+            if (!PluginHasConfig(pluginManager, plugin, path)) return NoConfigResult("插件");
             return Results.Ok(CreateRawConfigResponse(File.Exists(path) ? File.ReadAllText(path) : string.Empty));
         });
 
@@ -43,6 +44,8 @@ internal sealed partial class HostHttpServer
             var plugin = FindPluginForConfig(pluginManager, id);
             if (plugin is null) return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
             var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
+            // Writing would create a config.toml the plugin never reads.
+            if (!PluginHasConfig(pluginManager, plugin, path)) return NoConfigResult("插件");
             var (request, error) = await ReadRawConfigRequestAsync(context, File.Exists(path) ? File.ReadAllText(path) : string.Empty).ConfigureAwait(false);
             if (error is not null) return error;
 
@@ -64,6 +67,7 @@ internal sealed partial class HostHttpServer
         {
             var instance = adapterPackages.GetInstance(id);
             if (instance is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+            if (!AdapterHasConfig(adapterPackages, adapterManager, instance)) return NoConfigResult("适配器");
             return Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance)));
         });
 
@@ -71,6 +75,7 @@ internal sealed partial class HostHttpServer
         {
             var instance = adapterPackages.GetInstance(id);
             if (instance is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+            if (!AdapterHasConfig(adapterPackages, adapterManager, instance)) return NoConfigResult("适配器");
             var (request, error) = await ReadRawConfigRequestAsync(context, ReadAdapterRawConfig(instance)).ConfigureAwait(false);
             if (error is not null) return error;
 
@@ -88,6 +93,19 @@ internal sealed partial class HostHttpServer
             }
         });
     }
+
+    /// <summary>A plugin has a config when it declares a config model or already has a config.toml.</summary>
+    private static bool PluginHasConfig(PluginManager pluginManager, PluginConfigTarget plugin, string configPath) =>
+        File.Exists(configPath) ||
+        GetComponentConfigSchema(plugin.AssemblyPath, FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly).Length > 0;
+
+    private static bool AdapterHasConfig(AdapterPackageManager adapterPackages, AdapterManager adapterManager, InstalledAdapterInstance instance) =>
+        AdapterInstanceStore.GetConfig(instance.ConfigPath, instance.Id).Count > 0 ||
+        adapterPackages.Get(instance.PackageId) is { } package &&
+        GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(instance.Id)).Length > 0;
+
+    private static IResult NoConfigResult(string noun) =>
+        Results.BadRequest(new { error = "no_config", message = $"这个{noun}没有配置文件，不能编辑 config.toml。" });
 
     private static string ReadAdapterRawConfig(InstalledAdapterInstance instance) =>
         AdapterInstanceStore.IsDeclared(instance.ConfigPath)

@@ -54,7 +54,8 @@ internal sealed partial class HostHttpServer
                 schema = GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id)),
                 apply_status = adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase)
                     ? "loaded"
-                    : "pending_start"
+                    : "pending_start",
+                raw_config = AdapterHasConfig(adapterPackages, adapterManager, instance)
             });
         });
 

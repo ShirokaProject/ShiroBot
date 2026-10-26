@@ -40,6 +40,7 @@
 - 完整配置页右上角可切换为「编辑 config.toml」，直接编辑插件或适配器配置文件的全部内容，包括表单中没有的字段。
 - 保存前校验 TOML 格式，格式错误不会写入并显示出错位置；保存后立即应用。打开编辑器后文件被其他地方修改时拒绝保存，避免覆盖。
 - 插件编辑整个文件并保留注释；多实例适配器只编辑当前实例的配置表，保存后不保留注释。
+- 只有声明了配置模型或已有 config.toml 的插件和适配器才提供该模式，没有配置的组件不会被写入新的配置文件。
 
 #### 一键登录 Dashboard
 
@@ -87,7 +88,7 @@
 ### HTTP API
 
 - `GET /api/v1/plugins/{id}` 新增 `listeners` 字段，插件未加载时为 `null`。
-- 新增 `GET` / `PUT /api/v1/plugins/{id}/config/raw` 与 `/api/v1/adapters/{id}/config/raw`，读写完整 `config.toml`；`PUT` 携带读取时的 `revision`，文件已变化时返回 `409 config_changed`，格式错误返回 `400 invalid_toml`。
+- 新增 `GET` / `PUT /api/v1/plugins/{id}/config/raw` 与 `/api/v1/adapters/{id}/config/raw`，读写完整 `config.toml`；`PUT` 携带读取时的 `revision`，文件已变化时返回 `409 config_changed`，格式错误返回 `400 invalid_toml`，组件没有配置时返回 `400 no_config`。插件和适配器配置的 `GET` 响应新增 `raw_config`，表示是否可以编辑 config.toml。
 - 核心配置 `GET` / `PATCH /api/v1/config` 支持上述新增配置项。
 
 ### 升级说明
