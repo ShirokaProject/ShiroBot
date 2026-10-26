@@ -172,6 +172,7 @@ docker compose logs -f shirobot
 
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
 - 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=1.0.0` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+- 可以直接在 Dashboard 中更新主程序：新版本下载到数据卷的 `/data/host`，先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose pull && docker compose up -d` 更新镜像。启动时如果镜像中的主程序不旧于 `/data/host` 中的版本，会删除 `/data/host` 并使用镜像版本。
 
 备份数据卷：
 

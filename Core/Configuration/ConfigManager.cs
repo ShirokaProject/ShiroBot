@@ -2,6 +2,7 @@ using System.Text.Json;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Config;
 using ShiroBot.Console;
+using ShiroBot.Hosting.Runtime;
 using Tomlyn;
 using Tomlyn.Parsing;
 using Tomlyn.Syntax;
@@ -134,7 +135,7 @@ public class PluginRouteRuleConfig
 public class ConfigManager(string? coreConfigPath = null)
 {
     private readonly string _coreConfigPath = string.IsNullOrWhiteSpace(coreConfigPath)
-        ? Path.Combine(AppContext.BaseDirectory, "config.toml")
+        ? Path.Combine(HostPaths.Root, "config.toml")
         : Path.GetFullPath(coreConfigPath);
 
     private readonly TomlSerializerOptions _options = new()

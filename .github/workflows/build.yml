@@ -161,22 +161,16 @@ jobs:
           path: artifacts/archives/*.zip
           if-no-files-found: error
 
-      - name: Publish layered container files
+      - name: Stage container binary
         if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
         run: |
           set -euo pipefail
           runtime='${{ matrix.runtime }}'
           arch=amd64
           if [ "$runtime" = linux-musl-arm64 ]; then arch=arm64; fi
-          dotnet publish "${{ env.HOST_PROJECT }}" \
-            --configuration "${{ env.CONFIGURATION }}" \
-            --runtime "$runtime" --self-contained false \
-            --output "artifacts/container-publish/$arch" \
-            /p:ContinuousIntegrationBuild=true /p:RequireDashboard=true \
-            /p:DashboardDistPath="$GITHUB_WORKSPACE/Core/Assets/dashboard" \
-            /p:PublishSingleFile=false /p:IncludeNativeLibrariesForSelfExtract=false \
-            /p:DebugType=none /p:CopyOutputSymbolsToPublishDirectory=false
-          sh scripts/split-container-publish.sh "artifacts/container-publish/$arch" "artifacts/docker/$arch"
+          # The image ships the release asset's binary, so Dashboard self-updates replace it with the same kind.
+          mkdir -p "artifacts/docker/$arch"
+          cp "artifacts/host/${runtime}-framework-dependent/ShiroBot" "artifacts/docker/$arch/ShiroBot"
 
       - name: Upload container files
         if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
@@ -204,7 +198,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
-      - name: Download layered container files
+      - name: Download container binaries
         uses: actions/download-artifact@v8.0.2
         with:
           pattern: shirobot-container-linux-musl-*64
@@ -216,10 +210,8 @@ jobs:
           set -euo pipefail
 
           for arch in amd64 arm64; do
-            test -f "artifacts/docker/$arch/application/ShiroBot.dll"
-            find "artifacts/docker/$arch" -type f -exec chmod 644 {} +
-            find "artifacts/docker/$arch" -type d -exec chmod 755 {} +
-            chmod +x "artifacts/docker/$arch/application/ShiroBot"
+            test -f "artifacts/docker/$arch/ShiroBot"
+            chmod 755 "artifacts/docker/$arch/ShiroBot"
           done
 
       - name: Resolve image name

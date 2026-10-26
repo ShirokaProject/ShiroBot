@@ -37,6 +37,8 @@ start_and_verify() {
         test -f /app/cache/host.lock
         test -f /data/config.toml
         test -w /app/cache
+        test -n "$(/app/ShiroBot --self-check)"
+        test ! -e /data/host
     '
     docker stop -t 20 "$name" >/dev/null
     docker rm "$name" >/dev/null
@@ -49,6 +51,9 @@ docker run --rm --platform "$platform" --entrypoint sh \
     -v "$volume:/data" "$image" -eu -c '
         printf "%s" retained > /data/plugins/startup-test-data
         cp /data/config.toml /data/config.expected
+        # A Dashboard update no newer than the image must be discarded on startup.
+        mkdir -p /data/host
+        cp /app/ShiroBot /data/host/ShiroBot
     '
 start_and_verify
 docker run --rm --platform "$platform" --entrypoint sh \

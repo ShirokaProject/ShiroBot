@@ -30,7 +30,7 @@ namespace ShiroBot;
 
 public static class Program
 {
-    private static string BasePath => AppContext.BaseDirectory;
+    private static string BasePath => HostPaths.Root;
 
     /// <summary>
     /// 供 Avalonia 设计器（IDE Previewer）反射调用。Previewer 通过 <c>--method avalonia-remote</c>
@@ -45,6 +45,12 @@ public static class Program
 
     public static async Task Main(string[] args)
     {
+        // Lets the updater and the container entrypoint confirm this executable runs here before using it.
+        if (args is [HostSelfUpdater.SelfCheckArgument])
+        {
+            global::System.Console.WriteLine(HostSelfUpdater.CurrentVersion);
+            return;
+        }
         if (await TryRunAdapterManagementCommandAsync(args).ConfigureAwait(false)) return;
         await HostPowerControl.WaitForPredecessorAsync().ConfigureAwait(false);
         HostDirectoryLock? acquiredLock;
@@ -127,7 +133,7 @@ public static class Program
 
         try
         {
-            temporaryFiles = new TemporaryFileManager(Path.Combine(AppContext.BaseDirectory, "cache"));
+            temporaryFiles = new TemporaryFileManager(Path.Combine(BasePath, "cache"));
             // ─── 核心配置 ───
             var coreConfigPath = Path.Combine(BasePath, "config.toml");
             var configuredCoreConfigPath = parserResult.GetValue(configOption);

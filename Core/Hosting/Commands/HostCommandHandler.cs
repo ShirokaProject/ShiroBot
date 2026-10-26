@@ -174,7 +174,7 @@ internal sealed class HostCommandHandler(
                         CH.Info(helpText.ToString().TrimEnd());
                         break;
                     case "path":
-                        var path = AppContext.BaseDirectory;
+                        var path = HostPaths.Root;
                         CH.Log("打开当前程序目录: " + path);
                         Process.Start(new ProcessStartInfo
                         {

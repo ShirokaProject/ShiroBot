@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using ShiroBot.SDK.Abstractions;
+using ShiroBot.Hosting.Runtime;
 
 namespace ShiroBot.Plugins.Marketplace;
 
@@ -209,5 +210,5 @@ internal sealed class PluginMarketplaceCache
     }
 
     private static string GetCachePath() =>
-        Path.Combine(AppContext.BaseDirectory, "cache", "plugin-marketplace.v1.json");
+        Path.Combine(HostPaths.Root, "cache", "plugin-marketplace.v1.json");
 }

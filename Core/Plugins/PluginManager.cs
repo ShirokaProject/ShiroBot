@@ -1202,7 +1202,7 @@ internal sealed class PluginManager(
         {
             var fullPath = Path.IsPathRooted(normalizedInput)
                 ? Path.GetFullPath(normalizedInput)
-                : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, normalizedInput));
+                : Path.GetFullPath(Path.Combine(HostPaths.Root, normalizedInput));
 
             if (File.Exists(fullPath)) return [fullPath];
 

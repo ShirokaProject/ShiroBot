@@ -36,7 +36,7 @@ dotnet run --project Tests/Verification/ShiroBot.Verification.csproj
 podman build -f Containerfile -t shirobot:local .
 ```
 
-Docker 也可使用 `docker build -f Containerfile -t shirobot:local .`。容器版使用依赖框架的多文件发布，将第三方依赖与宿主程序分别放在镜像层中；依赖内容不变时可复用原层。普通下载版仍使用单文件发布。
+Docker 也可使用 `docker build -f Containerfile -t shirobot:local .`。容器版与 Release 中的 `linux-musl` framework-dependent 包使用同一个单文件主程序，Dashboard 自更新下载的也是它；镜像通过 `SHIROBOT_HOME=/app` 固定宿主目录，自更新的主程序放在数据卷的 `/data/host`。
 
 ## 文档
 

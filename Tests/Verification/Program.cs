@@ -623,6 +623,25 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
         AssertThrows<IOException>(() => HostSelfUpdater.ReplaceExecutable(Path.Combine(updateRoot, "missing"), executable));
         if (File.ReadAllText(executable) != "new-host")
             throw new InvalidOperationException("A failed host replacement did not restore the original executable.");
+        var installed = Path.Combine(updateRoot, "host", "ShiroBot");
+        File.WriteAllText(replacement, "installed-host");
+        HostSelfUpdater.InstallExecutable(replacement, installed);
+        if (File.ReadAllText(installed) != "installed-host" || File.Exists(installed + ".old") ||
+            (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(installed) & UnixFileMode.UserExecute) == 0))
+            throw new InvalidOperationException("Installing the host into an empty update directory failed.");
+        if (!OperatingSystem.IsWindows())
+        {
+            var passing = Path.Combine(updateRoot, "passing");
+            var failing = Path.Combine(updateRoot, "failing");
+            File.WriteAllText(passing, "#!/bin/sh\n[ \"$1\" = --self-check ] && echo 9.9.9\n");
+            File.WriteAllText(failing, "#!/bin/sh\necho 'framework not found' >&2\nexit 150\n");
+            File.SetUnixFileMode(passing, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(failing, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            if (await HostSelfUpdater.SelfCheckAsync(passing, CancellationToken.None) is not null ||
+                await HostSelfUpdater.SelfCheckAsync(failing, CancellationToken.None) is not { } failure || !failure.Contains("framework not found") ||
+                await HostSelfUpdater.SelfCheckAsync(Path.Combine(updateRoot, "missing"), CancellationToken.None) is null)
+                throw new InvalidOperationException("Host self-check did not tell a runnable update from a broken one.");
+        }
         var emptyRepository = await HostSelfUpdater.CheckAsync("");
         if (emptyRepository.UpdateAvailable || emptyRepository.CanApply || string.IsNullOrEmpty(emptyRepository.Reason) ||
             HostSelfUpdater.BlockedReason() is null)
