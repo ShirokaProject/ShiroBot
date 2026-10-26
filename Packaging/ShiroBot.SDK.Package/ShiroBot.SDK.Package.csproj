@@ -15,7 +15,7 @@
     <PackageProjectUrl>https://github.com/ShirokaProject/ShiroBot</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>1.0.1 improves collectible plugin configuration handling and rendered image file output without changing public APIs. SDK ABI $(ShiroBotSdkAbiVersion); QQ Model ABI $(ShiroBotQqModelAbiVersion), Discord Model ABI $(ShiroBotDiscordModelAbiVersion), Telegram Model ABI $(ShiroBotTelegramModelAbiVersion). ShiroBot API 1.0. New temporary-file consumers require host 1.0.0.</PackageReleaseNotes>
+    <PackageReleaseNotes>1.0.2 adds route descriptions for the Dashboard plugin details: MapMention, MapMentionAll, MapReply and MapPlatform report what they listen to, and MapWhen accepts an optional description. Existing components keep loading; components using the new MapWhen overloads require SDK ABI 1.3.0.0 (host 1.0.2). SDK ABI $(ShiroBotSdkAbiVersion); QQ Model ABI $(ShiroBotQqModelAbiVersion), Discord Model ABI $(ShiroBotDiscordModelAbiVersion), Telegram Model ABI $(ShiroBotTelegramModelAbiVersion). ShiroBot API 1.0. New temporary-file consumers require host 1.0.0.</PackageReleaseNotes>
     <NoWarn>$(NoWarn);NU5104;NU5128</NoWarn>
   </PropertyGroup>
 
