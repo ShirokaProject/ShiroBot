@@ -322,8 +322,8 @@ public static class Program
                 adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl);
             autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
                 Path.Combine(BasePath, "cache", "auto-update-last-run"));
-            if (coreConfig.AutoUpdate)
-                CH.Info($"已开启自动更新，每天 {coreConfig.AutoUpdateTime} 检查插件、适配器和主程序更新。");
+            if (coreConfig.AnyAutoUpdate)
+                CH.Info($"已开启自动更新，每天 {coreConfig.AutoUpdateTime} 检查更新。");
 
             if (coreConfig.Api.Enable)
             {

@@ -199,8 +199,11 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "host_update_repository", hostUpdateRepository);
         }
 
-        if (TryGetBool(patch, "auto_update", out var autoUpdate))
-            configManager.SetConfigValue(configPath, "auto_update", autoUpdate);
+        foreach (var key in (string[])["auto_update_plugins", "auto_update_adapters", "auto_update_host"])
+        {
+            if (TryGetBool(patch, key, out var enabled))
+                configManager.SetConfigValue(configPath, key, enabled);
+        }
         if (autoUpdateTime is not null)
             configManager.SetConfigValue(configPath, "auto_update_time", autoUpdateTime);
         if (TryGetBool(patch, "auto_update_restart_on_pending", out var restartOnPending))

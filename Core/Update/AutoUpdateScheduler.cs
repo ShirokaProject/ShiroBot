@@ -52,7 +52,7 @@ internal sealed class AutoUpdateScheduler : IDisposable
 
     internal async Task TickAsync()
     {
-        if (!_config.AutoUpdate || _stopping.IsCancellationRequested) return;
+        if (!_config.AnyAutoUpdate || _stopping.IsCancellationRequested) return;
         if (!AutoUpdateSchedule.TryParseTime(_config.AutoUpdateTime, out var time))
         {
             if (_invalidTimeWarned != _config.AutoUpdateTime)

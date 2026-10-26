@@ -33,8 +33,18 @@ public class CoreConfig
     [ConfigField("宿主更新仓库，格式为 owner/repository。", Label = "宿主更新仓库", Default = "ShirokaProject/ShiroBot", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 20)]
     public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
 
-    [ConfigField("每天在设定时间自动更新插件、适配器和主程序。", Label = "自动更新", Default = "false", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 22)]
-    public bool AutoUpdate { get; set; } = false;
+    [ConfigField("每天在设定时间自动更新配置了 GitHub 仓库的已加载插件。", Label = "自动更新插件", Default = "false", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 21)]
+    public bool AutoUpdatePlugins { get; set; } = false;
+
+    [ConfigField("每天在设定时间从适配器市场更新已安装的适配器包。", Label = "自动更新适配器", Default = "false", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 22)]
+    public bool AutoUpdateAdapters { get; set; } = false;
+
+    [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序", Default = "false", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 23)]
+    public bool AutoUpdateHost { get; set; } = false;
+
+    /// <summary>Whether any automatic update is on.</summary>
+    [Tomlyn.Serialization.TomlIgnore, System.Text.Json.Serialization.JsonIgnore]
+    public bool AnyAutoUpdate => AutoUpdatePlugins || AutoUpdateAdapters || AutoUpdateHost;
 
     [ConfigField("自动更新的执行时间，格式 HH:mm，使用宿主所在系统的本地时区；到点后一小时内未运行的宿主当天跳过。", Label = "自动更新时间", Default = "02:00", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 24)]
     public string AutoUpdateTime { get; set; } = AutoUpdateSchedule.DefaultTime;

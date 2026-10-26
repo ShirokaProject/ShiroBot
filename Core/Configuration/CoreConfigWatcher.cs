@@ -85,11 +85,15 @@ internal sealed class CoreConfigWatcher : IDisposable
             changes.Add("host_update_repository");
         }
 
-        if (active.AutoUpdate != updated.AutoUpdate ||
+        if (active.AutoUpdatePlugins != updated.AutoUpdatePlugins ||
+            active.AutoUpdateAdapters != updated.AutoUpdateAdapters ||
+            active.AutoUpdateHost != updated.AutoUpdateHost ||
             !string.Equals(active.AutoUpdateTime, updated.AutoUpdateTime, StringComparison.Ordinal) ||
             active.AutoUpdateRestartOnPending != updated.AutoUpdateRestartOnPending)
         {
-            active.AutoUpdate = updated.AutoUpdate;
+            active.AutoUpdatePlugins = updated.AutoUpdatePlugins;
+            active.AutoUpdateAdapters = updated.AutoUpdateAdapters;
+            active.AutoUpdateHost = updated.AutoUpdateHost;
             active.AutoUpdateTime = updated.AutoUpdateTime;
             active.AutoUpdateRestartOnPending = updated.AutoUpdateRestartOnPending;
             changes.Add("auto_update");

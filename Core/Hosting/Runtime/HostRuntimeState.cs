@@ -9,6 +9,8 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
     private const int BucketHours = 2;
     private const int BucketCount = 24 / BucketHours;
     private const int MaxEvents = 20;
+    /// <summary>Errors are one-off events; the overview stops reporting one after this long.</summary>
+    internal static readonly TimeSpan ErrorDisplayDuration = TimeSpan.FromHours(1);
 
     private readonly Lock _lock = new();
     private readonly int[] _messageBuckets = new int[BucketCount];
@@ -63,11 +65,13 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
 
     public void RecordEvent(string message, string level = "info", DateTimeOffset? at = null)
     {
+        var recordedAt = at ?? DateTimeOffset.Now;
         var runtimeEvent = new RuntimeEvent
         {
             Message = message,
-            Time = (at ?? DateTimeOffset.Now).ToString("HH:mm"),
-            Level = level
+            Time = recordedAt.ToString("HH:mm"),
+            Level = level,
+            RecordedAt = recordedAt
         };
 
         lock (_lock)
@@ -110,11 +114,13 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         }
     }
 
-    public object CreateOverview()
+    public object CreateOverview(DateTimeOffset? now = null)
     {
         lock (_lock)
         {
             var events = _events.Reverse().ToArray();
+            if (_latestError is not null && (now ?? DateTimeOffset.Now) - _latestError.RecordedAt >= ErrorDisplayDuration)
+                _latestError = null;
             return new
             {
                 runtime = HostEnvironmentInfo.Create(),
@@ -177,5 +183,8 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         [JsonPropertyName("level")]
         // ReSharper disable once UnusedAutoPropertyAccessor.Local
         public string Level { get; init; } = string.Empty;
+
+        [JsonIgnore]
+        public DateTimeOffset RecordedAt { get; init; }
     }
 }

@@ -2013,7 +2013,7 @@ try
         throw new InvalidOperationException("Auto-update schedule window is wrong.");
 
     var autoUpdateState = Path.Combine(tempRoot, "auto-update", "last-run");
-    var autoUpdateConfig = new CoreConfig { AutoUpdate = true, AutoUpdateTime = "02:00" };
+    var autoUpdateConfig = new CoreConfig { AutoUpdateAdapters = true, AutoUpdateTime = "02:00" };
     var autoUpdateClock = new AutoUpdateTestClock(scheduledDay.AddHours(2).AddMinutes(5));
     var autoUpdateRuns = 0;
     Task CountAutoUpdate(CancellationToken _) { autoUpdateRuns++; return Task.CompletedTask; }
@@ -2029,13 +2029,27 @@ try
         if (autoUpdateRuns != 1 || File.ReadAllText(autoUpdateState) != "2026-10-10")
             throw new InvalidOperationException("Auto-update ran more than once a day or did not record its run.");
         autoUpdateClock.Advance(TimeSpan.FromDays(1));
-        autoUpdateConfig.AutoUpdate = false;
+        autoUpdateConfig.AutoUpdateAdapters = false;
         await restarted.TickAsync();
-        autoUpdateConfig.AutoUpdate = true;
+        autoUpdateConfig.AutoUpdateAdapters = true;
         await restarted.TickAsync();
         if (autoUpdateRuns != 2) throw new InvalidOperationException("Auto-update ignored its switch or skipped the next day.");
     }
+    var autoUpdateDefaultsPath = Path.Combine(tempRoot, "auto-update-defaults.toml");
+    var autoUpdateDefaults = await new ConfigManager(autoUpdateDefaultsPath).LoadCoreConfig();
+    var autoUpdateToml = File.ReadAllText(autoUpdateDefaultsPath);
+    if (autoUpdateDefaults.AnyAutoUpdate || !autoUpdateDefaults.AutoUpdateRestartOnPending || autoUpdateDefaults.AutoUpdateTime != "02:00" ||
+        !autoUpdateToml.Contains("auto_update_plugins") || autoUpdateToml.Contains("any_auto_update"))
+        throw new InvalidOperationException("Auto-update defaults are wrong or the derived switch was written to config.toml.");
     Console.WriteLine("Daily auto-update schedule verification passed.");
+
+    var overviewState = new HostRuntimeState(scheduledDay);
+    overviewState.RecordEvent("plugin crashed", "error", scheduledDay);
+    string OverviewHealth(DateTimeOffset now) =>
+        System.Text.Json.JsonSerializer.SerializeToElement(overviewState.CreateOverview(now)).GetProperty("health_status").GetString()!;
+    if (OverviewHealth(scheduledDay.AddMinutes(59)) != "异常" || OverviewHealth(scheduledDay.AddHours(1)) != "正常")
+        throw new InvalidOperationException("Overview kept reporting an old error, or dropped a recent one.");
+    Console.WriteLine("Overview error expiry verification passed.");
 
     var publicUrlsPath = Path.Combine(tempRoot, "public-urls.toml");
     File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = [\"https://primary.example.com\"]\ntoken = \"test-token\"\n");

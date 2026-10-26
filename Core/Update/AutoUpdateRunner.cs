@@ -10,7 +10,7 @@ using ShiroBot.SDK.Abstractions;
 namespace ShiroBot.Update;
 
 /// <summary>
-/// One automatic update pass: plugins, then adapters, then the host. A host update restarts the process
+/// One automatic update pass over the enabled kinds: plugins, then adapters, then the host. A host update restarts the process
 /// itself; otherwise updates that could only be staged restart the host when
 /// <see cref="CoreConfig.AutoUpdateRestartOnPending"/> is on.
 /// </summary>
@@ -31,9 +31,9 @@ internal sealed class AutoUpdateRunner(
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         var pending = new List<string>();
-        await UpdatePluginsAsync(pending, cancellationToken).ConfigureAwait(false);
-        await UpdateAdaptersAsync(pending, cancellationToken).ConfigureAwait(false);
-        if (await UpdateHostAsync(cancellationToken).ConfigureAwait(false)) return;
+        if (config.AutoUpdatePlugins) await UpdatePluginsAsync(pending, cancellationToken).ConfigureAwait(false);
+        if (config.AutoUpdateAdapters) await UpdateAdaptersAsync(pending, cancellationToken).ConfigureAwait(false);
+        if (config.AutoUpdateHost && await UpdateHostAsync(cancellationToken).ConfigureAwait(false)) return;
 
         if (pending.Count == 0)
         {
