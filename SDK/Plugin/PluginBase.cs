@@ -5,12 +5,48 @@ using System.Reflection;
 
 namespace ShiroBot.SDK.Plugin;
 
-public sealed record MessageRouteDescriptor(MessageRouteMatchType MatchType, string? Pattern);
+public sealed record MessageRouteDescriptor(MessageRouteMatchType MatchType, string? Pattern)
+{
+    /// <summary>What an <see cref="MessageRouteMatchType.All"/> route filters on; dispatch does not use it.</summary>
+    public MessageRouteCondition Condition { get; init; }
+
+    /// <summary>The mentioned user ID or replied message ID the condition is limited to, if any.</summary>
+    public string? ConditionArgument { get; init; }
+
+    /// <summary>Plugin-supplied text shown for the route, e.g. for a <see cref="MessageRouteCondition.Custom"/> predicate.</summary>
+    public string? Description { get; init; }
+}
+
 public enum MessageRouteMatchType
 {
     Exact = 0,
     Prefix = 1,
     All = 2
+}
+
+/// <summary>Describes the filter of a route that receives every message, for display in the Dashboard.</summary>
+public enum MessageRouteCondition
+{
+    /// <summary>No filter, or an exact/prefix route.</summary>
+    None = 0,
+    /// <summary>A predicate the host cannot describe; see <see cref="MessageRouteDescriptor.Description"/>.</summary>
+    Custom = 1,
+    Mention = 2,
+    MentionAll = 3,
+    Reply = 4
+}
+
+/// <summary>An event subscription registered through <see cref="EventRouter"/>.</summary>
+public sealed record EventRouteDescriptor(Type EventType)
+{
+    /// <summary>The <see cref="ShiroBot.SDK.Models.PlatformEvent.Kind"/> of a <see cref="EventRouter.MapPlatform"/> route.</summary>
+    public string? PlatformKind { get; init; }
+
+    /// <summary>True when the route only handles events matching a predicate.</summary>
+    public bool Filtered { get; init; }
+
+    /// <summary>Plugin-supplied text shown for the route.</summary>
+    public string? Description { get; init; }
 }
 
 public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
@@ -101,6 +137,7 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
 
     public IReadOnlyList<MessageRouteDescriptor> GetGroupMessageRoutes() => GroupCommands.Routes;
     public IReadOnlyList<MessageRouteDescriptor> GetDirectMessageRoutes() => DirectCommands.Routes;
+    public IReadOnlyList<EventRouteDescriptor> GetEventRoutes() => Events.Routes;
 
     public bool RequiresGroupMessageBroadcast() =>
         Overrides(GetType(), nameof(OnGroupMessageAsync)) ||

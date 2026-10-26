@@ -23,20 +23,40 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
 
     public void MapAll(Func<TMessage, Task> handler)
     {
-        MapWhen(_ => true, handler);
+        MapCondition(MessageRouteCondition.None, null, null, _ => true, handler);
     }
 
     public void MapWhen(Func<TMessage, bool> predicate, Func<TMessage, Task> handler)
     {
+        MapCondition(MessageRouteCondition.Custom, null, null, predicate, handler);
+    }
+
+    /// <param name="description">Shown in the Dashboard's plugin details, e.g. "包含关键词 天气".</param>
+    public void MapWhen(Func<TMessage, bool> predicate, string description, Func<TMessage, Task> handler)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        MapCondition(MessageRouteCondition.Custom, null, description, predicate, handler);
+    }
+
+    internal void MapCondition(
+        MessageRouteCondition condition,
+        string? argument,
+        string? description,
+        Func<TMessage, bool> predicate,
+        Func<TMessage, Task> handler)
+    {
         ArgumentNullException.ThrowIfNull(predicate);
-        AddRoute(MessageRouteMatchType.All, null, handler, predicate);
+        AddRoute(MessageRouteMatchType.All, null, handler, predicate, condition, argument, description);
     }
 
     private void AddRoute(
         MessageRouteMatchType matchType,
         string? pattern,
         Func<TMessage, Task> handler,
-        Func<TMessage, bool>? predicate = null)
+        Func<TMessage, bool>? predicate = null,
+        MessageRouteCondition condition = MessageRouteCondition.None,
+        string? argument = null,
+        string? description = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -45,7 +65,13 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
             ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
         }
 
-        _routes.Add(new RouteEntry(new MessageRouteDescriptor(matchType, pattern), handler, predicate));
+        var descriptor = new MessageRouteDescriptor(matchType, pattern)
+        {
+            Condition = condition,
+            ConditionArgument = argument,
+            Description = description
+        };
+        _routes.Add(new RouteEntry(descriptor, handler, predicate));
     }
 
     public async Task<bool> DispatchAsync(string text, TMessage message)

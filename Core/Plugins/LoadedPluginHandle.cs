@@ -80,6 +80,11 @@ internal sealed class LoadedPluginHandle
                 : [];
         GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
         DirectMessageRoutes = plugin is PluginBase directPluginBase ? directPluginBase.GetDirectMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
+        EventRoutes = plugin is PluginBase eventPluginBase
+            ? eventPluginBase.GetEventRoutes()
+            : plugin is IBotEventSubscriber
+                ? [new EventRouteDescriptor(typeof(BotEvent))]
+                : [];
         RequiresGroupMessageBroadcast = plugin is PluginBase groupBroadcastPluginBase && groupBroadcastPluginBase.RequiresGroupMessageBroadcast();
         RequiresDirectMessageBroadcast = plugin is PluginBase directBroadcastPluginBase && directBroadcastPluginBase.RequiresDirectMessageBroadcast();
     }
@@ -107,6 +112,7 @@ internal sealed class LoadedPluginHandle
     public IReadOnlySet<Type> SubscribedEventTypes { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
     public IReadOnlyList<MessageRouteDescriptor> DirectMessageRoutes { get; }
+    public IReadOnlyList<EventRouteDescriptor> EventRoutes { get; }
     public bool RequiresGroupMessageBroadcast { get; }
     public bool RequiresDirectMessageBroadcast { get; }
 

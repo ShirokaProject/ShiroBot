@@ -549,7 +549,7 @@ Console.WriteLine("Plugin config nested patch verification passed.");
 Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.2.0.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.3.0.0");
     AssertAssemblyVersion(typeof(QGroup).Assembly, "1.0.0.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "1.0.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "1.0.0.0");
@@ -2042,6 +2042,39 @@ try
         !autoUpdateToml.Contains("auto_update_plugins") || autoUpdateToml.Contains("any_auto_update"))
         throw new InvalidOperationException("Auto-update defaults are wrong or the derived switch was written to config.toml.");
     Console.WriteLine("Daily auto-update schedule verification passed.");
+
+    var listenerCommands = new CommandRouter<MessageEvent>();
+    listenerCommands.MapPrefix("/签到", _ => Task.CompletedTask);
+    listenerCommands.MapExact("菜单", _ => Task.CompletedTask);
+    listenerCommands.MapMention(_ => Task.CompletedTask);
+    listenerCommands.MapMention("10001", _ => Task.CompletedTask);
+    listenerCommands.MapMentionAll(_ => Task.CompletedTask);
+    listenerCommands.MapReply(_ => Task.CompletedTask);
+    listenerCommands.MapAll(_ => Task.CompletedTask);
+    listenerCommands.MapWhen(_ => true, _ => Task.CompletedTask);
+    listenerCommands.MapWhen(_ => true, "包含关键词 天气", _ => Task.CompletedTask);
+    var listenerRoutes = listenerCommands.Routes;
+    if (listenerRoutes[0] != new MessageRouteDescriptor(MessageRouteMatchType.Prefix, "/签到") ||
+        listenerRoutes[1].MatchType != MessageRouteMatchType.Exact ||
+        listenerRoutes[2].Condition != MessageRouteCondition.Mention || listenerRoutes[2].ConditionArgument is not null ||
+        listenerRoutes[3].ConditionArgument != "10001" ||
+        listenerRoutes[4].Condition != MessageRouteCondition.MentionAll ||
+        listenerRoutes[5].Condition != MessageRouteCondition.Reply ||
+        listenerRoutes[6].Condition != MessageRouteCondition.None ||
+        listenerRoutes[7].Condition != MessageRouteCondition.Custom || listenerRoutes[7].Description is not null ||
+        listenerRoutes[8].Description != "包含关键词 天气" ||
+        listenerRoutes.Skip(2).Any(route => route.MatchType != MessageRouteMatchType.All))
+        throw new InvalidOperationException("Message route descriptors lost what the routes listen to, or changed their dispatch type.");
+    var listenerEvents = new EventRouter();
+    listenerEvents.Map<MessageEvent>(_ => Task.CompletedTask);
+    listenerEvents.MapPlatform("poke", _ => Task.CompletedTask);
+    listenerEvents.MapWhen<MessageEvent>(_ => true, "仅图片消息", _ => Task.CompletedTask);
+    if (listenerEvents.Routes.Count != 3 || listenerEvents.Routes[0] != new EventRouteDescriptor(typeof(MessageEvent)) ||
+        listenerEvents.Routes[1].PlatformKind != "poke" || listenerEvents.Routes[1].EventType != typeof(PlatformEvent) ||
+        !listenerEvents.Routes[2].Filtered || listenerEvents.Routes[2].Description != "仅图片消息" ||
+        !listenerEvents.EventTypes.SequenceEqual([typeof(MessageEvent), typeof(PlatformEvent)]))
+        throw new InvalidOperationException("Event route descriptors are wrong.");
+    Console.WriteLine("Plugin listener descriptor verification passed.");
 
     var overviewState = new HostRuntimeState(scheduledDay);
     overviewState.RecordEvent("plugin crashed", "error", scheduledDay);

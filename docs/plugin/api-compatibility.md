@@ -1,6 +1,6 @@
 # ABI 兼容性与版本
 
-ShiroBot **1.0.0 已正式发布**。SDK ABI 为 `1.2.0.0`，QQ、Discord 和 Telegram Model ABI 均为 `1.0.0.0`。新插件和适配器使用 NuGet `ShiroBot.SDK` 1.0.0。
+ShiroBot **1.0.0 已正式发布**。SDK ABI 为 `1.2.0.0`（开发中的下一版本为 `1.3.0.0`，新增路由描述），QQ、Discord 和 Telegram Model ABI 均为 `1.0.0.0`。新插件和适配器使用 NuGet `ShiroBot.SDK` 1.0.0。
 
 宿主按 DLL 实际引用的 SDK / Model 程序集 ABI 判断加载兼容性：主版本必须相同，宿主提供的 ABI 版本不能低于组件引用的版本。新宿主可加载引用较旧 ABI 的组件，使用新接口的组件需要相应的新 ABI。
 
@@ -29,7 +29,7 @@ public sealed class ExamplePlugin : PluginBase;
 共享的 SDK 与 Model 程序集版本表示组件所需的最低宿主 ABI。兼容系列内，新宿主可满足相同或更旧 ABI；依赖更新 ABI 的组件需要更新宿主。
 
 QQ Model **1.0.0.0** 使用当前统一契约：数值 ID 改为字符串，官方群管理并入 `IQGroupApi`，旧接口删除。
-SDK 与全部内置 Model 分别要求 ABI 主版本匹配；当前 SDK 为 1.2.0.0，QQ Model 为 1.0.0.0。SDK 1.0 组件可继续加载；引用 SDK 或 QQ Model 0.x 的组件需重新编译。
+SDK 与全部内置 Model 分别要求 ABI 主版本匹配；当前 SDK 为 1.3.0.0，QQ Model 为 1.0.0.0。SDK 1.0 组件可继续加载；引用 SDK 或 QQ Model 0.x 的组件需重新编译。
 当前宿主与 SDK 版本为 `1.0.0`，下面表格记录各产品版本的共享程序集 ABI。具体接口见[QQ 接口审阅](/plugin/qq-interface-review)。
 
 ## 版本对照
@@ -38,6 +38,7 @@ NuGet 包版本跟随宿主发布版本。ABI 版本只在对应程序集的公�
 
 | ShiroBot.SDK（NuGet） | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
+| 下一版本（未发布） | 1.3.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.1 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.0 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 

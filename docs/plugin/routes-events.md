@@ -38,7 +38,27 @@ GroupCommands.MapWhen(
     message => Context.Message.ReplyAsync(message, "工作机器人在线"));
 ```
 
-也可在通用事件处理器中检查 `evt.InstanceId`。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
+也可在通用事件处理器中检查 `evt.InstanceId`。
+
+## 在 Dashboard 中显示监听内容
+
+Dashboard 的插件详情会列出插件注册的监听：前缀、完整命令、`MapMention`（及指定用户）、`MapMentionAll`、`MapReply`、`MapAll`、通用事件类型和 `MapPlatform` 的 Kind。`MapWhen` 的条件是代码，默认只显示为“自定义条件”；需要说明时，传入描述文字（SDK ABI 1.3.0.0 起）：
+
+```csharp
+GroupCommands.MapWhen(
+    message => message.GetPlainText().Contains("天气"),
+    "包含关键词 天气",
+    HandleWeatherAsync);
+
+Events.MapWhen<MemberLeftEvent>(
+    evt => evt.Channel.Type == ChannelType.Group,
+    "群成员退群",
+    HandleMemberLeftAsync);
+```
+
+重写 `OnGroupMessageAsync` / `OnDirectMessageAsync` 或订阅 `Events.Map<MessageEvent>` 的插件会显示为接收全部群聊或私聊消息。宿主接口 `GET /api/v1/plugins/{id}` 的 `listeners` 字段返回这些信息，插件未加载时为 `null`。
+
+旧 SDK 编译的插件无需重新编译：`MapMention`、`MapReply`、`MapPlatform` 等由宿主的 SDK 执行，升级宿主后即可显示具体类型。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
 
 ## 接收通用事件
 

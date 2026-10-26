@@ -56,7 +56,8 @@ internal sealed partial class HostHttpServer
                 author = plugin.Author,
                 repo = plugin.Repo,
                 description = plugin.Description,
-                category = plugin.Category
+                category = plugin.Category,
+                listeners = FindLoadedPlugin(pluginManager, plugin.Id) is { } loaded ? CreatePluginListeners(loaded) : null
             });
         });
 
@@ -451,4 +452,44 @@ internal sealed partial class HostHttpServer
         });
     }
 
+    /// <summary>What a loaded plugin listens to, for its Dashboard details page.</summary>
+    internal static object CreatePluginListeners(LoadedPluginHandle plugin)
+    {
+        static object Route(MessageRouteDescriptor route) => new
+        {
+            match = route.MatchType switch
+            {
+                MessageRouteMatchType.Exact => "exact",
+                MessageRouteMatchType.Prefix => "prefix",
+                _ => route.Condition switch
+                {
+                    MessageRouteCondition.Mention => "mention",
+                    MessageRouteCondition.MentionAll => "mention_all",
+                    MessageRouteCondition.Reply => "reply",
+                    MessageRouteCondition.Custom => "custom",
+                    _ => "all"
+                }
+            },
+            pattern = route.Pattern,
+            argument = route.ConditionArgument,
+            description = route.Description
+        };
+
+        return new
+        {
+            group = plugin.GroupMessageRoutes.Select(Route).ToArray(),
+            direct = plugin.DirectMessageRoutes.Select(Route).ToArray(),
+            // Set when the plugin overrides its message hook or maps MessageEvent: it sees every message.
+            group_all_messages = plugin.RequiresGroupMessageBroadcast,
+            direct_all_messages = plugin.RequiresDirectMessageBroadcast,
+            events = plugin.EventRoutes.Select(route => new
+            {
+                type = route.EventType.Name,
+                full_type = route.EventType.FullName,
+                platform_kind = route.PlatformKind,
+                filtered = route.Filtered,
+                description = route.Description
+            }).ToArray()
+        };
+    }
 }

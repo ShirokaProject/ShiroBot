@@ -36,4 +36,11 @@ public sealed class AllMapCommands(
         groupCommands.MapWhen(predicate, handler);
         directCommands.MapWhen(predicate, handler);
     }
+
+    /// <param name="description">Shown in the Dashboard's plugin details, e.g. "包含关键词 天气".</param>
+    public void MapWhen(Func<MessageEvent, bool> predicate, string description, Func<MessageEvent, Task> handler)
+    {
+        groupCommands.MapWhen(predicate, description, handler);
+        directCommands.MapWhen(predicate, description, handler);
+    }
 }
