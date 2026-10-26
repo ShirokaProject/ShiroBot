@@ -55,6 +55,9 @@ public interface IBotContext
     /// </summary>
     public IRenderContext? Render { get; }
 
+    /// <summary>宿主运行状态（版本、系统、架构、运行时、内存、消息频率等），与 Dashboard 概览相同；不支持的宿主返回 null。</summary>
+    public HostStatus? GetHostStatus() => null;
+
     /// <summary>检查宿主配置的机器人所有者身份。</summary>
     public bool IsOwner(UserReference user) => OwnerList.Any(entry => entry.Matches(user));
 

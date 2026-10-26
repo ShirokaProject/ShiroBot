@@ -114,13 +114,46 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         }
     }
 
+    /// <summary>The overview's data for plugins; see <see cref="ShiroBot.SDK.Plugin.IBotContext.GetHostStatus"/>.</summary>
+    public ShiroBot.SDK.Plugin.HostStatus CreateHostStatus(DateTimeOffset? now = null)
+    {
+        lock (_lock)
+        {
+            ExpireLatestError(now);
+            return new ShiroBot.SDK.Plugin.HostStatus
+            {
+                Version = BotVersion,
+                SdkAbiVersion = BotMetadataProvider.SdkAbiVersion,
+                StartedAt = StartedAt,
+                Uptime = (now ?? DateTimeOffset.Now) - StartedAt,
+                Runtime = HostEnvironmentInfo.CreateRuntimeInfo(),
+                PluginCount = PluginsCount,
+                ModelCount = ModelsCount,
+                MessageCount = _messageCount,
+                MessageFrequency = Enumerable.Range(0, BucketCount).Select(i => new ShiroBot.SDK.Plugin.MessageFrequencyBucket
+                {
+                    Start = new TimeOnly(i * BucketHours, 0),
+                    End = new TimeOnly((i + 1) * BucketHours % 24, 0),
+                    Count = _messageBuckets[i]
+                }).ToArray(),
+                Healthy = _latestError is null,
+                LatestError = _latestError?.Message
+            };
+        }
+    }
+
+    private void ExpireLatestError(DateTimeOffset? now)
+    {
+        if (_latestError is not null && (now ?? DateTimeOffset.Now) - _latestError.RecordedAt >= ErrorDisplayDuration)
+            _latestError = null;
+    }
+
     public object CreateOverview(DateTimeOffset? now = null)
     {
         lock (_lock)
         {
             var events = _events.Reverse().ToArray();
-            if (_latestError is not null && (now ?? DateTimeOffset.Now) - _latestError.RecordedAt >= ErrorDisplayDuration)
-                _latestError = null;
+            ExpireLatestError(now);
             return new
             {
                 runtime = HostEnvironmentInfo.Create(),

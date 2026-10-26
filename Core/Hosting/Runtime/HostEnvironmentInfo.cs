@@ -31,6 +31,26 @@ internal static class HostEnvironmentInfo
         };
     }
 
+    /// <summary>The same facts as <see cref="Create"/>, for plugins through <see cref="ShiroBot.SDK.Plugin.IBotContext.GetHostStatus"/>.</summary>
+    public static ShiroBot.SDK.Plugin.HostRuntimeInfo CreateRuntimeInfo()
+    {
+        var facts = Facts.Value;
+        return new ShiroBot.SDK.Plugin.HostRuntimeInfo
+        {
+            Mode = facts.Mode,
+            OperatingSystem = facts.Os,
+            Architecture = facts.Arch,
+            Framework = RuntimeInformation.FrameworkDescription,
+            ImageTag = facts.VersionTag,
+            BuildTime = DateTimeOffset.TryParse(facts.BuildTime, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var buildTime)
+                ? buildTime
+                : null,
+            MemoryBytes = Environment.WorkingSet,
+            GcHeapBytes = GC.GetTotalMemory(forceFullCollection: false),
+            ProcessorCount = Environment.ProcessorCount
+        };
+    }
+
     private sealed record StaticFacts(string Mode, string Os, string Arch, string? VersionTag, string? BuildTime);
 
     private static StaticFacts ReadStaticFacts() => new(

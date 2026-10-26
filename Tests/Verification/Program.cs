@@ -2100,6 +2100,28 @@ try
         throw new InvalidOperationException("Overview kept reporting an old error, or dropped a recent one.");
     Console.WriteLine("Overview error expiry verification passed.");
 
+    var statusState = new HostRuntimeState(scheduledDay);
+    statusState.SetPluginsCount(3);
+    statusState.RecordIncomingMessage(new DateTimeOffset(2026, 10, 10, 3, 30, 0, TimeSpan.Zero).ToLocalTime());
+    statusState.RecordEvent("adapter failed", "error", scheduledDay);
+    var hostStatus = statusState.CreateHostStatus(scheduledDay.AddMinutes(30));
+    var expiredStatus = statusState.CreateHostStatus(scheduledDay.AddHours(2));
+    var localBucket = new DateTimeOffset(2026, 10, 10, 3, 30, 0, TimeSpan.Zero).ToLocalTime().Hour / 2;
+    if (hostStatus.PluginCount != 3 || hostStatus.MessageCount != 1 || hostStatus.Uptime != TimeSpan.FromMinutes(30) ||
+        hostStatus.MessageFrequency.Count != 12 || hostStatus.MessageFrequency[localBucket].Count != 1 ||
+        hostStatus.MessageFrequency[11].End != new TimeOnly(0, 0) ||
+        hostStatus.Healthy || hostStatus.LatestError != "adapter failed" || !expiredStatus.Healthy ||
+        hostStatus.Runtime.ProcessorCount != Environment.ProcessorCount || hostStatus.Runtime.MemoryBytes <= 0 ||
+        string.IsNullOrEmpty(hostStatus.Runtime.Architecture) || hostStatus.SdkAbiVersion != "1.3.0.0")
+        throw new InvalidOperationException("Host status snapshot does not match the overview data.");
+    var statusBot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
+    using var statusPlugin = new PluginContext(statusBot, "status-plugin", Path.Combine(tempRoot, "status-plugin"), new HostLogHub(), new PluginServiceRegistry());
+    IBotContext statusContext = statusPlugin;
+    if (statusContext.GetHostStatus() is not null) throw new InvalidOperationException("Host status was reported before the host attached it.");
+    statusBot.AttachRuntimeState(statusState);
+    if (statusContext.GetHostStatus()?.PluginCount != 3) throw new InvalidOperationException("Plugins cannot read the host status.");
+    Console.WriteLine("Plugin host status verification passed.");
+
     var publicUrlsPath = Path.Combine(tempRoot, "public-urls.toml");
     File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = [\"https://primary.example.com\"]\ntoken = \"test-token\"\n");
     var publicUrlsManager = new ConfigManager(publicUrlsPath);

@@ -41,6 +41,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
     public bool IsOwner(string userId) => BotContext.IsOwner(userId);
     public bool IsAdmin(string userId) => BotContext.IsAdmin(userId);
     public IRenderContext? Render => BotContext.Renderer;
+    public HostStatus? GetHostStatus() => BotContext.GetHostStatus();
     public IConsoleLogger Logger { get; }
 
     public TService? GetAdapterExtension<TService>() where TService : class =>

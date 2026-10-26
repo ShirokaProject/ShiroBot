@@ -6,6 +6,7 @@ using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Logging;
+using ShiroBot.Hosting.Runtime;
 
 namespace ShiroBot.Hosting.Context;
 
@@ -58,6 +59,12 @@ internal sealed class BotContext
     public IUpdater Updater { get; }
     public IWebHostContext WebHost { get; }
     internal TemporaryFileManager? TemporaryFiles { get; }
+    private HostRuntimeState? _runtimeState;
+
+    /// <summary>Source of <see cref="GetHostStatus"/>; null until the host attaches it.</summary>
+    internal void AttachRuntimeState(HostRuntimeState runtimeState) => _runtimeState = runtimeState;
+
+    public HostStatus? GetHostStatus() => _runtimeState?.CreateHostStatus();
 
     public IReadOnlyList<UserReference> OwnerList => Volatile.Read(ref _ownerList);
     public IReadOnlyList<UserReference> AdminList => Volatile.Read(ref _adminList);

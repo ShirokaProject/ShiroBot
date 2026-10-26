@@ -214,6 +214,7 @@ public static class Program
             var webPublicBaseUrl = coreConfig.Api.GetPrimaryBaseUrl();
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
             botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub, temporaryFiles);
+            botContext.AttachRuntimeState(runtimeState);
             Updater.Initialize(
                 () => botContext.OwnerList.Where(entry => botContext.GetAdapterInstances().Any(instance =>
                     string.Equals(instance.Id, entry.InstanceId, StringComparison.OrdinalIgnoreCase)))

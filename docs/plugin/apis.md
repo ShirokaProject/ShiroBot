@@ -159,6 +159,44 @@ using (Context.UseInstance("qq-work"))
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。
 
+## 读取宿主状态
+
+`Context.GetHostStatus()` 返回宿主运行状态的快照，内容与 Dashboard 概览相同（SDK ABI 1.3.0.0 起，宿主 1.0.2）：
+
+```csharp
+GroupCommands.MapExact("#status", async message =>
+{
+    if (Context.GetHostStatus() is not { } status)
+    {
+        await Context.Message.ReplyAsync(message, "当前宿主不支持读取状态。");
+        return;
+    }
+
+    var runtime = status.Runtime;
+    var busiest = status.MessageFrequency.MaxBy(bucket => bucket.Count)!;
+    await Context.Message.ReplyAsync(message, string.Join('\n',
+        $"ShiroBot {status.Version}（{runtime.Mode}）",
+        $"系统: {runtime.OperatingSystem} {runtime.Architecture}",
+        $"运行时: {runtime.Framework}",
+        $"内存: {runtime.MemoryBytes / 1024 / 1024} MB",
+        $"已运行: {status.Uptime:d\\.hh\\:mm}",
+        $"插件: {status.PluginCount}，消息: {status.MessageCount}",
+        $"最忙时段: {busiest.Start:HH\\:mm}-{busiest.End:HH\\:mm}（{busiest.Count} 条）",
+        status.Healthy ? "状态: 正常" : $"状态: 异常（{status.LatestError}）"));
+});
+```
+
+| 属性 | 说明 |
+| --- | --- |
+| `Version`、`SdkAbiVersion` | 宿主产品版本与提供的 SDK ABI |
+| `StartedAt`、`Uptime` | 启动时间与已运行时长 |
+| `Runtime` | 运行方式（docker / systemd / native）、操作系统、架构、.NET 运行时、镜像标签、构建时间、工作集内存、托管堆内存、处理器数 |
+| `PluginCount`、`ModelCount` | 已加载插件与平台 Model 包数量 |
+| `MessageCount`、`MessageFrequency` | 启动以来的消息总数；按本地时间每 2 小时一段的消息数 |
+| `Healthy`、`LatestError` | 最近一小时内是否有错误，以及最新的错误 |
+
+每次调用返回新的快照，可以按需定时读取。适配器实例信息使用 `Context.GetAdapterInstances()`。不支持的宿主返回 `null`。
+
 ## 通用富消息与互动
 
 普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/rich-messages)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。
