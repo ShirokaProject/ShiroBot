@@ -8,8 +8,13 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:7001:7001"
+    # 协议端运行在宿主机上时，取消下面三行注释：宿主目录以相同路径挂载并作为数据目录，
+    # 插件传给协议端的文件路径在宿主机上可以直接访问。该目录需对容器用户 1654 可写。
+    # environment:
+    #   SHIROBOT_DATA_DIR: /srv/shirobot
     volumes:
       - shirobot_data:/data
+      # - /srv/shirobot:/srv/shirobot
 
 volumes:
   shirobot_data:
