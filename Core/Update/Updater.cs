@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using ShiroBot.SDK.Plugin;
 
+using ShiroBot.Hosting.Context;
+
 namespace ShiroBot.Update;
 
 public sealed record GitHubPluginPackage(
@@ -20,17 +22,12 @@ public static class Updater
 {
     internal static HttpClient HttpClient { get; set; } = new();
     private static readonly ConcurrentDictionary<string, PendingUpdateEntry> PendingUpdates = new(StringComparer.OrdinalIgnoreCase);
-    private static Func<IReadOnlyList<string>> _getOwnerIds = () => [];
-    private static Func<string, string, Task> _sendPrivateMessageAsync = (_, _) => Task.CompletedTask;
+    private static OwnerNotify _notifyOwners = (_, _, _) => Task.CompletedTask;
     private static string? _githubProxy;
 
-    public static void Initialize(
-        Func<IReadOnlyList<string>> getOwnerIds,
-        Func<string, string, Task> sendPrivateMessageAsync,
-        string? githubProxy = null)
+    internal static void Initialize(OwnerNotify notifyOwners, string? githubProxy = null)
     {
-        _getOwnerIds = getOwnerIds;
-        _sendPrivateMessageAsync = sendPrivateMessageAsync;
+        _notifyOwners = notifyOwners;
         _githubProxy = githubProxy;
     }
 
@@ -194,8 +191,8 @@ public static class Updater
             $"检测到宿主更新: {update.CurrentVersion} -> {update.LatestVersion}\n" +
             $"来源: {update.Repository}\n" +
             (string.IsNullOrWhiteSpace(update.AssetName) ? string.Empty : $"文件: {update.AssetName}\n") +
-            $"确认更新: update confirm {id}\n" +
-            $"取消更新: update cancel {id}",
+            ConfirmHint(id),
+            ConfirmByReply(id),
             cancellationToken);
 
         return id;
@@ -231,12 +228,48 @@ public static class Updater
             $"检测到插件更新: {request.PluginName} {request.CurrentVersion} -> {request.LatestVersion}\n" +
             (string.IsNullOrWhiteSpace(request.ReleaseUrl) ? string.Empty : $"来源: {request.ReleaseUrl}\n") +
             (string.IsNullOrWhiteSpace(request.AssetDownloadUrl) ? string.Empty : $"文件: {request.AssetDownloadUrl}\n") +
-            $"确认更新: update confirm {id}\n" +
-            $"取消更新: update cancel {id}",
+            ConfirmHint(id),
+            ConfirmByReply(id),
             cancellationToken);
 
         return id;
     }
+
+    private static string ConfirmHint(string id) =>
+        $"回复本消息「确认」执行更新，「取消」放弃（{OwnerNotifier.ReplyWindow.TotalHours:0} 小时内有效）。\n" +
+        $"控制台: update confirm {id} / update cancel {id}";
+
+    /// <summary>Lets an owner answer the update notification instead of using the console.</summary>
+    private static OwnerReplyHandler ConfirmByReply(string id) => async reply =>
+    {
+        switch (reply.Text)
+        {
+            case "确认" or "确定" or "confirm" or "yes" or "y":
+                if (!PendingUpdates.ContainsKey(id))
+                {
+                    await reply.RespondAsync("这个更新已经处理过或已取消。").ConfigureAwait(false);
+                    return true;
+                }
+                await reply.RespondAsync("开始执行更新…").ConfigureAwait(false);
+                try
+                {
+                    if (!await ConfirmUpdateAsync(id).ConfigureAwait(false))
+                        await reply.RespondAsync("这个更新已经处理过或已取消。").ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    await reply.RespondAsync("更新失败: " + ex.Message).ConfigureAwait(false);
+                    return false;
+                }
+                return true;
+            case "取消" or "cancel" or "no" or "n":
+                await reply.RespondAsync(CancelUpdate(id) ? "已取消这个更新。" : "这个更新已经处理过或已取消。").ConfigureAwait(false);
+                return true;
+            default:
+                await reply.RespondAsync("请回复「确认」或「取消」。").ConfigureAwait(false);
+                return false;
+        }
+    };
 
     public static IReadOnlyList<PendingUpdateInfo> GetPendingUpdates()
     {
@@ -462,15 +495,11 @@ public static class Updater
         return id;
     }
 
-    private static async Task NotifyOwnersAsync(string content, CancellationToken cancellationToken)
-    {
-        var ownerIds = _getOwnerIds();
-        foreach (var ownerId in ownerIds)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await _sendPrivateMessageAsync(ownerId, content);
-        }
-    }
+    private static Task NotifyOwnersAsync(string content, CancellationToken cancellationToken) =>
+        _notifyOwners(content, null, cancellationToken);
+
+    private static Task NotifyOwnersAsync(string content, OwnerReplyHandler onReply, CancellationToken cancellationToken) =>
+        _notifyOwners(content, onReply, cancellationToken);
 
     private static async Task<GitHubRelease?> GetLatestReleaseAsync(
         string repository,

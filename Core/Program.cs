@@ -98,6 +98,7 @@ public static class Program
         AdapterManager? adapterManager = null;
         ComponentFileWatcher? componentWatcher = null;
         AutoUpdateScheduler? autoUpdates = null;
+        OwnerNotifier? ownerNotifier = null;
         var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
         var shutdownRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         PosixSignalRegistration? sigintRegistration = null;
@@ -215,17 +216,8 @@ public static class Program
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
             botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub, temporaryFiles);
             botContext.AttachRuntimeState(runtimeState);
-            Updater.Initialize(
-                () => botContext.OwnerList.Where(entry => botContext.GetAdapterInstances().Any(instance =>
-                    string.Equals(instance.Id, entry.InstanceId, StringComparison.OrdinalIgnoreCase)))
-                    .Select(entry => entry.ToConfigString()).ToArray(),
-                async (ownerId, content) =>
-                {
-                    var owner = ShiroBot.SDK.Models.UserReference.Parse(ownerId);
-                    using var scope = botContext.UseInstance(owner.InstanceId);
-                    await botContext.Message.SendDirectMessageAsync(owner.UserId, content);
-                },
-                coreConfig.GithubProxy);
+            ownerNotifier = new OwnerNotifier(botContext, coreConfig);
+            Updater.Initialize(ownerNotifier.NotifyAsync, coreConfig.GithubProxy);
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub,
                 () => coreConfig.Showid);
@@ -320,7 +312,7 @@ public static class Program
                 adapterPackages,
                 powerControl);
             var autoUpdateRunner = new AutoUpdateRunner(coreConfig, pluginManager, hostEventDispatcher, groupRoutePolicy,
-                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl);
+                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl, ownerNotifier.NotifyAsync);
             autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
                 Path.Combine(BasePath, "cache", "auto-update-last-run"));
             if (coreConfig.AnyAutoUpdate)

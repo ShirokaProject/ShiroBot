@@ -674,6 +674,54 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     if (!await Updater.ConfirmUpdateAsync(executionId, confirmLifetime.Token) || confirmToken != confirmLifetime.Token)
         throw new InvalidOperationException("Update execution used the expired check token instead of the confirmation token.");
     Console.WriteLine("Pending update retry and cancellation verification passed.");
+
+    // Owners answer the update notification by quote-replying instead of typing a console command.
+    var notifications = new List<(string Text, ShiroBot.Hosting.Context.OwnerReplyHandler? OnReply)>();
+    Updater.Initialize((text, onReply, _) => { notifications.Add((text, onReply)); return Task.CompletedTask; });
+    try
+    {
+        var answers = new List<string>();
+        var replyOwner = new UserReference("qq", "owner");
+        ShiroBot.Hosting.Context.OwnerReply Reply(string text) => new(replyOwner, text, answer => { answers.Add(answer); return Task.CompletedTask; });
+        var executed = 0;
+        var confirmId = await Updater.RequestPluginUpdateAsync(request, _ => { executed++; return Task.CompletedTask; });
+        var confirmHandler = notifications[^1].OnReply!;
+        if (!notifications[^1].Text.Contains("回复本消息「确认」") || await confirmHandler(Reply("好的")) || executed != 0 ||
+            !await confirmHandler(Reply("确认")) || executed != 1 || Updater.GetPendingUpdates().Any(entry => entry.Id == confirmId) ||
+            !await confirmHandler(Reply("确认")) || executed != 1 || answers[^1] != "这个更新已经处理过或已取消。")
+            throw new InvalidOperationException("Replying 确认 to an update notification did not run the update exactly once.");
+        var cancelId = await Updater.RequestPluginUpdateAsync(request, _ => { executed++; return Task.CompletedTask; });
+        if (!await notifications[^1].OnReply!(Reply("取消")) || executed != 1 || Updater.GetPendingUpdates().Any(entry => entry.Id == cancelId))
+            throw new InvalidOperationException("Replying 取消 to an update notification did not cancel it.");
+        if (!notifications.Any(item => item.OnReply is null && item.Text.Contains("更新任务已执行")))
+            throw new InvalidOperationException("Owners were not told that the confirmed update ran.");
+    }
+    finally { Updater.Initialize((_, _, _) => Task.CompletedTask); }
+    Console.WriteLine("Owner reply update confirmation verification passed.");
+
+    var notifyAdapter = new VerificationAdapter("qq");
+    var notifyBot = new BotContext(notifyAdapter, ["qq:owner-one", "qq:owner-two", "offline:owner-three"], [], new WebHostContext("http://127.0.0.1", false));
+    var notifyConfig = new CoreConfig { OwnerNotifications = false };
+    var notifier = new ShiroBot.Hosting.Context.OwnerNotifier(notifyBot, notifyConfig);
+    await notifier.NotifyAsync("off");
+    notifyConfig.OwnerNotifications = true;
+    var handled = new List<string>();
+    await notifier.NotifyAsync("有待确认的更新", reply => { handled.Add(reply.Owner.UserId + ":" + reply.Text); return Task.FromResult(reply.Text == "确认"); });
+    MessageEvent OwnerReplyEvent(int index, string sender, string text) => new()
+    {
+        Platform = "qq", InstanceId = "qq", MessageId = Guid.NewGuid().ToString("N"),
+        Channel = notifyAdapter.MessageService.Sent[index].Channel, Sender = new User(sender),
+        Segments = [new QuoteSegment("sent"), new TextSegment(text)]
+    };
+    // Owners on unloaded instances are skipped; a stranger's reply is ignored; the first resolved reply ends both copies.
+    await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(0, "stranger", "确认"));
+    await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(0, "owner-one", "嗯"));
+    await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(0, "owner-one", "确认"));
+    await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(1, "owner-two", "确认"));
+    if (notifyAdapter.MessageService.Messages.Count(text => text == "有待确认的更新") != 2 || notifyAdapter.MessageService.Messages.Contains("off") ||
+        !handled.SequenceEqual(["owner-one:嗯", "owner-one:确认"]))
+        throw new InvalidOperationException("Owner notifications ignored the switch, reached the wrong people or stayed open after being resolved.");
+    Console.WriteLine("Owner notification switch and reply resolution verification passed.");
 }
 
 {

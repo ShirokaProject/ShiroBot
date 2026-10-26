@@ -59,6 +59,9 @@ public class CoreConfig
     [ConfigField("所有者身份列表，格式 instanceId:userId；冒号用 %3A 转义。自动拥有管理员权限。", Label = "Owner 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupIcon = "shield", GroupDescription = "定义供插件权限检查使用的账号列表。", GroupOrder = 30, Order = 10)]
     public string[] OwnerList { get; set; } = [];
 
+    [ConfigField("私聊推送重要信息给 Owner：自动更新结果、更新失败、需要重启或手动操作等；待确认的更新可直接回复消息确认或取消。", Label = "推送 Owner 通知", Default = "true", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 15)]
+    public bool OwnerNotifications { get; set; } = true;
+
     [ConfigField("管理员身份列表，格式 instanceId:userId；Owner 已自动拥有管理员权限。", Label = "Admin 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
     public string[] AdminList { get; set; } = [];
 

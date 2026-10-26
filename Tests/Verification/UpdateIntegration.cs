@@ -58,7 +58,7 @@ internal static class UpdateIntegration
         var originalHttp = Updater.HttpClient;
         using var releaseHttp = new HttpClient(new ReleaseRedirectHandler(releaseOrigin));
         Updater.HttpClient = releaseHttp;
-        Updater.Initialize(() => [], (_, _) => Task.CompletedTask);
+        Updater.Initialize((_, _, _) => Task.CompletedTask);
         Console.WriteLine($"Integration artifacts: {root}");
         try
         {

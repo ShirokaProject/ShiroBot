@@ -33,7 +33,7 @@ internal static class CoreConfigReloadVerification
         var active = new CoreConfig { AvaloniaTheme = "Dark", Api = new ApiHostConfig { Token = "original-token" } };
         manager.SaveConfig(path, active);
         var bot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
-        Updater.Initialize(() => [], (_, _) => Task.CompletedTask);
+        Updater.Initialize((_, _, _) => Task.CompletedTask);
         var renderer = AvaloniaIntegration.Initialize(active.AvaloniaTheme);
         try
         {

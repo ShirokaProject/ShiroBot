@@ -32,6 +32,15 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 
 执行时间使用宿主所在系统的本地时区。到点后一小时内宿主未运行时当天跳过；每天只执行一次，执行日期记录在 `cache/auto-update-last-run`，更新导致的重启不会在当天再次执行。单个插件或适配器更新失败只记录警告，不影响其他项目。
 
+## Owner 通知
+
+`owner_notifications` 默认开启，宿主会私聊 `owner_list` 中当前已加载实例的 Owner：
+
+- 每日自动更新的结果：更新了哪些插件、适配器或主程序，哪些失败或无法热替换，以及是否自动重启。没有任何更新时不发送。主程序更新会重启宿主，通知在重启前发出。
+- 待确认的更新（控制台 `update check` 或插件通过 `IUpdater` 请求的更新）：引用回复这条消息「确认」执行更新、「取消」放弃，24 小时内有效；其他内容会提示正确的回复方式。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 收到的同一条通知也随之失效。控制台的 `update confirm <id>` / `update cancel <id>` 仍然可用。
+
+关闭后宿主不再私聊 Owner，待确认的更新只能在控制台处理。
+
 ## 防止重复启动
 
 同一宿主程序目录只允许一个进程运行。宿主在读取配置、清理临时文件和应用暂存更新之前，独占打开 `cache/host.lock`；第二个进程会提示“此目录已有 ShiroBot 正在运行”并以退出码 `1` 退出，不会清理第一个进程的临时文件。指定不同的 `--config` 也不能绕过同一程序目录的限制。
@@ -45,6 +54,7 @@ enable_log = true
 disable_console_input = false
 github_proxy = ""
 host_update_repository = "ShirokaProject/ShiroBot"
+owner_notifications = true
 auto_update_plugins = false
 auto_update_adapters = false
 auto_update_host = false
@@ -80,6 +90,7 @@ groups = [10001, 10002]
 | `disable_console_input` | `false` | 是否禁用交互式控制台命令 |
 | `github_proxy` | 空 | GitHub 下载代理前缀 |
 | `host_update_repository` | `ShirokaProject/ShiroBot` | 宿主更新仓库 |
+| `owner_notifications` | `true` | 私聊推送重要信息给 Owner，见 [Owner 通知](#owner-通知) |
 | `auto_update_plugins` | `false` | 每天自动更新插件，见[自动更新](#自动更新) |
 | `auto_update_adapters` | `false` | 每天自动更新适配器包 |
 | `auto_update_host` | `false` | 每天自动更新主程序 |

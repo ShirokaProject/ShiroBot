@@ -85,6 +85,12 @@ internal sealed class CoreConfigWatcher : IDisposable
             changes.Add("host_update_repository");
         }
 
+        if (active.OwnerNotifications != updated.OwnerNotifications)
+        {
+            active.OwnerNotifications = updated.OwnerNotifications;
+            changes.Add("owner_notifications");
+        }
+
         if (active.AutoUpdatePlugins != updated.AutoUpdatePlugins ||
             active.AutoUpdateAdapters != updated.AutoUpdateAdapters ||
             active.AutoUpdateHost != updated.AutoUpdateHost ||

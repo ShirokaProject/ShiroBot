@@ -199,7 +199,7 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "host_update_repository", hostUpdateRepository);
         }
 
-        foreach (var key in (string[])["auto_update_plugins", "auto_update_adapters", "auto_update_host"])
+        foreach (var key in (string[])["auto_update_plugins", "auto_update_adapters", "auto_update_host", "owner_notifications"])
         {
             if (TryGetBool(patch, key, out var enabled))
                 configManager.SetConfigValue(configPath, key, enabled);
