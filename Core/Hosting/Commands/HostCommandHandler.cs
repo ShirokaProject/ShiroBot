@@ -551,10 +551,19 @@ internal sealed class HostCommandHandler(
         }
     }
 
-    /// <summary>Full command lines with their arguments, so the console can complete after the command name.</summary>
+    /// <summary>
+    /// Full command lines with their arguments; the console offers them a word at a time. Sub-commands get their own
+    /// line so they are described, rather than shown only as a count of what follows.
+    /// </summary>
     private IEnumerable<CH.ConsoleCommandOption> BuildArgumentCompletions()
     {
         yield return new("adapter list", "列出适配器实例");
+        yield return new("adapter create", "创建实例: <包 ID> <新实例 ID>");
+        yield return new("adapter start", "启动已停止的实例");
+        yield return new("adapter stop", "停止运行中的实例");
+        yield return new("adapter reload", "重载运行中的实例");
+        yield return new("adapter config", "显示实例的配置文件路径");
+        yield return new("adapter remove", "删除实例及其配置");
         foreach (var package in _adapterPackages?.List() ?? [])
             yield return new($"adapter create {package.Id}", $"用适配器包 {package.Id} 创建实例，后接新实例 ID");
         var loaded = _adapterManager?.LoadedIds ?? [];
@@ -579,6 +588,8 @@ internal sealed class HostCommandHandler(
         yield return new("update check", "检查主程序和插件更新");
         yield return new("update check host", "只检查主程序更新");
         yield return new("update check plugins", "只检查插件更新");
+        yield return new("update confirm", "执行待确认的更新: <ID>");
+        yield return new("update cancel", "取消待确认的更新: <ID>");
         foreach (var pending in Updater.GetPendingUpdates())
         {
             var text = $"{pending.Name} {pending.CurrentVersion} → {pending.LatestVersion}";

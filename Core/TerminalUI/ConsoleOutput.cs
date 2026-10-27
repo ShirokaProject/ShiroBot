@@ -22,7 +22,21 @@ public static class ConsoleOutput
     private static string _inlineCompletionSuffix = string.Empty;
 
     // Completions matching the input, floating above the prompt as you type; Esc hides them until the input changes.
-    private static List<ConsoleCommandOption> _menu = [];
+    private static List<MenuItem> _menu = [];
+
+    /// <summary>
+    /// One word that can come next: the menu offers a command line a word at a time (first "adapter", then after a
+    /// space "start", then the instance), not every full line at once.
+    /// </summary>
+    private sealed record MenuItem(string Word, string Description, bool Continues);
+
+    /// <summary>The words typed before the one being completed, and that partial word.</summary>
+    private static (string[] Done, string Partial) SplitInputUnsafe()
+    {
+        var input = InputBuffer.ToString().TrimStart();
+        var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return input.EndsWith(' ') || words.Length == 0 ? (words, string.Empty) : (words[..^1], words[^1]);
+    }
     private static int _menuIndex;
     private static bool _menuClosed;
     private const int MenuRows = 8;
@@ -313,13 +327,13 @@ public static class ConsoleOutput
         var width = NoticeWidth();
         var start = Math.Clamp(_menuIndex - MenuRows / 2, 0, Math.Max(0, _menu.Count - MenuRows));
         var shown = _menu.Skip(start).Take(MenuRows).ToArray();
-        var nameWidth = Math.Min(shown.Max(option => CellWidth(option.Name)), width * 2 / 5);
+        var nameWidth = Math.Min(shown.Max(option => CellWidth(option.Word)), width * 2 / 5);
         var descriptionWidth = Math.Max(0, width - nameWidth - 6);
 
         for (var i = 0; i < shown.Length; i++)
         {
             var selected = start + i == _menuIndex;
-            var name = Truncate(shown[i].Name, nameWidth);
+            var name = Truncate(shown[i].Word, nameWidth);
             var head = $"{(selected ? Pointer : ' ')} {name}{new string(' ', nameWidth - CellWidth(name))}    ";
             var description = descriptionWidth > 0 ? Truncate(shown[i].Description, descriptionWidth) : string.Empty;
             yield return
@@ -336,15 +350,15 @@ public static class ConsoleOutput
     }
 
     /// <summary>
-    /// Puts the selected completion in the input. Tab adds a space when longer completions continue it, to go on
-    /// to the arguments; Enter does not, so a second Enter runs the command.
+    /// Replaces the word being typed with the selected one. Tab adds a space when more words can follow, to go on to
+    /// them; Enter does not, so a second Enter runs the command.
     /// </summary>
     private static void AcceptMenuSelectionUnsafe(bool addSpace = true)
     {
-        var name = _menu[_menuIndex].Name;
-        var continues = addSpace && (_completionOptions ?? []).Any(option =>
-            option.Name.StartsWith(name + " ", StringComparison.OrdinalIgnoreCase));
-        InputBuffer.Clear().Append(continues ? name + " " : name);
+        var item = _menu[_menuIndex];
+        var (done, _) = SplitInputUnsafe();
+        var line = string.Join(' ', [.. done, item.Word]);
+        InputBuffer.Clear().Append(addSpace && item.Continues ? line + " " : line);
         _cursorIndex = InputBuffer.Length;
         OnInputChangedUnsafe();
     }
@@ -469,7 +483,7 @@ public static class ConsoleOutput
                         break;
                     // Enter takes the highlighted completion first; once the input is that command, it runs it.
                     case ConsoleKey.Enter when _menu.Count > 0 &&
-                        !string.Equals(_menu[_menuIndex].Name, InputBuffer.ToString().Trim(), StringComparison.OrdinalIgnoreCase):
+                        !string.Equals(_menu[_menuIndex].Word, SplitInputUnsafe().Partial, StringComparison.OrdinalIgnoreCase):
                         AcceptMenuSelectionUnsafe(addSpace: false);
                         break;
                     case ConsoleKey.Enter:
@@ -637,21 +651,33 @@ public static class ConsoleOutput
     {
         _menu = [];
         _inlineCompletionSuffix = string.Empty;
-        var input = InputBuffer.ToString().TrimStart();
-        if (input.Length == 0) return;
+        if (InputBuffer.ToString().TrimStart().Length == 0) return;
 
-        var matches = (_completionOptions ?? [])
-            .Where(command => command.Name.StartsWith(input, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
+        var (done, partial) = SplitInputUnsafe();
+        var options = (_completionOptions ?? [])
+            .Select(option => (Words: option.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries), option.Description))
+            .Where(option => option.Words.Length > done.Length &&
+                             option.Words.Take(done.Length).SequenceEqual(done, StringComparer.OrdinalIgnoreCase) &&
+                             option.Words[done.Length].StartsWith(partial, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        // Nothing to suggest once the input is exactly the only match.
-        if (matches.Count == 1 && matches[0].Name.Length == input.Length) return;
-        if (matches.Count == 0) return;
+        var matches = options
+            .GroupBy(option => option.Words[done.Length], StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                // A line ending at this word describes it; otherwise say how many choices follow.
+                var own = group.FirstOrDefault(option => option.Words.Length == done.Length + 1);
+                var deeper = group.Count(option => option.Words.Length > done.Length + 1);
+                return new MenuItem(group.Key, own.Words is not null ? own.Description : $"{deeper} 个选项", deeper > 0);
+            })
+            .OrderBy(item => item.Word, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        // Nothing to suggest once the word is typed in full and nothing can follow it.
+        if (matches.Count == 0 || matches is [{ Continues: false } only] && only.Word.Length == partial.Length) return;
 
         _menuIndex = Math.Clamp(_menuIndex, 0, matches.Count - 1);
         if (!_menuClosed) _menu = matches;
         var selected = matches[_menuIndex];
-        if (input.Length < selected.Name.Length) _inlineCompletionSuffix = selected.Name[input.Length..];
+        if (partial.Length < selected.Word.Length) _inlineCompletionSuffix = selected.Word[partial.Length..];
     }
 
     private static void WriteLine(string message, ConsoleColor color)
