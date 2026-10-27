@@ -39,7 +39,7 @@ public sealed class Main : PluginBase, IPluginActionProvider
 }),
 ```
 
-设置了 `Details` 时，Dashboard 在屏幕中间弹出对话框，先显示 `Message`，下面是保留换行的 `Details`，内容过长时可滚动；控制台在输出区中间画出带边框的面板，并照常输出 `Message`。没有 `Details` 时行为不变。使用 `Details` 和 `Title` 的插件需要宿主 1.0.2。
+设置了 `Details` 时，Dashboard 在屏幕中间弹出对话框，先显示 `Message`，下面是保留换行的 `Details`，内容过长时可滚动；控制台在输入行上方浮出提示，日志继续在它上面滚动，按 Esc 或执行下一条命令后关闭；内容超过半屏时只显示开头，完整内容写入日志。`Message` 照常输出到日志。没有 `Details` 时行为不变。使用 `Details` 和 `Title` 的插件需要宿主 1.0.2。
 
 ## 说明
 

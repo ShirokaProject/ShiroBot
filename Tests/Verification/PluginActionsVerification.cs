@@ -39,8 +39,8 @@ internal static class PluginActionsVerification
             if ((await PluginActions.ExecuteAsync(handle, "missing")).Status != PluginActionStatus.ActionNotFound)
                 throw new InvalidOperationException("A missing action was not reported as not found.");
 
-            CH.Panel("生成报告", "第一行：中文宽度按两列计算\n第二行 with ASCII");
-            Console.WriteLine("Plugin action listing, details, failures and console panel verification passed.");
+            CH.Notice("生成报告", "已生成", "第一行：中文宽度按两列计算\n第二行 with ASCII");
+            Console.WriteLine("Plugin action listing, details, failures and console notice verification passed.");
         }
         finally
         {

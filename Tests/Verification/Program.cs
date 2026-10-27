@@ -75,6 +75,31 @@ if (args is ["--plugin-actions"])
     return;
 }
 
+// Interactive: drives the prompt with a floating notice, for checking it in a real terminal (or a pty).
+if (args is ["--console-notice-demo"])
+{
+    ShiroBot.TerminalUI.ConsoleOutput.Info("控制台已就绪");
+    ShiroBot.TerminalUI.ConsoleOutput.Notice("生成报告", "报告已生成。",
+        "处理消息：1,284 条\n命令命中：312 次\n平均耗时：48 ms\n最近错误：无");
+    _ = Task.Run(async () =>
+    {
+        for (var i = 1; i <= 40; i++)
+        {
+            await Task.Delay(i <= 3 ? 400 : 60);
+            ShiroBot.TerminalUI.ConsoleOutput.Log($"后台日志 {i}");
+        }
+    });
+    while (ShiroBot.TerminalUI.ConsoleOutput.ReadPrompt("> ") is var input && input != "quit")
+    {
+        if (input == "notice")
+            ShiroBot.TerminalUI.ConsoleOutput.Notice("会出错", "插件操作执行失败。",
+                string.Join('\n', Enumerable.Range(1, 40).Select(i => $"第 {i} 行：很长的中文内容用来检查换行是否按照两列宽度计算而不会超出终端右边界")), error: true);
+        else
+            ShiroBot.TerminalUI.ConsoleOutput.Info("执行: " + input);
+    }
+    return;
+}
+
 if (args is ["--memory-retention"])
 {
     await MemoryRetentionVerification.RunAsync();

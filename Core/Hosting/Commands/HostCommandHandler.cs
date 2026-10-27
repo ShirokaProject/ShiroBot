@@ -519,8 +519,8 @@ internal sealed class HostCommandHandler(
 
         var summary = result.Ok ? result.Message : $"操作失败: {result.Message}";
         if (string.IsNullOrWhiteSpace(result.Details)) return summary;
-        // Details are meant to be read: show them in a centred panel, headed like the Dashboard dialog.
-        CH.Panel(result.Title ?? descriptor.Label, result.Details, !result.Ok);
+        // Details are meant to be read: they float above the prompt, headed like the Dashboard dialog.
+        CH.Notice(result.Title ?? descriptor.Label, summary, result.Details, !result.Ok);
         return summary;
     }
 

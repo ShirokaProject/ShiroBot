@@ -1,6 +1,5 @@
 using System.Text;
 using System.Runtime.Versioning;
-using Spectre.Console;
 
 namespace ShiroBot.TerminalUI;
 
@@ -35,60 +34,174 @@ public static class ConsoleOutput
     public static void Error(string message) => WriteLine(message, ConsoleColor.Red);
 
     /// <summary>
-    /// A bordered box centred in the console, for text the user should read rather than skim past in the log,
-    /// such as an action's details. Spectre measures CJK width and wraps lines to the window.
+    /// A notice floating above the prompt, like a completion menu: it stays put while logs scroll past above it and
+    /// closes with Esc or the next command. For text the user should read rather than find in the log, such as an
+    /// action's details. Without an interactive prompt (redirected output) it is written as plain lines instead.
     /// </summary>
-    public static void Panel(string title, string body, bool error = false)
+    public static void Notice(string title, string? summary, string details, bool error = false)
     {
         if (!IsEnabled) return;
 
-        var width = WindowWidth();
-        using var writer = new StringWriter();
-        var console = AnsiConsole.Create(new AnsiConsoleSettings
-        {
-            Out = new AnsiConsoleOutput(writer),
-            Ansi = Console.IsOutputRedirected ? AnsiSupport.No : AnsiSupport.Yes,
-            ColorSystem = Console.IsOutputRedirected ? ColorSystemSupport.NoColors : ColorSystemSupport.Standard,
-            Interactive = InteractionSupport.No
-        });
-        console.Profile.Width = width;
-        console.Write(Align.Center(new Panel(new Text(body.TrimEnd()))
-        {
-            Header = new PanelHeader($" {Markup.Escape(title)} ", Justify.Center),
-            Border = BoxBorder.Rounded,
-            BorderStyle = new Style(error ? Color.Red : Color.Aqua),
-            Padding = new Padding(2, 1)
-        }));
-        console.WriteLine();
-
         lock (OutputLock)
         {
-            if (_isReadingInput)
+            if (Console.IsOutputRedirected || Console.IsInputRedirected)
             {
-                ClearOverlayUnsafe();
-                SetCursorPositionSafe(0, _inputTop);
+                Console.WriteLine($"{Timestamp()} {title}");
+                if (!string.IsNullOrWhiteSpace(summary)) Console.WriteLine(summary);
+                Console.WriteLine(details.TrimEnd());
+                return;
             }
 
-            Console.Write(writer.ToString());
+            // What the notice cannot fit goes to the log in full, so nothing is lost when it closes.
+            if (Wrap(details.TrimEnd(), NoticeWidth() - 2).Count > NoticeBodyRoom(string.IsNullOrWhiteSpace(summary) ? 2 : 3))
+                WriteLine($"{title}:\n{details.TrimEnd()}", ConsoleColor.Gray);
 
-            if (_isReadingInput)
-            {
-                _inputTop = Console.CursorTop;
-                RedrawInputUnsafe();
-            }
+            _notice = new PendingNotice(title, summary, details, error);
+            if (_isReadingInput) RedrawInputUnsafe();
         }
     }
 
-    private static int WindowWidth()
+    private sealed record PendingNotice(string Title, string? Summary, string Details, bool Error);
+
+    private static PendingNotice? _notice;
+
+    /// <summary>Rows the drawn notice occupies directly above the prompt row (<see cref="_inputTop"/>).</summary>
+    private static int _noticeRows;
+
+    private static readonly char RuleChar = Console.OutputEncoding.CodePage == 20127 ? '-' : '─';
+
+    private static IReadOnlyList<(string Text, ConsoleColor Color)> BuildNoticeLinesUnsafe(PendingNotice notice)
+    {
+        var width = NoticeWidth();
+        var textWidth = width - 2;
+        var lines = new List<(string Text, ConsoleColor Color)>
+        {
+            // Rules above and below set it apart from the log, like a menu floating over it.
+            (new string(RuleChar, width), ConsoleColor.DarkGray),
+            ("  " + Truncate(notice.Title, textWidth), notice.Error ? ConsoleColor.Red : ConsoleColor.Cyan)
+        };
+        if (!string.IsNullOrWhiteSpace(notice.Summary))
+            lines.AddRange(Wrap(notice.Summary.Trim(), textWidth).Select(line => ("  " + line, ConsoleColor.Gray)));
+
+        // A long report shows its start and says how much is left.
+        var body = Wrap(notice.Details.TrimEnd(), textWidth);
+        var room = NoticeBodyRoom(lines.Count);
+        var shown = body.Count > room ? room - 1 : body.Count;
+        lines.AddRange(body.Take(shown).Select(line => ("  " + line, ConsoleColor.White)));
+        if (shown < body.Count)
+            lines.Add(($"  … 还有 {body.Count - shown} 行，已写入日志", ConsoleColor.DarkGray));
+
+        const string hint = " Esc 关闭 ";
+        lines.Add((new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2), ConsoleColor.DarkGray));
+        return lines;
+    }
+
+    // Windows consoles can have a buffer wider than the window; stay within what is visible.
+    private static int NoticeWidth()
     {
         try
         {
-            return Console.IsOutputRedirected ? 80 : Math.Max(40, Console.WindowWidth);
+            return Math.Max(20, Math.Min(Console.BufferWidth, Console.WindowWidth) - 1);
         }
         catch (IOException)
         {
-            return 80;
+            return 79;
         }
+    }
+
+    // Leave the screen's lower half for the log; at least a few lines however small the window.
+    private static int NoticeBodyRoom(int headerLines) => Math.Clamp(SafeWindowHeight() / 2 - headerLines - 2, 3, 30);
+
+    private static List<string> Wrap(string text, int width)
+    {
+        var lines = new List<string>();
+        foreach (var raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\t", "    ").Split('\n'))
+        {
+            var line = new StringBuilder();
+            var used = 0;
+            foreach (var ch in raw)
+            {
+                var cells = CellWidth(ch.ToString());
+                if (used + cells > width && line.Length > 0)
+                {
+                    lines.Add(line.ToString());
+                    line.Clear();
+                    used = 0;
+                }
+
+                line.Append(ch);
+                used += cells;
+            }
+
+            lines.Add(line.ToString());
+        }
+
+        return lines;
+    }
+
+    private static string Truncate(string text, int width)
+    {
+        var first = Wrap(text, width)[0];
+        return first.Length < text.Length ? first[..^1] + "…" : first;
+    }
+
+    // CJK and other wide characters take two columns; padding by string length would misalign them.
+    private static int CellWidth(string text) => new Spectre.Console.Rendering.Segment(text).CellCount();
+
+    private static int SafeWindowHeight()
+    {
+        try
+        {
+            return Console.WindowHeight;
+        }
+        catch (IOException)
+        {
+            return 24;
+        }
+    }
+
+    /// <summary>Blanks the notice and prompt rows and leaves the cursor where the notice starts.</summary>
+    private static void ClearRegionUnsafe()
+    {
+        var width = Math.Max(1, Console.BufferWidth - 1);
+        var top = Math.Max(0, _inputTop - _noticeRows);
+        for (var row = top; row <= _inputTop; row++)
+        {
+            SetCursorPositionSafe(0, row);
+            Console.Write(new string(' ', width));
+        }
+
+        SetCursorPositionSafe(0, top);
+        _inputTop = top;
+        _noticeRows = 0;
+    }
+
+    /// <summary>Draws the notice from the cursor row down, then moves <see cref="_inputTop"/> below it.</summary>
+    private static void DrawNoticeUnsafe()
+    {
+        if (_notice is null) return;
+
+        var width = NoticeWidth();
+        var lines = BuildNoticeLinesUnsafe(_notice);
+        var previous = Console.ForegroundColor;
+        foreach (var (text, color) in lines)
+        {
+            Console.ForegroundColor = color;
+            // Padded short of the last column, so no terminal wraps the row on its own.
+            Console.WriteLine(text + new string(' ', Math.Max(0, width - CellWidth(text))));
+        }
+
+        Console.ForegroundColor = previous;
+        // WriteLine may have scrolled the buffer at the bottom; the cursor row is the truth.
+        _inputTop = Console.CursorTop;
+        _noticeRows = lines.Count;
+    }
+
+    private static void DismissNoticeUnsafe()
+    {
+        if (_notice is null) return;
+        _notice = null;
+        RedrawInputUnsafe();
     }
 
     public static void Clear()
@@ -96,6 +209,7 @@ public static class ConsoleOutput
         lock (OutputLock)
         {
             Console.Clear();
+            _noticeRows = 0;
             if (_isReadingInput)
             {
                 _inputTop = Console.CursorTop;
@@ -122,6 +236,7 @@ public static class ConsoleOutput
             _historyIndex = History.Count;
             _historyDraft = string.Empty;
             _inputTop = Console.CursorTop;
+            _noticeRows = 0;
             _inlineCompletionSuffix = string.Empty;
             RedrawInputUnsafe();
         }
@@ -174,7 +289,11 @@ public static class ConsoleOutput
                         }
                         break;
                     case ConsoleKey.Escape:
-                        if (!string.IsNullOrEmpty(_inlineCompletionSuffix))
+                        if (_notice is not null)
+                        {
+                            DismissNoticeUnsafe();
+                        }
+                        else if (!string.IsNullOrEmpty(_inlineCompletionSuffix))
                         {
                             _inlineCompletionSuffix = string.Empty;
                             RedrawInputUnsafe();
@@ -184,8 +303,9 @@ public static class ConsoleOutput
                     case ConsoleKey.Enter:
                     {
                         var result = InputBuffer.ToString();
-                        ClearOverlayUnsafe();
-                        SetCursorPositionSafe(0, _inputTop);
+                        // The next command's output starts where the notice was; the notice has been read.
+                        _notice = null;
+                        ClearRegionUnsafe();
                         _isReadingInput = false;
                         _activePrompt = null;
                         _completionProvider = null;
@@ -381,11 +501,8 @@ public static class ConsoleOutput
 
         lock (OutputLock)
         {
-            if (_isReadingInput)
-            {
-                ClearOverlayUnsafe();
-                SetCursorPositionSafe(0, _inputTop);
-            }
+            // Logs go above the notice and prompt, which are redrawn below them.
+            if (_isReadingInput) ClearRegionUnsafe();
 
             var previous = Console.ForegroundColor;
             Console.ForegroundColor = color;
@@ -407,8 +524,9 @@ public static class ConsoleOutput
             return;
         }
 
-        ClearOverlayUnsafe();
+        ClearRegionUnsafe();
         UpdateInlineCompletion();
+        DrawNoticeUnsafe();
 
         SetCursorPositionSafe(0, _inputTop);
         RenderInputLineUnsafe();
@@ -465,14 +583,6 @@ public static class ConsoleOutput
         {
             Console.Write(new string(' ', width - written));
         }
-    }
-
-    private static void ClearOverlayUnsafe()
-    {
-        var width = Math.Max(1, Console.BufferWidth);
-        SetCursorPositionSafe(0, _inputTop);
-        Console.Write(new string(' ', width));
-        SetCursorPositionSafe(0, _inputTop);
     }
 
     private static void PositionCursorUnsafe()
