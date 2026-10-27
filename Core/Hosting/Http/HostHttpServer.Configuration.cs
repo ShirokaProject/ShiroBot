@@ -104,6 +104,17 @@ internal sealed partial class HostHttpServer
         config = JsonSerializer.SerializeToElement(config, CoreConfigJsonOptions)
     };
 
+    /// <summary>
+    /// Saves permission entries as canonical instanceId:userId, without blanks or repeats (instance IDs compare
+    /// case-insensitively, as when matching); throws for an entry that is not instanceId:userId.
+    /// </summary>
+    private static string[] NormalizePermissionList(IEnumerable<string> entries) =>
+        entries.Where(entry => !string.IsNullOrWhiteSpace(entry))
+            .Select(ShiroBot.SDK.Models.UserReference.Parse)
+            .DistinctBy(entry => (entry.InstanceId.ToUpperInvariant(), entry.UserId))
+            .Select(entry => entry.ToConfigString())
+            .ToArray();
+
     private static void ApplyConfigPatch(
         JsonElement patch,
         ApiHostConfig currentApiConfig,
@@ -139,8 +150,8 @@ internal sealed partial class HostHttpServer
         var hasAdmins = TryGetIdArray(patch, "admin_list", out var adminList);
         try
         {
-            if (hasOwners) foreach (var entry in ownerList) ShiroBot.SDK.Models.UserReference.Parse(entry);
-            if (hasAdmins) foreach (var entry in adminList) ShiroBot.SDK.Models.UserReference.Parse(entry);
+            if (hasOwners) ownerList = NormalizePermissionList(ownerList);
+            if (hasAdmins) adminList = NormalizePermissionList(adminList);
         }
         catch (Exception error) when (error is FormatException or ArgumentException)
         {

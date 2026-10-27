@@ -26,7 +26,8 @@ internal sealed class CoreConfigWatcher : IDisposable
         if (active is null || updated is null) return;
 
         // Validate both lists before applying either permission or any runtime settings.
-        foreach (var entry in updated.OwnerList.Concat(updated.AdminList)) ShiroBot.SDK.Models.UserReference.Parse(entry);
+        foreach (var entry in updated.OwnerList.Concat(updated.AdminList).Where(entry => !string.IsNullOrWhiteSpace(entry)))
+            ShiroBot.SDK.Models.UserReference.Parse(entry);
         if (!string.IsNullOrWhiteSpace(active.Api.Token) && string.IsNullOrWhiteSpace(updated.Api.Token))
             throw new InvalidOperationException("运行中的 API 令牌不能设为空；修改未应用。");
         var changes = new List<string>();

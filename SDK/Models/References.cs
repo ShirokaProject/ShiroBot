@@ -12,10 +12,14 @@ public sealed record UserReference(string InstanceId, string UserId)
     public static UserReference Parse(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        // Hand-written config often has "qq: 10001"; IDs never carry surrounding spaces.
+        value = value.Trim();
         var separator = value.IndexOf(':');
         if (separator <= 0 || separator == value.Length - 1 || value.IndexOf(':', separator + 1) >= 0)
             throw new FormatException("Permission entries must be instanceId:userId; escape ':' as %3A. Bare user IDs are not accepted.");
-        var result = new UserReference(Uri.UnescapeDataString(value[..separator]), Uri.UnescapeDataString(value[(separator + 1)..]));
+        var result = new UserReference(
+            Uri.UnescapeDataString(value[..separator].Trim()),
+            Uri.UnescapeDataString(value[(separator + 1)..].Trim()));
         ArgumentException.ThrowIfNullOrWhiteSpace(result.InstanceId);
         ArgumentException.ThrowIfNullOrWhiteSpace(result.UserId);
         return result;

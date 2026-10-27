@@ -732,6 +732,16 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
 }
 
 {
+    // Hand-written lists: spaces around the separator, blank entries and repeats (instance IDs ignore case).
+    var permissions = new BotContext(null, ["mml: 730188102", " ", "MML:730188102", "qq:1"], [" qq : 2 "],
+        new WebHostContext("http://127.0.0.1", false));
+    if (!permissions.OwnerList.Select(owner => owner.ToConfigString()).SequenceEqual(["mml:730188102", "qq:1"]) ||
+        !permissions.IsOwner(new UserReference("mml", "730188102")) || !permissions.IsAdmin(new UserReference("qq", "2")))
+        throw new InvalidOperationException("Permission lists kept spaces, blanks or repeated entries.");
+    Console.WriteLine("Permission list trimming and de-duplication verification passed.");
+}
+
+{
     const string owner = "55C88F86C7E7BF9F9F53615CDAAA493F";
     var permissions = new BotContext(new VerificationAdapter("qq"), ["qq:" + owner], ["qq:admin"], new WebHostContext("http://127.0.0.1", false));
     var root = Path.Combine(Path.GetTempPath(), "ShiroBot.OwnerAdmin", Guid.NewGuid().ToString("N"));

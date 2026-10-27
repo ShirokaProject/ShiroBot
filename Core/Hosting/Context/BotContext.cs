@@ -41,8 +41,8 @@ internal sealed class BotContext
         Message = new MessageContext(GetMessageRoute, UseMessageSource, UseInstance, ReplySubscriptions, "__host", _logHub);
         Updater = new UpdaterContext();
         WebHost = webHost;
-        _ownerList = ownerList.Select(UserReference.Parse).ToArray();
-        _adminList = adminList.Select(UserReference.Parse).ToArray();
+        _ownerList = ParsePermissionList(ownerList);
+        _adminList = ParsePermissionList(adminList);
     }
 
     public string Platform => CurrentRegistration?.Adapter.Platform ?? "none";
@@ -187,13 +187,19 @@ internal sealed class BotContext
 
     public void UpdateOwnerList(IReadOnlyList<string> ownerList)
     {
-        Volatile.Write(ref _ownerList, ownerList.Select(UserReference.Parse).ToArray());
+        Volatile.Write(ref _ownerList, ParsePermissionList(ownerList));
     }
 
     public void UpdateAdminList(IReadOnlyList<string> adminList)
     {
-        Volatile.Write(ref _adminList, adminList.Select(UserReference.Parse).ToArray());
+        Volatile.Write(ref _adminList, ParsePermissionList(adminList));
     }
+
+    // Blank entries are skipped and repeats collapse (instance IDs match case-insensitively, as in Matches),
+    // so an owner is notified once however the list was written.
+    private static UserReference[] ParsePermissionList(IEnumerable<string> entries) =>
+        entries.Where(entry => !string.IsNullOrWhiteSpace(entry)).Select(UserReference.Parse)
+            .DistinctBy(entry => (entry.InstanceId.ToUpperInvariant(), entry.UserId)).ToArray();
 
     public void AttachRenderer(IRenderContext renderer)
     {
