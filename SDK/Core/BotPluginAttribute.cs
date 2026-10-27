@@ -25,4 +25,13 @@ public sealed class BotPluginAttribute(string id) : Attribute
     /// </summary>
     public string? Dependencies { get; init; }
 
+    /// <summary>
+    /// Dispatch order for events: smaller values run first, and plugins sharing a value run in parallel.
+    /// Once a plugin marks an event handled (see <see cref="ShiroBot.SDK.Plugin.BotEventHandling"/>),
+    /// plugins with a larger value no longer receive it. Owners can override it per plugin.
+    /// </summary>
+    public int Priority { get; init; } = DefaultPriority;
+
+    /// <summary>The priority of plugins that declare none, including those built before priorities existed.</summary>
+    public const int DefaultPriority = 2;
 }

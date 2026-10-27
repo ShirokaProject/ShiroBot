@@ -409,7 +409,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         [property: JsonPropertyName("description")] string Description,
         [property: JsonPropertyName("category")] string Category,
         [property: JsonPropertyName("status")] string Status = "disabled",
-        [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null);
+        [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null,
+        [property: JsonPropertyName("priority")] int? Priority = null);
     // ReSharper restore NotAccessedPositionalProperty.Local
 
     public async ValueTask DisposeAsync()

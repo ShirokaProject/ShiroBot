@@ -74,10 +74,14 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
         _routes.Add(new RouteEntry(descriptor, handler, predicate));
     }
 
-    public async Task<bool> DispatchAsync(string text, TMessage message)
+    public Task<bool> DispatchAsync(string text, TMessage message) => DispatchAsync(text, message, null);
+
+    /// <param name="onMatch">Called with the matched route before its handler runs.</param>
+    internal async Task<bool> DispatchAsync(string text, TMessage message, Action<MessageRouteDescriptor>? onMatch)
     {
         foreach (var route in _routes.Where(route => Matches(route, text, message)))
         {
+            onMatch?.Invoke(route.Descriptor);
             await route.Handler(message);
             return true;
         }

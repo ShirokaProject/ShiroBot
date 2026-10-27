@@ -3,6 +3,7 @@ using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Plugins;
 using ShiroBot.Console;
+using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
@@ -89,8 +90,11 @@ internal sealed class HostEventDispatcher(
         Func<IBotEventSubscriber, Task> dispatch)
     {
         runtimeState.RecordIncomingMessage();
-        await replySubscriptions.PublishAsync(message).ConfigureAwait(false);
-        await DispatchAsync(eventName, message, handlers, dispatch).ConfigureAwait(false);
+        // A reply that answered a subscription (e.g. confirming an owner notification) counts as handled at the
+        // default priority: ordinary plugins still see it, fallbacks such as AI chat do not.
+        var replied = await replySubscriptions.PublishAsync(message).ConfigureAwait(false);
+        await DispatchAsync(eventName, message, handlers, dispatch,
+            replied ? BotPluginAttribute.DefaultPriority : int.MaxValue).ConfigureAwait(false);
     }
 
     private void RegisterEventHandlers(LoadedPluginHandle pluginHandle)
@@ -246,11 +250,17 @@ internal sealed class HostEventDispatcher(
         return matches.ToArray();
     }
 
+    /// <summary>
+    /// Runs handlers in ascending <see cref="LoadedPluginHandle.Priority"/>, each priority in parallel. Once a plugin
+    /// marks the event handled, larger priorities are skipped. A priority still running after
+    /// <see cref="PriorityLevelTimeout"/> no longer holds back the next one; the call still waits for every handler.
+    /// </summary>
     private async Task DispatchAsync(
         string eventName,
         BotEvent message,
         IReadOnlyList<LoadedPluginHandle> handlers,
-        Func<IBotEventSubscriber, Task> dispatch)
+        Func<IBotEventSubscriber, Task> dispatch,
+        int handledAbove = int.MaxValue)
     {
         var text = $"收到{eventName} {Describe(message, showIds?.Invoke() ?? false)}";
         logHub.Record("system", "log", text);
@@ -262,24 +272,54 @@ internal sealed class HostEventDispatcher(
         }
 
         var groupId = ExtractGroupId(message);
-        var tasks = handlers
+        var levels = handlers
             .Where(plugin => plugin.AllowsGroup(groupId))
-            .Select(async plugin =>
-            {
-                try
-                {
-                    await plugin.DispatchAsync(dispatch);
-                }
-                catch (Exception ex)
-                {
-                    var errorMessage = $"插件功能执行失败: {plugin.Name} - {ex.Message}";
-                    logHub.Record(plugin.Name, "error", errorMessage);
-                    ConsoleOutput.Error(errorMessage);
-                    runtimeState.RecordEvent(errorMessage, "error");
-                }
-            });
+            .GroupBy(plugin => plugin.Priority)
+            .OrderBy(level => level.Key)
+            .ToArray();
+        // The mark is per event instance; one set before dispatch (by a reply subscription) is not a plugin's.
+        var markedBefore = message.IsHandled();
+        var running = new List<Task>();
 
-        await Task.WhenAll(tasks);
+        for (var i = 0; i < levels.Length; i++)
+        {
+            var level = levels[i];
+            if (level.Key > handledAbove) break;
+
+            var tasks = level.Select(plugin => DispatchToPluginAsync(plugin, dispatch)).ToArray();
+            running.AddRange(tasks);
+            if (i == levels.Length - 1) break;
+
+            var all = Task.WhenAll(tasks);
+            if (await Task.WhenAny(all, Task.Delay(PriorityLevelTimeout)).ConfigureAwait(false) != all)
+            {
+                var slow = string.Join("、", level.Where((_, index) => !tasks[index].IsCompleted).Select(plugin => plugin.Name));
+                var warning = $"优先级 {level.Key} 的插件 {slow} 处理{eventName}超过 {PriorityLevelTimeout.TotalSeconds:0} 秒，继续分发给后续插件。";
+                logHub.Record("system", "warning", warning);
+                ConsoleOutput.Warning(warning);
+            }
+
+            if (!markedBefore && message.IsHandled()) handledAbove = Math.Min(handledAbove, level.Key);
+        }
+
+        await Task.WhenAll(running).ConfigureAwait(false);
+    }
+
+    internal TimeSpan PriorityLevelTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    private async Task DispatchToPluginAsync(LoadedPluginHandle plugin, Func<IBotEventSubscriber, Task> dispatch)
+    {
+        try
+        {
+            await plugin.DispatchAsync(dispatch);
+        }
+        catch (Exception ex)
+        {
+            var errorMessage = $"插件功能执行失败: {plugin.Name} - {ex.Message}";
+            logHub.Record(plugin.Name, "error", errorMessage);
+            ConsoleOutput.Error(errorMessage);
+            runtimeState.RecordEvent(errorMessage, "error");
+        }
     }
 
     private static string? ExtractGroupId(BotEvent evt)

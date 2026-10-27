@@ -31,6 +31,7 @@ internal sealed class LoadedPluginHandle
     private PluginContext? _context;
     private DllLoader<IBotPlugin>? _loader;
     private readonly Func<string, bool>? _groupRouteFilter;
+    private readonly Func<int?>? _priorityOverride;
     private readonly string _assemblyPath;
     private readonly HostLogHub _logHub;
     private string? _configFingerprint;
@@ -43,6 +44,7 @@ internal sealed class LoadedPluginHandle
         PluginProbeInfo metadata,
         HostLogHub logHub,
         Func<string, bool>? groupRouteFilter = null,
+        Func<int?>? priorityOverride = null,
         TimeSpan? activeDispatchDrainTimeout = null,
         TimeSpan? pluginOnUnloadTimeout = null)
     {
@@ -62,6 +64,7 @@ internal sealed class LoadedPluginHandle
                 _ = QueueConfigCandidateAsync(updated));
         }
         _groupRouteFilter = groupRouteFilter;
+        _priorityOverride = priorityOverride;
         _activeDispatchDrainTimeout = activeDispatchDrainTimeout ?? DefaultActiveDispatchDrainTimeout;
         _pluginOnUnloadTimeout = pluginOnUnloadTimeout ?? DefaultPluginOnUnloadTimeout;
 
@@ -73,6 +76,7 @@ internal sealed class LoadedPluginHandle
         Category = metadata.Category;
         GithubRepo = metadata.GithubRepo;
         Dependencies = metadata.Dependencies;
+        DeclaredPriority = metadata.Priority;
         SubscribedEventTypes = plugin is PluginBase pluginBase
             ? pluginBase.GetEffectiveEventTypes().ToHashSet()
             : plugin is IBotEventSubscriber
@@ -97,6 +101,12 @@ internal sealed class LoadedPluginHandle
     public PluginCategory Category { get; }
     public string? GithubRepo { get; }
     public IReadOnlyList<string> Dependencies { get; }
+
+    /// <summary>The priority from the plugin's attribute.</summary>
+    public int DeclaredPriority { get; }
+
+    /// <summary>The dispatch priority in effect: the owner's override, else <see cref="DeclaredPriority"/>.</summary>
+    public int Priority => _priorityOverride?.Invoke() ?? DeclaredPriority;
     public string AssemblyPath => _assemblyPath;
     public long SourceLength { get; }
     public DateTime SourceLastWriteTimeUtc { get; }

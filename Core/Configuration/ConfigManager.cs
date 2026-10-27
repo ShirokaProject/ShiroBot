@@ -120,6 +120,12 @@ public class PluginRouteConfig
 
     public Dictionary<string, PluginRouteRuleConfig> Plugins { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Owner overrides of the dispatch priority plugins declare in their attribute, by plugin ID.</summary>
+    public Dictionary<string, int> Priorities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public int? GetPriority(string pluginName) =>
+        Priorities.TryGetValue(pluginName, out var priority) ? priority : null;
+
     public bool AllowsGroup(string pluginName, string groupId)
     {
         var plugins = Plugins;
@@ -139,6 +145,7 @@ public class PluginRouteConfig
         Plugins = new Dictionary<string, PluginRouteRuleConfig>(
             other.Plugins,
             StringComparer.OrdinalIgnoreCase);
+        Priorities = new Dictionary<string, int>(other.Priorities, StringComparer.OrdinalIgnoreCase);
     }
 }
 

@@ -69,10 +69,11 @@ internal sealed class ReplySubscriptionManager
         }
     }
 
-    public async Task PublishAsync(MessageEvent message)
+    /// <summary>Delivers a quote-reply to its subscriptions; returns true when any subscription received it.</summary>
+    public async Task<bool> PublishAsync(MessageEvent message)
     {
         var quote = message.GetQuote();
-        if (quote is null || message.InstanceId is null) return;
+        if (quote is null || message.InstanceId is null) return false;
         var reference = new MessageReference(message.InstanceId, message.Channel, quote.MessageId);
 
         var now = DateTimeOffset.UtcNow;
@@ -107,6 +108,8 @@ internal sealed class ReplySubscriptionManager
                 ConsoleOutput.Error($"回复订阅处理失败: {subscription.OwnerId} messageId={subscription.Reference.MessageId} - {ex.Message}");
             }
         }
+
+        return matches.Count > 0;
     }
 
     private void Remove(Guid id) => _subscriptions.TryRemove(id, out _);

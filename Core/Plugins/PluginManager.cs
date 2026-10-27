@@ -29,7 +29,8 @@ internal sealed record PluginProbeInfo(
     string? GithubRepo,
     bool IsPluginSingleFile,
     IReadOnlyList<string> SharedAssemblies,
-    IReadOnlyList<string> Dependencies);
+    IReadOnlyList<string> Dependencies,
+    int Priority = BotPluginAttribute.DefaultPriority);
 
 internal sealed record PluginProbeCacheEntry(long Length, DateTime LastWriteTimeUtc, PluginProbeInfo? Info);
 
@@ -844,7 +845,8 @@ internal sealed class PluginManager(
                             actualDllPath,
                             pluginInfo,
                             logHub,
-                            CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
+                            CreateGroupRouteFilter(pluginInfo.Id, routePolicy),
+                            CreatePriorityOverride(pluginInfo.Id, routePolicy));
 
                         RegisterLoadedPlugin(pluginHandle, hostEventDispatcher);
 
@@ -933,7 +935,8 @@ internal sealed class PluginManager(
                     actualDllPath,
                     pluginInfo,
                     logHub,
-                    CreateGroupRouteFilter(pluginInfo.Id, routePolicy));
+                    CreateGroupRouteFilter(pluginInfo.Id, routePolicy),
+                    CreatePriorityOverride(pluginInfo.Id, routePolicy));
 
                 RegisterLoadedPlugin(pluginHandle, hostEventDispatcher);
 
@@ -1179,6 +1182,9 @@ internal sealed class PluginManager(
     private static Func<string, bool> CreateGroupRouteFilter(string pluginName, PluginRouteConfig routePolicy) =>
         groupId => routePolicy.AllowsGroup(pluginName, groupId);
 
+    private static Func<int?> CreatePriorityOverride(string pluginName, PluginRouteConfig routePolicy) =>
+        () => routePolicy.GetPriority(pluginName);
+
     private PluginContext CreatePluginContext(
         string pluginName,
         string pluginDirectory) =>
@@ -1383,7 +1389,8 @@ internal sealed class PluginManager(
                     plugin.GithubRepo,
                     plugin.IsPluginSingleFile ?? false,
                     SplitList(plugin.SharedAssemblies),
-                    SplitList(plugin.Dependencies));
+                    SplitList(plugin.Dependencies),
+                    plugin.Priority ?? BotPluginAttribute.DefaultPriority);
             }
 
             return null;
@@ -1425,6 +1432,7 @@ internal sealed class PluginManager(
         bool? isPluginSingleFile = null;
         string? sharedAssemblies = null;
         string? dependencies = null;
+        int? priority = null;
 
         var namedArgumentCount = blob.ReadUInt16();
         for (var i = 0; i < namedArgumentCount; i++)
@@ -1463,6 +1471,9 @@ internal sealed class PluginManager(
                 case nameof(BotPluginAttribute.Dependencies) when typeCode == SerializedTypeString:
                     dependencies = blob.ReadSerializedString();
                     break;
+                case nameof(BotPluginAttribute.Priority) when typeCode == SerializedTypeI4:
+                    priority = blob.ReadInt32();
+                    break;
                 default:
                     if (!TrySkipSerializedFixedArgument(ref blob, typeCode)) return false;
                     break;
@@ -1479,7 +1490,8 @@ internal sealed class PluginManager(
             githubRepo,
             isPluginSingleFile,
             sharedAssemblies,
-            dependencies);
+            dependencies,
+            priority);
         return true;
     }
 
@@ -1593,7 +1605,8 @@ internal sealed class PluginManager(
         string? GithubRepo,
         bool? IsPluginSingleFile,
         string? SharedAssemblies,
-        string? Dependencies);
+        string? Dependencies,
+        int? Priority);
 
 
     private sealed record PreparedPlugin(string AssemblyPath, PluginProbeInfo Info);

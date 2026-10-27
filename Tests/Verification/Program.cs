@@ -63,6 +63,12 @@ if (args is ["--toml-formatting"])
     return;
 }
 
+if (args is ["--plugin-priority"])
+{
+    await PluginPriorityVerification.RunAsync();
+    return;
+}
+
 if (args is ["--memory-retention"])
 {
     await MemoryRetentionVerification.RunAsync();
@@ -123,6 +129,7 @@ RestartNoticeVerification.Run();
 DeferredShadowCleanupVerification.Run();
 await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
+await PluginPriorityVerification.RunAsync();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();
 

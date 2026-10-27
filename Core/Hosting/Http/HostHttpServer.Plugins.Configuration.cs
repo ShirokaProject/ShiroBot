@@ -32,6 +32,7 @@ using ShiroBot.Console;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Config;
+using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
 using Tomlyn;
 using Tomlyn.Model;
@@ -950,14 +951,59 @@ internal sealed partial class HostHttpServer
             groups = patchedGroups;
         }
 
+        if (patch.TryGetProperty("priority", out var priority))
+        {
+            ApplyPluginPriorityPatch(configManager, coreConfigPath, routePolicy, pluginId, priority);
+        }
+
+        if (!patch.TryGetProperty("mode", out _) && !patch.TryGetProperty("groups", out _))
+        {
+            return;
+        }
+
         var rule = new PluginRouteRuleConfig { Mode = mode, Groups = groups };
         routePolicy.Plugins[pluginId] = rule;
         configManager.SetConfigValue(coreConfigPath, $"plugin_routes.plugins.{pluginId}.mode", rule.Mode);
         configManager.SetConfigValue(coreConfigPath, $"plugin_routes.plugins.{pluginId}.groups", rule.Groups);
     }
 
-    private static object CreatePluginRouteResponse(PluginRouteConfig routePolicy, string pluginId)
+    /// <summary>A number overrides the plugin's declared priority; null removes the override.</summary>
+    private static void ApplyPluginPriorityPatch(
+        ConfigManager configManager,
+        string coreConfigPath,
+        PluginRouteConfig routePolicy,
+        string pluginId,
+        JsonElement priority)
     {
+        // Replaced rather than mutated: dispatch reads the dictionary without a lock.
+        var priorities = new Dictionary<string, int>(routePolicy.Priorities, StringComparer.OrdinalIgnoreCase);
+        var key = $"plugin_routes.priorities.{pluginId}";
+        if (priority.ValueKind == JsonValueKind.Null)
+        {
+            priorities.Remove(pluginId);
+            routePolicy.Priorities = priorities;
+            configManager.RemoveConfigValue(coreConfigPath, key);
+            return;
+        }
+
+        if (priority.ValueKind != JsonValueKind.Number || !priority.TryGetInt32(out var value))
+        {
+            throw new InvalidOperationException("routes.priority 必须是整数或 null。");
+        }
+
+        priorities[pluginId] = value;
+        routePolicy.Priorities = priorities;
+        configManager.SetConfigValue(coreConfigPath, key, value);
+    }
+
+    private static int GetDeclaredPriority(PluginManager pluginManager, PluginConfigTarget plugin) =>
+        FindLoadedPlugin(pluginManager, plugin.Id)?.DeclaredPriority
+        ?? pluginManager.TryProbePluginInfoFile(plugin.AssemblyPath)?.Priority
+        ?? BotPluginAttribute.DefaultPriority;
+
+    private static object CreatePluginRouteResponse(PluginRouteConfig routePolicy, string pluginId, int declaredPriority)
+    {
+        var configuredPriority = routePolicy.GetPriority(pluginId);
         var configured = routePolicy.Plugins.TryGetValue(pluginId, out var rule) &&
                          !string.Equals(rule.Mode, "default", StringComparison.OrdinalIgnoreCase);
         var effective = configured ? rule! : routePolicy.Default;
@@ -969,7 +1015,10 @@ internal sealed partial class HostHttpServer
             effective_mode = effective.Mode,
             effective_groups = effective.Groups,
             default_mode = routePolicy.Default.Mode,
-            default_groups = routePolicy.Default.Groups
+            default_groups = routePolicy.Default.Groups,
+            priority = configuredPriority ?? declaredPriority,
+            priority_configured = configuredPriority is not null,
+            declared_priority = declaredPriority
         };
     }
 

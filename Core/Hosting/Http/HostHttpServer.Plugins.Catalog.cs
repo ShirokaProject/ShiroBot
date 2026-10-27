@@ -77,7 +77,8 @@ internal sealed partial class HostHttpServer
                 plugin.GithubRepo,
                 plugin.Description ?? string.Empty,
                 plugin.Category.ToString(),
-                "enabled"))
+                "enabled",
+                Priority: plugin.Priority))
             .ToArray();
 
         var enabledIds = enabledPlugins.Select(plugin => plugin.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);

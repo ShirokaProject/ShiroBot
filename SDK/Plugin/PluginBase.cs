@@ -100,7 +100,7 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
     {
         if (await BeforeDispatchGroupCommandAsync(message))
         {
-            await GroupCommands.DispatchAsync(message.GetPlainText().Trim(), message);
+            await GroupCommands.DispatchAsync(message.GetPlainText().Trim(), message, route => MarkIfCommand(message, route));
         }
     }
 
@@ -108,7 +108,16 @@ public abstract class PluginBase : IBotPlugin, IBotEventSubscriber
     {
         if (await BeforeDispatchDirectCommandAsync(message))
         {
-            await DirectCommands.DispatchAsync(message.GetPlainText().Trim(), message);
+            await DirectCommands.DispatchAsync(message.GetPlainText().Trim(), message, route => MarkIfCommand(message, route));
+        }
+    }
+
+    // A matched command answers the message; an unconditional MapAll only observes it, e.g. for logging.
+    private static void MarkIfCommand(MessageEvent message, MessageRouteDescriptor route)
+    {
+        if (route.MatchType != MessageRouteMatchType.All || route.Condition != MessageRouteCondition.None)
+        {
+            message.MarkHandled();
         }
     }
 
