@@ -25,6 +25,14 @@
 - 新增 `owner_notifications`（默认开启），私聊 `owner_list` 中已加载实例的 Owner：自动更新的结果、失败、无法热替换、自动重启，以及主程序需要手动更新镜像等情况。没有更新时不发送；主程序更新前先发送通知再重启。
 - 待确认的更新（控制台 `update check` 或插件通过 `IUpdater` 请求）可直接引用回复「确认」或「取消」，24 小时内有效，不再需要输入控制台命令。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 的同一条通知随之失效，同一个更新不会执行两次。控制台的 `update confirm` / `update cancel` 仍可使用。
 
+#### 插件优先级
+
+- 插件按优先级接收事件：数字越小越先收到，相同数字并发执行。插件在 `[BotPlugin(Priority = …)]` 中声明，未声明时为 `2`，旧插件无需重新编译，行为与之前相同。
+- 事件被处理后，数字更大的插件不再收到：命令（`MapExact`、`MapPrefix`、带条件的 `MapWhen`、@、回复）匹配时自动标记，插件也可调用 `MarkHandled()`；无条件的 `MapAll` 不标记。把 AI 聊天等兜底插件设为更大的数字，私聊命令就不会同时触发 AI 回复。
+- 被回复订阅接收的引用回复（如 Owner 确认更新）按优先级 2 视为已处理，兜底插件不再收到。
+- 一个优先级超过 5 秒未处理完时记录警告，并继续分发给后面的优先级。
+- Owner 可在 Dashboard 插件配置的「路由」页或 `plugin_routes.priorities` 中按插件覆盖优先级，可恢复插件默认；插件详情显示已加载插件的优先级。
+
 #### 插件读取宿主状态
 
 - `IBotContext.GetHostStatus()` 返回与 Dashboard 概览相同的信息：宿主版本与 SDK ABI、启动时间与运行时长、运行方式、操作系统、架构、.NET 运行时、镜像标签、构建时间、工作集与托管堆内存、处理器数、插件与 Model 数量、消息总数、每 2 小时的消息频率以及健康状态。
@@ -76,7 +84,7 @@
 | `auto_update_time` | `"02:00"` | 自动更新时间，`HH:mm`，宿主本地时区 |
 | `auto_update_restart_on_pending` | `true` | 有插件或适配器无法热替换时自动重启宿主 |
 
-以上设置均可在 Dashboard 配置中心修改，保存后立即生效。
+以上设置均可在 Dashboard 配置中心修改，保存后立即生效。另新增 `[plugin_routes.priorities]`，按插件 ID 覆盖插件优先级，在 Dashboard 插件路由中修改。
 
 ### SDK 新增接口（ABI 1.3.0.0）
 
@@ -84,16 +92,18 @@
 - `MessageRouteDescriptor.Condition` / `ConditionArgument` / `Description`，`MessageRouteCondition` 枚举。
 - `EventRouteDescriptor`、`EventRouter.Routes`、`PluginBase.GetEventRoutes()`。
 - `CommandRouter.MapWhen`、`AllMapCommands.MapWhen`、`EventRouter.MapWhen` 的带说明文字重载。
+- `BotPluginAttribute.Priority` 与 `BotPluginAttribute.DefaultPriority`，`BotEventHandling.MarkHandled()` / `IsHandled()` 扩展方法。
 
 ### HTTP API
 
 - `GET /api/v1/plugins/{id}` 新增 `listeners` 字段，插件未加载时为 `null`。
+- 插件配置响应的 `routes` 新增 `priority`、`priority_configured`、`declared_priority`；`PATCH` 的 `routes.priority` 设置覆盖值，`null` 恢复插件默认，只含 `priority` 时不改动群路由。`GET /api/v1/plugins/list` 中已加载插件新增 `priority`。
 - 新增 `GET` / `PUT /api/v1/plugins/{id}/config/raw` 与 `/api/v1/adapters/{id}/config/raw`，读写完整 `config.toml`；`PUT` 携带读取时的 `revision`，文件已变化时返回 `409 config_changed`，格式错误返回 `400 invalid_toml`，组件没有配置时返回 `400 no_config`。插件和适配器配置的 `GET` 响应新增 `raw_config`，表示是否可以编辑 config.toml。
 - 核心配置 `GET` / `PATCH /api/v1/config` 支持上述新增配置项。
 
 ### 升级说明
 
-- 已有插件和适配器无需重新编译。使用 `GetHostStatus()` 或带说明的 `MapWhen` 的组件需要宿主 1.0.2。
+- 已有插件和适配器无需重新编译。使用 `GetHostStatus()`、带说明的 `MapWhen` 或 `MarkHandled()` / `IsHandled()` 的组件需要宿主 1.0.2；`BotPlugin.Priority` 在旧宿主上会被忽略。
 - Docker 用户需要手动执行一次 `docker compose pull && docker compose up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
 - 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`。
 - `rebuild-container` 工作流只能重建 1.0.2 及之后的版本：更早版本的构建产物仍是多文件结构，与新的镜像构建方式不兼容。

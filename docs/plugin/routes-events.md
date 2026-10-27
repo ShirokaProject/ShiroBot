@@ -96,8 +96,28 @@ Events.MapPlatform(QEventKinds.OfficialButtonInteraction, evt =>
 
 QQ 事件详见 [QQ Model](/plugin/qq-model)，官方按钮事件详见[官方 Markdown 与按钮](/plugin/qq-official)。
 
+## 优先级与已处理
+
+同一事件按插件优先级依次分发：数字越小越先收到，相同数字的插件并发执行。在 `BotPlugin` 上声明，未声明（包括此前编译的插件）时为 `2`：
+
+```csharp
+// AI 聊天作为兜底：只在其他插件没有处理消息时回复
+[BotPlugin("ai-chat", Name = "AI Chat", Priority = 10)]
+public sealed class AiChatPlugin : PluginBase { }
+```
+
+事件被标记为已处理后，数字更大的插件不再收到，相同数字的插件不受影响：
+
+- `MapExact`、`MapPrefix`、带条件的 `MapWhen` 以及 `MapMention`、`MapMentionAll`、`MapReply` 匹配时自动标记，在处理器执行前生效。无条件的 `MapAll` 只算旁听，不标记，日志、统计类插件不会拦住其他插件。
+- 重写 `OnGroupMessageAsync` / `OnDirectMessageAsync` 自行解析命令，或在 `Events` 中处理事件后，调用 `e.MarkHandled()` 手动标记；`e.IsHandled()` 读取当前状态。
+- 引用回复被[回复订阅](/plugin/apis#回复订阅)接收时，按优先级 `2` 视为已处理：普通插件仍会收到，数字大于 2 的兜底插件不再收到。
+
+一个优先级的插件超过 5 秒仍未处理完时，宿主记录警告并继续分发给后面的优先级。Owner 可以在 Dashboard 插件路由或 `plugin_routes.priorities` 中覆盖插件声明的优先级，见[宿主配置](/guide/configuration#插件优先级)。
+
+`Priority` 只是 attribute 参数，旧宿主读取时会忽略；调用 `MarkHandled()` / `IsHandled()` 的插件需要宿主 1.0.2。
+
 ## 并发与范围
 
 - 事件处理时 `Context.Platform` 和 `Context.InstanceId` 指向事件来源平台及实例；后台任务用 `Context.UseInstance(id)` 按实例 ID 指定目标。实例接口见[通用 API](/plugin/apis)。
-- 不同插件可并发处理同一个事件，同一个插件也可能同时收到多条事件；共享状态应自行同步。
+- 相同优先级的插件并发处理同一个事件，同一个插件也可能同时收到多条事件；共享状态应自行同步。
 - 群路由限制由宿主配置 `plugin_routes` 控制。收到事件后不要长时间同步阻塞。

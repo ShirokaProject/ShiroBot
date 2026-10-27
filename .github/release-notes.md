@@ -3,6 +3,7 @@
 - Docker 镜像改为与 Release 相同的单文件主程序，支持在 Dashboard 中更新主程序。新版本先下载到数据卷的 `host/` 目录并在当前容器中试运行，能正常启动才会安装并重启；需要新的 .NET 运行时或系统依赖时，提示执行 `docker compose pull && docker compose up -d`。镜像版本更新时自动改用镜像中的主程序。
 - 新增每日自动更新：插件、适配器和主程序分别开关（默认关闭），执行时间默认 02:00。插件或适配器无法热替换时，默认自动重启宿主完成更新（可关闭）。
 - 新增 Owner 通知（默认开启）：私聊推送自动更新结果、失败和重启等重要信息；待确认的更新可直接引用回复「确认」或「取消」，不再需要控制台命令。
+- 新增插件优先级：数字越小越先收到事件，默认 `2`，旧插件无需修改。命令匹配或插件调用 `MarkHandled()` 后，数字更大的插件不再收到，可把 AI 聊天等兜底插件设为更大的数字，避免命令同时触发 AI 回复。插件在 `[BotPlugin(Priority = …)]` 中声明，Owner 可在 Dashboard 插件路由或 `plugin_routes.priorities` 中覆盖。
 - 插件可通过 `Context.GetHostStatus()` 读取宿主状态：版本、运行方式、系统、架构、.NET 运行时、内存、运行时长、插件数和消息频率，与 Dashboard 概览相同。
 - 启动日志和控制台 `api` 命令打印带 `?token=` 的 Dashboard 链接，打开即可直接登录；登录后密钥会从地址栏移除。
 - 完整配置页可切换为直接编辑 `config.toml`，包括表单中没有的字段；保存前校验 TOML 格式。
@@ -17,7 +18,7 @@
 
 ### 升级说明
 
-- SDK ABI 升至 `1.3.0.0`，只新增接口，已有插件和适配器无需重新编译。使用带描述的 `MapWhen` 重载或 `GetHostStatus()` 的组件需要宿主 1.0.2。
+- SDK ABI 升至 `1.3.0.0`，只新增接口，已有插件和适配器无需重新编译。使用带描述的 `MapWhen` 重载、`GetHostStatus()` 或 `MarkHandled()` / `IsHandled()` 的组件需要宿主 1.0.2；`BotPlugin.Priority` 在旧宿主上会被忽略。
 - `ShiroBot.SDK` 与 `ShiroBot.Templates` 包版本同步为 1.0.2。
 - Docker 用户需要手动执行一次 `docker compose pull && docker compose up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
 - 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `compose.yaml` 中设置 `TZ`（文件中有注释示例）。
