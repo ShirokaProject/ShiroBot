@@ -33,6 +33,11 @@
 - 一个优先级超过 5 秒未处理完时记录警告，并继续分发给后面的优先级。
 - Owner 可在 Dashboard 插件配置的「路由」页或 `plugin_routes.priorities` 中按插件覆盖优先级，可恢复插件默认；插件详情显示已加载插件的优先级。
 
+#### 插件操作详细结果
+
+- `PluginActionResult` 新增可选的 `Details` 与 `Title`。设置后，Dashboard 在屏幕中间弹出对话框显示详细结果，控制台在中间绘制带边框的面板；没有 `Details` 的操作仍使用简短提示。
+- Dashboard 和控制台共用同一套插件操作查找与执行逻辑。操作抛出异常时两边都显示异常原因，不再只提示“插件操作执行失败”；控制台中出错的命令不会再让控制台停止响应。
+
 #### 插件读取宿主状态
 
 - `IBotContext.GetHostStatus()` 返回与 Dashboard 概览相同的信息：宿主版本与 SDK ABI、启动时间与运行时长、运行方式、操作系统、架构、.NET 运行时、镜像标签、构建时间、工作集与托管堆内存、处理器数、插件与 Model 数量、消息总数、每 2 小时的消息频率以及健康状态。
@@ -92,6 +97,7 @@
 - `MessageRouteDescriptor.Condition` / `ConditionArgument` / `Description`，`MessageRouteCondition` 枚举。
 - `EventRouteDescriptor`、`EventRouter.Routes`、`PluginBase.GetEventRoutes()`。
 - `CommandRouter.MapWhen`、`AllMapCommands.MapWhen`、`EventRouter.MapWhen` 的带说明文字重载。
+- `PluginActionResult.Details` / `Title`。
 - `BotPluginAttribute.Priority` 与 `BotPluginAttribute.DefaultPriority`，`BotEventHandling.MarkHandled()` / `IsHandled()` 扩展方法。
 
 ### HTTP API
@@ -103,7 +109,7 @@
 
 ### 升级说明
 
-- 已有插件和适配器无需重新编译。使用 `GetHostStatus()`、带说明的 `MapWhen` 或 `MarkHandled()` / `IsHandled()` 的组件需要宿主 1.0.2；`BotPlugin.Priority` 在旧宿主上会被忽略。
+- 已有插件和适配器无需重新编译。使用 `GetHostStatus()`、带说明的 `MapWhen`、`MarkHandled()` / `IsHandled()` 或 `PluginActionResult.Details` 的组件需要宿主 1.0.2；`BotPlugin.Priority` 在旧宿主上会被忽略。
 - Docker 用户需要手动执行一次 `docker compose pull && docker compose up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
 - 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`。
 - `rebuild-container` 工作流只能重建 1.0.2 及之后的版本：更早版本的构建产物仍是多文件结构，与新的镜像构建方式不兼容。

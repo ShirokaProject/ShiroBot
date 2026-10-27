@@ -27,7 +27,23 @@ public sealed class Main : PluginBase, IPluginActionProvider
 }
 ```
 
-`PluginActionDescriptor.Id` 在同一插件内应唯一；`Label` 和 `Description` 用于显示。`RequiresConfirmation` 与 `ConfirmationText` 控制确认提示。`PluginActionResult.Ok` 和 `Message` 表示执行结果，`Refresh` 提示 Dashboard 刷新相关信息。示例里的处理分支应替换成实际业务逻辑，并在异步操作中使用传入的 `CancellationToken`。
+## 显示详细结果
+
+`Message` 是一句简短结果，Dashboard 用顶部提示、控制台用一行输出显示。需要用户认真阅读的内容（报告、生成的值、检查结果）放在 `Details`，可选 `Title` 作为标题（默认用操作的 `Label`）：
+
+```csharp
+"report" => Task.FromResult(new PluginActionResult(true, "报告已生成")
+{
+    Title = "运行报告",
+    Details = $"处理消息：{count} 条\n命令命中：{hits} 次\n最近错误：{lastError ?? "无"}"
+}),
+```
+
+设置了 `Details` 时，Dashboard 在屏幕中间弹出对话框，先显示 `Message`，下面是保留换行的 `Details`，内容过长时可滚动；控制台在输出区中间画出带边框的面板，并照常输出 `Message`。没有 `Details` 时行为不变。使用 `Details` 和 `Title` 的插件需要宿主 1.0.2。
+
+## 说明
+
+`PluginActionDescriptor.Id` 在同一插件内应唯一；`Label` 和 `Description` 用于显示。`RequiresConfirmation` 与 `ConfirmationText` 控制确认提示。`PluginActionResult.Ok` 和 `Message` 表示执行结果，`Refresh` 提示 Dashboard 刷新相关信息。示例里的处理分支应替换成实际业务逻辑，并在异步操作中使用传入的 `CancellationToken`。操作抛出异常时，Dashboard 和控制台都会显示“插件操作执行失败”及异常信息，完整异常写入日志；控制台不会因此停止响应。
 
 ## 从控制台执行
 

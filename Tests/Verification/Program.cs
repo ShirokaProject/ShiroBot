@@ -69,6 +69,12 @@ if (args is ["--plugin-priority"])
     return;
 }
 
+if (args is ["--plugin-actions"])
+{
+    await PluginActionsVerification.RunAsync();
+    return;
+}
+
 if (args is ["--memory-retention"])
 {
     await MemoryRetentionVerification.RunAsync();
@@ -130,6 +136,7 @@ DeferredShadowCleanupVerification.Run();
 await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
 await PluginPriorityVerification.RunAsync();
+await PluginActionsVerification.RunAsync();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();
 

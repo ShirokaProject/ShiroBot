@@ -94,24 +94,15 @@ internal sealed partial class HostHttpServer
                 return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
             }
 
-            if (!plugin.Supports<IPluginActionProvider>())
-            {
-                return Results.Ok(new { actions = Array.Empty<object>() });
-            }
-
             try
             {
-                var dispatch = await plugin.DispatchAsync<IPluginActionProvider, IReadOnlyList<PluginActionDescriptor>>(
-                    provider => Task.FromResult(provider.Actions)).ConfigureAwait(false);
-                if (!dispatch.Dispatched)
+                var listed = await PluginActions.ListAsync(plugin).ConfigureAwait(false);
+                if (listed is null)
                 {
                     return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
                 }
 
-                var actions = (dispatch.Result ?? [])
-                    .Where(action => !string.IsNullOrWhiteSpace(action.Id) && !string.IsNullOrWhiteSpace(action.Label))
-                    .GroupBy(action => action.Id, StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.First())
+                var actions = listed
                     .Select(action => new
                     {
                         id = action.Id,
@@ -133,7 +124,7 @@ internal sealed partial class HostHttpServer
             {
                 BotLog.Error($"读取插件 Dashboard actions 失败: {plugin.Name} - {ex.Message}");
                 return Results.Json(
-                    new { error = "action_provider_failed", message = "插件操作列表读取失败。" },
+                    new { error = "action_provider_failed", message = $"插件操作列表读取失败: {ex.Message}" },
                     statusCode: StatusCodes.Status500InternalServerError);
             }
         });
@@ -153,43 +144,26 @@ internal sealed partial class HostHttpServer
 
             try
             {
-                var dispatch = await plugin.DispatchAsync<IPluginActionProvider, PluginActionExecution>(
-                    async provider =>
+                var outcome = await PluginActions.ExecuteAsync(plugin, actionId, context.RequestAborted).ConfigureAwait(false);
+                return outcome.Status switch
+                {
+                    PluginActionStatus.Done => Results.Ok(new
                     {
-                        var descriptor = provider.Actions.FirstOrDefault(action =>
-                            string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
-                        if (descriptor is null)
-                        {
-                            return new PluginActionExecution(false, null);
-                        }
-
-                        var actionResult = await provider.ExecuteActionAsync(actionId, context.RequestAborted)
-                            .ConfigureAwait(false);
-                        return new PluginActionExecution(true, actionResult);
-                    }).ConfigureAwait(false);
-
-                if (!dispatch.Dispatched)
-                {
-                    return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
-                }
-
-                if (dispatch.Result is not { Found: true, Result: { } result })
-                {
-                    return Results.NotFound(new { error = "action_not_found", message = $"未找到插件操作: {actionId}" });
-                }
-
-                return Results.Ok(new { ok = result.Ok, message = result.Message, refresh = result.Refresh });
+                        ok = outcome.Result!.Ok,
+                        message = outcome.Message,
+                        refresh = outcome.Result.Refresh,
+                        title = outcome.Result.Title ?? outcome.Action!.Label,
+                        details = outcome.Result.Details
+                    }),
+                    PluginActionStatus.ActionNotFound => Results.NotFound(new { error = "action_not_found", message = outcome.Message }),
+                    PluginActionStatus.Unloading => Results.Conflict(new { error = "plugin_unloading", message = outcome.Message }),
+                    _ => Results.Json(new { ok = false, message = outcome.Message, refresh = false },
+                        statusCode: StatusCodes.Status500InternalServerError)
+                };
             }
             catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
             {
                 return Results.StatusCode(499);
-            }
-            catch (Exception ex)
-            {
-                BotLog.Error($"执行插件 Dashboard action 失败: {plugin.Name}/{actionId} - {ex.Message}");
-                return Results.Json(
-                    new { ok = false, message = "插件操作执行失败。", refresh = false },
-                    statusCode: StatusCodes.Status500InternalServerError);
             }
         });
 

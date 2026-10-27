@@ -340,7 +340,6 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
 
     private sealed record PluginConfigTarget(string Id, string AssemblyPath);
 
-    private sealed record PluginActionExecution(bool Found, PluginActionResult? Result);
 
     private sealed record ConfigSchemaItem(
         [property: JsonPropertyName("key")] string Key,

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Runtime.Versioning;
+using Spectre.Console;
 using Console = global::System.Console;
 
 namespace ShiroBot.Console;
@@ -33,6 +34,63 @@ public static class ConsoleOutput
     public static void Warning(string message) => WriteLine(message, ConsoleColor.Yellow);
 
     public static void Error(string message) => WriteLine(message, ConsoleColor.Red);
+
+    /// <summary>
+    /// A bordered box centred in the console, for text the user should read rather than skim past in the log,
+    /// such as an action's details. Spectre measures CJK width and wraps lines to the window.
+    /// </summary>
+    public static void Panel(string title, string body, bool error = false)
+    {
+        if (!IsEnabled) return;
+
+        var width = WindowWidth();
+        using var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Out = new AnsiConsoleOutput(writer),
+            Ansi = global::System.Console.IsOutputRedirected ? AnsiSupport.No : AnsiSupport.Yes,
+            ColorSystem = global::System.Console.IsOutputRedirected ? ColorSystemSupport.NoColors : ColorSystemSupport.Standard,
+            Interactive = InteractionSupport.No
+        });
+        console.Profile.Width = width;
+        console.Write(Align.Center(new Panel(new Text(body.TrimEnd()))
+        {
+            Header = new PanelHeader($" {Markup.Escape(title)} ", Justify.Center),
+            Border = BoxBorder.Rounded,
+            BorderStyle = new Style(error ? Color.Red : Color.Aqua),
+            Padding = new Padding(2, 1)
+        }));
+        console.WriteLine();
+
+        lock (OutputLock)
+        {
+            if (_isReadingInput)
+            {
+                ClearOverlayUnsafe();
+                SetCursorPositionSafe(0, _inputTop);
+            }
+
+            global::System.Console.Write(writer.ToString());
+
+            if (_isReadingInput)
+            {
+                _inputTop = global::System.Console.CursorTop;
+                RedrawInputUnsafe();
+            }
+        }
+    }
+
+    private static int WindowWidth()
+    {
+        try
+        {
+            return global::System.Console.IsOutputRedirected ? 80 : Math.Max(40, global::System.Console.WindowWidth);
+        }
+        catch (IOException)
+        {
+            return 80;
+        }
+    }
 
     public static void Clear()
     {

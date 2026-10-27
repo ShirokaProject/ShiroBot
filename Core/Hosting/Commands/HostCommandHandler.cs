@@ -81,117 +81,126 @@ internal sealed class HostCommandHandler(
                 input.StartsWith("log", StringComparison.CurrentCultureIgnoreCase))
             {
                 var splitInput = input.Split(null as char[], StringSplitOptions.RemoveEmptyEntries);
-                switch (NormalizeCommand(splitInput.FirstOrDefault()))
+                // One failing command (often a plugin's) must not end the loop: it runs in a fire-and-forget task,
+                // so an escaped exception would silently stop the console from reading input.
+                try
                 {
-                    case "exit":
-                    case "quit":
-                        exitRequested.TrySetResult(true);
-                        return;
-                    case "plugins":
-                        CH.Info(BuildLoadedPluginsText(pluginManager.GetLoadedPluginSnapshot()));
-                        break;
-                    case "adapters":
-                        CH.Info(BuildAdaptersText());
-                        break;
-                    case "adapter":
-                        CH.Info(HandleAdapterCommandAsync(splitInput).GetAwaiter().GetResult());
-                        break;
-                    case "load":
-                        if (splitInput.Length < 2)
-                        {
-                            CH.Warning("用法: load <插件名|dll路径>");
-                            break;
-                        }
-
-                        pluginManager.ScheduleLoadPluginByName(
-                            eventDispatcher,
-                            routePolicy,
-                            splitInput[1]).GetAwaiter().GetResult();
-                        break;
-                    case "unload":
-                        if (splitInput.Length < 2)
-                        {
-                            CH.Warning("用法: unload <插件名>");
-                            break;
-                        }
-
-                        pluginManager.ScheduleUnloadPluginByName(
-                            eventDispatcher,
-                            splitInput[1]).GetAwaiter().GetResult();
-                        break;
-                    case "restart":
+                    switch (NormalizeCommand(splitInput.FirstOrDefault()))
                     {
-                        if (_powerControl is null)
+                        case "exit":
+                        case "quit":
+                            exitRequested.TrySetResult(true);
+                            return;
+                        case "plugins":
+                            CH.Info(BuildLoadedPluginsText(pluginManager.GetLoadedPluginSnapshot()));
+                            break;
+                        case "adapters":
+                            CH.Info(BuildAdaptersText());
+                            break;
+                        case "adapter":
+                            CH.Info(HandleAdapterCommandAsync(splitInput).GetAwaiter().GetResult());
+                            break;
+                        case "load":
+                            if (splitInput.Length < 2)
+                            {
+                                CH.Warning("用法: load <插件名|dll路径>");
+                                break;
+                            }
+
+                            pluginManager.ScheduleLoadPluginByName(
+                                eventDispatcher,
+                                routePolicy,
+                                splitInput[1]).GetAwaiter().GetResult();
+                            break;
+                        case "unload":
+                            if (splitInput.Length < 2)
+                            {
+                                CH.Warning("用法: unload <插件名>");
+                                break;
+                            }
+
+                            pluginManager.ScheduleUnloadPluginByName(
+                                eventDispatcher,
+                                splitInput[1]).GetAwaiter().GetResult();
+                            break;
+                        case "restart":
                         {
-                            CH.Error("宿主尚未启动完成，暂时无法重启。");
+                            if (_powerControl is null)
+                            {
+                                CH.Error("宿主尚未启动完成，暂时无法重启。");
+                                break;
+                            }
+
+                            var result = _powerControl.Restart();
+                            if (result.Ok)
+                            {
+                                CH.Info(result.Message);
+                                return;
+                            }
+
+                            CH.Error(result.Message);
                             break;
                         }
+                        case "api":
+                            CH.Info(HandleApiCommand(splitInput));
+                            break;
+                        case "actions":
+                            CH.Info(BuildPluginActionListAsync().GetAwaiter().GetResult());
+                            break;
+                        case "action":
+                            CH.Info(ExecutePluginActionAsync(splitInput).GetAwaiter().GetResult());
+                            break;
+                        case "update":
+                            CH.Info(HandleUpdateCommandAsync(splitInput).GetAwaiter().GetResult());
+                            break;
+                        case "help":
+                            var orderedCommands = ConsoleCommands
+                                .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+                            var pluginActions = CollectPluginActionsAsync().GetAwaiter().GetResult();
+                            // Plugin entries are the long ones, so size the column across both.
+                            var nameWidth = Math.Max(
+                                Math.Max(orderedCommands.Max(command => command.Name.Length), 8),
+                                pluginActions.Count == 0
+                                    ? 0
+                                    : pluginActions.Max(entry => $"action {entry.PluginId} {entry.Action.Id}".Length)) + 2;
+                            var helpText = new StringBuilder()
+                                .AppendLine("可用命令")
+                                .AppendLine(new string('-', 24));
 
-                        var result = _powerControl.Restart();
-                        if (result.Ok)
-                        {
-                            CH.Info(result.Message);
-                            return;
-                        }
+                            foreach (var command in orderedCommands)
+                                helpText.Append("  ")
+                                    .Append(command.Name.PadRight(nameWidth))
+                                    .AppendLine(command.Description);
 
-                        CH.Error(result.Message);
-                        break;
+                            AppendPluginActions(helpText, pluginActions, nameWidth);
+
+                            CH.Info(helpText.ToString().TrimEnd());
+                            break;
+                        case "path":
+                            var path = HostPaths.Root;
+                            CH.Log("打开当前程序目录: " + path);
+                            Process.Start(new ProcessStartInfo
+                            {
+                                FileName = path,
+                                UseShellExecute = true
+                            });
+                            break;
+                        case "log":
+                            CH.IsEnabled = !CH.IsEnabled;
+                            CH.Log(CH.IsEnabled ? "已开启日志输出" : "已关闭日志输出");
+                            break;
+                        case "clear":
+                            CH.Clear();
+                            break;
+                        default:
+                            CH.Warning($"未知命令: {input}");
+                            break;
                     }
-                    case "api":
-                        CH.Info(HandleApiCommand(splitInput));
-                        break;
-                    case "actions":
-                        CH.Info(BuildPluginActionListAsync().GetAwaiter().GetResult());
-                        break;
-                    case "action":
-                        CH.Info(ExecutePluginActionAsync(splitInput).GetAwaiter().GetResult());
-                        break;
-                    case "update":
-                        CH.Info(HandleUpdateCommandAsync(splitInput).GetAwaiter().GetResult());
-                        break;
-                    case "help":
-                        var orderedCommands = ConsoleCommands
-                            .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-                        var pluginActions = CollectPluginActionsAsync().GetAwaiter().GetResult();
-                        // Plugin entries are the long ones, so size the column across both.
-                        var nameWidth = Math.Max(
-                            Math.Max(orderedCommands.Max(command => command.Name.Length), 8),
-                            pluginActions.Count == 0
-                                ? 0
-                                : pluginActions.Max(entry => $"action {entry.PluginId} {entry.Action.Id}".Length)) + 2;
-                        var helpText = new StringBuilder()
-                            .AppendLine("可用命令")
-                            .AppendLine(new string('-', 24));
-
-                        foreach (var command in orderedCommands)
-                            helpText.Append("  ")
-                                .Append(command.Name.PadRight(nameWidth))
-                                .AppendLine(command.Description);
-
-                        AppendPluginActions(helpText, pluginActions, nameWidth);
-
-                        CH.Info(helpText.ToString().TrimEnd());
-                        break;
-                    case "path":
-                        var path = HostPaths.Root;
-                        CH.Log("打开当前程序目录: " + path);
-                        Process.Start(new ProcessStartInfo
-                        {
-                            FileName = path,
-                            UseShellExecute = true
-                        });
-                        break;
-                    case "log":
-                        CH.IsEnabled = !CH.IsEnabled;
-                        CH.Log(CH.IsEnabled ? "已开启日志输出" : "已关闭日志输出");
-                        break;
-                    case "clear":
-                        CH.Clear();
-                        break;
-                    default:
-                        CH.Warning($"未知命令: {input}");
-                        break;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    CH.Error($"命令执行失败: {input} - {ex.Message}");
                 }
             }
             else
@@ -440,31 +449,8 @@ internal sealed class HostCommandHandler(
                 $"{item.Id} | {item.Target} | {item.Name} {item.CurrentVersion} -> {item.LatestVersion}"));
     }
 
-    private async Task<IReadOnlyList<(string PluginId, PluginActionDescriptor Action)>> CollectPluginActionsAsync()
-    {
-        var collected = new List<(string PluginId, PluginActionDescriptor Action)>();
-
-        foreach (var plugin in pluginManager.GetLoadedPluginSnapshot()
-                     .OrderBy(plugin => plugin.Name, StringComparer.OrdinalIgnoreCase))
-        {
-            if (!plugin.Supports<IPluginActionProvider>()) continue;
-
-            var dispatch = await plugin
-                .DispatchAsync<IPluginActionProvider, IReadOnlyList<PluginActionDescriptor>>(
-                    provider => Task.FromResult(provider.Actions))
-                .ConfigureAwait(false);
-            if (!dispatch.Dispatched || dispatch.Result is null) continue;
-
-            var actions = dispatch.Result
-                .Where(action => !string.IsNullOrWhiteSpace(action.Id) && !string.IsNullOrWhiteSpace(action.Label))
-                .GroupBy(action => action.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(group => group.First());
-
-            foreach (var action in actions) collected.Add((plugin.Name, action));
-        }
-
-        return collected;
-    }
+    private Task<IReadOnlyList<(string PluginId, PluginActionDescriptor Action)>> CollectPluginActionsAsync() =>
+        PluginActions.ListAllAsync(pluginManager);
 
     private static void AppendPluginActions(
         StringBuilder text,
@@ -511,20 +497,12 @@ internal sealed class HostCommandHandler(
 
         var pluginId = splitInput[1];
         var actionId = splitInput[2];
-
-        var plugin = pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, pluginId, StringComparison.OrdinalIgnoreCase));
+        var plugin = PluginActions.FindPlugin(pluginManager, pluginId);
         if (plugin is null) return $"未找到已加载插件: {pluginId}";
-        if (!plugin.Supports<IPluginActionProvider>()) return $"插件 {pluginId} 未提供操作。";
 
-        var descriptors = await plugin
-            .DispatchAsync<IPluginActionProvider, IReadOnlyList<PluginActionDescriptor>>(
-                provider => Task.FromResult(provider.Actions))
-            .ConfigureAwait(false);
-        if (!descriptors.Dispatched) return $"插件 {pluginId} 正在卸载。";
-
-        var descriptor = descriptors.Result?.FirstOrDefault(action =>
-            string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
+        var actions = await PluginActions.ListAsync(plugin).ConfigureAwait(false);
+        if (actions is null) return $"插件 {pluginId} 正在卸载。";
+        var descriptor = actions.FirstOrDefault(action => string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
         if (descriptor is null) return $"未找到插件操作: {actionId}";
 
         if (descriptor.RequiresConfirmation)
@@ -536,16 +514,14 @@ internal sealed class HostCommandHandler(
             if (!string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase)) return "已取消。";
         }
 
-        var execution = await plugin
-            .DispatchAsync<IPluginActionProvider, PluginActionResult?>(
-                async provider => await provider.ExecuteActionAsync(actionId).ConfigureAwait(false))
-            .ConfigureAwait(false);
-        if (!execution.Dispatched) return $"插件 {pluginId} 正在卸载。";
+        var outcome = await PluginActions.ExecuteAsync(plugin, descriptor.Id).ConfigureAwait(false);
+        if (outcome.Result is not { } result) return outcome.Message;
 
-        var result = execution.Result;
-        if (result is null) return $"插件操作没有返回结果: {actionId}";
-
-        return result.Ok ? result.Message : $"操作失败: {result.Message}";
+        var summary = result.Ok ? result.Message : $"操作失败: {result.Message}";
+        if (string.IsNullOrWhiteSpace(result.Details)) return summary;
+        // Details are meant to be read: show them in a centred panel, headed like the Dashboard dialog.
+        CH.Panel(result.Title ?? descriptor.Label, result.Details, !result.Ok);
+        return summary;
     }
 
     private static IReadOnlyList<CH.ConsoleCommandOption> BuildConsoleCompletions(
