@@ -328,10 +328,10 @@ internal sealed class AdapterManager(
         {
             // A restored instance owns a fresh shadow; the previous one is no longer needed.
             if (Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
-                global::System.Console.WriteLine($"Adapter reload probe: deleting old shadow {entry.ShadowRoot}");
+                Console.WriteLine($"Adapter reload probe: deleting old shadow {entry.ShadowRoot}");
             TryDeleteDirectory(entry.ShadowRoot);
             if (Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
-                global::System.Console.WriteLine("Adapter reload probe: old shadow deleted");
+                Console.WriteLine("Adapter reload probe: old shadow deleted");
         }
     }
 
@@ -356,7 +356,7 @@ internal sealed class AdapterManager(
         void TraceLoad(string stage)
         {
             if (Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
-                global::System.Console.WriteLine($"Adapter load probe: {stage}: {adapterPath}");
+                Console.WriteLine($"Adapter load probe: {stage}: {adapterPath}");
         }
         TraceLoad("begin");
         if (!File.Exists(adapterPath)) throw new FileNotFoundException("Adapter DLL 不存在。", adapterPath);

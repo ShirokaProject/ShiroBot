@@ -26,7 +26,7 @@ using ShiroBot.Plugins;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Marketplace;
 using ShiroBot.Update;
-using ShiroBot.Console;
+using ShiroBot.TerminalUI;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Plugin;

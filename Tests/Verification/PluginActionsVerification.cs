@@ -5,7 +5,7 @@ using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Services;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Plugin;
-using CH = ShiroBot.Console.ConsoleOutput;
+using CH = ShiroBot.TerminalUI.ConsoleOutput;
 
 internal static class PluginActionsVerification
 {

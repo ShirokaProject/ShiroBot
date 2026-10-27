@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ShiroBot.Plugins;
-using ShiroBot.Console;
+using ShiroBot.TerminalUI;
 
 namespace ShiroBot.Plugins.Loading;
 

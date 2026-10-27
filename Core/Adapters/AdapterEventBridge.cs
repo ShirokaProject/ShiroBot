@@ -1,7 +1,7 @@
 using System.Threading.Channels;
 using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Models;
-using CH = ShiroBot.Console.ConsoleOutput;
+using CH = ShiroBot.TerminalUI.ConsoleOutput;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Context;
 

@@ -1,6 +1,6 @@
 using ShiroBot.Configuration;
 using ShiroBot.Adapters;
-using ShiroBot.Console;
+using ShiroBot.TerminalUI;
 using ShiroBot.SDK.Config;
 using System.Reflection;
 namespace ShiroBot.Hosting.Context;
@@ -99,7 +99,7 @@ internal sealed class ConfigContext : IConfigContext
     private void TraceConfig(string stage, Type configType)
     {
         if (string.Equals(Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS"), "true", StringComparison.OrdinalIgnoreCase))
-            global::System.Console.WriteLine($"Config probe [{_instanceId ?? _displayName}]: {stage}: {configType.FullName}");
+            Console.WriteLine($"Config probe [{_instanceId ?? _displayName}]: {stage}: {configType.FullName}");
     }
 
     public void SetValue(string keyPath, object? value)

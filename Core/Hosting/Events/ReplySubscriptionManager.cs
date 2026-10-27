@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using ShiroBot.Hosting.Context;
-using ShiroBot.Console;
+using ShiroBot.TerminalUI;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 

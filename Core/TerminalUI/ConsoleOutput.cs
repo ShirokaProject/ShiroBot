@@ -1,9 +1,8 @@
 using System.Text;
 using System.Runtime.Versioning;
 using Spectre.Console;
-using Console = global::System.Console;
 
-namespace ShiroBot.Console;
+namespace ShiroBot.TerminalUI;
 
 public static class ConsoleOutput
 {
@@ -48,8 +47,8 @@ public static class ConsoleOutput
         var console = AnsiConsole.Create(new AnsiConsoleSettings
         {
             Out = new AnsiConsoleOutput(writer),
-            Ansi = global::System.Console.IsOutputRedirected ? AnsiSupport.No : AnsiSupport.Yes,
-            ColorSystem = global::System.Console.IsOutputRedirected ? ColorSystemSupport.NoColors : ColorSystemSupport.Standard,
+            Ansi = Console.IsOutputRedirected ? AnsiSupport.No : AnsiSupport.Yes,
+            ColorSystem = Console.IsOutputRedirected ? ColorSystemSupport.NoColors : ColorSystemSupport.Standard,
             Interactive = InteractionSupport.No
         });
         console.Profile.Width = width;
@@ -70,11 +69,11 @@ public static class ConsoleOutput
                 SetCursorPositionSafe(0, _inputTop);
             }
 
-            global::System.Console.Write(writer.ToString());
+            Console.Write(writer.ToString());
 
             if (_isReadingInput)
             {
-                _inputTop = global::System.Console.CursorTop;
+                _inputTop = Console.CursorTop;
                 RedrawInputUnsafe();
             }
         }
@@ -84,7 +83,7 @@ public static class ConsoleOutput
     {
         try
         {
-            return global::System.Console.IsOutputRedirected ? 80 : Math.Max(40, global::System.Console.WindowWidth);
+            return Console.IsOutputRedirected ? 80 : Math.Max(40, Console.WindowWidth);
         }
         catch (IOException)
         {
@@ -96,10 +95,10 @@ public static class ConsoleOutput
     {
         lock (OutputLock)
         {
-            global::System.Console.Clear();
+            Console.Clear();
             if (_isReadingInput)
             {
-                _inputTop = global::System.Console.CursorTop;
+                _inputTop = Console.CursorTop;
                 RedrawInputUnsafe();
             }
         }
@@ -122,7 +121,7 @@ public static class ConsoleOutput
             _cursorIndex = 0;
             _historyIndex = History.Count;
             _historyDraft = string.Empty;
-            _inputTop = global::System.Console.CursorTop;
+            _inputTop = Console.CursorTop;
             _inlineCompletionSuffix = string.Empty;
             RedrawInputUnsafe();
         }
@@ -135,13 +134,13 @@ public static class ConsoleOutput
                 // Workaround for Linux/Mac: Console.ReadKey blocks stdout
                 if (!OperatingSystem.IsWindows())
                 {
-                    while (!global::System.Console.KeyAvailable)
+                    while (!Console.KeyAvailable)
                     {
                         Thread.Sleep(10);
                     }
                 }
                 
-                key = global::System.Console.ReadKey(intercept: true);
+                key = Console.ReadKey(intercept: true);
             }
             catch
             {
@@ -271,12 +270,12 @@ public static class ConsoleOutput
         lock (OutputLock)
         {
             _completionOptions = completions;
-            global::System.Console.ForegroundColor = ConsoleColor.Gray;
-            global::System.Console.Write(prompt);
-            global::System.Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.Gray;
+            Console.Write(prompt);
+            Console.ResetColor();
         }
 
-        var input = global::System.Console.ReadLine() ?? string.Empty;
+        var input = Console.ReadLine() ?? string.Empty;
 
         if (!string.IsNullOrWhiteSpace(input) &&
             (History.Count == 0 || !string.Equals(History[^1], input, StringComparison.Ordinal)))
@@ -388,14 +387,14 @@ public static class ConsoleOutput
                 SetCursorPositionSafe(0, _inputTop);
             }
 
-            var previous = global::System.Console.ForegroundColor;
-            global::System.Console.ForegroundColor = color;
-            global::System.Console.WriteLine($"{Timestamp()} {message}");
-            global::System.Console.ForegroundColor = previous;
+            var previous = Console.ForegroundColor;
+            Console.ForegroundColor = color;
+            Console.WriteLine($"{Timestamp()} {message}");
+            Console.ForegroundColor = previous;
 
             if (_isReadingInput)
             {
-                _inputTop = global::System.Console.CursorTop;
+                _inputTop = Console.CursorTop;
                 RedrawInputUnsafe();
             }
         }
@@ -419,7 +418,7 @@ public static class ConsoleOutput
     private static string GetRenderedInputUnsafe()
     {
         var content = _activePrompt + InputBuffer;
-        var width = Math.Max(1, global::System.Console.BufferWidth);
+        var width = Math.Max(1, Console.BufferWidth);
         if (content.Length <= width - 1)
         {
             return content;
@@ -442,7 +441,7 @@ public static class ConsoleOutput
 
     private static void RenderInputLineUnsafe()
     {
-        var width = Math.Max(1, global::System.Console.BufferWidth);
+        var width = Math.Max(1, Console.BufferWidth);
         var renderedInput = GetRenderedInputUnsafe();
         var visibleSuffix = _inlineCompletionSuffix;
 
@@ -451,28 +450,28 @@ public static class ConsoleOutput
             visibleSuffix = visibleSuffix[..Math.Max(0, width - 1 - renderedInput.Length)];
         }
 
-        global::System.Console.ForegroundColor = ConsoleColor.Gray;
-        global::System.Console.Write(renderedInput);
+        Console.ForegroundColor = ConsoleColor.Gray;
+        Console.Write(renderedInput);
         if (!string.IsNullOrEmpty(visibleSuffix))
         {
-            var previous = global::System.Console.ForegroundColor;
-            global::System.Console.ForegroundColor = ConsoleColor.DarkGray;
-            global::System.Console.Write(visibleSuffix);
-            global::System.Console.ForegroundColor = previous;
+            var previous = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Write(visibleSuffix);
+            Console.ForegroundColor = previous;
         }
 
         var written = renderedInput.Length + visibleSuffix.Length;
         if (written < width)
         {
-            global::System.Console.Write(new string(' ', width - written));
+            Console.Write(new string(' ', width - written));
         }
     }
 
     private static void ClearOverlayUnsafe()
     {
-        var width = Math.Max(1, global::System.Console.BufferWidth);
+        var width = Math.Max(1, Console.BufferWidth);
         SetCursorPositionSafe(0, _inputTop);
-        global::System.Console.Write(new string(' ', width));
+        Console.Write(new string(' ', width));
         SetCursorPositionSafe(0, _inputTop);
     }
 
@@ -483,7 +482,7 @@ public static class ConsoleOutput
             return;
         }
 
-        var width = Math.Max(1, global::System.Console.BufferWidth);
+        var width = Math.Max(1, Console.BufferWidth);
         var promptLength = _activePrompt.Length;
         var visibleWidth = Math.Max(1, width - 1);
         var windowStart = Math.Max(0, _cursorIndex - Math.Max(0, visibleWidth - promptLength - 1));
@@ -497,8 +496,8 @@ public static class ConsoleOutput
     {
         try
         {
-            var maxTop = Math.Max(0, global::System.Console.BufferHeight - global::System.Console.WindowHeight);
-            global::System.Console.WindowTop = Math.Clamp(global::System.Console.WindowTop + delta, 0, maxTop);
+            var maxTop = Math.Max(0, Console.BufferHeight - Console.WindowHeight);
+            Console.WindowTop = Math.Clamp(Console.WindowTop + delta, 0, maxTop);
         }
         catch
         {
@@ -510,8 +509,8 @@ public static class ConsoleOutput
 
     private static void SetCursorPositionSafe(int left, int top)
     {
-        var safeLeft = Math.Clamp(left, 0, Math.Max(0, global::System.Console.BufferWidth - 1));
-        var safeTop = Math.Clamp(top, 0, Math.Max(0, global::System.Console.BufferHeight - 1));
-        global::System.Console.SetCursorPosition(safeLeft, safeTop);
+        var safeLeft = Math.Clamp(left, 0, Math.Max(0, Console.BufferWidth - 1));
+        var safeTop = Math.Clamp(top, 0, Math.Max(0, Console.BufferHeight - 1));
+        Console.SetCursorPosition(safeLeft, safeTop);
     }
 }

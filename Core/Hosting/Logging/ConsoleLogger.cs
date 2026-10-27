@@ -1,4 +1,4 @@
-using ShiroBot.Console;
+using ShiroBot.TerminalUI;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Logging;

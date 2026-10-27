@@ -1,5 +1,5 @@
 using ShiroBot.Hosting.Context;
-using CH = ShiroBot.Console.ConsoleOutput;
+using CH = ShiroBot.TerminalUI.ConsoleOutput;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.Update;
 

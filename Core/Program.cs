@@ -23,7 +23,7 @@ using ShiroBot.Model.Discord;
 using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
 using ShiroBot.SDK.Abstractions;
-using CH = ShiroBot.Console.ConsoleOutput;
+using CH = ShiroBot.TerminalUI.ConsoleOutput;
 using ShiroBot.Components.Updates;
 
 namespace ShiroBot;
@@ -48,7 +48,7 @@ public static class Program
         // Lets the updater and the container entrypoint confirm this executable runs here before using it.
         if (args is [HostSelfUpdater.SelfCheckArgument])
         {
-            global::System.Console.WriteLine(HostSelfUpdater.CurrentVersion);
+            Console.WriteLine(HostSelfUpdater.CurrentVersion);
             return;
         }
         if (await TryRunAdapterManagementCommandAsync(args).ConfigureAwait(false)) return;
@@ -60,13 +60,13 @@ public static class Program
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            global::System.Console.Error.WriteLine("无法锁定宿主运行目录: " + error.Message);
+            Console.Error.WriteLine("无法锁定宿主运行目录: " + error.Message);
             Environment.ExitCode = 1;
             return;
         }
         if (acquiredLock is null)
         {
-            global::System.Console.Error.WriteLine($"此目录已有 ShiroBot 正在运行，不能重复启动: {BasePath}");
+            Console.Error.WriteLine($"此目录已有 ShiroBot 正在运行，不能重复启动: {BasePath}");
             Environment.ExitCode = 1;
             return;
         }
@@ -117,7 +117,7 @@ public static class Program
             eventArgs.Cancel = true;
             RequestShutdown();
         };
-        global::System.Console.CancelKeyPress += cancelKeyPressHandler;
+        Console.CancelKeyPress += cancelKeyPressHandler;
 
         if (!OperatingSystem.IsWindows())
         {
@@ -328,7 +328,7 @@ public static class Program
 
             // ─── 控制台交互 ───
             var configuredConsoleOption = parserResult.GetValue(noConsoleOption);
-            var hasConsole = Environment.UserInteractive && !global::System.Console.IsInputRedirected && !global::System.Console.IsOutputRedirected;
+            var hasConsole = Environment.UserInteractive && !Console.IsInputRedirected && !Console.IsOutputRedirected;
             var enableConsoleInput = hasConsole && !configuredConsoleOption && !coreConfig.DisableConsoleInput;
 
             if (enableConsoleInput)
@@ -374,7 +374,7 @@ public static class Program
         }
         finally
         {
-            global::System.Console.CancelKeyPress -= cancelKeyPressHandler;
+            Console.CancelKeyPress -= cancelKeyPressHandler;
             sigintRegistration?.Dispose();
             sigtermRegistration?.Dispose();
 
@@ -505,37 +505,37 @@ public static class Program
             {
                 case "list":
                     var installed = packages.ListInstances();
-                    foreach (var package in packages.List()) global::System.Console.WriteLine($"package={package.Id}\t{package.Version}\t{installed.Count(item => item.PackageId == package.Id)} instances");
+                    foreach (var package in packages.List()) Console.WriteLine($"package={package.Id}\t{package.Version}\t{installed.Count(item => item.PackageId == package.Id)} instances");
                     if (installed.Count == 0)
                     {
-                        global::System.Console.WriteLine("No adapter instances. Use adapter create <package-id> <unique-id>.");
+                        Console.WriteLine("No adapter instances. Use adapter create <package-id> <unique-id>.");
                         break;
                     }
                     foreach (var adapter in installed)
-                        global::System.Console.WriteLine($"{adapter.Id}\tpackage={adapter.PackageId}\t{(adapter.Enabled ? "enabled" : "disabled")}\t{adapter.ConfigPath}");
+                        Console.WriteLine($"{adapter.Id}\tpackage={adapter.PackageId}\t{(adapter.Enabled ? "enabled" : "disabled")}\t{adapter.ConfigPath}");
                     break;
                 case "create":
                     var sourceId = GetCommandArgument(args, 2);
                     var instanceId = GetCommandArgument(args, 3);
                     var created = packages.CreateInstance(sourceId, instanceId, GetOptionValue(args, "--name"));
-                    global::System.Console.WriteLine($"Created disabled instance {created.Id}; edit {created.ConfigPath}, then enable it.");
+                    Console.WriteLine($"Created disabled instance {created.Id}; edit {created.ConfigPath}, then enable it.");
                     break;
                 case "enable":
                 case "disable":
                     var selectedId = GetCommandArgument(args, 2);
                     packages.SetInstanceEnabled(selectedId, action == "enable");
-                    global::System.Console.WriteLine($"Instance {selectedId} {(action == "enable" ? "enabled" : "disabled")}; takes effect next start.");
+                    Console.WriteLine($"Instance {selectedId} {(action == "enable" ? "enabled" : "disabled")}; takes effect next start.");
                     break;
                 case "config":
                     var selected = packages.GetInstance(GetCommandArgument(args, 2)) ?? throw new InvalidOperationException("Adapter instance not found.");
                     Directory.CreateDirectory(Path.GetDirectoryName(selected.ConfigPath)!);
                     if (!File.Exists(selected.ConfigPath)) File.WriteAllText(selected.ConfigPath, "");
-                    global::System.Console.WriteLine(selected.ConfigPath);
+                    Console.WriteLine(selected.ConfigPath);
                     break;
                 case "remove-package":
                     var removePackageId = GetCommandArgument(args, 2);
                     packages.Uninstall(removePackageId);
-                    global::System.Console.WriteLine($"Removed adapter package and all its instances: {removePackageId}.");
+                    Console.WriteLine($"Removed adapter package and all its instances: {removePackageId}.");
                     break;
                 case "verify":
                     var verifyPath = GetCommandArgument(args, 2);
@@ -543,7 +543,7 @@ public static class Program
                     try
                     {
                         var probe = packages.Prepare(verifyPath, verifyRoot);
-                        global::System.Console.WriteLine($"Valid adapter package: {probe.Id}");
+                        Console.WriteLine($"Valid adapter package: {probe.Id}");
                     }
                     finally
                     {
@@ -560,7 +560,7 @@ public static class Program
                             throw new InvalidOperationException($"Adapter {probe.Id} is already installed. Pass --replace to replace it.");
                         var enabled = !args.Contains("--no-enable", StringComparer.OrdinalIgnoreCase);
                         var result = packages.Install(probe, enabled);
-                        global::System.Console.WriteLine($"Installed package {result.Id} to {result.AssemblyPath}; create an instance with adapter create {result.Id} <unique-id>");
+                        Console.WriteLine($"Installed package {result.Id} to {result.AssemblyPath}; create an instance with adapter create {result.Id} <unique-id>");
                     }
                     finally
                     {
@@ -571,24 +571,24 @@ public static class Program
                 case "uninstall":
                     var id = GetCommandArgument(args, 2);
                     packages.DeleteInstance(id);
-                    global::System.Console.WriteLine($"Removed adapter instance {id}.");
+                    Console.WriteLine($"Removed adapter instance {id}.");
                     break;
                 default:
-                    global::System.Console.WriteLine("Adapter management commands:");
-                    global::System.Console.WriteLine("  ShiroBot adapter list [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter verify <dll|zip> [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter install <dll|zip> [--replace] [--no-enable] [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter create <package-id> <instance-id> [--name <name>] [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter config <instance-id> [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter enable|disable <instance-id> [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter remove <instance-id> [--adapter-dir <path>]");
-                    global::System.Console.WriteLine("  ShiroBot adapter remove-package <package-id> [--adapter-dir <path>]");
+                    Console.WriteLine("Adapter management commands:");
+                    Console.WriteLine("  ShiroBot adapter list [--adapter-dir <path>]");
+                    Console.WriteLine("  ShiroBot adapter verify <dll|zip> [--adapter-dir <path>]");
+                    Console.WriteLine("  ShiroBot adapter install <dll|zip> [--replace] [--no-enable] [--adapter-dir <path>]");
+                    Console.WriteLine("  ShiroBot adapter create <package-id> <instance-id> [--name <name>] [--adapter-dir <path>]");
+                    Console.WriteLine("  ShiroBot adapter config <instance-id> [--adapter-dir <path>]");
+                    Console.WriteLine("  ShiroBot adapter enable|disable <instance-id> [--adapter-dir <path>]");
+                    Console.WriteLine("  ShiroBot adapter remove <instance-id> [--adapter-dir <path>]");
+                    Console.WriteLine("  ShiroBot adapter remove-package <package-id> [--adapter-dir <path>]");
                     break;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            global::System.Console.Error.WriteLine("Adapter command failed: " + ex.Message);
+            Console.Error.WriteLine("Adapter command failed: " + ex.Message);
             Environment.ExitCode = 1;
         }
 
