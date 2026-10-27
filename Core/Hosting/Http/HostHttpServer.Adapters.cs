@@ -236,7 +236,7 @@ internal sealed partial class HostHttpServer
         api.MapPost("/adapters/upload/{uploadId}/confirm", async (string uploadId, HttpContext context) =>
         {
             var root = GetAdapterUploadRoot(uploadId);
-            if (!Directory.Exists(root)) return Results.NotFound(new { error = "upload_not_found" });
+            if (!Directory.Exists(root)) return Results.NotFound(new { error = "upload_not_found", message = "上传的适配器包已过期或不存在，请重新上传。" });
             var request = await JsonSerializer.DeserializeAsync<AdapterUploadConfirmRequest>(context.Request.Body, JsonSerializerOptions.Web, context.RequestAborted).ConfigureAwait(false) ?? new();
             try
             {
@@ -285,7 +285,7 @@ internal sealed partial class HostHttpServer
         api.MapDelete("/adapters/upload/{uploadId}", (string uploadId) => { TryDeleteDirectory(GetAdapterUploadRoot(uploadId)); return Results.Ok(new { ok = true }); });
         api.MapPost("/adapters/install/github", async (AdapterGitHubInstallRequest request, HttpContext context) =>
         {
-            if (!TryNormalizeGitHubRepository(request.Repository, out var repository)) return Results.BadRequest(new { error = "invalid_repository" });
+            if (!TryNormalizeGitHubRepository(request.Repository, out var repository)) return Results.BadRequest(new { error = "invalid_repository", message = "仓库地址无效，请填写 owner/repo 或 GitHub 仓库链接。" });
             string assetUrl;
             string assetName;
             string? digest = null;
@@ -297,7 +297,7 @@ internal sealed partial class HostHttpServer
             else
             {
                 var release = await Updater.GetLatestPluginPackageAsync(repository, request.IncludePrerelease, context.RequestAborted).ConfigureAwait(false);
-                if (release is null || string.IsNullOrWhiteSpace(release.AssetDownloadUrl) || string.IsNullOrWhiteSpace(release.AssetName)) return Results.NotFound(new { error = "release_not_found" });
+                if (release is null || string.IsNullOrWhiteSpace(release.AssetDownloadUrl) || string.IsNullOrWhiteSpace(release.AssetName)) return Results.NotFound(new { error = "release_not_found", message = "该仓库没有可安装的适配器 Release。" });
                 assetUrl = release.AssetDownloadUrl;
                 assetName = release.AssetName;
             }
@@ -318,7 +318,7 @@ internal sealed partial class HostHttpServer
         {
             try
             {
-                var instance = adapterPackages.GetInstance(id); if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                var instance = adapterPackages.GetInstance(id); if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", message = $"未找到适配器: {id}", restartRequired = false });
                 if (!instance.PackageEnabled) return Results.Conflict(new { ok = false, error = "adapter_package_disabled", message = "适配器已关闭，请先打开适配器。", restartRequired = false });
                 await reloadCoordinator.ExecuteAdapterStartAsync(async () => { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); adapterPackages.SetInstanceEnabled(instance.Id, true); }).ConfigureAwait(false);
                 return Results.Ok(new { ok = true, restartRequired = false });
@@ -332,7 +332,7 @@ internal sealed partial class HostHttpServer
         {
             try
             {
-                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", message = $"未找到适配器: {id}", restartRequired = false });
                 var failed = new List<string>();
                 await reloadCoordinator.ExecuteAdapterStartAsync(async () =>
                 {
@@ -349,7 +349,7 @@ internal sealed partial class HostHttpServer
         {
             try
             {
-                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", message = $"未找到适配器: {id}", restartRequired = false });
                 var restartRequired = false;
                 await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                 {
@@ -366,7 +366,7 @@ internal sealed partial class HostHttpServer
         {
             try
             {
-                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", message = $"未找到适配器: {id}", restartRequired = false });
                 var reloaded = 0;
                 await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                 {
@@ -385,7 +385,7 @@ internal sealed partial class HostHttpServer
         {
             try
             {
-                if (adapterPackages.Get(id) is null) return Results.NotFound(new { error = "adapter_not_found" });
+                if (adapterPackages.Get(id) is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到适配器包: {id}" });
                 var restartRequired = false;
                 await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                 {
@@ -408,7 +408,7 @@ internal sealed partial class HostHttpServer
             try
             {
                 var instance = adapterPackages.GetInstance(id);
-                if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", restartRequired = false });
+                if (instance is null) return Results.NotFound(new { ok = false, error = "adapter_not_found", message = $"未找到适配器: {id}", restartRequired = false });
                 var newId = string.IsNullOrWhiteSpace(request.Id) ? instance.Id : request.Id.Trim();
                 var renamed = !string.Equals(newId, instance.Id, StringComparison.OrdinalIgnoreCase);
                 InstalledAdapterInstance? updated = null;

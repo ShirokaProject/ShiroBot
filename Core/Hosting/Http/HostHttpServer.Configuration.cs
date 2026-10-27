@@ -49,14 +49,14 @@ internal sealed partial class HostHttpServer
             }
             catch (JsonException)
             {
-                return Results.BadRequest(new { ok = false, msg = "配置格式不是有效 JSON" });
+                return Results.BadRequest(new { ok = false, message = "配置格式不是有效 JSON", msg = "配置格式不是有效 JSON" });
             }
 
             using (document)
             {
                 if (document.RootElement.ValueKind != JsonValueKind.Object)
                 {
-                    return Results.BadRequest(new { ok = false, msg = "配置更新内容必须是对象" });
+                    return Results.BadRequest(new { ok = false, message = "配置更新内容必须是对象", msg = "配置更新内容必须是对象" });
                 }
 
                 try
@@ -64,7 +64,7 @@ internal sealed partial class HostHttpServer
                     if (!document.RootElement.TryGetProperty("config", out var configPatch) ||
                         configPatch.ValueKind != JsonValueKind.Object)
                     {
-                        return Results.BadRequest(new { ok = false, msg = "请求必须包含 config 对象。" });
+                        return Results.BadRequest(new { ok = false, message = "请求必须包含 config 对象。", msg = "请求必须包含 config 对象。" });
                     }
 
                     ApplyConfigPatch(configPatch, config, configManager, configPath);
@@ -77,7 +77,7 @@ internal sealed partial class HostHttpServer
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { ok = false, msg = ex.Message });
+                    return Results.BadRequest(new { ok = false, message = ex.Message, msg = ex.Message });
                 }
             }
         });
@@ -110,10 +110,23 @@ internal sealed partial class HostHttpServer
     /// </summary>
     private static string[] NormalizePermissionList(IEnumerable<string> entries) =>
         entries.Where(entry => !string.IsNullOrWhiteSpace(entry))
-            .Select(ShiroBot.SDK.Models.UserReference.Parse)
+            .Select(ParsePermissionEntry)
             .DistinctBy(entry => (entry.InstanceId.ToUpperInvariant(), entry.UserId))
             .Select(entry => entry.ToConfigString())
             .ToArray();
+
+    private static ShiroBot.SDK.Models.UserReference ParsePermissionEntry(string entry)
+    {
+        try
+        {
+            return ShiroBot.SDK.Models.UserReference.Parse(entry);
+        }
+        catch (Exception error) when (error is FormatException or ArgumentException)
+        {
+            throw new InvalidOperationException(
+                $"权限列表中的「{entry.Trim()}」格式不对：需要写成 实例ID:用户ID（如 qq:10001），不能只写账号。", error);
+        }
+    }
 
     private static void ApplyConfigPatch(
         JsonElement patch,
@@ -148,15 +161,8 @@ internal sealed partial class HostHttpServer
         var hasShowid = TryGetBool(patch, "showid", out var showid);
         var hasOwners = TryGetIdArray(patch, "owner_list", out var ownerList);
         var hasAdmins = TryGetIdArray(patch, "admin_list", out var adminList);
-        try
-        {
-            if (hasOwners) ownerList = NormalizePermissionList(ownerList);
-            if (hasAdmins) adminList = NormalizePermissionList(adminList);
-        }
-        catch (Exception error) when (error is FormatException or ArgumentException)
-        {
-            throw new InvalidOperationException("权限列表必须使用 instanceId:userId，不能填写裸用户 ID。", error);
-        }
+        if (hasOwners) ownerList = NormalizePermissionList(ownerList);
+        if (hasAdmins) adminList = NormalizePermissionList(adminList);
         // Auto switches by the clock (dark 18:00–06:00); older dashboards sent "System" for it.
         string? avaloniaTheme = TryGetString(patch, "avalonia_theme", out var requestedTheme)
             ? requestedTheme.Trim().ToLowerInvariant() switch
