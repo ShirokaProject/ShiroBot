@@ -151,7 +151,7 @@ internal sealed partial class HostHttpServer
         });
 
         api.MapGet("/adapter-packages", () => Results.Ok(adapterPackages.List().Select(package => new
-        { id = package.Id, name = package.Name, version = package.Version, platform = package.Platform, description = package.Description, assembly_path = package.AssemblyPath, enabled = adapterPackages.IsPackageEnabled(package) })));
+        { id = package.Id, name = package.Name, version = package.Version, platform = package.Platform, models = AdapterModels.Of(package.AssemblyPath), description = package.Description, assembly_path = package.AssemblyPath, enabled = adapterPackages.IsPackageEnabled(package) })));
 
         api.MapGet("/adapters", () =>
         {
@@ -165,6 +165,7 @@ internal sealed partial class HostHttpServer
                 {
                     id = instance.Id, package_id = package.Id, name = instance.Name,
                     version = snapshot?.Version ?? package.Version, platform = snapshot?.Platform ?? package.Platform,
+                    models = AdapterModels.Of(package.AssemblyPath),
                     description = package.Description, assembly_path = (string?)instance.AssemblyPath,
                     config_path = (string?)instance.ConfigPath, enabled = instance.Enabled,
                     loaded = snapshot?.Loaded ?? false, error = snapshot?.Error, restartRequired = snapshot?.RestartRequired ?? false
@@ -172,6 +173,7 @@ internal sealed partial class HostHttpServer
             }).Concat(snapshots.Where(item => !instances.Any(instance => string.Equals(instance.Id, item.Id, StringComparison.OrdinalIgnoreCase))).Select(item => new
             {
                 id = item.Id, package_id = item.Id, name = item.Name, version = item.Version ?? string.Empty, platform = item.Platform,
+                models = AdapterModels.Of(item.AssemblyPath),
                 description = item.Description, assembly_path = item.AssemblyPath, config_path = (string?)null,
                 enabled = false, loaded = item.Loaded, error = item.Error, restartRequired = item.RestartRequired
             })));
