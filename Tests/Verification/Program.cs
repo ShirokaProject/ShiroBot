@@ -84,7 +84,7 @@ if (args is ["--console-demo"] or ["--console-demo", "quiet"])
         new("help", "显示帮助信息"), new("plugins", "显示已加载插件"), new("adapters", "显示已安装适配器"),
         new("adapter", "管理适配器: start|stop|reload <id>"), new("api", "显示或设置 API 鉴权信息"),
         new("actions", "显示插件注册的操作"), new("action", "执行插件操作: <插件> <操作>"),
-        new("action AiChatPlugin report", "生成运行报告"), new("action AiChatPlugin clear-memory", "清空所有会话记忆"),
+        new("action AiChatPlugin", "AI Chat · 2 个操作"), new("action AiChatPlugin report", "生成运行报告"), new("action AiChatPlugin clear-memory", "清空所有会话记忆"),
         new("unload AiChatPlugin", "热卸载插件 AiChatPlugin"), new("update", "检查或执行更新"), new("notice", "演示浮动提示"),
         new("update check", "检查主程序和插件更新"), new("update check host", "只检查主程序更新"),
         new("update check plugins", "只检查插件更新"), new("adapter start qq-main", "启动 QQ 主号"), new("dashboard", "在浏览器中打开 Dashboard"),

@@ -76,7 +76,9 @@ internal sealed class HostCommandHandler(
                     .. BuildConsoleCompletions(
                         pluginManager.GetLoadedPluginNames(),
                         pluginManager.GetLoadablePluginCandidates(includePluginNames: true),
-                        CollectPluginActionsAsync().GetAwaiter().GetResult()),
+                        CollectPluginActionsAsync().GetAwaiter().GetResult(),
+                        pluginManager.GetLoadedPluginSnapshot().ToDictionary(
+                            plugin => plugin.Name, plugin => plugin.DisplayName, StringComparer.OrdinalIgnoreCase)),
                     .. BuildArgumentCompletions()
                 ]);
             if (string.IsNullOrWhiteSpace(input)) continue;
@@ -603,7 +605,8 @@ internal sealed class HostCommandHandler(
     private static IReadOnlyList<CH.ConsoleCommandOption> BuildConsoleCompletions(
         IReadOnlyList<string> loadedPluginNames,
         IReadOnlyList<string> loadablePluginCandidates,
-        IReadOnlyList<(string PluginId, PluginActionDescriptor Action)> pluginActions)
+        IReadOnlyList<(string PluginId, PluginActionDescriptor Action)> pluginActions,
+        IReadOnlyDictionary<string, string> loadedDisplayNames)
     {
         var completions = new List<ConsoleOutput.ConsoleCommandOption>(ConsoleCommands);
         var loadedNameSet = new HashSet<string>(loadedPluginNames, StringComparer.OrdinalIgnoreCase);
@@ -619,6 +622,15 @@ internal sealed class HostCommandHandler(
             if (IsAlreadyLoadedCandidate(candidate, loadedNameSet)) continue;
 
             completions.Add(new ConsoleOutput.ConsoleCommandOption($"load {candidate}", $"热加载插件 {candidate}"));
+        }
+
+        // The plugin level of "action <plugin> <action>": its name and how many actions it has.
+        foreach (var plugin in pluginActions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
+        {
+            var displayName = loadedDisplayNames.TryGetValue(plugin.Key, out var name) && !string.Equals(name, plugin.Key, StringComparison.Ordinal)
+                ? name + " · "
+                : string.Empty;
+            completions.Add(new ConsoleOutput.ConsoleCommandOption($"action {plugin.Key}", $"{displayName}{plugin.Count()} 个操作"));
         }
 
         foreach (var (pluginId, action) in pluginActions)
