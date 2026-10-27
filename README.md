@@ -8,7 +8,6 @@
 
 <p><em>一个轻量的、基于 C# / .NET 10 实现的机器人框架。</em></p>
 
-<p>✅ <strong>1.0 已正式发布</strong> · 同一 ABI 主版本内保持向后兼容；使用新增 API 的插件需要满足最低宿主版本。详见 <a href="https://docs.shiroka.org/plugin/api-compatibility">API 兼容性与版本</a>。</p>
 
 <p><a href="https://docs.shiroka.org">文档</a> · <a href="https://github.com/ShirokaProject/ShiroBot/releases">下载</a> · <a href="https://github.com/ShirokaProject/awesome-shirobot">插件与适配器</a></p>
 
