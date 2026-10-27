@@ -84,6 +84,9 @@
 
 ### 改进
 
+- 适配器包和实例列表新增 `models`，从适配器 DLL 实际引用的 `ShiroBot.Model.*` 读取所属聊天平台（如 `QQ`、`Discord`、`Telegram`），供 Dashboard 区分聊天平台与协议名称（如 Milky、OneBot）；无法读取时返回空列表。
+- Owner、Admin 列表忽略空白项，去除实例 ID 和用户 ID 两端的空格并合并重复项；实例 ID 按不区分大小写去重，避免重复发送 Owner 通知。通过 Dashboard 保存时统一为 `实例ID:用户ID` 格式。
+- Avalonia 相关依赖统一升级至 `12.1.4`，ILRepack 升级至 `2.0.48`。
 - 组件加载兼容性改为只按 DLL 实际引用的 SDK / Model ABI 判断，不再检查组件声明的 API 版本范围；重载时刷新插件和适配器元数据。
 - 主页的“最近错误”在 1 小时后自动消失，不再一直显示异常状态直到重启。
 - 回复订阅到期后主动释放回调及其捕获的数据，注销所属插件时同样释放，改善文件查询等功能的持续内存占用。
@@ -94,6 +97,7 @@
 
 ### 修复
 
+- 核心配置和适配器接口的错误响应补充可读的 `message`，Dashboard 可显示具体失败原因；权限条目格式错误时指出出错条目和要求的 `实例ID:用户ID` 格式，核心配置错误保留 `msg` 兼容旧版 Dashboard。
 - 模板的 `dev.ps1` 在 macOS 和 Linux 上下载对应平台的主程序，并恢复可执行权限。
 
 ### 新增配置
@@ -120,6 +124,8 @@
 
 ### HTTP API
 
+- `GET /api/v1/adapter-packages` 和 `GET /api/v1/adapters` 的列表项新增 `models` 字符串数组，表示适配器引用的聊天平台 Model。
+- 新增 `GET /api/v1/directory/users` 与 `GET /api/v1/directory/groups`，返回各运行中实例的好友或群列表（`entries`）以及无法读取的实例和原因（`unavailable`）；缓存 1 分钟，`?refresh=1` 强制重新读取。
 - `GET /api/v1/plugins/{id}` 新增 `listeners` 字段，插件未加载时为 `null`。
 - 插件配置响应的 `routes` 新增 `priority`、`priority_configured`、`declared_priority`；`PATCH` 的 `routes.priority` 设置覆盖值，`null` 恢复插件默认，只含 `priority` 时不改动群路由。`GET /api/v1/plugins/list` 中已加载插件新增 `priority`。
 - 新增 `GET` / `PUT /api/v1/plugins/{id}/config/raw` 与 `/api/v1/adapters/{id}/config/raw`，读写完整 `config.toml`；`PUT` 携带读取时的 `revision`，文件已变化时返回 `409 config_changed`，格式错误返回 `400 invalid_toml`，组件没有配置时返回 `400 no_config`。插件和适配器配置的 `GET` 响应新增 `raw_config`，表示是否可以编辑 config.toml。
