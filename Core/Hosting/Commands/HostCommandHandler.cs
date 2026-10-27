@@ -38,6 +38,7 @@ internal sealed class HostCommandHandler(
         new("unload", "热卸载指定插件"),
         new("restart", "重启程序"),
         new("api", "显示或设置 API 鉴权信息"),
+        new("dashboard", "在浏览器中打开 Dashboard（自动登录）"),
         new("update", "查看或处理待确认更新"),
         new("path", "打开当前程序目录"),
         new("log", "切换日志输出"),
@@ -71,10 +72,13 @@ internal sealed class HostCommandHandler(
         {
             var input = CH.ReadPrompt(
                 "> ",
-                () => BuildConsoleCompletions(
-                    pluginManager.GetLoadedPluginNames(),
-                    pluginManager.GetLoadablePluginCandidates(includePluginNames: true),
-                    CollectPluginActionsAsync().GetAwaiter().GetResult()));
+                () => [
+                    .. BuildConsoleCompletions(
+                        pluginManager.GetLoadedPluginNames(),
+                        pluginManager.GetLoadablePluginCandidates(includePluginNames: true),
+                        CollectPluginActionsAsync().GetAwaiter().GetResult()),
+                    .. BuildArgumentCompletions()
+                ]);
             if (string.IsNullOrWhiteSpace(input)) continue;
 
             if (CH.IsEnabled ||
@@ -143,6 +147,9 @@ internal sealed class HostCommandHandler(
                         }
                         case "api":
                             CH.Info(HandleApiCommand(splitInput));
+                            break;
+                        case "dashboard":
+                            CH.Info(OpenDashboard());
                             break;
                         case "actions":
                             CH.Info(BuildPluginActionListAsync().GetAwaiter().GetResult());
@@ -522,6 +529,64 @@ internal sealed class HostCommandHandler(
         // Details are meant to be read: they float above the prompt, headed like the Dashboard dialog.
         CH.Notice(result.Title ?? descriptor.Label, summary, result.Details, !result.Ok);
         return summary;
+    }
+
+    /// <summary>Opens the Dashboard in the default browser, signed in by its token link.</summary>
+    private string OpenDashboard()
+    {
+        if (!coreConfig.Api.Enable || !coreConfig.Api.EnableDashboard)
+            return "Dashboard 未启用：在配置中开启 api.enable 与 api.enable_dashboard 后重启宿主。";
+
+        var url = coreConfig.Api.GetDashboardLoginUrl();
+        try
+        {
+            // The shell opens URLs with the default browser on Windows, macOS (open) and Linux (xdg-open).
+            using var _ = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            return "已在浏览器中打开 Dashboard。";
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+        {
+            // No browser here (a server or container): the link still signs in from another machine's browser.
+            return "无法打开浏览器，请手动访问（链接含 API 密钥，勿外传）:\n" + url;
+        }
+    }
+
+    /// <summary>Full command lines with their arguments, so the console can complete after the command name.</summary>
+    private IEnumerable<CH.ConsoleCommandOption> BuildArgumentCompletions()
+    {
+        yield return new("adapter list", "列出适配器实例");
+        foreach (var package in _adapterPackages?.List() ?? [])
+            yield return new($"adapter create {package.Id}", $"用适配器包 {package.Id} 创建实例，后接新实例 ID");
+        var loaded = _adapterManager?.LoadedIds ?? [];
+        foreach (var instance in _adapterPackages?.ListInstances() ?? [])
+        {
+            var running = loaded.Contains(instance.Id, StringComparer.OrdinalIgnoreCase);
+            if (running)
+            {
+                yield return new($"adapter stop {instance.Id}", $"停止 {instance.Name}");
+                yield return new($"adapter reload {instance.Id}", $"重载 {instance.Name}");
+            }
+            else
+            {
+                yield return new($"adapter start {instance.Id}", $"启动 {instance.Name}");
+            }
+
+            yield return new($"adapter config {instance.Id}", $"显示 {instance.Name} 的配置文件路径");
+            yield return new($"adapter remove {instance.Id}", $"删除实例 {instance.Name} 及其配置");
+        }
+
+        yield return new("update list", "列出待确认的更新");
+        yield return new("update check", "检查主程序和插件更新");
+        yield return new("update check host", "只检查主程序更新");
+        yield return new("update check plugins", "只检查插件更新");
+        foreach (var pending in Updater.GetPendingUpdates())
+        {
+            var text = $"{pending.Name} {pending.CurrentVersion} → {pending.LatestVersion}";
+            yield return new($"update confirm {pending.Id}", "执行更新: " + text);
+            yield return new($"update cancel {pending.Id}", "取消更新: " + text);
+        }
+
+        yield return new("api token", "生成新的 API 密钥");
     }
 
     private static IReadOnlyList<CH.ConsoleCommandOption> BuildConsoleCompletions(

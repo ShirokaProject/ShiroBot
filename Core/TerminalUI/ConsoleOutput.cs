@@ -91,6 +91,12 @@ public static class ConsoleOutput
     /// <summary>The terminal's own foreground (black on light themes, white on dark), unlike any fixed ConsoleColor.</summary>
     private const ConsoleColor DefaultColor = (ConsoleColor)(-1);
 
+    /// <summary>
+    /// The highlight of the selected completion and of notice titles: magenta, which no log level uses
+    /// (logs are grey, cyan, green, yellow and red), so the menu never blends into the log around it.
+    /// </summary>
+    private const ConsoleColor AccentColor = ConsoleColor.Magenta;
+
     private static readonly char RuleChar = Console.OutputEncoding.CodePage == 20127 ? '-' : '─';
 
     private static IEnumerable<(string Text, ConsoleColor Color)[]> BuildNoticeLinesUnsafe(PendingNotice notice) =>
@@ -104,7 +110,7 @@ public static class ConsoleOutput
         {
             // Rules above and below set it apart from the log, like a menu floating over it.
             (new string(RuleChar, width), ConsoleColor.DarkGray),
-            ("  " + Truncate(notice.Title, textWidth), notice.Error ? ConsoleColor.Red : ConsoleColor.Cyan)
+            ("  " + Truncate(notice.Title, textWidth), notice.Error ? ConsoleColor.Red : AccentColor)
         };
         if (!string.IsNullOrWhiteSpace(notice.Summary))
             lines.AddRange(Wrap(notice.Summary.Trim(), textWidth).Select(line => ("  " + line, ConsoleColor.Gray)));
@@ -318,22 +324,25 @@ public static class ConsoleOutput
             var description = descriptionWidth > 0 ? Truncate(shown[i].Description, descriptionWidth) : string.Empty;
             yield return
             [
-                (head, selected ? ConsoleColor.Cyan : DefaultColor),
-                (description, selected ? ConsoleColor.Cyan : ConsoleColor.DarkGray)
+                (head, selected ? AccentColor : DefaultColor),
+                (description, selected ? AccentColor : ConsoleColor.DarkGray)
             ];
         }
 
         var hidden = _menu.Count - shown.Length;
-        var hint = hidden > 0 ? $" ↑↓ 选择 · 还有 {hidden} 项 · Tab 补全 " : " ↑↓ 选择 · Tab 补全 ";
+        var hint = hidden > 0 ? $" ↑↓ 选择 · 还有 {hidden} 项 · Enter/Tab 补全 " : " ↑↓ 选择 · Enter/Tab 补全 ";
         if (Pointer == '>') hint = hint.Replace("↑↓", "Up/Down");
         yield return [(new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2), ConsoleColor.DarkGray)];
     }
 
-    /// <summary>Puts the selected completion in the input, with a space when longer completions continue it.</summary>
-    private static void AcceptMenuSelectionUnsafe()
+    /// <summary>
+    /// Puts the selected completion in the input. Tab adds a space when longer completions continue it, to go on
+    /// to the arguments; Enter does not, so a second Enter runs the command.
+    /// </summary>
+    private static void AcceptMenuSelectionUnsafe(bool addSpace = true)
     {
         var name = _menu[_menuIndex].Name;
-        var continues = (_completionOptions ?? []).Any(option =>
+        var continues = addSpace && (_completionOptions ?? []).Any(option =>
             option.Name.StartsWith(name + " ", StringComparison.OrdinalIgnoreCase));
         InputBuffer.Clear().Append(continues ? name + " " : name);
         _cursorIndex = InputBuffer.Length;
@@ -342,6 +351,8 @@ public static class ConsoleOutput
 
     private static void OnInputChangedUnsafe()
     {
+        // The candidates (plugins, adapters, pending updates) are gathered per edit, not per log line.
+        if (_completionProvider is not null) _completionOptions = _completionProvider();
         _menuIndex = 0;
         _menuClosed = false;
         RedrawInputUnsafe();
@@ -455,6 +466,11 @@ public static class ConsoleOutput
                             RedrawInputUnsafe();
                         }
 
+                        break;
+                    // Enter takes the highlighted completion first; once the input is that command, it runs it.
+                    case ConsoleKey.Enter when _menu.Count > 0 &&
+                        !string.Equals(_menu[_menuIndex].Name, InputBuffer.ToString().Trim(), StringComparison.OrdinalIgnoreCase):
+                        AcceptMenuSelectionUnsafe(addSpace: false);
                         break;
                     case ConsoleKey.Enter:
                     {
@@ -623,11 +639,6 @@ public static class ConsoleOutput
         _inlineCompletionSuffix = string.Empty;
         var input = InputBuffer.ToString().TrimStart();
         if (input.Length == 0) return;
-
-        if (_completionProvider is not null)
-        {
-            _completionOptions = _completionProvider();
-        }
 
         var matches = (_completionOptions ?? [])
             .Where(command => command.Name.StartsWith(input, StringComparison.OrdinalIgnoreCase))
