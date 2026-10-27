@@ -50,6 +50,12 @@
 - `PluginActionResult` 新增可选的 `Details` 与 `Title`。设置后，Dashboard 在屏幕中间弹出对话框显示详细结果，控制台在输入行上方浮出提示（Esc 关闭）；没有 `Details` 的操作仍使用简短提示。
 - Dashboard 和控制台共用同一套插件操作查找与执行逻辑。操作抛出异常时两边都显示异常原因，不再只提示“插件操作执行失败”；控制台中出错的命令不会再让控制台停止响应。
 
+#### 在 Dashboard 中选择好友和群
+
+- Owner、Admin 列表和插件路由群组改为选择器：列出运行中适配器实例的好友或群，按名称搜索，保存的仍是 `实例ID:用户ID` 或群号；不支持读取列表的适配器会标出，仍可手动输入。
+- 插件配置的 `List<string>` 字段可声明 `ConfigField(Type = "users")` 或 `Type = "groups"` 使用同一个选择器。
+- 新增 `GET /api/v1/directory/users|groups`，按实例返回好友或群，缓存 1 分钟，`?refresh=1` 重新读取。
+
 #### 插件读取宿主状态
 
 - `IBotContext.GetHostStatus()` 返回与 Dashboard 概览相同的信息：宿主版本与 SDK ABI、启动时间与运行时长、运行方式、操作系统、架构、.NET 运行时、镜像标签、构建时间、工作集与托管堆内存、处理器数、插件与 Model 数量、消息总数、每 2 小时的消息频率以及健康状态。

@@ -84,6 +84,18 @@ public sealed class HelloPlugin : PluginBase<HelloConfig>
 
 业务代码通过 `Settings` 读取当前配置。配置类型可以位于共享项目；宿主沿 `IConfigurableComponent<TConfig>` 读取实际类型的字段元数据，Dashboard 会显示中文名称、说明和分组。
 
+保存账号或群号的 `List<string>` 字段可以声明为选择器，Dashboard 会列出运行中适配器实例的好友或群供搜索选择，仍可手动输入：
+
+```csharp
+[ConfigField("允许使用的用户", Label = "用户白名单", Type = "users")]
+public List<string> AllowedUsers { get; set; } = [];   // 保存为 实例ID:用户ID，用 UserReference.Parse 读取
+
+[ConfigField("生效的群", Label = "群列表", Type = "groups")]
+public List<string> Groups { get; set; } = [];         // 保存为群号
+```
+
+列表来自适配器的 `GetFriendsAsync` / `GetChannelsAsync`；不支持的适配器（如 QQ 官方机器人）只能手动输入。旧版 Dashboard 不认识这两种类型时按普通列表编辑。
+
 需要自行管理额外配置时，可使用 `Context.Config.Load<T>()`、`Save<T>()` 和 `Watch<T>()`。手动创建的订阅应在卸载时释放；普通配置无需另建监听器。
 
 `Config.Save<T>()` 和首次 `Config.Load<T>()` 生成文件时，会把顶层属性的 `ConfigFieldAttribute` 写到对应 snake_case 键上方。`Label`、`Description`、`Options`、`Min`/`Max` 和 `Placeholder` 会转换为合法 `#` 注释；重复保存不会重复堆叠注释。

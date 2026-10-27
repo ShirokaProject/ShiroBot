@@ -82,7 +82,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         if (config.EnableDashboard) MapDashboardAssets(app);
         MapApiEndpoints(
             app, config, configManager, configPath, pluginManager, eventDispatcher,
-            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator, adapterPackages, powerControl);
+            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator, adapterPackages, powerControl, botContext);
         MapDebugEndpoints(app, config, botContext, eventDispatcher);
 
         app.MapFallback((HttpContext context, WebHostContext registry) => registry.HandleRequest(context));
@@ -146,7 +146,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         AdapterManager adapterManager,
         ComponentReloadCoordinator reloadCoordinator,
         AdapterPackageManager adapterPackages,
-        HostPowerControl powerControl)
+        HostPowerControl powerControl,
+        BotContext botContext)
     {
         var api = app.MapGroup("/api/v1");
         api.AddEndpointFilter(async (context, next) =>
@@ -202,6 +203,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         MapConfigurationEndpoints(api, config, configManager, configPath);
 
         MapLogEndpoints(api, logHub);
+        MapDirectoryEndpoints(api, new ContactDirectory(botContext));
 
         MapPluginCatalogEndpoints(api, pluginManager);
         MapPluginInstallEndpoints(api, pluginManager, eventDispatcher, routePolicy, runtimeState);

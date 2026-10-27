@@ -7,6 +7,7 @@
 - 控制台命令按对象分组：`plugin list|market|install|load|unload|update|actions|action`、`adapter list|market|install|…`，`update` 只负责主程序；可从市场直接安装插件和适配器。旧命令和 `help` 已移除，输入 `/` 列出全部命令。
 - 控制台输入时在输入行上方浮出匹配的命令和说明，↑↓ 选择、Tab 补全、Esc 收起。
 - 插件操作可返回 `Details`（可带 `Title`），Dashboard 在屏幕中间弹框、控制台在输入行上方浮出提示显示详细结果；操作出错时两边都显示异常原因，控制台不会因插件异常停止响应。
+- Dashboard 的 Owner、Admin 和路由群组可从适配器的好友、群列表中搜索选择；插件配置字段声明 `Type = "users"` / `"groups"` 即可使用。
 - 插件可通过 `Context.GetHostStatus()` 读取宿主状态：版本、运行方式、系统、架构、.NET 运行时、内存、运行时长、插件数和消息频率，与 Dashboard 概览相同。
 - 启动日志和控制台 `api` 命令打印带 `?token=` 的 Dashboard 链接，打开即可直接登录；登录后密钥会从地址栏移除。
 - 完整配置页可切换为直接编辑 `config.toml`，包括表单中没有的字段；保存前校验 TOML 格式。

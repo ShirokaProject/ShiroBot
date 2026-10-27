@@ -174,6 +174,7 @@ await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
 await PluginPriorityVerification.RunAsync();
 await PluginActionsVerification.RunAsync();
+await ContactDirectoryVerification.RunAsync();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();
 
@@ -2607,8 +2608,8 @@ internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
     public ConfigApplyMode ApplyMode { get; } = applyMode;
     public string Platform => "configurable-verification";
     public IMessageService Message { get; } = new VerificationMessageService();
-    public IChannelService Channel { get; } = new VerificationChannelService();
-    public IUserService User { get; } = new VerificationUserService();
+    public IChannelService Channel { get; init; } = new VerificationChannelService();
+    public IUserService User { get; init; } = new VerificationUserService();
     public IEventService Event { get; } = new VerificationEventService();
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
@@ -2756,8 +2757,8 @@ internal sealed class VerificationAdapter(string platform) : IBotAdapter
     public VerificationMessageService MessageService { get; } = new();
     public string Platform { get; } = platform;
     public IMessageService Message => MessageService;
-    public IChannelService Channel { get; } = new VerificationChannelService();
-    public IUserService User { get; } = new VerificationUserService();
+    public IChannelService Channel { get; init; } = new VerificationChannelService();
+    public IUserService User { get; init; } = new VerificationUserService();
     public IEventService Event { get; } = new VerificationEventService();
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;

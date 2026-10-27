@@ -56,13 +56,13 @@ public class CoreConfig
     [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Auto", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
     public string AvaloniaTheme { get; set; } = "Auto";
 
-    [ConfigField("所有者身份列表，格式 instanceId:userId；冒号用 %3A 转义。自动拥有管理员权限。", Label = "Owner 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupIcon = "shield", GroupDescription = "定义供插件权限检查使用的账号列表。", GroupOrder = 30, Order = 10)]
+    [ConfigField("所有者身份列表，格式 instanceId:userId；冒号用 %3A 转义。自动拥有管理员权限。", Label = "Owner 列表", Type = "users", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupIcon = "shield", GroupDescription = "定义供插件权限检查使用的账号列表。", GroupOrder = 30, Order = 10)]
     public string[] OwnerList { get; set; } = [];
 
     [ConfigField("私聊推送重要信息给 Owner：自动更新结果、更新失败、需要重启或手动操作等；待确认的更新可直接回复消息确认或取消。", Label = "推送 Owner 通知", Default = "true", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 15)]
     public bool OwnerNotifications { get; set; } = true;
 
-    [ConfigField("管理员身份列表，格式 instanceId:userId；Owner 已自动拥有管理员权限。", Label = "Admin 列表", Type = "array", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
+    [ConfigField("管理员身份列表，格式 instanceId:userId；Owner 已自动拥有管理员权限。", Label = "Admin 列表", Type = "users", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
     public string[] AdminList { get; set; } = [];
 
     [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupIcon = "code", GroupDescription = "Dashboard 和外部工具访问主程序的 HTTP API。", GroupOrder = 40, Order = 10)]
@@ -154,7 +154,7 @@ public class PluginRouteRuleConfig
     [ConfigField("blacklist：除列表中的群外全部允许；whitelist：仅允许列表中的群。", Label = "默认路由模式", Options = new string[] { "blacklist", "whitelist" }, Order = 30)]
     public string Mode { get; init; } = "whitelist";
 
-    [ConfigField("默认路由使用的群 ID 列表；黑名单为空时允许所有群，白名单为空时不允许任何群。", Label = "默认路由群组", Type = "array", Order = 40)]
+    [ConfigField("默认路由使用的群 ID 列表；黑名单为空时允许所有群，白名单为空时不允许任何群。", Label = "默认路由群组", Type = "groups", Order = 40)]
     public string[] Groups { get; init; } = [];
 
     public bool IsMatch(string groupId)
