@@ -30,12 +30,17 @@ public static class ConsoleOutput
     /// </summary>
     private sealed record MenuItem(string Word, string Description, bool Continues);
 
-    /// <summary>The words typed before the one being completed, and that partial word.</summary>
-    private static (string[] Done, string Partial) SplitInputUnsafe()
+    /// <summary>
+    /// The words typed before the one being completed, and that partial word. A leading "/" (as in chat commands)
+    /// is set aside, so "/" alone lists every command and "/ad" completes like "ad".
+    /// </summary>
+    private static (string[] Done, string Partial, bool Slash) SplitInputUnsafe()
     {
         var input = InputBuffer.ToString().TrimStart();
+        var slash = input.StartsWith('/');
+        if (slash) input = input[1..];
         var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return input.EndsWith(' ') || words.Length == 0 ? (words, string.Empty) : (words[..^1], words[^1]);
+        return input.EndsWith(' ') || words.Length == 0 ? (words, string.Empty, slash) : (words[..^1], words[^1], slash);
     }
     private static int _menuIndex;
     private static bool _menuClosed;
@@ -356,8 +361,8 @@ public static class ConsoleOutput
     private static void AcceptMenuSelectionUnsafe(bool addSpace = true)
     {
         var item = _menu[_menuIndex];
-        var (done, _) = SplitInputUnsafe();
-        var line = string.Join(' ', [.. done, item.Word]);
+        var (done, _, slash) = SplitInputUnsafe();
+        var line = (slash ? "/" : string.Empty) + string.Join(' ', [.. done, item.Word]);
         InputBuffer.Clear().Append(addSpace && item.Continues ? line + " " : line);
         _cursorIndex = InputBuffer.Length;
         OnInputChangedUnsafe();
@@ -653,7 +658,7 @@ public static class ConsoleOutput
         _inlineCompletionSuffix = string.Empty;
         if (InputBuffer.ToString().TrimStart().Length == 0) return;
 
-        var (done, partial) = SplitInputUnsafe();
+        var (done, partial, _) = SplitInputUnsafe();
         var options = (_completionOptions ?? [])
             .Select(option => (Words: option.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries), option.Description))
             .Where(option => option.Words.Length > done.Length &&
