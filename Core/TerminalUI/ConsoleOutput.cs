@@ -88,6 +88,9 @@ public static class ConsoleOutput
     private static readonly List<(string Text, ConsoleColor Color)> ScreenRows = [];
     private const int ScreenRowLimit = 500;
 
+    /// <summary>The terminal's own foreground (black on light themes, white on dark), unlike any fixed ConsoleColor.</summary>
+    private const ConsoleColor DefaultColor = (ConsoleColor)(-1);
+
     private static readonly char RuleChar = Console.OutputEncoding.CodePage == 20127 ? '-' : '─';
 
     private static IEnumerable<(string Text, ConsoleColor Color)[]> BuildNoticeLinesUnsafe(PendingNotice notice) =>
@@ -264,6 +267,8 @@ public static class ConsoleOutput
         var menu = BuildMenuLinesUnsafe().ToList();
         if (below && menu.Count > 0) menu = [menu[^1], .. menu[..^1]];
         var lines = (_notice is null ? [] : BuildNoticeLinesUnsafe(_notice)).Concat(menu).ToList();
+        // A blank row parts it from the log above, so a coloured log line does not read as part of the menu.
+        if (!below && lines.Count > 0) lines.Insert(0, []);
         // Keep a few log rows visible however tall the overlay would be.
         var limit = Math.Max(1, SafeWindowHeight() - 3);
         return lines.Count > limit ? lines.Skip(lines.Count - limit).ToList() : lines;
@@ -274,17 +279,17 @@ public static class ConsoleOutput
     {
         if (row < 0) return;
         var width = NoticeWidth();
-        var previous = Console.ForegroundColor;
         SetCursorPositionSafe(0, row);
         var used = 0;
         foreach (var (text, color) in segments)
         {
-            Console.ForegroundColor = color;
+            if (color == DefaultColor) Console.ResetColor();
+            else Console.ForegroundColor = color;
             Console.Write(text);
             used += CellWidth(text);
         }
 
-        Console.ForegroundColor = previous;
+        Console.ResetColor();
         if (used < width) Console.Write(new string(' ', width - used));
     }
 
@@ -313,7 +318,7 @@ public static class ConsoleOutput
             var description = descriptionWidth > 0 ? Truncate(shown[i].Description, descriptionWidth) : string.Empty;
             yield return
             [
-                (head, selected ? ConsoleColor.Cyan : ConsoleColor.Gray),
+                (head, selected ? ConsoleColor.Cyan : DefaultColor),
                 (description, selected ? ConsoleColor.Cyan : ConsoleColor.DarkGray)
             ];
         }
@@ -729,14 +734,14 @@ public static class ConsoleOutput
             visibleSuffix = visibleSuffix[..Math.Max(0, width - 1 - renderedInput.Length)];
         }
 
-        Console.ForegroundColor = ConsoleColor.Gray;
+        // Typed text in the terminal's own colour, the completion's rest dimmed after it, on light and dark themes.
+        Console.ResetColor();
         Console.Write(renderedInput);
         if (!string.IsNullOrEmpty(visibleSuffix))
         {
-            var previous = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.Write(visibleSuffix);
-            Console.ForegroundColor = previous;
+            Console.ResetColor();
         }
 
         var written = renderedInput.Length + visibleSuffix.Length;
