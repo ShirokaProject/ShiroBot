@@ -81,14 +81,15 @@ if (args is ["--console-demo"] or ["--console-demo", "quiet"])
 {
     ShiroBot.TerminalUI.ConsoleOutput.ConsoleCommandOption[] completions =
     [
-        new("help", "显示帮助信息"), new("plugins", "显示已加载插件"), new("adapters", "显示已安装适配器"),
-        new("adapter", "管理适配器: start|stop|reload <id>"), new("api", "显示或设置 API 鉴权信息"),
-        new("actions", "显示插件注册的操作"), new("action", "执行插件操作: <插件> <操作>"),
-        new("action AiChatPlugin", "AI Chat · 2 个操作"), new("action AiChatPlugin report", "生成运行报告"), new("action AiChatPlugin clear-memory", "清空所有会话记忆"),
-        new("unload AiChatPlugin", "热卸载插件 AiChatPlugin"), new("update", "检查或执行更新"), new("notice", "演示浮动提示"),
-        new("update check", "检查主程序和插件更新"), new("update check host", "只检查主程序更新"),
-        new("update check plugins", "只检查插件更新"), new("adapter start qq-main", "启动 QQ 主号"), new("dashboard", "在浏览器中打开 Dashboard"),
-        new("quit", "退出演示")
+        new("plugin", "插件: list|market|install|load|unload|update|actions|action"),
+        new("adapter", "适配器: list|market|install|create|start|stop|reload|config|remove"),
+        new("update", "检查或更新主程序"), new("api", "显示或设置 API 鉴权信息"), new("dashboard", "在浏览器中打开 Dashboard"),
+        new("plugin list", "显示已加载插件"), new("plugin market", "浏览插件市场"), new("plugin install", "从插件市场安装: <ID>"),
+        new("plugin install ShiroStatus", "ShiroStatus · v1.2.0"), new("plugin action", "执行插件操作: <插件> <操作>"),
+        new("plugin action AiChatPlugin", "AI Chat · 2 个操作"), new("plugin action AiChatPlugin report", "生成运行报告"),
+        new("plugin action AiChatPlugin clear-memory", "清空所有会话记忆"),
+        new("adapter list", "列出适配器实例"), new("adapter start", "启动已停止的实例"), new("adapter start qq-main", "启动 QQ 主号"),
+        new("notice", "演示浮动提示"), new("quit", "退出演示")
     ];
     ShiroBot.TerminalUI.ConsoleOutput.Info("控制台已就绪");
     // "quiet" leaves out the background logs, to see the prompt on a nearly empty screen.

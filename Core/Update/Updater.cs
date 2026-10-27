@@ -191,7 +191,7 @@ public static class Updater
             $"检测到宿主更新: {update.CurrentVersion} -> {update.LatestVersion}\n" +
             $"来源: {update.Repository}\n" +
             (string.IsNullOrWhiteSpace(update.AssetName) ? string.Empty : $"文件: {update.AssetName}\n") +
-            ConfirmHint(id),
+            ConfirmHint(id, "update"),
             ConfirmByReply(id),
             cancellationToken);
 
@@ -228,16 +228,17 @@ public static class Updater
             $"检测到插件更新: {request.PluginName} {request.CurrentVersion} -> {request.LatestVersion}\n" +
             (string.IsNullOrWhiteSpace(request.ReleaseUrl) ? string.Empty : $"来源: {request.ReleaseUrl}\n") +
             (string.IsNullOrWhiteSpace(request.AssetDownloadUrl) ? string.Empty : $"文件: {request.AssetDownloadUrl}\n") +
-            ConfirmHint(id),
+            ConfirmHint(id, "plugin update"),
             ConfirmByReply(id),
             cancellationToken);
 
         return id;
     }
 
-    private static string ConfirmHint(string id) =>
+    /// <param name="command">The console command for this target: update for the host, plugin update for plugins.</param>
+    private static string ConfirmHint(string id, string command) =>
         $"回复本消息「确认」执行更新，「取消」放弃（{OwnerNotifier.ReplyWindow.TotalHours:0} 小时内有效）。\n" +
-        $"控制台: update confirm {id} / update cancel {id}";
+        $"控制台: {command} confirm {id} / {command} cancel {id}";
 
     /// <summary>Lets an owner answer the update notification instead of using the console.</summary>
     private static OwnerReplyHandler ConfirmByReply(string id) => async reply =>

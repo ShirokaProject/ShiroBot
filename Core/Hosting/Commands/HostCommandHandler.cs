@@ -18,7 +18,7 @@ using ShiroBot.Hosting.Runtime;
 
 namespace ShiroBot.Hosting.Commands;
 
-internal sealed class HostCommandHandler(
+internal sealed partial class HostCommandHandler(
     PluginManager pluginManager,
     HostEventDispatcher eventDispatcher,
     PluginRouteConfig routePolicy,
@@ -28,18 +28,12 @@ internal sealed class HostCommandHandler(
 {
     private static readonly IReadOnlyList<CH.ConsoleCommandOption> ConsoleCommands =
     [
-        new("help", "显示帮助信息"),
-        new("plugins", "显示已加载插件"),
-        new("adapters", "显示已安装适配器"),
-        new("adapter", "管理适配器: start|stop|reload <id>"),
-        new("actions", "显示插件注册的操作"),
-        new("action", "执行插件操作: <插件> <操作>"),
-        new("load", "热加载指定插件"),
-        new("unload", "热卸载指定插件"),
+        new("plugin", "插件: list|market|install|load|unload|update|actions|action"),
+        new("adapter", "适配器: list|market|install|create|start|stop|reload|config|remove"),
+        new("update", "检查或更新主程序"),
         new("restart", "重启程序"),
         new("api", "显示或设置 API 鉴权信息"),
         new("dashboard", "在浏览器中打开 Dashboard（自动登录）"),
-        new("update", "查看或处理待确认更新"),
         new("path", "打开当前程序目录"),
         new("log", "切换日志输出"),
         new("clear", "清除控制台"),
@@ -55,8 +49,12 @@ internal sealed class HostCommandHandler(
     private ComponentReloadCoordinator? _reloadCoordinator;
     private AdapterPackageManager? _adapterPackages;
 
-    public void SetAdapterCommands(AdapterManager adapterManager, ComponentReloadCoordinator? reloadCoordinator, AdapterPackageManager? adapterPackages = null)
+    private HostRuntimeState? _runtimeState;
+
+    public void SetAdapterCommands(AdapterManager adapterManager, ComponentReloadCoordinator? reloadCoordinator, AdapterPackageManager? adapterPackages = null,
+        HostRuntimeState? runtimeState = null)
     {
+        _runtimeState = runtimeState ?? _runtimeState;
         _adapterManager = adapterManager;
         _reloadCoordinator = reloadCoordinator;
         _adapterPackages = adapterPackages;
@@ -67,20 +65,13 @@ internal sealed class HostCommandHandler(
         TaskCompletionSource<bool> consoleReady)
     {
         consoleReady.TrySetResult(true);
+        RefreshMarketsInBackground();
 
         while (true)
         {
             var input = CH.ReadPrompt(
                 "> ",
-                () => [
-                    .. BuildConsoleCompletions(
-                        pluginManager.GetLoadedPluginNames(),
-                        pluginManager.GetLoadablePluginCandidates(includePluginNames: true),
-                        CollectPluginActionsAsync().GetAwaiter().GetResult(),
-                        pluginManager.GetLoadedPluginSnapshot().ToDictionary(
-                            plugin => plugin.Name, plugin => plugin.DisplayName, StringComparer.OrdinalIgnoreCase)),
-                    .. BuildArgumentCompletions()
-                ]);
+                BuildCompletions);
             if (string.IsNullOrWhiteSpace(input)) continue;
 
             if (CH.IsEnabled ||
@@ -97,37 +88,11 @@ internal sealed class HostCommandHandler(
                         case "quit":
                             exitRequested.TrySetResult(true);
                             return;
-                        case "plugins":
-                            CH.Info(BuildLoadedPluginsText(pluginManager.GetLoadedPluginSnapshot()));
-                            break;
-                        case "adapters":
-                            CH.Info(BuildAdaptersText());
+                        case "plugin":
+                            Print(HandlePluginCommandAsync(splitInput).GetAwaiter().GetResult());
                             break;
                         case "adapter":
-                            CH.Info(HandleAdapterCommandAsync(splitInput).GetAwaiter().GetResult());
-                            break;
-                        case "load":
-                            if (splitInput.Length < 2)
-                            {
-                                CH.Warning("用法: load <插件名|dll路径>");
-                                break;
-                            }
-
-                            pluginManager.ScheduleLoadPluginByName(
-                                eventDispatcher,
-                                routePolicy,
-                                splitInput[1]).GetAwaiter().GetResult();
-                            break;
-                        case "unload":
-                            if (splitInput.Length < 2)
-                            {
-                                CH.Warning("用法: unload <插件名>");
-                                break;
-                            }
-
-                            pluginManager.ScheduleUnloadPluginByName(
-                                eventDispatcher,
-                                splitInput[1]).GetAwaiter().GetResult();
+                            Print(HandleAdapterCommandAsync(splitInput).GetAwaiter().GetResult());
                             break;
                         case "restart":
                         {
@@ -153,38 +118,8 @@ internal sealed class HostCommandHandler(
                         case "dashboard":
                             CH.Info(OpenDashboard());
                             break;
-                        case "actions":
-                            CH.Info(BuildPluginActionListAsync().GetAwaiter().GetResult());
-                            break;
-                        case "action":
-                            CH.Info(ExecutePluginActionAsync(splitInput).GetAwaiter().GetResult());
-                            break;
                         case "update":
-                            CH.Info(HandleUpdateCommandAsync(splitInput).GetAwaiter().GetResult());
-                            break;
-                        case "help":
-                            var orderedCommands = ConsoleCommands
-                                .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-                                .ToList();
-                            var pluginActions = CollectPluginActionsAsync().GetAwaiter().GetResult();
-                            // Plugin entries are the long ones, so size the column across both.
-                            var nameWidth = Math.Max(
-                                Math.Max(orderedCommands.Max(command => command.Name.Length), 8),
-                                pluginActions.Count == 0
-                                    ? 0
-                                    : pluginActions.Max(entry => $"action {entry.PluginId} {entry.Action.Id}".Length)) + 2;
-                            var helpText = new StringBuilder()
-                                .AppendLine("可用命令")
-                                .AppendLine(new string('-', 24));
-
-                            foreach (var command in orderedCommands)
-                                helpText.Append("  ")
-                                    .Append(command.Name.PadRight(nameWidth))
-                                    .AppendLine(command.Description);
-
-                            AppendPluginActions(helpText, pluginActions, nameWidth);
-
-                            CH.Info(helpText.ToString().TrimEnd());
+                            Print(HandleUpdateCommandAsync(splitInput).GetAwaiter().GetResult());
                             break;
                         case "path":
                             var path = HostPaths.Root;
@@ -202,8 +137,11 @@ internal sealed class HostCommandHandler(
                         case "clear":
                             CH.Clear();
                             break;
+                        case var moved when MovedCommands.TryGetValue(moved ?? "", out var replacement):
+                            CH.Warning($"{moved} 已改为 {replacement}");
+                            break;
                         default:
-                            CH.Warning($"未知命令: {input}");
+                            CH.Warning($"未知命令: {input}，输入 / 查看全部命令");
                             break;
                     }
                 }
@@ -267,6 +205,11 @@ internal sealed class HostCommandHandler(
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
+    private static void Print(string text)
+    {
+        if (!string.IsNullOrEmpty(text)) CH.Info(text);
+    }
+
     private static string? NormalizeCommand(string? command) => command?.TrimStart('/').ToLowerInvariant();
 
     private string BuildAdaptersText()
@@ -282,7 +225,9 @@ internal sealed class HostCommandHandler(
         var packages = _adapterPackages;
         if (manager is null) return "Adapter 管理器不可用。";
         if (input.Length < 2 || string.Equals(input[1], "list", StringComparison.OrdinalIgnoreCase)) return BuildAdaptersText();
-        if (input.Length < 3) return "用法: adapter list | create <包 ID> <实例 ID> | config|start|stop|reload|remove <实例 ID>";
+        if (string.Equals(input[1], "market", StringComparison.OrdinalIgnoreCase)) return await BuildAdapterMarketTextAsync();
+        if (input.Length < 3) return AdapterUsage;
+        if (string.Equals(input[1], "install", StringComparison.OrdinalIgnoreCase)) return await InstallAdapterFromMarketAsync(input[2]);
         try
         {
             switch (input[1].ToLowerInvariant())
@@ -327,60 +272,10 @@ internal sealed class HostCommandHandler(
                 case "reload":
                     if (_reloadCoordinator is not null) await _reloadCoordinator.ReloadAdapterByIdAsync(input[2]); else await manager.ReloadByIdAsync(input[2]);
                     return $"已重载 Adapter: {input[2]}";
-                default: return "用法: adapter list | create <包 ID> <实例 ID> | config|start|stop|reload|remove <实例 ID>";
+                default: return AdapterUsage;
             }
         }
         catch (Exception ex) { return "Adapter 操作失败: " + ex.Message; }
-    }
-
-    private async Task<string> HandleUpdateCommandAsync(string[] splitInput)
-    {
-        if (splitInput.Length < 2 || string.Equals(splitInput[1], "list", StringComparison.OrdinalIgnoreCase))
-        {
-            return BuildPendingUpdatesText();
-        }
-
-        switch (splitInput[1].ToLowerInvariant())
-        {
-            case "check":
-                return splitInput.Length >= 3 && string.Equals(splitInput[2], "host", StringComparison.OrdinalIgnoreCase)
-                    ? await CheckHostUpdateAsync()
-                    : splitInput.Length >= 3 && string.Equals(splitInput[2], "plugins", StringComparison.OrdinalIgnoreCase)
-                        ? await CheckPluginUpdatesAsync()
-                        : await CheckAllUpdatesAsync();
-            case "confirm":
-            {
-                if (splitInput.Length < 3) return "用法: update confirm <id>";
-
-                try
-                {
-                    var ok = await Updater.ConfirmUpdateAsync(splitInput[2]);
-                    if (!ok) return "未找到该更新请求。";
-
-                    return "已执行更新任务。";
-                }
-                catch (Exception ex)
-                {
-                    return "更新执行失败: " + ex.Message;
-                }
-            }
-            case "cancel":
-            {
-                if (splitInput.Length < 3) return "用法: update cancel <id>";
-
-                var ok = Updater.CancelUpdate(splitInput[2]);
-                return ok ? "已取消更新请求。" : "未找到该更新请求。";
-            }
-            default:
-                return "用法: update [list|check [host|plugins]|confirm|cancel]";
-        }
-    }
-
-    private async Task<string> CheckAllUpdatesAsync()
-    {
-        var host = await CheckHostUpdateAsync();
-        var plugins = await CheckPluginUpdatesAsync();
-        return host + "\n" + plugins;
     }
 
     private async Task<string> CheckHostUpdateAsync()
@@ -449,50 +344,22 @@ internal sealed class HostCommandHandler(
         return builder.ToString().TrimEnd();
     }
 
-    private static string BuildPendingUpdatesText()
-    {
-        var pending = Updater.GetPendingUpdates();
-        return pending.Count == 0
-            ? "当前没有待确认的更新请求。"
-            : string.Join("\n", pending.Select(item =>
-                $"{item.Id} | {item.Target} | {item.Name} {item.CurrentVersion} -> {item.LatestVersion}"));
-    }
-
     private Task<IReadOnlyList<(string PluginId, PluginActionDescriptor Action)>> CollectPluginActionsAsync() =>
         PluginActions.ListAllAsync(pluginManager);
-
-    private static void AppendPluginActions(
-        StringBuilder text,
-        IReadOnlyList<(string PluginId, PluginActionDescriptor Action)> actions,
-        int nameWidth)
-    {
-        if (actions.Count == 0) return;
-
-        text.AppendLine().AppendLine("插件操作");
-        foreach (var group in actions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
-        {
-            foreach (var (pluginId, action) in group)
-            {
-                text.Append("  ")
-                    .Append($"action {pluginId} {action.Id}".PadRight(nameWidth))
-                    .AppendLine(string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description);
-            }
-        }
-    }
 
     private async Task<string> BuildPluginActionListAsync()
     {
         var actions = await CollectPluginActionsAsync().ConfigureAwait(false);
         if (actions.Count == 0) return "当前没有插件注册操作。";
 
-        var nameWidth = actions.Max(entry => $"action {entry.PluginId} {entry.Action.Id}".Length) + 2;
+        var nameWidth = actions.Max(entry => $"plugin action {entry.PluginId} {entry.Action.Id}".Length) + 2;
         var text = new StringBuilder().AppendLine("插件操作").AppendLine(new string('-', 24));
         foreach (var group in actions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
         {
             foreach (var (pluginId, action) in group)
             {
                 text.Append("  ")
-                    .Append($"action {pluginId} {action.Id}".PadRight(nameWidth))
+                    .Append($"plugin action {pluginId} {action.Id}".PadRight(nameWidth))
                     .AppendLine(string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description);
             }
         }
@@ -500,12 +367,12 @@ internal sealed class HostCommandHandler(
         return text.ToString().TrimEnd();
     }
 
-    private async Task<string> ExecutePluginActionAsync(string[] splitInput)
+    private async Task<string> ExecutePluginActionAsync(string[] arguments)
     {
-        if (splitInput.Length < 3) return "用法: action <插件> <操作>，可用 actions 查看列表";
+        if (arguments.Length < 2) return "用法: plugin action <插件> <操作>，可用 plugin actions 查看列表";
 
-        var pluginId = splitInput[1];
-        var actionId = splitInput[2];
+        var pluginId = arguments[0];
+        var actionId = arguments[1];
         var plugin = PluginActions.FindPlugin(pluginManager, pluginId);
         if (plugin is null) return $"未找到已加载插件: {pluginId}";
 
@@ -551,96 +418,6 @@ internal sealed class HostCommandHandler(
             // No browser here (a server or container): the link still signs in from another machine's browser.
             return "无法打开浏览器，请手动访问（链接含 API 密钥，勿外传）:\n" + url;
         }
-    }
-
-    /// <summary>
-    /// Full command lines with their arguments; the console offers them a word at a time. Sub-commands get their own
-    /// line so they are described, rather than shown only as a count of what follows.
-    /// </summary>
-    private IEnumerable<CH.ConsoleCommandOption> BuildArgumentCompletions()
-    {
-        yield return new("adapter list", "列出适配器实例");
-        yield return new("adapter create", "创建实例: <包 ID> <新实例 ID>");
-        yield return new("adapter start", "启动已停止的实例");
-        yield return new("adapter stop", "停止运行中的实例");
-        yield return new("adapter reload", "重载运行中的实例");
-        yield return new("adapter config", "显示实例的配置文件路径");
-        yield return new("adapter remove", "删除实例及其配置");
-        foreach (var package in _adapterPackages?.List() ?? [])
-            yield return new($"adapter create {package.Id}", $"用适配器包 {package.Id} 创建实例，后接新实例 ID");
-        var loaded = _adapterManager?.LoadedIds ?? [];
-        foreach (var instance in _adapterPackages?.ListInstances() ?? [])
-        {
-            var running = loaded.Contains(instance.Id, StringComparer.OrdinalIgnoreCase);
-            if (running)
-            {
-                yield return new($"adapter stop {instance.Id}", $"停止 {instance.Name}");
-                yield return new($"adapter reload {instance.Id}", $"重载 {instance.Name}");
-            }
-            else
-            {
-                yield return new($"adapter start {instance.Id}", $"启动 {instance.Name}");
-            }
-
-            yield return new($"adapter config {instance.Id}", $"显示 {instance.Name} 的配置文件路径");
-            yield return new($"adapter remove {instance.Id}", $"删除实例 {instance.Name} 及其配置");
-        }
-
-        yield return new("update list", "列出待确认的更新");
-        yield return new("update check", "检查主程序和插件更新");
-        yield return new("update check host", "只检查主程序更新");
-        yield return new("update check plugins", "只检查插件更新");
-        yield return new("update confirm", "执行待确认的更新: <ID>");
-        yield return new("update cancel", "取消待确认的更新: <ID>");
-        foreach (var pending in Updater.GetPendingUpdates())
-        {
-            var text = $"{pending.Name} {pending.CurrentVersion} → {pending.LatestVersion}";
-            yield return new($"update confirm {pending.Id}", "执行更新: " + text);
-            yield return new($"update cancel {pending.Id}", "取消更新: " + text);
-        }
-
-        yield return new("api token", "生成新的 API 密钥");
-    }
-
-    private static IReadOnlyList<CH.ConsoleCommandOption> BuildConsoleCompletions(
-        IReadOnlyList<string> loadedPluginNames,
-        IReadOnlyList<string> loadablePluginCandidates,
-        IReadOnlyList<(string PluginId, PluginActionDescriptor Action)> pluginActions,
-        IReadOnlyDictionary<string, string> loadedDisplayNames)
-    {
-        var completions = new List<ConsoleOutput.ConsoleCommandOption>(ConsoleCommands);
-        var loadedNameSet = new HashSet<string>(loadedPluginNames, StringComparer.OrdinalIgnoreCase);
-
-        foreach (var pluginName in loadedPluginNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
-        {
-            completions.Add(
-                new ConsoleOutput.ConsoleCommandOption($"unload {pluginName}", $"热卸载插件 {pluginName}"));
-        }
-
-        foreach (var candidate in loadablePluginCandidates.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
-        {
-            if (IsAlreadyLoadedCandidate(candidate, loadedNameSet)) continue;
-
-            completions.Add(new ConsoleOutput.ConsoleCommandOption($"load {candidate}", $"热加载插件 {candidate}"));
-        }
-
-        // The plugin level of "action <plugin> <action>": its name and how many actions it has.
-        foreach (var plugin in pluginActions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
-        {
-            var displayName = loadedDisplayNames.TryGetValue(plugin.Key, out var name) && !string.Equals(name, plugin.Key, StringComparison.Ordinal)
-                ? name + " · "
-                : string.Empty;
-            completions.Add(new ConsoleOutput.ConsoleCommandOption($"action {plugin.Key}", $"{displayName}{plugin.Count()} 个操作"));
-        }
-
-        foreach (var (pluginId, action) in pluginActions)
-        {
-            completions.Add(new ConsoleOutput.ConsoleCommandOption(
-                $"action {pluginId} {action.Id}",
-                string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description));
-        }
-
-        return completions;
     }
 
     private static bool IsAlreadyLoadedCandidate(string candidate, HashSet<string> loadedPluginNames)

@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using ShiroBot.Adapters;
 using ShiroBot.Components.Reloading;
+using ShiroBot.Components.Updates;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
@@ -28,8 +29,6 @@ internal sealed class AutoUpdateRunner(
     HostPowerControl powerControl,
     OwnerNotify notifyOwners)
 {
-    private const long MaxAdapterPackageBytes = 100L * 1024L * 1024L;
-    private readonly AdapterMarketplaceCache _adapterMarketplace = new();
     // Runs never overlap: the scheduler starts the next one only after this one returns.
     private readonly List<string> _report = [];
 
@@ -123,38 +122,27 @@ internal sealed class AutoUpdateRunner(
     {
         var installed = adapterPackages.List();
         if (installed.Count == 0) return;
-        var entries = await _adapterMarketplace.GetAsync(cancellationToken).ConfigureAwait(false);
+        var entries = await AdapterMarketplaceCache.Shared.GetAsync(cancellationToken).ConfigureAwait(false);
         foreach (var package in installed)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var release = entries.OfType<JsonObject>().FirstOrDefault(entry =>
-                string.Equals(entry["id"]?.GetValue<string>(), package.Id, StringComparison.OrdinalIgnoreCase))?["release"] as JsonObject;
-            var version = release?["version"]?.GetValue<string>();
-            if (release is null || string.IsNullOrWhiteSpace(version) || release["prerelease"]?.GetValue<bool>() == true ||
-                !Updater.IsNewerVersion(version, package.Version))
-                continue;
-            if (release["asset"] is not JsonObject asset ||
-                asset["url"]?.GetValue<string>() is not { Length: > 0 } assetUrl ||
-                asset["name"]?.GetValue<string>() is not { Length: > 0 } assetName)
+            var entry = entries.OfType<JsonObject>().FirstOrDefault(entry =>
+                string.Equals(entry["id"]?.GetValue<string>(), package.Id, StringComparison.OrdinalIgnoreCase));
+            var hasRelease = entry?["release"]?["version"]?.GetValue<string>() is { Length: > 0 } version &&
+                             entry["release"]?["prerelease"]?.GetValue<bool>() != true &&
+                             Updater.IsNewerVersion(version, package.Version);
+            if (!hasRelease) continue;
+            if (MarketRelease.From(entry!) is not { } release)
             {
-                Report($"适配器 {package.Id} 有新版本 {version}，但市场中没有可下载的包，已跳过。", warning: true);
+                Report($"适配器 {package.Id} 有新版本 {entry!["release"]!["version"]}，但市场中没有可下载的包，已跳过。", warning: true);
                 continue;
             }
 
-            var digest = asset["digest"]?.GetValue<string>() is { } value && value.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
-                ? value["sha256:".Length..]
-                : null;
-            var root = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_updates", Guid.NewGuid().ToString("N"));
             try
             {
-                Directory.CreateDirectory(root);
-                var path = Path.Combine(root, Path.GetFileName(assetName));
-                await Updater.DownloadFileAsync(assetUrl, path, cancellationToken, MaxAdapterPackageBytes, digest).ConfigureAwait(false);
-                var probe = adapterPackages.Prepare(path, root);
-                if (!string.Equals(probe.Id, package.Id, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException($"更新包的适配器 ID {probe.Id} 与 {package.Id} 不一致。");
-                var outcome = await AdapterPackageInstaller.InstallAsync(adapterPackages, adapterManager, reloadCoordinator, runtimeState,
-                    probe, package.Enabled).ConfigureAwait(false);
+                var (probe, outcome) = await AdapterPackageInstaller.InstallFromAssetAsync(adapterPackages, adapterManager,
+                    reloadCoordinator, runtimeState, release.AssetUrl, release.AssetName, release.Sha256, package.Id, package.Enabled,
+                    cancellationToken).ConfigureAwait(false);
                 if (outcome.PendingRestart)
                 {
                     Report($"适配器 {package.Id} 当前版本无法热替换，{probe.Version} 已暂存，将在重启宿主时替换。", warning: true);
@@ -168,11 +156,6 @@ internal sealed class AutoUpdateRunner(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 Report($"适配器 {package.Id} 自动更新失败: {ex.Message}", warning: true);
-            }
-            finally
-            {
-                try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             }
         }
     }

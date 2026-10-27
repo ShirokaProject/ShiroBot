@@ -37,7 +37,7 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 `owner_notifications` 默认开启，宿主会私聊 `owner_list` 中当前已加载实例的 Owner：
 
 - 每日自动更新的结果：更新了哪些插件、适配器或主程序，哪些失败或无法热替换，以及是否自动重启。没有任何更新时不发送。主程序更新会重启宿主，通知在重启前发出。
-- 待确认的更新（控制台 `update check` 或插件通过 `IUpdater` 请求的更新）：引用回复这条消息「确认」执行更新、「取消」放弃，24 小时内有效；其他内容会提示正确的回复方式。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 收到的同一条通知也随之失效。控制台的 `update confirm <id>` / `update cancel <id>` 仍然可用。
+- 待确认的更新（控制台 `update`、`plugin update` 或插件通过 `IUpdater` 请求的更新）：引用回复这条消息「确认」执行更新、「取消」放弃，24 小时内有效；其他内容会提示正确的回复方式。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 收到的同一条通知也随之失效。控制台的 `update confirm|cancel <id>`（主程序）和 `plugin update confirm|cancel <id>`（插件）仍然可用。
 
 关闭后宿主不再私聊 Owner，待确认的更新只能在控制台处理。
 
@@ -147,7 +147,7 @@ enabled = false
 
 Dashboard 的“关于”页可手动检查宿主更新。找到适合当前平台、架构和运行形态的发布包后，可点击“更新并重启”。此功能适用于单文件 Release 发布包；开发运行或通过 `dotnet ShiroBot.dll` 启动时只检查版本。Docker 中会显示拉取新镜像的命令；systemd 服务更新后需要 `Restart=on-failure` 或 `Restart=always` 才能自动重启。
 
-控制台可使用 `update check host`、`update check plugins`，再通过 `update confirm <id>` 执行更新。插件更新与 Dashboard 共用整包替换逻辑，保留 `config.toml` 和组件数据；无法卸载或文件被占用时暂存新包，重启宿主后应用。执行失败的更新请求仍可再次确认，或使用 `update cancel <id>` 取消。
+控制台使用 `update` 检查主程序、`plugin update` 检查插件，再通过 `update confirm <id>` 或 `plugin update confirm <id>` 执行更新。插件更新与 Dashboard 共用整包替换逻辑，保留 `config.toml` 和组件数据；无法卸载或文件被占用时暂存新包，重启宿主后应用。执行失败的更新请求仍可再次确认，或使用对应的 `cancel <id>` 取消。
 
 Dashboard 删除插件时会取消同一插件的待确认更新和暂存更新。如果当前版本无法卸载或文件仍被占用，删除任务会写入 `plugins/.update/<id>/`，面板提示重启后删除。下次启动会在加载插件、应用更新之前执行删除；失败的删除任务保留，后续启动继续重试。
 

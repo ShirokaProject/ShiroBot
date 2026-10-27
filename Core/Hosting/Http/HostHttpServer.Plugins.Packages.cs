@@ -348,7 +348,8 @@ internal sealed partial class HostHttpServer
         return true;
     }
 
-    private static IReadOnlyCollection<MarketplaceInstalledPlugin> GetMarketplaceInstalledPlugins(PluginManager pluginManager)
+    /// <summary>Installed plugins, loaded or not, for marking market entries; the console uses it too.</summary>
+    internal static IReadOnlyCollection<MarketplaceInstalledPlugin> GetMarketplaceInstalledPlugins(PluginManager pluginManager)
     {
         var plugins = pluginManager.GetLoadedPluginSnapshot()
             .Select(plugin => new MarketplaceInstalledPlugin(plugin.Name, plugin.GithubRepo, plugin.Version, true))

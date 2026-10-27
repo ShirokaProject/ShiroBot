@@ -2,32 +2,37 @@
 
 ## 控制台命令
 
-交互模式下输入 `help` 可以查看命令。输入时，匹配的命令及其参数（插件、插件操作、适配器实例、待确认更新等）会连同说明浮在输入行上方：↑↓ 选择，回车补全为选中项、再按一次回车执行，Tab 补全并在后面还有参数时加空格，Esc 收起；没有匹配时 ↑↓ 仍是历史命令。命令前可以加 `/`，只输入 `/` 会列出全部命令。
+命令按操作对象分组。输入时，匹配的命令及其参数会连同说明浮在输入行上方，一次补全一个词：先是命令，空格后是子命令，再是插件、适配器实例或市场 ID。↑↓ 选择，回车补全为选中项、再按一次回车执行，Tab 补全并在后面还有参数时加空格，Esc 收起；没有匹配时 ↑↓ 仍是历史命令。命令前可以加 `/`，只输入 `/` 会列出全部命令。
 
 | 命令 | 说明 |
 | --- | --- |
-| `plugins` | 显示已加载插件、程序集文件大小和宿主进程工作集 |
-| `adapters` | 显示已安装适配器 |
-| `adapter start\|stop\|reload <ID>` | 启动、停止或重载指定适配器实例，ID 见 Dashboard |
+| `plugin list` | 显示已加载插件、程序集文件大小和宿主进程工作集 |
+| `plugin market` | 浏览插件市场，标出已安装和可更新的插件 |
+| `plugin install <市场 ID>` | 从插件市场安装插件并加载；已安装时更新到市场版本 |
+| `plugin load <插件名或路径>` / `plugin unload <插件 ID>` | 热加载、热卸载插件 |
+| `plugin update` | 检查已加载插件的更新；`plugin update confirm\|cancel <ID>` 执行或取消 |
+| `plugin actions` / `plugin action <插件 ID> <操作 ID>` | 列出、执行插件注册的操作 |
+| `adapter list` / `adapter market` | 显示已安装的适配器实例、浏览适配器市场 |
+| `adapter install <市场 ID>` | 从适配器市场安装适配器包；之后用 `adapter create` 创建实例 |
+| `adapter create <包 ID> <实例 ID>` | 创建停用的实例，编辑配置后启动 |
+| `adapter start\|stop\|reload\|config\|remove <实例 ID>` | 启动、停止、重载实例，显示其配置路径或删除实例 |
+| `update` | 检查主程序更新；`update confirm\|cancel <ID>` 执行或取消 |
 | `dashboard` | 在默认浏览器中打开 Dashboard 并自动登录；无法打开浏览器时（服务器、容器）输出登录链接 |
-| `actions` | 列出已加载插件注册的操作 |
-| `action <插件 ID> <操作 ID>` | 执行插件操作 |
-| `load <插件名或路径>` | 热加载插件 |
-| `unload <插件 ID>` | 热卸载插件 |
 | `restart` | 启动替代进程并退出当前进程 |
 | `api` | 显示或设置 API 鉴权信息 |
-| `update` | 查看或处理待确认更新 |
 | `path` | 打开程序目录 |
 | `log` | 开关普通日志输出 |
 | `clear` | 清空控制台 |
 | `exit` / `quit` | 正常退出 |
+
+旧命令 `plugins`、`load`、`unload`、`actions`、`action`、`adapters` 和 `help` 已移除，输入时会提示新的写法。
 
 进程退出会停止宿主 HTTP 服务、适配器和 Avalonia dispatcher，但不会逐个热卸载插件。
 插件程序集和剩余资源由操作系统随进程直接回收。
 
 宿主命令只能从交互式控制台输入；好友私聊消息会交给插件的消息路由，不会被解释为宿主命令。`disable_console_input = true` 或 `--no-console` 会关闭交互式控制台输入。
 
-插件可实现 `IPluginActionProvider`，把操作同时提供给控制台与已鉴权的 Dashboard。`help` 会列出插件操作，`actions` 只列出插件操作；输入 `action <插件 ID> <操作 ID>` 执行。带 `RequiresConfirmation` 的操作会在控制台提示确认。写法见[插件操作与控制台](/plugin/actions)。
+插件可实现 `IPluginActionProvider`，把操作同时提供给控制台与已鉴权的 Dashboard。`plugin actions` 列出插件操作，输入 `plugin action <插件 ID> <操作 ID>` 执行。带 `RequiresConfirmation` 的操作会在控制台提示确认。写法见[插件操作与控制台](/plugin/actions)。
 
 ## 热加载与热卸载
 
@@ -103,7 +108,7 @@ plugins/<插件数据目录>/.shirobot/native/<包名>/<版本>/<RID>/
 
 ## 内存指标
 
-`plugins` 命令中的“程序集文件大小”是磁盘 DLL 大小，不是运行时内存。进程工作集包含：
+`plugin list` 命令中的“程序集文件大小”是磁盘 DLL 大小，不是运行时内存。进程工作集包含：
 
 - ShiroBot 宿主与 .NET 运行时。
 - 适配器和所有插件。

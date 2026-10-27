@@ -48,11 +48,11 @@ public sealed class Main : PluginBase, IPluginActionProvider
 ## 从控制台执行
 
 ```text
-actions
-action HelloPlugin refresh-cache
+plugin actions
+plugin action HelloPlugin refresh-cache
 ```
 
-`help` 会列出宿主命令和插件操作，`actions` 只列出插件操作，并支持命令补全。带 `RequiresConfirmation` 的操作在执行前要求输入 `y`。控制台使用已加载插件的 ID 和操作 ID 定位操作；插件卸载后，这些命令不再可用。
+`plugin actions` 列出插件操作，输入时逐词补全插件和操作。带 `RequiresConfirmation` 的操作在执行前要求输入 `y`。控制台使用已加载插件的 ID 和操作 ID 定位操作；插件卸载后，这些命令不再可用。
 
 宿主控制台命令不会通过 QQ 或其他平台的私聊执行。`owner_list` 只供插件的 `Context.IsOwner` 与 `Context.IsAdmin` 判断权限；它不授予远程控制台访问。宿主控制台命令见[运行与维护](/guide/operations#控制台命令)。
 

@@ -12,6 +12,9 @@ internal sealed record MarketplaceInstalledPlugin(
 
 internal sealed class PluginMarketplaceCache
 {
+    /// <summary>The one cache the Dashboard and the console share.</summary>
+    public static PluginMarketplaceCache Shared { get; } = new();
+
     private const string MarketplaceUrl =
         "https://raw.githubusercontent.com/ShirokaProject/awesome-shirobot/automation/refresh-marketplace/dist/marketplace.v1.json";
 

@@ -4,6 +4,9 @@ namespace ShiroBot.Adapters;
 
 internal sealed class AdapterMarketplaceCache
 {
+    /// <summary>The one cache the Dashboard, the console and automatic updates share.</summary>
+    public static AdapterMarketplaceCache Shared { get; } = new();
+
     internal const string MarketplaceUrl = "https://raw.githubusercontent.com/ShirokaProject/awesome-shirobot/automation/refresh-marketplace/dist/adapters.v1.json";
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(20) };
 

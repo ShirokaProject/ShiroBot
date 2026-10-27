@@ -14,6 +14,45 @@ internal sealed record AdapterPackageInstallOutcome(AdapterInstallResult? Result
 /// <summary>Installs or replaces an adapter package, shared by Dashboard installs and automatic updates.</summary>
 internal static class AdapterPackageInstaller
 {
+    private const long MaxAdapterPackageBytes = 100L * 1024L * 1024L;
+
+    /// <summary>
+    /// Downloads an adapter package and installs or replaces it, shared by the console's market install and automatic
+    /// updates. Running instances of the package restart on the new version; a new package gets no instance.
+    /// </summary>
+    /// <param name="sha256">Hex digest the download must match, as published by the adapter market.</param>
+    /// <param name="expectedId">When set, a package for any other adapter is refused.</param>
+    public static async Task<(AdapterPackageProbe Probe, AdapterPackageInstallOutcome Outcome)> InstallFromAssetAsync(
+        AdapterPackageManager adapterPackages,
+        AdapterManager adapterManager,
+        ComponentReloadCoordinator reloadCoordinator,
+        HostRuntimeState runtimeState,
+        string assetUrl,
+        string assetName,
+        string? sha256,
+        string? expectedId,
+        bool enable,
+        CancellationToken cancellationToken = default)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_updates", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, Path.GetFileName(assetName));
+            await Update.Updater.DownloadFileAsync(assetUrl, path, cancellationToken, MaxAdapterPackageBytes, sha256).ConfigureAwait(false);
+            var probe = adapterPackages.Prepare(path, root);
+            if (expectedId is not null && !string.Equals(probe.Id, expectedId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"更新包的适配器 ID {probe.Id} 与 {expectedId} 不一致。");
+            var outcome = await InstallAsync(adapterPackages, adapterManager, reloadCoordinator, runtimeState, probe, enable).ConfigureAwait(false);
+            return (probe, outcome);
+        }
+        finally
+        {
+            try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
     public static async Task<AdapterPackageInstallOutcome> InstallAsync(
         AdapterPackageManager adapterPackages,
         AdapterManager adapterManager,

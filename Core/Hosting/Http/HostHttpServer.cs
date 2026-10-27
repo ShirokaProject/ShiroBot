@@ -279,8 +279,8 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
     }
 
     private static readonly DateTimeOffset AppStartedAt = DateTimeOffset.UtcNow;
-    private static readonly PluginMarketplaceCache MarketplaceCache = new();
-    private static readonly AdapterMarketplaceCache AdapterMarketplaceCache = new();
+    private static readonly PluginMarketplaceCache MarketplaceCache = PluginMarketplaceCache.Shared;
+    private static readonly AdapterMarketplaceCache AdapterMarketplaceCache = AdapterMarketplaceCache.Shared;
     private const string ApiCorsPolicyName = "ShiroBotApiCors";
     private const string DisabledPluginSuffix = ".disable";
     private const long MaxPluginUploadBytes = 100L * 1024L * 1024L;

@@ -23,7 +23,7 @@
 #### Owner 通知
 
 - 新增 `owner_notifications`（默认开启），私聊 `owner_list` 中已加载实例的 Owner：自动更新的结果、失败、无法热替换、自动重启，以及主程序需要手动更新镜像等情况。没有更新时不发送；主程序更新前先发送通知再重启。
-- 待确认的更新（控制台 `update check` 或插件通过 `IUpdater` 请求）可直接引用回复「确认」或「取消」，24 小时内有效，不再需要输入控制台命令。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 的同一条通知随之失效，同一个更新不会执行两次。控制台的 `update confirm` / `update cancel` 仍可使用。
+- 待确认的更新（控制台 `update`、`plugin update` 或插件通过 `IUpdater` 请求）可直接引用回复「确认」或「取消」，24 小时内有效，不再需要输入控制台命令。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 的同一条通知随之失效，同一个更新不会执行两次。控制台的 `update confirm|cancel`（主程序）和 `plugin update confirm|cancel`（插件）仍可使用。
 
 #### 插件优先级
 
@@ -32,6 +32,13 @@
 - 被回复订阅接收的引用回复（如 Owner 确认更新）按优先级 2 视为已处理，兜底插件不再收到。
 - 一个优先级超过 5 秒未处理完时记录警告，并继续分发给后面的优先级。
 - Owner 可在 Dashboard 插件配置的「路由」页或 `plugin_routes.priorities` 中按插件覆盖优先级，可恢复插件默认；插件详情显示已加载插件的优先级。
+
+#### 控制台命令按对象分组
+
+- 命令改为 `plugin list|market|install|load|unload|update|actions|action` 和 `adapter list|market|install|create|start|stop|reload|config|remove`；`update` 只负责主程序，插件更新改为 `plugin update`。
+- `plugin install <市场 ID>`、`adapter install <市场 ID>` 从市场安装，`plugin market`、`adapter market` 浏览市场；补全会列出市场中未安装或可更新的条目。
+- 旧命令 `plugins`、`load`、`unload`、`actions`、`action`、`adapters` 和 `help` 已移除，输入时提示新写法；输入 `/` 列出全部命令。
+- 控制台、Dashboard 和自动更新共用同一套插件与适配器安装、更新流程。
 
 #### 控制台命令补全菜单
 

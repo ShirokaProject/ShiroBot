@@ -25,42 +25,83 @@ internal static class PluginUpdateService
     internal static SemaphoreSlim GetOperationLock(string id) =>
         OperationLocks.GetOrAdd(id.Trim(), _ => new SemaphoreSlim(1, 1));
 
-    internal static async Task<PluginUpdateResult> ApplyAsync(
+    /// <summary>Updates an installed plugin from a release asset; the package must be the same plugin.</summary>
+    internal static Task<PluginUpdateResult> ApplyAsync(
         PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy,
         string id, string assetUrl, string assetName, string latestVersion,
         CancellationToken cancellationToken = default)
     {
-        var gate = GetOperationLock(id);
-        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (FindInstalledPath(pluginManager, id) is null) throw new InvalidOperationException($"未找到已安装插件: {id}");
+        return InstallFromAssetAsync(pluginManager, eventDispatcher, routePolicy, assetUrl, assetName, null, id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Downloads a plugin package and installs it, replacing an installed copy of the same plugin, then loads it.
+    /// Shared by the console's market install, plugin updates and automatic updates. A replacement that cannot be
+    /// made while the old version runs is staged for the next restart.
+    /// </summary>
+    /// <param name="sha256">Hex digest the download must match, as published by the plugin market.</param>
+    /// <param name="expectedId">When set, a package for any other plugin is refused.</param>
+    internal static async Task<PluginUpdateResult> InstallFromAssetAsync(
+        PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy,
+        string assetUrl, string assetName, string? sha256, string? expectedId,
+        CancellationToken cancellationToken = default)
+    {
         var uploadRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "plugin_updates", Guid.NewGuid().ToString("N"));
         try
         {
-            var loaded = pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
-                string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase));
-            var installedPath = loaded?.AssemblyPath ?? pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).FirstOrDefault()
-                ?? throw new InvalidOperationException($"未找到已安装插件: {id}");
             Directory.CreateDirectory(uploadRoot);
             var packagePath = Path.Combine(uploadRoot, Path.GetFileName(assetName));
-            await Updater.DownloadFileAsync(assetUrl, packagePath, cancellationToken, MaxPluginUploadBytes).ConfigureAwait(false);
+            await Updater.DownloadFileAsync(assetUrl, packagePath, cancellationToken, MaxPluginUploadBytes, sha256).ConfigureAwait(false);
             var package = PreparePluginUploadPackage(pluginManager, packagePath);
-            if (!string.Equals(package.Info.Id, id, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"更新包的插件 ID {package.Info.Id} 与 {id} 不一致。");
-            cancellationToken.ThrowIfCancellationRequested();
-            var replacement = await ReplaceInstalledPluginAsync(pluginManager, eventDispatcher, routePolicy, package,
-                new InstalledPluginInfo(installedPath, loaded?.Version ?? ""), loaded).ConfigureAwait(false);
-            if (replacement.PendingReason is not null)
-                return new PluginUpdateResult(true, $"插件 {id} 当前版本无法热替换，{latestVersion} 已暂存，将在下次重启宿主时替换", replacement.PendingReason);
-            await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
-            if (pluginManager.GetLoadedPluginSnapshot().All(plugin => !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase)))
-                throw new InvalidOperationException($"插件 {id} 的新包已安装，但加载失败，请检查宿主日志。");
-            return new PluginUpdateResult(false, $"插件 {id} 已更新到 {latestVersion}");
+            var id = package.Info.Id;
+            if (expectedId is not null && !string.Equals(id, expectedId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"更新包的插件 ID {id} 与 {expectedId} 不一致。");
+
+            var gate = GetOperationLock(id);
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, id))
+                    throw new InvalidOperationException($"插件 {id} 已登记删除任务，请先重启宿主完成删除，再重新安装。");
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var loaded = pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
+                    string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase));
+                var installedPath = loaded?.AssemblyPath ?? FindInstalledPath(pluginManager, id);
+                var version = package.Info.Version;
+                if (installedPath is not null)
+                {
+                    var replacement = await ReplaceInstalledPluginAsync(pluginManager, eventDispatcher, routePolicy, package,
+                        new InstalledPluginInfo(installedPath, loaded?.Version ?? ""), loaded).ConfigureAwait(false);
+                    if (replacement.PendingReason is not null)
+                        return new PluginUpdateResult(true, $"插件 {id} 当前版本无法热替换，{version} 已暂存，将在下次重启宿主时替换", replacement.PendingReason);
+                }
+                else
+                {
+                    InstallUploadedPlugin(pluginManager, package);
+                }
+
+                await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
+                if (pluginManager.GetLoadedPluginSnapshot().All(plugin => !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException($"插件 {id} 的包已安装，但加载失败，请检查宿主日志。");
+                return new PluginUpdateResult(false, installedPath is null ? $"插件 {id} {version} 已安装并加载" : $"插件 {id} 已更新到 {version}");
+            }
+            finally
+            {
+                gate.Release();
+            }
         }
         finally
         {
             TryDeleteDirectory(uploadRoot);
-            gate.Release();
         }
     }
+
+    private static string? FindInstalledPath(PluginManager pluginManager, string id) =>
+        pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
+            string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))?.AssemblyPath
+        ?? pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).FirstOrDefault();
 
     private static void TryDeleteDirectory(string path)
     {

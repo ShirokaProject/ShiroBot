@@ -292,7 +292,7 @@ public static class Program
             }
 
             var reloadCoordinator = new ComponentReloadCoordinator(adapterManager);
-            commandHandler.SetAdapterCommands(adapterManager, reloadCoordinator, adapterPackages);
+            commandHandler.SetAdapterCommands(adapterManager, reloadCoordinator, adapterPackages, runtimeState);
             commandHandler.SetPowerControl(powerControl);
             componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
             hostHttpServer = await HostHttpServer.StartAsync(
