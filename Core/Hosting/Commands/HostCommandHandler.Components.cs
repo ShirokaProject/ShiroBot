@@ -17,9 +17,9 @@ namespace ShiroBot.Hosting.Commands;
 internal sealed partial class HostCommandHandler
 {
     private const string PluginUsage =
-        "用法: plugin list | market | install <市场 ID> | load <插件> | unload <插件> | update [confirm|cancel <ID>] | actions | action <插件> <操作>";
+        "用法: plugin list | market | refresh | install <市场 ID> | load <插件> | unload <插件> | update [confirm|cancel <ID>] | actions | action <插件> <操作>";
     private const string AdapterUsage =
-        "用法: adapter list | market | install <市场 ID> | create <包 ID> <实例 ID> | config|start|stop|reload|remove <实例 ID>";
+        "用法: adapter list | market | refresh | install <市场 ID> | create <包 ID> <实例 ID> | config|start|stop|reload|remove <实例 ID>";
 
     /// <summary>Commands that moved under plugin and adapter, with what to type now.</summary>
     private static readonly Dictionary<string, string> MovedCommands = new(StringComparer.OrdinalIgnoreCase)
@@ -46,6 +46,8 @@ internal sealed partial class HostCommandHandler
                 return BuildLoadedPluginsText(pluginManager.GetLoadedPluginSnapshot());
             case "market":
                 return await BuildPluginMarketTextAsync().ConfigureAwait(false);
+            case "refresh":
+                return $"插件市场已刷新，共 {(await LoadPluginMarketAsync(forceRefresh: true).ConfigureAwait(false)).Count} 个插件。";
             case "install":
                 return arguments.Length == 0 ? "用法: plugin install <市场 ID>，可用 plugin market 查看" : await InstallPluginFromMarketAsync(arguments[0]).ConfigureAwait(false);
             case "load":
@@ -185,10 +187,11 @@ internal sealed partial class HostCommandHandler
 
     private string? InstalledAdapterVersion(string? id) => id is null ? null : _adapterPackages?.Get(id)?.Version;
 
-    private async Task<JsonArray> LoadPluginMarketAsync()
+    /// <param name="forceRefresh">Skip the market's 24-hour cache, as plugin refresh does.</param>
+    private async Task<JsonArray> LoadPluginMarketAsync(bool forceRefresh = false)
     {
         var marketplace = await PluginMarketplaceCache.Shared.GetAsync(
-            HostHttpServer.GetMarketplaceInstalledPlugins(pluginManager), CancellationToken.None).ConfigureAwait(false);
+            HostHttpServer.GetMarketplaceInstalledPlugins(pluginManager), CancellationToken.None, forceRefresh).ConfigureAwait(false);
         return _pluginMarket = marketplace["plugins"] as JsonArray ?? [];
     }
 
@@ -222,6 +225,7 @@ internal sealed partial class HostCommandHandler
     {
         yield return new("plugin list", "显示已加载插件");
         yield return new("plugin market", "浏览插件市场");
+        yield return new("plugin refresh", "重新拉取插件市场（跳过 24 小时缓存）");
         yield return new("plugin install", "从插件市场安装: <ID>");
         yield return new("plugin load", "热加载插件");
         yield return new("plugin unload", "热卸载插件");
@@ -269,6 +273,7 @@ internal sealed partial class HostCommandHandler
     {
         yield return new("adapter list", "列出适配器实例");
         yield return new("adapter market", "浏览适配器市场");
+        yield return new("adapter refresh", "重新拉取适配器市场");
         yield return new("adapter install", "从适配器市场安装: <ID>");
         yield return new("adapter create", "创建实例: <包 ID> <新实例 ID>");
         yield return new("adapter start", "启动已停止的实例");

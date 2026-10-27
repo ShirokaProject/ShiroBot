@@ -28,8 +28,8 @@ internal sealed partial class HostCommandHandler(
 {
     private static readonly IReadOnlyList<CH.ConsoleCommandOption> ConsoleCommands =
     [
-        new("plugin", "插件: list|market|install|load|unload|update|actions|action"),
-        new("adapter", "适配器: list|market|install|create|start|stop|reload|config|remove"),
+        new("plugin", "插件: list|market|refresh|install|load|unload|update|actions|action"),
+        new("adapter", "适配器: list|market|refresh|install|create|start|stop|reload|config|remove"),
         new("update", "检查或更新主程序"),
         new("restart", "重启程序"),
         new("api", "显示或设置 API 鉴权信息"),
@@ -226,6 +226,8 @@ internal sealed partial class HostCommandHandler(
         if (manager is null) return "Adapter 管理器不可用。";
         if (input.Length < 2 || string.Equals(input[1], "list", StringComparison.OrdinalIgnoreCase)) return BuildAdaptersText();
         if (string.Equals(input[1], "market", StringComparison.OrdinalIgnoreCase)) return await BuildAdapterMarketTextAsync();
+        if (string.Equals(input[1], "refresh", StringComparison.OrdinalIgnoreCase))
+            return $"适配器市场已刷新，共 {(await LoadAdapterMarketAsync()).Count} 个适配器。";
         if (input.Length < 3) return AdapterUsage;
         if (string.Equals(input[1], "install", StringComparison.OrdinalIgnoreCase)) return await InstallAdapterFromMarketAsync(input[2]);
         try

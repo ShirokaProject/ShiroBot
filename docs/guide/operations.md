@@ -8,11 +8,13 @@
 | --- | --- |
 | `plugin list` | 显示已加载插件、程序集文件大小和宿主进程工作集 |
 | `plugin market` | 浏览插件市场，标出已安装和可更新的插件 |
+| `plugin refresh` | 跳过 24 小时缓存，重新拉取插件市场 |
 | `plugin install <市场 ID>` | 从插件市场安装插件并加载；已安装时更新到市场版本 |
 | `plugin load <插件名或路径>` / `plugin unload <插件 ID>` | 热加载、热卸载插件 |
 | `plugin update` | 检查已加载插件的更新；`plugin update confirm\|cancel <ID>` 执行或取消 |
 | `plugin actions` / `plugin action <插件 ID> <操作 ID>` | 列出、执行插件注册的操作 |
 | `adapter list` / `adapter market` | 显示已安装的适配器实例、浏览适配器市场 |
+| `adapter refresh` | 重新拉取适配器市场 |
 | `adapter install <市场 ID>` | 从适配器市场安装适配器包；之后用 `adapter create` 创建实例 |
 | `adapter create <包 ID> <实例 ID>` | 创建停用的实例，编辑配置后启动 |
 | `adapter start\|stop\|reload\|config\|remove <实例 ID>` | 启动、停止、重载实例，显示其配置路径或删除实例 |

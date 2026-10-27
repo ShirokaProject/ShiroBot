@@ -36,7 +36,7 @@
 #### 控制台命令按对象分组
 
 - 命令改为 `plugin list|market|install|load|unload|update|actions|action` 和 `adapter list|market|install|create|start|stop|reload|config|remove`；`update` 只负责主程序，插件更新改为 `plugin update`。
-- `plugin install <市场 ID>`、`adapter install <市场 ID>` 从市场安装，`plugin market`、`adapter market` 浏览市场；补全会列出市场中未安装或可更新的条目。
+- `plugin install <市场 ID>`、`adapter install <市场 ID>` 从市场安装，`plugin market`、`adapter market` 浏览市场，`plugin refresh`、`adapter refresh` 重新拉取；补全会列出市场中未安装或可更新的条目。
 - 旧命令 `plugins`、`load`、`unload`、`actions`、`action`、`adapters` 和 `help` 已移除，输入时提示新写法；输入 `/` 列出全部命令。
 - 控制台、Dashboard 和自动更新共用同一套插件与适配器安装、更新流程。
 
