@@ -72,12 +72,28 @@ public static class ConsoleOutput
 
     private static PendingNotice? _notice;
 
-    /// <summary>Rows the drawn notice occupies directly above the prompt row (<see cref="_inputTop"/>).</summary>
-    private static int _noticeRows;
+    /// <summary>
+    /// Rows the overlay (notice and completions) covers directly above the prompt row (<see cref="_inputTop"/>).
+    /// It is drawn over log rows rather than between them, so the prompt stays where it is.
+    /// </summary>
+    private static int _overlayRows;
+
+    /// <summary>Whether the overlay sits below the prompt, used when there is no room above (a nearly empty screen).</summary>
+    private static bool _overlayBelow;
+
+    /// <summary>
+    /// The rows written above the prompt, newest last, exactly as drawn (wrapped here, not by the terminal).
+    /// Terminals cannot be read back, so this is what restores the log an overlay covered.
+    /// </summary>
+    private static readonly List<(string Text, ConsoleColor Color)> ScreenRows = [];
+    private const int ScreenRowLimit = 500;
 
     private static readonly char RuleChar = Console.OutputEncoding.CodePage == 20127 ? '-' : '─';
 
-    private static IReadOnlyList<(string Text, ConsoleColor Color)> BuildNoticeLinesUnsafe(PendingNotice notice)
+    private static IEnumerable<(string Text, ConsoleColor Color)[]> BuildNoticeLinesUnsafe(PendingNotice notice) =>
+        BuildNoticeTextUnsafe(notice).Select(line => new[] { line });
+
+    private static IReadOnlyList<(string Text, ConsoleColor Color)> BuildNoticeTextUnsafe(PendingNotice notice)
     {
         var width = NoticeWidth();
         var textWidth = width - 2;
@@ -126,9 +142,11 @@ public static class ConsoleOutput
         {
             var line = new StringBuilder();
             var used = 0;
-            foreach (var ch in raw)
+            var elements = System.Globalization.StringInfo.GetTextElementEnumerator(raw);
+            while (elements.MoveNext())
             {
-                var cells = CellWidth(ch.ToString());
+                var ch = elements.GetTextElement();
+                var cells = CellWidth(ch);
                 if (used + cells > width && line.Length > 0)
                 {
                     lines.Add(line.ToString());
@@ -167,55 +185,125 @@ public static class ConsoleOutput
         }
     }
 
-    /// <summary>Blanks the notice and prompt rows and leaves the cursor where the notice starts.</summary>
-    private static void ClearRegionUnsafe()
+    /// <summary>
+    /// Puts back the log rows the overlay covered, from <see cref="ScreenRows"/>; the <paramref name="keep"/> rows
+    /// nearest the prompt are left for a new overlay to overwrite, which avoids flicker.
+    /// </summary>
+    private static void RestoreOverlayUnsafe(int keep = 0)
     {
-        var width = Math.Max(1, Console.BufferWidth - 1);
-        var top = Math.Max(0, _inputTop - _noticeRows);
-        for (var row = top; row <= _inputTop; row++)
+        for (var distance = keep + 1; distance <= _overlayRows; distance++)
         {
-            SetCursorPositionSafe(0, row);
-            Console.Write(new string(' ', width));
+            // Nothing is ever written below the prompt, so rows there are simply blank again.
+            var index = ScreenRows.Count - distance;
+            if (_overlayBelow) DrawRowUnsafe(_inputTop + distance, []);
+            else DrawRowUnsafe(_inputTop - distance, index >= 0 ? [ScreenRows[index]] : []);
         }
 
-        SetCursorPositionSafe(0, top);
-        _inputTop = top;
-        _noticeRows = 0;
+        _overlayRows = 0;
     }
 
-    /// <summary>Draws the notice from the cursor row down, then moves <see cref="_inputTop"/> below it.</summary>
-    private static void DrawNoticeUnsafe()
-    {
-        if (_notice is null) return;
+    private enum OverlayPlace { Above, Below, PushDown }
 
+    /// <summary>Above the prompt when the visible rows there fit it, else below when those fit, else push down.</summary>
+    private static OverlayPlace PlaceOverlay(int rows)
+    {
+        var top = WindowTopSafe();
+        if (_inputTop - top >= rows) return OverlayPlace.Above;
+        return top + SafeWindowHeight() - 1 - _inputTop >= rows ? OverlayPlace.Below : OverlayPlace.PushDown;
+    }
+
+    // Windows scrolls a buffer taller than the window; elsewhere the window is the buffer and this is 0.
+    private static int WindowTopSafe()
+    {
+        try
+        {
+            return OperatingSystem.IsWindows() ? Console.WindowTop : 0;
+        }
+        catch (IOException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Draws the notice and completions over the rows above the prompt. Only when there are too few rows above
+    /// (an almost empty screen) does the prompt move, down by blank rows, once.
+    /// </summary>
+    private static void DrawOverlayUnsafe(List<(string Text, ConsoleColor Color)[]> lines, OverlayPlace place)
+    {
+        if (lines.Count == 0) return;
+        if (place == OverlayPlace.Below)
+        {
+            for (var i = 0; i < lines.Count; i++) DrawRowUnsafe(_inputTop + 1 + i, lines[i]);
+            _overlayRows = lines.Count;
+            _overlayBelow = true;
+            return;
+        }
+
+        _overlayBelow = false;
+        if (place == OverlayPlace.PushDown)
+        {
+            DrawRowUnsafe(_inputTop, []);
+            SetCursorPositionSafe(0, _inputTop);
+            for (var i = _inputTop; i < lines.Count; i++)
+            {
+                Console.WriteLine();
+                AddScreenRow((string.Empty, ConsoleColor.Gray));
+            }
+
+            _inputTop = Console.CursorTop;
+        }
+
+        for (var i = 0; i < lines.Count; i++) DrawRowUnsafe(_inputTop - lines.Count + i, lines[i]);
+        _overlayRows = lines.Count;
+    }
+
+    /// <summary>Notice then completions, read top to bottom; below the prompt the menu's rule comes first.</summary>
+    private static List<(string Text, ConsoleColor Color)[]> BuildOverlayLinesUnsafe(bool below)
+    {
+        var menu = BuildMenuLinesUnsafe().ToList();
+        if (below && menu.Count > 0) menu = [menu[^1], .. menu[..^1]];
+        var lines = (_notice is null ? [] : BuildNoticeLinesUnsafe(_notice)).Concat(menu).ToList();
+        // Keep a few log rows visible however tall the overlay would be.
+        var limit = Math.Max(1, SafeWindowHeight() - 3);
+        return lines.Count > limit ? lines.Skip(lines.Count - limit).ToList() : lines;
+    }
+
+    /// <summary>Overwrites one row with the given segments, padded short of the last column so nothing wraps.</summary>
+    private static void DrawRowUnsafe(int row, IReadOnlyList<(string Text, ConsoleColor Color)> segments)
+    {
+        if (row < 0) return;
         var width = NoticeWidth();
-        var lines = BuildNoticeLinesUnsafe(_notice);
         var previous = Console.ForegroundColor;
-        foreach (var (text, color) in lines)
+        SetCursorPositionSafe(0, row);
+        var used = 0;
+        foreach (var (text, color) in segments)
         {
             Console.ForegroundColor = color;
-            // Padded short of the last column, so no terminal wraps the row on its own.
-            Console.WriteLine(text + new string(' ', Math.Max(0, width - CellWidth(text))));
+            Console.Write(text);
+            used += CellWidth(text);
         }
 
         Console.ForegroundColor = previous;
-        // WriteLine may have scrolled the buffer at the bottom; the cursor row is the truth.
-        _inputTop = Console.CursorTop;
-        _noticeRows += lines.Count;
+        if (used < width) Console.Write(new string(' ', width - used));
     }
 
-    /// <summary>Draws the matching completions under any notice, the selected one marked, then a rule.</summary>
-    private static void DrawMenuUnsafe()
+    private static void AddScreenRow((string Text, ConsoleColor Color) row)
     {
-        if (_menu.Count == 0) return;
+        ScreenRows.Add(row);
+        if (ScreenRows.Count > ScreenRowLimit) ScreenRows.RemoveRange(0, ScreenRows.Count - ScreenRowLimit);
+    }
+
+    /// <summary>The matching completions, the selected one marked, then a rule with the keys.</summary>
+    private static IEnumerable<(string Text, ConsoleColor Color)[]> BuildMenuLinesUnsafe()
+    {
+        if (_menu.Count == 0) yield break;
 
         var width = NoticeWidth();
         var start = Math.Clamp(_menuIndex - MenuRows / 2, 0, Math.Max(0, _menu.Count - MenuRows));
         var shown = _menu.Skip(start).Take(MenuRows).ToArray();
         var nameWidth = Math.Min(shown.Max(option => CellWidth(option.Name)), width * 2 / 5);
         var descriptionWidth = Math.Max(0, width - nameWidth - 6);
-        var previous = Console.ForegroundColor;
-        var rows = 0;
 
         for (var i = 0; i < shown.Length; i++)
         {
@@ -223,23 +311,17 @@ public static class ConsoleOutput
             var name = Truncate(shown[i].Name, nameWidth);
             var head = $"{(selected ? Pointer : ' ')} {name}{new string(' ', nameWidth - CellWidth(name))}    ";
             var description = descriptionWidth > 0 ? Truncate(shown[i].Description, descriptionWidth) : string.Empty;
-            Console.ForegroundColor = selected ? ConsoleColor.Cyan : ConsoleColor.Gray;
-            Console.Write(head);
-            Console.ForegroundColor = selected ? ConsoleColor.Cyan : ConsoleColor.DarkGray;
-            Console.WriteLine(description + new string(' ', Math.Max(0, width - CellWidth(head) - CellWidth(description))));
-            rows++;
+            yield return
+            [
+                (head, selected ? ConsoleColor.Cyan : ConsoleColor.Gray),
+                (description, selected ? ConsoleColor.Cyan : ConsoleColor.DarkGray)
+            ];
         }
 
-        Console.ForegroundColor = ConsoleColor.DarkGray;
         var hidden = _menu.Count - shown.Length;
         var hint = hidden > 0 ? $" ↑↓ 选择 · 还有 {hidden} 项 · Tab 补全 " : " ↑↓ 选择 · Tab 补全 ";
         if (Pointer == '>') hint = hint.Replace("↑↓", "Up/Down");
-        Console.WriteLine(new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2));
-        rows++;
-
-        Console.ForegroundColor = previous;
-        _inputTop = Console.CursorTop;
-        _noticeRows += rows;
+        yield return [(new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2), ConsoleColor.DarkGray)];
     }
 
     /// <summary>Puts the selected completion in the input, with a space when longer completions continue it.</summary>
@@ -272,7 +354,8 @@ public static class ConsoleOutput
         lock (OutputLock)
         {
             Console.Clear();
-            _noticeRows = 0;
+            _overlayRows = 0;
+            ScreenRows.Clear();
             if (_isReadingInput)
             {
                 _inputTop = Console.CursorTop;
@@ -299,7 +382,7 @@ public static class ConsoleOutput
             _historyIndex = History.Count;
             _historyDraft = string.Empty;
             _inputTop = Console.CursorTop;
-            _noticeRows = 0;
+            _overlayRows = 0;
             _inlineCompletionSuffix = string.Empty;
             RedrawInputUnsafe();
         }
@@ -375,7 +458,9 @@ public static class ConsoleOutput
                         _notice = null;
                         _menu = [];
                         _menuClosed = false;
-                        ClearRegionUnsafe();
+                        RestoreOverlayUnsafe();
+                        DrawRowUnsafe(_inputTop, []);
+                        SetCursorPositionSafe(0, _inputTop);
                         _isReadingInput = false;
                         _activePrompt = null;
                         _completionProvider = null;
@@ -562,12 +647,23 @@ public static class ConsoleOutput
 
         lock (OutputLock)
         {
-            // Logs go above the notice and prompt, which are redrawn below them.
-            if (_isReadingInput) ClearRegionUnsafe();
+            // Logs go where the prompt is; the prompt and overlay are drawn again below them.
+            if (_isReadingInput)
+            {
+                RestoreOverlayUnsafe();
+                SetCursorPositionSafe(0, _inputTop);
+            }
 
             var previous = Console.ForegroundColor;
             Console.ForegroundColor = color;
-            Console.WriteLine($"{Timestamp()} {message}");
+            var width = NoticeWidth();
+            // Wrapped here rather than by the terminal, so each screen row is known and can be restored.
+            foreach (var row in Wrap($"{Timestamp()} {message}", width))
+            {
+                Console.WriteLine(row + new string(' ', Math.Max(0, width - CellWidth(row))));
+                AddScreenRow((row, color));
+            }
+
             Console.ForegroundColor = previous;
 
             if (_isReadingInput)
@@ -585,10 +681,13 @@ public static class ConsoleOutput
             return;
         }
 
-        ClearRegionUnsafe();
         UpdateInlineCompletion();
-        DrawNoticeUnsafe();
-        DrawMenuUnsafe();
+        var place = PlaceOverlay(BuildOverlayLinesUnsafe(below: false).Count);
+        var overlay = BuildOverlayLinesUnsafe(place == OverlayPlace.Below);
+        // Rows the new overlay covers again on the same side are simply overwritten; the rest are restored.
+        var sameSide = place != OverlayPlace.PushDown && _overlayBelow == (place == OverlayPlace.Below);
+        RestoreOverlayUnsafe(sameSide ? Math.Min(overlay.Count, _overlayRows) : 0);
+        DrawOverlayUnsafe(overlay, place);
 
         SetCursorPositionSafe(0, _inputTop);
         RenderInputLineUnsafe();

@@ -77,7 +77,7 @@ if (args is ["--plugin-actions"])
 
 // Interactive: the prompt's floating completion menu and notices, for checking in a real terminal (or a pty).
 // Type to see completions; "notice" shows a long notice; "quit" exits.
-if (args is ["--console-demo"])
+if (args is ["--console-demo"] or ["--console-demo", "quiet"])
 {
     ShiroBot.TerminalUI.ConsoleOutput.ConsoleCommandOption[] completions =
     [
@@ -89,7 +89,8 @@ if (args is ["--console-demo"])
         new("quit", "退出演示")
     ];
     ShiroBot.TerminalUI.ConsoleOutput.Info("控制台已就绪");
-    _ = Task.Run(async () =>
+    // "quiet" leaves out the background logs, to see the prompt on a nearly empty screen.
+    if (args.Length == 1) _ = Task.Run(async () =>
     {
         for (var i = 1; i <= 40; i++)
         {
