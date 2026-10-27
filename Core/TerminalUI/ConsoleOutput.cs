@@ -21,6 +21,13 @@ public static class ConsoleOutput
     private static int _inputTop;
     private static string _inlineCompletionSuffix = string.Empty;
 
+    // Completions matching the input, floating above the prompt as you type; Esc hides them until the input changes.
+    private static List<ConsoleCommandOption> _menu = [];
+    private static int _menuIndex;
+    private static bool _menuClosed;
+    private const int MenuRows = 8;
+    private static readonly char Pointer = Console.OutputEncoding.CodePage == 65001 ? '❯' : '>';
+
     public static bool IsEnabled { get; set; } = true;
 
     public static void Log(string message) => WriteLine(message, ConsoleColor.Gray);
@@ -194,7 +201,63 @@ public static class ConsoleOutput
         Console.ForegroundColor = previous;
         // WriteLine may have scrolled the buffer at the bottom; the cursor row is the truth.
         _inputTop = Console.CursorTop;
-        _noticeRows = lines.Count;
+        _noticeRows += lines.Count;
+    }
+
+    /// <summary>Draws the matching completions under any notice, the selected one marked, then a rule.</summary>
+    private static void DrawMenuUnsafe()
+    {
+        if (_menu.Count == 0) return;
+
+        var width = NoticeWidth();
+        var start = Math.Clamp(_menuIndex - MenuRows / 2, 0, Math.Max(0, _menu.Count - MenuRows));
+        var shown = _menu.Skip(start).Take(MenuRows).ToArray();
+        var nameWidth = Math.Min(shown.Max(option => CellWidth(option.Name)), width * 2 / 5);
+        var descriptionWidth = Math.Max(0, width - nameWidth - 6);
+        var previous = Console.ForegroundColor;
+        var rows = 0;
+
+        for (var i = 0; i < shown.Length; i++)
+        {
+            var selected = start + i == _menuIndex;
+            var name = Truncate(shown[i].Name, nameWidth);
+            var head = $"{(selected ? Pointer : ' ')} {name}{new string(' ', nameWidth - CellWidth(name))}    ";
+            var description = descriptionWidth > 0 ? Truncate(shown[i].Description, descriptionWidth) : string.Empty;
+            Console.ForegroundColor = selected ? ConsoleColor.Cyan : ConsoleColor.Gray;
+            Console.Write(head);
+            Console.ForegroundColor = selected ? ConsoleColor.Cyan : ConsoleColor.DarkGray;
+            Console.WriteLine(description + new string(' ', Math.Max(0, width - CellWidth(head) - CellWidth(description))));
+            rows++;
+        }
+
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        var hidden = _menu.Count - shown.Length;
+        var hint = hidden > 0 ? $" ↑↓ 选择 · 还有 {hidden} 项 · Tab 补全 " : " ↑↓ 选择 · Tab 补全 ";
+        if (Pointer == '>') hint = hint.Replace("↑↓", "Up/Down");
+        Console.WriteLine(new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2));
+        rows++;
+
+        Console.ForegroundColor = previous;
+        _inputTop = Console.CursorTop;
+        _noticeRows += rows;
+    }
+
+    /// <summary>Puts the selected completion in the input, with a space when longer completions continue it.</summary>
+    private static void AcceptMenuSelectionUnsafe()
+    {
+        var name = _menu[_menuIndex].Name;
+        var continues = (_completionOptions ?? []).Any(option =>
+            option.Name.StartsWith(name + " ", StringComparison.OrdinalIgnoreCase));
+        InputBuffer.Clear().Append(continues ? name + " " : name);
+        _cursorIndex = InputBuffer.Length;
+        OnInputChangedUnsafe();
+    }
+
+    private static void OnInputChangedUnsafe()
+    {
+        _menuIndex = 0;
+        _menuClosed = false;
+        RedrawInputUnsafe();
     }
 
     private static void DismissNoticeUnsafe()
@@ -289,7 +352,12 @@ public static class ConsoleOutput
                         }
                         break;
                     case ConsoleKey.Escape:
-                        if (_notice is not null)
+                        if (_menu.Count > 0)
+                        {
+                            _menuClosed = true;
+                            RedrawInputUnsafe();
+                        }
+                        else if (_notice is not null)
                         {
                             DismissNoticeUnsafe();
                         }
@@ -305,6 +373,8 @@ public static class ConsoleOutput
                         var result = InputBuffer.ToString();
                         // The next command's output starts where the notice was; the notice has been read.
                         _notice = null;
+                        _menu = [];
+                        _menuClosed = false;
                         ClearRegionUnsafe();
                         _isReadingInput = false;
                         _activePrompt = null;
@@ -326,7 +396,7 @@ public static class ConsoleOutput
                         {
                             InputBuffer.Remove(_cursorIndex - 1, 1);
                             _cursorIndex--;
-                            RedrawInputUnsafe();
+                            OnInputChangedUnsafe();
                         }
 
                         break;
@@ -334,7 +404,7 @@ public static class ConsoleOutput
                         if (_cursorIndex < InputBuffer.Length)
                         {
                             InputBuffer.Remove(_cursorIndex, 1);
-                            RedrawInputUnsafe();
+                            OnInputChangedUnsafe();
                         }
 
                         break;
@@ -362,11 +432,23 @@ public static class ConsoleOutput
                         _cursorIndex = InputBuffer.Length;
                         PositionCursorUnsafe();
                         break;
+                    // With completions showing, the arrows choose among them; otherwise they walk the history.
+                    case ConsoleKey.UpArrow when _menu.Count > 0:
+                        _menuIndex = (_menuIndex - 1 + _menu.Count) % _menu.Count;
+                        RedrawInputUnsafe();
+                        break;
+                    case ConsoleKey.DownArrow when _menu.Count > 0:
+                        _menuIndex = (_menuIndex + 1) % _menu.Count;
+                        RedrawInputUnsafe();
+                        break;
                     case ConsoleKey.UpArrow:
                         NavigateHistory(-1);
                         break;
                     case ConsoleKey.DownArrow:
                         NavigateHistory(1);
+                        break;
+                    case ConsoleKey.Tab when _menu.Count > 0:
+                        AcceptMenuSelectionUnsafe();
                         break;
                     case ConsoleKey.Tab:
                         ApplyCompletion();
@@ -376,7 +458,7 @@ public static class ConsoleOutput
                         {
                             InputBuffer.Insert(_cursorIndex, key.KeyChar);
                             _cursorIndex++;
-                            RedrawInputUnsafe();
+                            OnInputChangedUnsafe();
                         }
 
                         break;
@@ -426,6 +508,7 @@ public static class ConsoleOutput
         InputBuffer.Append(_historyIndex == History.Count ? _historyDraft : History[_historyIndex]);
 
         _cursorIndex = InputBuffer.Length;
+        _menuClosed = true; // a recalled command is complete; don't cover it with suggestions
         RedrawInputUnsafe();
     }
 
@@ -443,53 +526,31 @@ public static class ConsoleOutput
         RedrawInputUnsafe();
     }
 
+    /// <summary>Refreshes the completion menu and the grey inline suffix (the selected completion's rest).</summary>
     private static void UpdateInlineCompletion()
     {
+        _menu = [];
+        _inlineCompletionSuffix = string.Empty;
         var input = InputBuffer.ToString().TrimStart();
-        if (input.Length == 0)
-        {
-            _inlineCompletionSuffix = string.Empty;
-            return;
-        }
+        if (input.Length == 0) return;
 
         if (_completionProvider is not null)
         {
             _completionOptions = _completionProvider();
         }
 
-        var completions = _completionOptions;
-        if (completions is null || completions.Count == 0)
-        {
-            _inlineCompletionSuffix = string.Empty;
-            return;
-        }
+        var matches = (_completionOptions ?? [])
+            .Where(command => command.Name.StartsWith(input, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        // Nothing to suggest once the input is exactly the only match.
+        if (matches.Count == 1 && matches[0].Name.Length == input.Length) return;
+        if (matches.Count == 0) return;
 
-        var query = input.ToLowerInvariant();
-        ConsoleCommandOption? match;
-
-        if (query.Length == 0)
-        {
-            match = completions.FirstOrDefault(command =>
-                        string.Equals(command.Name, "help", StringComparison.OrdinalIgnoreCase)) ??
-                    completions
-                        .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-                        .FirstOrDefault();
-        }
-        else
-        {
-            match = completions
-                .Where(command => command.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-        }
-
-        if (match is null || input.Length >= match.Name.Length)
-        {
-            _inlineCompletionSuffix = string.Empty;
-            return;
-        }
-
-        _inlineCompletionSuffix = match.Name[input.Length..];
+        _menuIndex = Math.Clamp(_menuIndex, 0, matches.Count - 1);
+        if (!_menuClosed) _menu = matches;
+        var selected = matches[_menuIndex];
+        if (input.Length < selected.Name.Length) _inlineCompletionSuffix = selected.Name[input.Length..];
     }
 
     private static void WriteLine(string message, ConsoleColor color)
@@ -527,6 +588,7 @@ public static class ConsoleOutput
         ClearRegionUnsafe();
         UpdateInlineCompletion();
         DrawNoticeUnsafe();
+        DrawMenuUnsafe();
 
         SetCursorPositionSafe(0, _inputTop);
         RenderInputLineUnsafe();

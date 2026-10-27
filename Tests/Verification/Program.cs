@@ -75,12 +75,20 @@ if (args is ["--plugin-actions"])
     return;
 }
 
-// Interactive: drives the prompt with a floating notice, for checking it in a real terminal (or a pty).
-if (args is ["--console-notice-demo"])
+// Interactive: the prompt's floating completion menu and notices, for checking in a real terminal (or a pty).
+// Type to see completions; "notice" shows a long notice; "quit" exits.
+if (args is ["--console-demo"])
 {
+    ShiroBot.TerminalUI.ConsoleOutput.ConsoleCommandOption[] completions =
+    [
+        new("help", "显示帮助信息"), new("plugins", "显示已加载插件"), new("adapters", "显示已安装适配器"),
+        new("adapter", "管理适配器: start|stop|reload <id>"), new("api", "显示或设置 API 鉴权信息"),
+        new("actions", "显示插件注册的操作"), new("action", "执行插件操作: <插件> <操作>"),
+        new("action AiChatPlugin report", "生成运行报告"), new("action AiChatPlugin clear-memory", "清空所有会话记忆"),
+        new("unload AiChatPlugin", "热卸载插件 AiChatPlugin"), new("update", "检查或执行更新"), new("notice", "演示浮动提示"),
+        new("quit", "退出演示")
+    ];
     ShiroBot.TerminalUI.ConsoleOutput.Info("控制台已就绪");
-    ShiroBot.TerminalUI.ConsoleOutput.Notice("生成报告", "报告已生成。",
-        "处理消息：1,284 条\n命令命中：312 次\n平均耗时：48 ms\n最近错误：无");
     _ = Task.Run(async () =>
     {
         for (var i = 1; i <= 40; i++)
@@ -89,7 +97,7 @@ if (args is ["--console-notice-demo"])
             ShiroBot.TerminalUI.ConsoleOutput.Log($"后台日志 {i}");
         }
     });
-    while (ShiroBot.TerminalUI.ConsoleOutput.ReadPrompt("> ") is var input && input != "quit")
+    while (ShiroBot.TerminalUI.ConsoleOutput.ReadPrompt("> ", completions) is var input && input != "quit")
     {
         if (input == "notice")
             ShiroBot.TerminalUI.ConsoleOutput.Notice("会出错", "插件操作执行失败。",
