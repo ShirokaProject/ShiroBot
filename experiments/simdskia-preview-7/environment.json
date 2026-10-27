@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-27",
+  "hostCommit": "d2233a767a1a52688e54e35da3f2f4b9a6a7e628",
+  "package": "SimdSkia.Avalonia.Desktop",
+  "packageVersion": "0.1.0-preview.7",
+  "packageSourceCommit": "1490f164084c24c1bd3f3dbaf727d7598a14abee",
+  "sourceCheckoutCommit": "237a79a5daf7c79967e47f7f75655163fccc5b32",
+  "os": "27.0.1",
+  "architecture": "arm64",
+  "cpu": "Apple M4",
+  "dotnetSdk": "10.0.402",
+  "pluginsSources": {
+    "shiro-status": "5843a007905e44ad371cd1afb70f4cb7fb6e5ff8",
+    "my-list": "659a805d02e33c544ae14cfd91891f3ad2f0817e",
+    "file-link": "f0c082119eac9c6cb2289fe08b3d2b5f2674ece3",
+    "jm-parser": "a4f7391c52d7d5d0ffea71aae76f2f446fe2bf90",
+    "rss-subscriber": "596ce5547ef69015ba5affc2614557fb87efccee",
+    "ai-chat": "bb1875bfcf05bce2f3360a41675159c68154d2ae",
+    "video-previewer": "5e444b719082b74dd1ce4dfb416b56302889e40d",
+    "video-tool": "a6c0e8bbbcc03e96915731f94e8834e9dd852aa3",
+    "my-parser": "bac7670972559c3f725dc6a0a079b8b2087a38a9",
+    "onebot-server": "53e17245f675c45f2a87a319be96d62a5221e7df",
+    "github-view": "6322e152e2b8813cabc0feb5136f6a520f4d2bee"
+  }
+}

@@ -1,0 +1,7 @@
+System.NotSupportedException: Color/bitmap/SVG font rendering requires its own color glyph pipeline.
+   at SimdSkia.Text.TrueTypeFont..ctor(FontSource data, Int32 faceIndex)
+   at SimdSkia.Text.TrueTypeFont.FromOwnedCollection(Byte[] data, Int32 faceIndex)
+   at SimdSkia.Avalonia.FontData..ctor(Byte[] ownedData, Int32 faceIndex, Boolean owned)
+   at SimdSkia.Avalonia.FontManager..ctor(IEnumerable`1 paths, String defaultFamily, Boolean supportedFacesOnly)
+   at SimdSkia.Avalonia.AppBuilderExtensions.<>c__DisplayClass1_0.<UseSimdSkia>b__0()
+   at Program.<Main>$(String[] args) in /Users/geruipu/riderprojects/ShiroBot.SimdSkia.Lab/emoji-probe/Program.cs:line 5

@@ -14,8 +14,6 @@
 
     <ItemGroup>
       <PackageReference Include="Avalonia" />
-      <PackageReference Include="Avalonia.HarfBuzz" />
-      <PackageReference Include="Avalonia.Skia" />
       <PackageReference Include="ILRepack.Lib.MSBuild.Task"
                         PrivateAssets="all"
                         GeneratePathProperty="true" />

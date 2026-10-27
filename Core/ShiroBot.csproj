@@ -49,10 +49,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <AvaloniaResource Include="LabFonts/*.ttf" />
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
         <PackageReference Include="Avalonia" />
         <PackageReference Include="Avalonia.Headless" />
         <PackageReference Include="Avalonia.Markup.Xaml.Loader" />
+        <PackageReference Include="SimdSkia.Avalonia.Desktop" />
         <PackageReference Include="Avalonia.Skia" />
         <PackageReference Include="Avalonia.Themes.Fluent" />
         <PackageReference Include="Spectre.Console" />

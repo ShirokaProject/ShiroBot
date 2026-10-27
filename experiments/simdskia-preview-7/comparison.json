@@ -1,0 +1,2932 @@
+{
+  "summary": {
+    "original": {
+      "success": 42,
+      "errors": 0,
+      "failureReasons": {},
+      "plugins": [
+        {
+          "id": "AiChatPlugin",
+          "name": "AI\u804a\u5929\u63d2\u4ef6",
+          "version": "1.4.1",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.AIChat",
+          "description": "\u652f\u6301\u4e0a\u4e0b\u6587/\u56fe\u7247/\u6587\u4ef6/\u5386\u53f2/\u6a21\u578b\u5207\u6362\u7684 OpenAI \u517c\u5bb9\u804a\u5929\u63d2\u4ef6\u3002",
+          "category": "Chat",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "FileLinkPlugin",
+          "name": "FileLinkPlugin",
+          "version": "1.2.2",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shirobot.Plugin.FileLink",
+          "description": "\u7528\u4e8e\u7fa4\u804a\u83b7\u53d6\u6587\u4ef6\u76f4\u94fe / \u4fdd\u5b58\u76f4\u94fe\u5230\u7fa4\u5185",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "GithubView",
+          "name": "Github \u9884\u89c8\u63d2\u4ef6",
+          "version": "1.1.1",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.GithubView",
+          "description": "\u89e3\u6790 GitHub \u4ed3\u5e93\u94fe\u63a5\u5e76\u6e32\u67d3\u76f8\u5173\u4fe1\u606f\u5361\u7247\u3002",
+          "category": "Render",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "JmParser",
+          "name": "JmParser",
+          "version": "1.3.4",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.JmParser",
+          "description": "JM \u89e3\u6790\u63d2\u4ef6",
+          "category": "Media",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyList",
+          "name": "MyList",
+          "version": "1.4.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "PVPGOOD/Shirobot.Plugin.MyList",
+          "description": "\u5c06 QQ \u7fa4\u6587\u4ef6\u6620\u5c04\u4e3a WebDAV \u7f51\u76d8\uff0c\u652f\u6301\u6d4f\u89c8\u3001\u4e0b\u8f7d\u548c\u4e0a\u4f20\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyParser",
+          "name": "MyParser",
+          "version": "0.6.15",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.MyParser",
+          "description": "\u89e3\u6790\u591a\u5e73\u53f0\u89c6\u9891\u3001\u56fe\u6587\u548c\u97f3\u4e50\u94fe\u63a5\uff0c\u751f\u6210\u9884\u89c8\u5361\u7247\u5e76\u53d1\u9001\u89c6\u9891\u3001\u56fe\u7247\u6216\u97f3\u9891\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "OneBotServer",
+          "name": "OneBot Server",
+          "version": "0.2.3",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/ShiroBot.Plugin.OneBotServer",
+          "description": "Exposes ShiroBot QQ events and actions through the OneBot v11 protocol.",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "RenderProbe",
+          "name": "Isolated rendering comparison probe",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "Unknown",
+          "repo": null,
+          "description": "",
+          "category": "Other",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "Shirobot.Plugin.RssSubscriber",
+          "name": "RSS \u8ba2\u9605",
+          "version": "0.2.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "ShirokaProject/Shirobot.Plugin.RssSubscriber",
+          "description": "RSS / Atom \u8ba2\u9605\u63a8\u9001\u63d2\u4ef6\uff0c\u652f\u6301\u7fa4\u4e0e\u79c1\u804a\u9694\u79bb\u3002",
+          "category": "Integration",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "ShiroStatus",
+          "name": "ShiroStatus",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.ShiroStatus",
+          "description": "\u67e5\u8be2Shiro\u7684\u8fd0\u884c\u72b6\u6001",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoPreviewer",
+          "name": "VideoPreviewer",
+          "version": "1.1.0",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shriobot.Plugin.VideoPreviewer",
+          "description": "\u89c6\u9891\u9884\u89c8\u63d2\u4ef6",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoToGif",
+          "name": "VideoTool \u89c6\u9891\u5de5\u5177\u7bb1",
+          "version": "0.1.3",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/ShiroBot.Plugin.VideoTool",
+          "description": "\u89c6\u9891 GIF\u3001\u622a\u53d6\u3001MP3\u3001\u76ee\u6807\u5927\u5c0f\u538b\u7f29\u3001\u5c01\u9762\u548c\u4fe1\u606f\u67e5\u8be2\uff1b\u652f\u6301\u8de8\u5e73\u53f0\u786c\u4ef6\u7f16\u7801\u5b9e\u6d4b\u3001CPU \u56de\u9000\u53ca WebUI \u914d\u7f6e\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        }
+      ]
+    },
+    "skia-12.1.4": {
+      "success": 42,
+      "errors": 0,
+      "failureReasons": {},
+      "plugins": [
+        {
+          "id": "AiChatPlugin",
+          "name": "AI\u804a\u5929\u63d2\u4ef6",
+          "version": "1.4.1",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.AIChat",
+          "description": "\u652f\u6301\u4e0a\u4e0b\u6587/\u56fe\u7247/\u6587\u4ef6/\u5386\u53f2/\u6a21\u578b\u5207\u6362\u7684 OpenAI \u517c\u5bb9\u804a\u5929\u63d2\u4ef6\u3002",
+          "category": "Chat",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "FileLinkPlugin",
+          "name": "FileLinkPlugin",
+          "version": "1.2.2",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shirobot.Plugin.FileLink",
+          "description": "\u7528\u4e8e\u7fa4\u804a\u83b7\u53d6\u6587\u4ef6\u76f4\u94fe / \u4fdd\u5b58\u76f4\u94fe\u5230\u7fa4\u5185",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "GithubView",
+          "name": "Github \u9884\u89c8\u63d2\u4ef6",
+          "version": "1.1.1",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.GithubView",
+          "description": "\u89e3\u6790 GitHub \u4ed3\u5e93\u94fe\u63a5\u5e76\u6e32\u67d3\u76f8\u5173\u4fe1\u606f\u5361\u7247\u3002",
+          "category": "Render",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "JmParser",
+          "name": "JmParser",
+          "version": "1.3.4",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.JmParser",
+          "description": "JM \u89e3\u6790\u63d2\u4ef6",
+          "category": "Media",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyList",
+          "name": "MyList",
+          "version": "1.4.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "PVPGOOD/Shirobot.Plugin.MyList",
+          "description": "\u5c06 QQ \u7fa4\u6587\u4ef6\u6620\u5c04\u4e3a WebDAV \u7f51\u76d8\uff0c\u652f\u6301\u6d4f\u89c8\u3001\u4e0b\u8f7d\u548c\u4e0a\u4f20\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyParser",
+          "name": "MyParser",
+          "version": "0.6.15",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.MyParser",
+          "description": "\u89e3\u6790\u591a\u5e73\u53f0\u89c6\u9891\u3001\u56fe\u6587\u548c\u97f3\u4e50\u94fe\u63a5\uff0c\u751f\u6210\u9884\u89c8\u5361\u7247\u5e76\u53d1\u9001\u89c6\u9891\u3001\u56fe\u7247\u6216\u97f3\u9891\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "OneBotServer",
+          "name": "OneBot Server",
+          "version": "0.2.3",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/ShiroBot.Plugin.OneBotServer",
+          "description": "Exposes ShiroBot QQ events and actions through the OneBot v11 protocol.",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "RenderProbe",
+          "name": "Isolated rendering comparison probe",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "Unknown",
+          "repo": null,
+          "description": "",
+          "category": "Other",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "Shirobot.Plugin.RssSubscriber",
+          "name": "RSS \u8ba2\u9605",
+          "version": "0.2.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "ShirokaProject/Shirobot.Plugin.RssSubscriber",
+          "description": "RSS / Atom \u8ba2\u9605\u63a8\u9001\u63d2\u4ef6\uff0c\u652f\u6301\u7fa4\u4e0e\u79c1\u804a\u9694\u79bb\u3002",
+          "category": "Integration",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "ShiroStatus",
+          "name": "ShiroStatus",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.ShiroStatus",
+          "description": "\u67e5\u8be2Shiro\u7684\u8fd0\u884c\u72b6\u6001",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoPreviewer",
+          "name": "VideoPreviewer",
+          "version": "1.1.0",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shriobot.Plugin.VideoPreviewer",
+          "description": "\u89c6\u9891\u9884\u89c8\u63d2\u4ef6",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoToGif",
+          "name": "VideoTool \u89c6\u9891\u5de5\u5177\u7bb1",
+          "version": "0.1.3",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/ShiroBot.Plugin.VideoTool",
+          "description": "\u89c6\u9891 GIF\u3001\u622a\u53d6\u3001MP3\u3001\u76ee\u6807\u5927\u5c0f\u538b\u7f29\u3001\u5c01\u9762\u548c\u4fe1\u606f\u67e5\u8be2\uff1b\u652f\u6301\u8de8\u5e73\u53f0\u786c\u4ef6\u7f16\u7801\u5b9e\u6d4b\u3001CPU \u56de\u9000\u53ca WebUI \u914d\u7f6e\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        }
+      ]
+    },
+    "simd": {
+      "success": 0,
+      "errors": 42,
+      "failureReasons": {
+        "System.Exception: Control not loaded: MyParser.Provider.Heybox.Views.HeyboxArticleDocument": 2,
+        "System.NotSupportedException: Synthetic bold/italic font outlines are not implemented.": 18,
+        "System.Exception: Control not loaded: MyParser.Provider.BiliBili.Views.BiliCard": 2,
+        "System.Exception: Control not loaded: Shirobot.Plugin.MyParser.Views.MediaCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.Heybox.Views.HeyboxCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.BiliBili.Views.BiliLiveCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.Douyin.Views.DouyinCommentCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.WeixinChannels.Views.WeixinChannelsCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.BiliBili.Views.BiliBangumiCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.X.Views.XCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.BiliBili.Views.BiliArticleDocument": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.NetEaseCloudMusic.Views.NetEaseMusicCard": 2,
+        "System.Exception: Control not loaded: MyParser.Provider.Douyin.Views.DouyinCard": 2
+      },
+      "plugins": [
+        {
+          "id": "AiChatPlugin",
+          "name": "AI\u804a\u5929\u63d2\u4ef6",
+          "version": "1.4.1",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.AIChat",
+          "description": "\u652f\u6301\u4e0a\u4e0b\u6587/\u56fe\u7247/\u6587\u4ef6/\u5386\u53f2/\u6a21\u578b\u5207\u6362\u7684 OpenAI \u517c\u5bb9\u804a\u5929\u63d2\u4ef6\u3002",
+          "category": "Chat",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "FileLinkPlugin",
+          "name": "FileLinkPlugin",
+          "version": "1.2.2",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shirobot.Plugin.FileLink",
+          "description": "\u7528\u4e8e\u7fa4\u804a\u83b7\u53d6\u6587\u4ef6\u76f4\u94fe / \u4fdd\u5b58\u76f4\u94fe\u5230\u7fa4\u5185",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "GithubView",
+          "name": "Github \u9884\u89c8\u63d2\u4ef6",
+          "version": "1.1.1",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.GithubView",
+          "description": "\u89e3\u6790 GitHub \u4ed3\u5e93\u94fe\u63a5\u5e76\u6e32\u67d3\u76f8\u5173\u4fe1\u606f\u5361\u7247\u3002",
+          "category": "Render",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "JmParser",
+          "name": "JmParser",
+          "version": "1.3.4",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.JmParser",
+          "description": "JM \u89e3\u6790\u63d2\u4ef6",
+          "category": "Media",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyList",
+          "name": "MyList",
+          "version": "1.4.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "PVPGOOD/Shirobot.Plugin.MyList",
+          "description": "\u5c06 QQ \u7fa4\u6587\u4ef6\u6620\u5c04\u4e3a WebDAV \u7f51\u76d8\uff0c\u652f\u6301\u6d4f\u89c8\u3001\u4e0b\u8f7d\u548c\u4e0a\u4f20\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "OneBotServer",
+          "name": "OneBot Server",
+          "version": "0.2.3",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/ShiroBot.Plugin.OneBotServer",
+          "description": "Exposes ShiroBot QQ events and actions through the OneBot v11 protocol.",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "RenderProbe",
+          "name": "Isolated rendering comparison probe",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "Unknown",
+          "repo": null,
+          "description": "",
+          "category": "Other",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "Shirobot.Plugin.RssSubscriber",
+          "name": "RSS \u8ba2\u9605",
+          "version": "0.2.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "ShirokaProject/Shirobot.Plugin.RssSubscriber",
+          "description": "RSS / Atom \u8ba2\u9605\u63a8\u9001\u63d2\u4ef6\uff0c\u652f\u6301\u7fa4\u4e0e\u79c1\u804a\u9694\u79bb\u3002",
+          "category": "Integration",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "ShiroStatus",
+          "name": "ShiroStatus",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.ShiroStatus",
+          "description": "\u67e5\u8be2Shiro\u7684\u8fd0\u884c\u72b6\u6001",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoPreviewer",
+          "name": "VideoPreviewer",
+          "version": "1.1.0",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shriobot.Plugin.VideoPreviewer",
+          "description": "\u89c6\u9891\u9884\u89c8\u63d2\u4ef6",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoToGif",
+          "name": "VideoTool \u89c6\u9891\u5de5\u5177\u7bb1",
+          "version": "0.1.3",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/ShiroBot.Plugin.VideoTool",
+          "description": "\u89c6\u9891 GIF\u3001\u622a\u53d6\u3001MP3\u3001\u76ee\u6807\u5927\u5c0f\u538b\u7f29\u3001\u5c01\u9762\u548c\u4fe1\u606f\u67e5\u8be2\uff1b\u652f\u6301\u8de8\u5e73\u53f0\u786c\u4ef6\u7f16\u7801\u5b9e\u6d4b\u3001CPU \u56de\u9000\u53ca WebUI \u914d\u7f6e\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyParser",
+          "name": "MyParser",
+          "version": "0.6.15",
+          "enable": false,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.MyParser",
+          "description": "\u89e3\u6790\u591a\u5e73\u53f0\u89c6\u9891\u3001\u56fe\u6587\u548c\u97f3\u4e50\u94fe\u63a5\uff0c\u751f\u6210\u9884\u89c8\u5361\u7247\u5e76\u53d1\u9001\u89c6\u9891\u3001\u56fe\u7247\u6216\u97f3\u9891\u3002",
+          "category": "Utility",
+          "status": "error",
+          "errorMessage": "\u52a0\u8f7d\u7a0b\u5e8f\u96c6\u7c7b\u578b\u5931\u8d25: Shirobot.Plugin.MyParser, Version=0.6.15.0, Culture=neutral, PublicKeyToken=null\nCould not load file or assembly 'SkiaSharp, Version=3.119.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756'. The system cannot find the file specified.\n"
+        }
+      ]
+    },
+    "simd-compat": {
+      "success": 0,
+      "errors": 42,
+      "failureReasons": {
+        "System.NotSupportedException: Synthetic bold/italic font outlines are not implemented.": 42
+      },
+      "plugins": [
+        {
+          "id": "AiChatPlugin",
+          "name": "AI\u804a\u5929\u63d2\u4ef6",
+          "version": "1.4.1",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.AIChat",
+          "description": "\u652f\u6301\u4e0a\u4e0b\u6587/\u56fe\u7247/\u6587\u4ef6/\u5386\u53f2/\u6a21\u578b\u5207\u6362\u7684 OpenAI \u517c\u5bb9\u804a\u5929\u63d2\u4ef6\u3002",
+          "category": "Chat",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "FileLinkPlugin",
+          "name": "FileLinkPlugin",
+          "version": "1.2.2",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shirobot.Plugin.FileLink",
+          "description": "\u7528\u4e8e\u7fa4\u804a\u83b7\u53d6\u6587\u4ef6\u76f4\u94fe / \u4fdd\u5b58\u76f4\u94fe\u5230\u7fa4\u5185",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "GithubView",
+          "name": "Github \u9884\u89c8\u63d2\u4ef6",
+          "version": "1.1.1",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.GithubView",
+          "description": "\u89e3\u6790 GitHub \u4ed3\u5e93\u94fe\u63a5\u5e76\u6e32\u67d3\u76f8\u5173\u4fe1\u606f\u5361\u7247\u3002",
+          "category": "Render",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "JmParser",
+          "name": "JmParser",
+          "version": "1.3.4",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.JmParser",
+          "description": "JM \u89e3\u6790\u63d2\u4ef6",
+          "category": "Media",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyList",
+          "name": "MyList",
+          "version": "1.4.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "PVPGOOD/Shirobot.Plugin.MyList",
+          "description": "\u5c06 QQ \u7fa4\u6587\u4ef6\u6620\u5c04\u4e3a WebDAV \u7f51\u76d8\uff0c\u652f\u6301\u6d4f\u89c8\u3001\u4e0b\u8f7d\u548c\u4e0a\u4f20\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyParser",
+          "name": "MyParser",
+          "version": "0.6.15",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.MyParser",
+          "description": "\u89e3\u6790\u591a\u5e73\u53f0\u89c6\u9891\u3001\u56fe\u6587\u548c\u97f3\u4e50\u94fe\u63a5\uff0c\u751f\u6210\u9884\u89c8\u5361\u7247\u5e76\u53d1\u9001\u89c6\u9891\u3001\u56fe\u7247\u6216\u97f3\u9891\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "OneBotServer",
+          "name": "OneBot Server",
+          "version": "0.2.3",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/ShiroBot.Plugin.OneBotServer",
+          "description": "Exposes ShiroBot QQ events and actions through the OneBot v11 protocol.",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "RenderProbe",
+          "name": "Isolated rendering comparison probe",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "Unknown",
+          "repo": null,
+          "description": "",
+          "category": "Other",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "Shirobot.Plugin.RssSubscriber",
+          "name": "RSS \u8ba2\u9605",
+          "version": "0.2.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "ShirokaProject/Shirobot.Plugin.RssSubscriber",
+          "description": "RSS / Atom \u8ba2\u9605\u63a8\u9001\u63d2\u4ef6\uff0c\u652f\u6301\u7fa4\u4e0e\u79c1\u804a\u9694\u79bb\u3002",
+          "category": "Integration",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "ShiroStatus",
+          "name": "ShiroStatus",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.ShiroStatus",
+          "description": "\u67e5\u8be2Shiro\u7684\u8fd0\u884c\u72b6\u6001",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoPreviewer",
+          "name": "VideoPreviewer",
+          "version": "1.1.0",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shriobot.Plugin.VideoPreviewer",
+          "description": "\u89c6\u9891\u9884\u89c8\u63d2\u4ef6",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoToGif",
+          "name": "VideoTool \u89c6\u9891\u5de5\u5177\u7bb1",
+          "version": "0.1.3",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/ShiroBot.Plugin.VideoTool",
+          "description": "\u89c6\u9891 GIF\u3001\u622a\u53d6\u3001MP3\u3001\u76ee\u6807\u5927\u5c0f\u538b\u7f29\u3001\u5c01\u9762\u548c\u4fe1\u606f\u67e5\u8be2\uff1b\u652f\u6301\u8de8\u5e73\u53f0\u786c\u4ef6\u7f16\u7801\u5b9e\u6d4b\u3001CPU \u56de\u9000\u53ca WebUI \u914d\u7f6e\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        }
+      ]
+    },
+    "simd-fonts": {
+      "success": 42,
+      "errors": 0,
+      "failureReasons": {},
+      "plugins": [
+        {
+          "id": "AiChatPlugin",
+          "name": "AI\u804a\u5929\u63d2\u4ef6",
+          "version": "1.4.1",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.AIChat",
+          "description": "\u652f\u6301\u4e0a\u4e0b\u6587/\u56fe\u7247/\u6587\u4ef6/\u5386\u53f2/\u6a21\u578b\u5207\u6362\u7684 OpenAI \u517c\u5bb9\u804a\u5929\u63d2\u4ef6\u3002",
+          "category": "Chat",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "FileLinkPlugin",
+          "name": "FileLinkPlugin",
+          "version": "1.2.2",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shirobot.Plugin.FileLink",
+          "description": "\u7528\u4e8e\u7fa4\u804a\u83b7\u53d6\u6587\u4ef6\u76f4\u94fe / \u4fdd\u5b58\u76f4\u94fe\u5230\u7fa4\u5185",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "GithubView",
+          "name": "Github \u9884\u89c8\u63d2\u4ef6",
+          "version": "1.1.1",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.GithubView",
+          "description": "\u89e3\u6790 GitHub \u4ed3\u5e93\u94fe\u63a5\u5e76\u6e32\u67d3\u76f8\u5173\u4fe1\u606f\u5361\u7247\u3002",
+          "category": "Render",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "JmParser",
+          "name": "JmParser",
+          "version": "1.3.4",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.JmParser",
+          "description": "JM \u89e3\u6790\u63d2\u4ef6",
+          "category": "Media",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyList",
+          "name": "MyList",
+          "version": "1.4.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "PVPGOOD/Shirobot.Plugin.MyList",
+          "description": "\u5c06 QQ \u7fa4\u6587\u4ef6\u6620\u5c04\u4e3a WebDAV \u7f51\u76d8\uff0c\u652f\u6301\u6d4f\u89c8\u3001\u4e0b\u8f7d\u548c\u4e0a\u4f20\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyParser",
+          "name": "MyParser",
+          "version": "0.6.15",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.MyParser",
+          "description": "\u89e3\u6790\u591a\u5e73\u53f0\u89c6\u9891\u3001\u56fe\u6587\u548c\u97f3\u4e50\u94fe\u63a5\uff0c\u751f\u6210\u9884\u89c8\u5361\u7247\u5e76\u53d1\u9001\u89c6\u9891\u3001\u56fe\u7247\u6216\u97f3\u9891\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "OneBotServer",
+          "name": "OneBot Server",
+          "version": "0.2.3",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/ShiroBot.Plugin.OneBotServer",
+          "description": "Exposes ShiroBot QQ events and actions through the OneBot v11 protocol.",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "RenderProbe",
+          "name": "Isolated rendering comparison probe",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "Unknown",
+          "repo": null,
+          "description": "",
+          "category": "Other",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "Shirobot.Plugin.RssSubscriber",
+          "name": "RSS \u8ba2\u9605",
+          "version": "0.2.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "ShirokaProject/Shirobot.Plugin.RssSubscriber",
+          "description": "RSS / Atom \u8ba2\u9605\u63a8\u9001\u63d2\u4ef6\uff0c\u652f\u6301\u7fa4\u4e0e\u79c1\u804a\u9694\u79bb\u3002",
+          "category": "Integration",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "ShiroStatus",
+          "name": "ShiroStatus",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.ShiroStatus",
+          "description": "\u67e5\u8be2Shiro\u7684\u8fd0\u884c\u72b6\u6001",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoPreviewer",
+          "name": "VideoPreviewer",
+          "version": "1.1.0",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shriobot.Plugin.VideoPreviewer",
+          "description": "\u89c6\u9891\u9884\u89c8\u63d2\u4ef6",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoToGif",
+          "name": "VideoTool \u89c6\u9891\u5de5\u5177\u7bb1",
+          "version": "0.1.3",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/ShiroBot.Plugin.VideoTool",
+          "description": "\u89c6\u9891 GIF\u3001\u622a\u53d6\u3001MP3\u3001\u76ee\u6807\u5927\u5c0f\u538b\u7f29\u3001\u5c01\u9762\u548c\u4fe1\u606f\u67e5\u8be2\uff1b\u652f\u6301\u8de8\u5e73\u53f0\u786c\u4ef6\u7f16\u7801\u5b9e\u6d4b\u3001CPU \u56de\u9000\u53ca WebUI \u914d\u7f6e\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        }
+      ]
+    },
+    "skia-fonts": {
+      "success": 42,
+      "errors": 0,
+      "failureReasons": {},
+      "plugins": [
+        {
+          "id": "AiChatPlugin",
+          "name": "AI\u804a\u5929\u63d2\u4ef6",
+          "version": "1.4.1",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.AIChat",
+          "description": "\u652f\u6301\u4e0a\u4e0b\u6587/\u56fe\u7247/\u6587\u4ef6/\u5386\u53f2/\u6a21\u578b\u5207\u6362\u7684 OpenAI \u517c\u5bb9\u804a\u5929\u63d2\u4ef6\u3002",
+          "category": "Chat",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "FileLinkPlugin",
+          "name": "FileLinkPlugin",
+          "version": "1.2.2",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shirobot.Plugin.FileLink",
+          "description": "\u7528\u4e8e\u7fa4\u804a\u83b7\u53d6\u6587\u4ef6\u76f4\u94fe / \u4fdd\u5b58\u76f4\u94fe\u5230\u7fa4\u5185",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "GithubView",
+          "name": "Github \u9884\u89c8\u63d2\u4ef6",
+          "version": "1.1.1",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.GithubView",
+          "description": "\u89e3\u6790 GitHub \u4ed3\u5e93\u94fe\u63a5\u5e76\u6e32\u67d3\u76f8\u5173\u4fe1\u606f\u5361\u7247\u3002",
+          "category": "Render",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "JmParser",
+          "name": "JmParser",
+          "version": "1.3.4",
+          "enable": true,
+          "author": "greepar",
+          "repo": "greepar/ShiroBot.Plugin.JmParser",
+          "description": "JM \u89e3\u6790\u63d2\u4ef6",
+          "category": "Media",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyList",
+          "name": "MyList",
+          "version": "1.4.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "PVPGOOD/Shirobot.Plugin.MyList",
+          "description": "\u5c06 QQ \u7fa4\u6587\u4ef6\u6620\u5c04\u4e3a WebDAV \u7f51\u76d8\uff0c\u652f\u6301\u6d4f\u89c8\u3001\u4e0b\u8f7d\u548c\u4e0a\u4f20\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "MyParser",
+          "name": "MyParser",
+          "version": "0.6.15",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.MyParser",
+          "description": "\u89e3\u6790\u591a\u5e73\u53f0\u89c6\u9891\u3001\u56fe\u6587\u548c\u97f3\u4e50\u94fe\u63a5\uff0c\u751f\u6210\u9884\u89c8\u5361\u7247\u5e76\u53d1\u9001\u89c6\u9891\u3001\u56fe\u7247\u6216\u97f3\u9891\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "OneBotServer",
+          "name": "OneBot Server",
+          "version": "0.2.3",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/ShiroBot.Plugin.OneBotServer",
+          "description": "Exposes ShiroBot QQ events and actions through the OneBot v11 protocol.",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "RenderProbe",
+          "name": "Isolated rendering comparison probe",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "Unknown",
+          "repo": null,
+          "description": "",
+          "category": "Other",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "Shirobot.Plugin.RssSubscriber",
+          "name": "RSS \u8ba2\u9605",
+          "version": "0.2.2",
+          "enable": true,
+          "author": "PVPGOOD",
+          "repo": "ShirokaProject/Shirobot.Plugin.RssSubscriber",
+          "description": "RSS / Atom \u8ba2\u9605\u63a8\u9001\u63d2\u4ef6\uff0c\u652f\u6301\u7fa4\u4e0e\u79c1\u804a\u9694\u79bb\u3002",
+          "category": "Integration",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "ShiroStatus",
+          "name": "ShiroStatus",
+          "version": "0.1.0",
+          "enable": true,
+          "author": "ShirokaProject",
+          "repo": "ShirokaProject/Shirobot.Plugin.ShiroStatus",
+          "description": "\u67e5\u8be2Shiro\u7684\u8fd0\u884c\u72b6\u6001",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoPreviewer",
+          "name": "VideoPreviewer",
+          "version": "1.1.0",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/Shriobot.Plugin.VideoPreviewer",
+          "description": "\u89c6\u9891\u9884\u89c8\u63d2\u4ef6",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        },
+        {
+          "id": "VideoToGif",
+          "name": "VideoTool \u89c6\u9891\u5de5\u5177\u7bb1",
+          "version": "0.1.3",
+          "enable": true,
+          "author": "greepar",
+          "repo": "ShirokaProject/ShiroBot.Plugin.VideoTool",
+          "description": "\u89c6\u9891 GIF\u3001\u622a\u53d6\u3001MP3\u3001\u76ee\u6807\u5927\u5c0f\u538b\u7f29\u3001\u5c01\u9762\u548c\u4fe1\u606f\u67e5\u8be2\uff1b\u652f\u6301\u8de8\u5e73\u53f0\u786c\u4ef6\u7f16\u7801\u5b9e\u6d4b\u3001CPU \u56de\u9000\u53ca WebUI \u914d\u7f6e\u3002",
+          "category": "Utility",
+          "status": "enabled",
+          "errorMessage": null
+        }
+      ]
+    }
+  },
+  "comparisons": [
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "00-github-view-DescriptionCard-Dark-192.png",
+      "leftSize": [
+        1400,
+        700
+      ],
+      "rightSize": [
+        1400,
+        700
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/00-github-view-DescriptionCard-Dark-192.png",
+      "leftWarmMs": 24.23515,
+      "rightWarmMs": 25.3292,
+      "ratio": 1.0451431082539204
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "00-github-view-DescriptionCard-Light-192.png",
+      "leftSize": [
+        1400,
+        700
+      ],
+      "rightSize": [
+        1400,
+        700
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/00-github-view-DescriptionCard-Light-192.png",
+      "leftWarmMs": 24.8241,
+      "rightWarmMs": 24.87745,
+      "ratio": 1.0021491212168818
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "01-jm-parser-PreviewCard-Dark-192.png",
+      "leftSize": [
+        780,
+        1200
+      ],
+      "rightSize": [
+        780,
+        1200
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/01-jm-parser-PreviewCard-Dark-192.png",
+      "leftWarmMs": 52.08085,
+      "rightWarmMs": 52.07065,
+      "ratio": 0.9998041506619036
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "01-jm-parser-PreviewCard-Light-192.png",
+      "leftSize": [
+        780,
+        1200
+      ],
+      "rightSize": [
+        780,
+        1200
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/01-jm-parser-PreviewCard-Light-192.png",
+      "leftWarmMs": 50.7902,
+      "rightWarmMs": 51.1306,
+      "ratio": 1.006702080322582
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "02-my-parser-MediaCard-Dark-192.png",
+      "leftSize": [
+        840,
+        444
+      ],
+      "rightSize": [
+        840,
+        444
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/02-my-parser-MediaCard-Dark-192.png",
+      "leftWarmMs": 10.075,
+      "rightWarmMs": 10.529250000000001,
+      "ratio": 1.0450868486352358
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "02-my-parser-MediaCard-Light-192.png",
+      "leftSize": [
+        840,
+        444
+      ],
+      "rightSize": [
+        840,
+        444
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/02-my-parser-MediaCard-Light-192.png",
+      "leftWarmMs": 10.719100000000001,
+      "rightWarmMs": 11.05025,
+      "ratio": 1.0308934518756239
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "03-my-parser-BiliArticleDocument-Dark-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/03-my-parser-BiliArticleDocument-Dark-192.png",
+      "leftWarmMs": 79.67689999999999,
+      "rightWarmMs": 81.0199,
+      "ratio": 1.0168555754553705
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "03-my-parser-BiliArticleDocument-Light-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/03-my-parser-BiliArticleDocument-Light-192.png",
+      "leftWarmMs": 78.38055,
+      "rightWarmMs": 79.7414,
+      "ratio": 1.0173620879159435
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "04-my-parser-BiliBangumiCard-Dark-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/04-my-parser-BiliBangumiCard-Dark-192.png",
+      "leftWarmMs": 17.5424,
+      "rightWarmMs": 17.55845,
+      "ratio": 1.0009149261218533
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "04-my-parser-BiliBangumiCard-Light-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/04-my-parser-BiliBangumiCard-Light-192.png",
+      "leftWarmMs": 16.6513,
+      "rightWarmMs": 17.03275,
+      "ratio": 1.0229081212878275
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "05-my-parser-BiliCard-Dark-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/05-my-parser-BiliCard-Dark-192.png",
+      "leftWarmMs": 20.05885,
+      "rightWarmMs": 20.295949999999998,
+      "ratio": 1.011820219005576
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "05-my-parser-BiliCard-Light-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/05-my-parser-BiliCard-Light-192.png",
+      "leftWarmMs": 20.461599999999997,
+      "rightWarmMs": 20.459699999999998,
+      "ratio": 0.9999071431364117
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "06-my-parser-BiliLiveCard-Dark-192.png",
+      "leftSize": [
+        840,
+        576
+      ],
+      "rightSize": [
+        840,
+        576
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/06-my-parser-BiliLiveCard-Dark-192.png",
+      "leftWarmMs": 40.154700000000005,
+      "rightWarmMs": 40.37115,
+      "ratio": 1.0053904026178753
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "06-my-parser-BiliLiveCard-Light-192.png",
+      "leftSize": [
+        840,
+        576
+      ],
+      "rightSize": [
+        840,
+        576
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/06-my-parser-BiliLiveCard-Light-192.png",
+      "leftWarmMs": 35.71055,
+      "rightWarmMs": 35.9619,
+      "ratio": 1.0070385362308898
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "07-my-parser-DouyinCard-Dark-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/07-my-parser-DouyinCard-Dark-192.png",
+      "leftWarmMs": 27.27375,
+      "rightWarmMs": 26.7982,
+      "ratio": 0.9825638205233971
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "07-my-parser-DouyinCard-Light-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/07-my-parser-DouyinCard-Light-192.png",
+      "leftWarmMs": 27.3741,
+      "rightWarmMs": 26.99045,
+      "ratio": 0.9859849273583424
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "08-my-parser-DouyinCommentCard-Dark-192.png",
+      "leftSize": [
+        1440,
+        1200
+      ],
+      "rightSize": [
+        1440,
+        1200
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/08-my-parser-DouyinCommentCard-Dark-192.png",
+      "leftWarmMs": 34.8996,
+      "rightWarmMs": 35.525999999999996,
+      "ratio": 1.0179486297837224
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "08-my-parser-DouyinCommentCard-Light-192.png",
+      "leftSize": [
+        1440,
+        1200
+      ],
+      "rightSize": [
+        1440,
+        1200
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/08-my-parser-DouyinCommentCard-Light-192.png",
+      "leftWarmMs": 34.8386,
+      "rightWarmMs": 35.566500000000005,
+      "ratio": 1.0208934917017334
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "09-my-parser-NetEaseMusicCard-Dark-192.png",
+      "leftSize": [
+        640,
+        364
+      ],
+      "rightSize": [
+        640,
+        364
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/09-my-parser-NetEaseMusicCard-Dark-192.png",
+      "leftWarmMs": 11.3732,
+      "rightWarmMs": 11.438649999999999,
+      "ratio": 1.0057547567966798
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "09-my-parser-NetEaseMusicCard-Light-192.png",
+      "leftSize": [
+        640,
+        364
+      ],
+      "rightSize": [
+        640,
+        364
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/09-my-parser-NetEaseMusicCard-Light-192.png",
+      "leftWarmMs": 11.681999999999999,
+      "rightWarmMs": 11.202950000000001,
+      "ratio": 0.9589924670433148
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "10-my-parser-WeixinChannelsCard-Dark-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/10-my-parser-WeixinChannelsCard-Dark-192.png",
+      "leftWarmMs": 26.1627,
+      "rightWarmMs": 25.8883,
+      "ratio": 0.9895117858630799
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "10-my-parser-WeixinChannelsCard-Light-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/10-my-parser-WeixinChannelsCard-Light-192.png",
+      "leftWarmMs": 25.84515,
+      "rightWarmMs": 26.6264,
+      "ratio": 1.0302281085619545
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "11-my-parser-XCard-Dark-192.png",
+      "leftSize": [
+        840,
+        822
+      ],
+      "rightSize": [
+        840,
+        822
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/11-my-parser-XCard-Dark-192.png",
+      "leftWarmMs": 19.364,
+      "rightWarmMs": 18.3,
+      "ratio": 0.9450526750671349
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "11-my-parser-XCard-Light-192.png",
+      "leftSize": [
+        840,
+        822
+      ],
+      "rightSize": [
+        840,
+        822
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/11-my-parser-XCard-Light-192.png",
+      "leftWarmMs": 18.6174,
+      "rightWarmMs": 17.456899999999997,
+      "ratio": 0.9376658394834938
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "12-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftSize": [
+        1520,
+        1354
+      ],
+      "rightSize": [
+        1520,
+        1354
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/12-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftWarmMs": 49.44075,
+      "rightWarmMs": 48.3911,
+      "ratio": 0.9787695372744143
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "12-rss-subscriber-ArticleCard-Light-192.png",
+      "leftSize": [
+        1520,
+        1354
+      ],
+      "rightSize": [
+        1520,
+        1354
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/12-rss-subscriber-ArticleCard-Light-192.png",
+      "leftWarmMs": 48.2937,
+      "rightWarmMs": 47.28935,
+      "ratio": 0.979203291526638
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "13-rss-subscriber-DynamicCard-Dark-192.png",
+      "leftSize": [
+        1520,
+        1330
+      ],
+      "rightSize": [
+        1520,
+        1330
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/13-rss-subscriber-DynamicCard-Dark-192.png",
+      "leftWarmMs": 47.2403,
+      "rightWarmMs": 47.8991,
+      "ratio": 1.0139457200737505
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "13-rss-subscriber-DynamicCard-Light-192.png",
+      "leftSize": [
+        1520,
+        1330
+      ],
+      "rightSize": [
+        1520,
+        1330
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/13-rss-subscriber-DynamicCard-Light-192.png",
+      "leftWarmMs": 47.30175,
+      "rightWarmMs": 47.8444,
+      "ratio": 1.0114720914131083
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "14-rss-subscriber-VideoCard-Dark-192.png",
+      "leftSize": [
+        1000,
+        1016
+      ],
+      "rightSize": [
+        1000,
+        1016
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/14-rss-subscriber-VideoCard-Dark-192.png",
+      "leftWarmMs": 27.6049,
+      "rightWarmMs": 27.80655,
+      "ratio": 1.0073048625425196
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "14-rss-subscriber-VideoCard-Light-192.png",
+      "leftSize": [
+        1000,
+        1016
+      ],
+      "rightSize": [
+        1000,
+        1016
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/14-rss-subscriber-VideoCard-Light-192.png",
+      "leftWarmMs": 26.04285,
+      "rightWarmMs": 25.62605,
+      "ratio": 0.983995607239607
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "15-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        1704
+      ],
+      "rightSize": [
+        1840,
+        1704
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/15-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftWarmMs": 66.8689,
+      "rightWarmMs": 66.86845,
+      "ratio": 0.9999932704141985
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "15-rss-subscriber-ArticleCard-Light-192.png",
+      "leftSize": [
+        1840,
+        1704
+      ],
+      "rightSize": [
+        1840,
+        1704
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/15-rss-subscriber-ArticleCard-Light-192.png",
+      "leftWarmMs": 65.49645000000001,
+      "rightWarmMs": 65.7276,
+      "ratio": 1.0035291989107804
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "16-rss-subscriber-GitEventCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        572
+      ],
+      "rightSize": [
+        1840,
+        572
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/16-rss-subscriber-GitEventCard-Dark-192.png",
+      "leftWarmMs": 26.912950000000002,
+      "rightWarmMs": 27.41435,
+      "ratio": 1.0186304362769594
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "16-rss-subscriber-GitEventCard-Light-192.png",
+      "leftSize": [
+        1840,
+        572
+      ],
+      "rightSize": [
+        1840,
+        572
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/16-rss-subscriber-GitEventCard-Light-192.png",
+      "leftWarmMs": 26.5475,
+      "rightWarmMs": 27.025199999999998,
+      "ratio": 1.0179941614087955
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "17-rss-subscriber-WordPressArticleCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        1832
+      ],
+      "rightSize": [
+        1840,
+        1832
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/17-rss-subscriber-WordPressArticleCard-Dark-192.png",
+      "leftWarmMs": 70.22579999999999,
+      "rightWarmMs": 71.14685,
+      "ratio": 1.0131155501254525
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "17-rss-subscriber-WordPressArticleCard-Light-192.png",
+      "leftSize": [
+        1840,
+        1832
+      ],
+      "rightSize": [
+        1840,
+        1832
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/17-rss-subscriber-WordPressArticleCard-Light-192.png",
+      "leftWarmMs": 68.6765,
+      "rightWarmMs": 69.85849999999999,
+      "ratio": 1.0172111275327076
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "18-rss-subscriber-PostCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        1970
+      ],
+      "rightSize": [
+        1840,
+        1970
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/18-rss-subscriber-PostCard-Dark-192.png",
+      "leftWarmMs": 83.2157,
+      "rightWarmMs": 83.5155,
+      "ratio": 1.0036026855509237
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "18-rss-subscriber-PostCard-Light-192.png",
+      "leftSize": [
+        1840,
+        1970
+      ],
+      "rightSize": [
+        1840,
+        1970
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/18-rss-subscriber-PostCard-Light-192.png",
+      "leftWarmMs": 83.6377,
+      "rightWarmMs": 84.0764,
+      "ratio": 1.0052452422771072
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "19-my-parser-HeyboxCard-Dark-192.png",
+      "leftSize": [
+        720,
+        1040
+      ],
+      "rightSize": [
+        720,
+        1040
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/19-my-parser-HeyboxCard-Dark-192.png",
+      "leftWarmMs": 41.55905,
+      "rightWarmMs": 41.7429,
+      "ratio": 1.0044238258574245
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "19-my-parser-HeyboxCard-Light-192.png",
+      "leftSize": [
+        720,
+        1040
+      ],
+      "rightSize": [
+        720,
+        1040
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/19-my-parser-HeyboxCard-Light-192.png",
+      "leftWarmMs": 39.775999999999996,
+      "rightWarmMs": 40.053,
+      "ratio": 1.0069639983909895
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "20-my-parser-HeyboxArticleDocument-Dark-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/20-my-parser-HeyboxArticleDocument-Dark-192.png",
+      "leftWarmMs": 142.76155,
+      "rightWarmMs": 142.0919,
+      "ratio": 0.9953093112256067
+    },
+    {
+      "pair": "Avalonia upgrade",
+      "left": "original",
+      "right": "skia-12.1.4",
+      "file": "20-my-parser-HeyboxArticleDocument-Light-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": true,
+      "rmse": 0.0,
+      "meanAbsoluteError": 0.0,
+      "changedPixelPercent": 0.0,
+      "over10Percent": 0.0,
+      "diff": "results/diffs/Avalonia-upgrade/20-my-parser-HeyboxArticleDocument-Light-192.png",
+      "leftWarmMs": 138.11285,
+      "rightWarmMs": 139.3032,
+      "ratio": 1.008618676683596
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "00-github-view-DescriptionCard-Dark-192.png",
+      "leftSize": [
+        1400,
+        700
+      ],
+      "rightSize": [
+        1400,
+        700
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 8.024494929747979,
+      "meanAbsoluteError": 1.0500607142857143,
+      "changedPixelPercent": 8.211836734693879,
+      "over10Percent": 2.720408163265306,
+      "diff": "results/diffs/Same-fonts,-different-renderer/00-github-view-DescriptionCard-Dark-192.png",
+      "leftWarmMs": 24.59695,
+      "rightWarmMs": 31.09715,
+      "ratio": 1.2642685373593068
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "00-github-view-DescriptionCard-Light-192.png",
+      "leftSize": [
+        1400,
+        700
+      ],
+      "rightSize": [
+        1400,
+        700
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 8.024494929747979,
+      "meanAbsoluteError": 1.0500607142857143,
+      "changedPixelPercent": 8.211836734693879,
+      "over10Percent": 2.720408163265306,
+      "diff": "results/diffs/Same-fonts,-different-renderer/00-github-view-DescriptionCard-Light-192.png",
+      "leftWarmMs": 25.499850000000002,
+      "rightWarmMs": 31.21445,
+      "ratio": 1.2241032790388962
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "01-jm-parser-PreviewCard-Dark-192.png",
+      "leftSize": [
+        780,
+        1200
+      ],
+      "rightSize": [
+        780,
+        1200
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 1.5348233423777775,
+      "meanAbsoluteError": 0.20656463675213677,
+      "changedPixelPercent": 28.3125,
+      "over10Percent": 0.2808760683760684,
+      "diff": "results/diffs/Same-fonts,-different-renderer/01-jm-parser-PreviewCard-Dark-192.png",
+      "leftWarmMs": 52.2534,
+      "rightWarmMs": 325.27075,
+      "ratio": 6.22487244849139
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "01-jm-parser-PreviewCard-Light-192.png",
+      "leftSize": [
+        780,
+        1200
+      ],
+      "rightSize": [
+        780,
+        1200
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 1.4455114915566123,
+      "meanAbsoluteError": 0.22533146367521367,
+      "changedPixelPercent": 28.184508547008548,
+      "over10Percent": 0.28557692307692306,
+      "diff": "results/diffs/Same-fonts,-different-renderer/01-jm-parser-PreviewCard-Light-192.png",
+      "leftWarmMs": 50.6847,
+      "rightWarmMs": 328.10665,
+      "ratio": 6.473485095107597
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "02-my-parser-MediaCard-Dark-192.png",
+      "leftSize": [
+        840,
+        448
+      ],
+      "rightSize": [
+        840,
+        448
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.492542993872767,
+      "meanAbsoluteError": 0.748968962585034,
+      "changedPixelPercent": 4.950042517006803,
+      "over10Percent": 3.0559098639455784,
+      "diff": "results/diffs/Same-fonts,-different-renderer/02-my-parser-MediaCard-Dark-192.png",
+      "leftWarmMs": 10.138200000000001,
+      "rightWarmMs": 14.905349999999999,
+      "ratio": 1.4702166064981945
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "02-my-parser-MediaCard-Light-192.png",
+      "leftSize": [
+        840,
+        448
+      ],
+      "rightSize": [
+        840,
+        448
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.492542993872767,
+      "meanAbsoluteError": 0.748968962585034,
+      "changedPixelPercent": 4.950042517006803,
+      "over10Percent": 3.0559098639455784,
+      "diff": "results/diffs/Same-fonts,-different-renderer/02-my-parser-MediaCard-Light-192.png",
+      "leftWarmMs": 10.60205,
+      "rightWarmMs": 14.800699999999999,
+      "ratio": 1.3960224673530117
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "03-my-parser-BiliArticleDocument-Dark-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 4.503709649570994,
+      "meanAbsoluteError": 0.3242763310185185,
+      "changedPixelPercent": 1.3321759259259258,
+      "over10Percent": 0.9589988425925925,
+      "diff": "results/diffs/Same-fonts,-different-renderer/03-my-parser-BiliArticleDocument-Dark-192.png",
+      "leftWarmMs": 78.5798,
+      "rightWarmMs": 1724.7583,
+      "ratio": 21.94913069262075
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "03-my-parser-BiliArticleDocument-Light-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.6119147810291246,
+      "meanAbsoluteError": 0.21065219907407406,
+      "changedPixelPercent": 8.750520833333333,
+      "over10Percent": 0.29809027777777775,
+      "diff": "results/diffs/Same-fonts,-different-renderer/03-my-parser-BiliArticleDocument-Light-192.png",
+      "leftWarmMs": 78.0684,
+      "rightWarmMs": 1719.9051,
+      "ratio": 22.030746114945355
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "04-my-parser-BiliBangumiCard-Dark-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.8558312447270846,
+      "meanAbsoluteError": 0.5572275985663082,
+      "changedPixelPercent": 23.209498207885304,
+      "over10Percent": 2.09910394265233,
+      "diff": "results/diffs/Same-fonts,-different-renderer/04-my-parser-BiliBangumiCard-Dark-192.png",
+      "leftWarmMs": 16.8641,
+      "rightWarmMs": 25.68155,
+      "ratio": 1.5228532800445918
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "04-my-parser-BiliBangumiCard-Light-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.477622529755252,
+      "meanAbsoluteError": 0.8951106630824373,
+      "changedPixelPercent": 18.914516129032258,
+      "over10Percent": 2.639426523297491,
+      "diff": "results/diffs/Same-fonts,-different-renderer/04-my-parser-BiliBangumiCard-Light-192.png",
+      "leftWarmMs": 16.596600000000002,
+      "rightWarmMs": 43.09785,
+      "ratio": 2.596787896316113
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "05-my-parser-BiliCard-Dark-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.9907305791741385,
+      "meanAbsoluteError": 0.6821724910394266,
+      "changedPixelPercent": 32.531362007168454,
+      "over10Percent": 2.924193548387097,
+      "diff": "results/diffs/Same-fonts,-different-renderer/05-my-parser-BiliCard-Dark-192.png",
+      "leftWarmMs": 19.8716,
+      "rightWarmMs": 30.92875,
+      "ratio": 1.5564297791823507
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "05-my-parser-BiliCard-Light-192.png",
+      "leftSize": [
+        620,
+        900
+      ],
+      "rightSize": [
+        620,
+        900
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 7.108654929759516,
+      "meanAbsoluteError": 1.1740456989247312,
+      "changedPixelPercent": 29.036379928315416,
+      "over10Percent": 3.6956989247311824,
+      "diff": "results/diffs/Same-fonts,-different-renderer/05-my-parser-BiliCard-Light-192.png",
+      "leftWarmMs": 20.2563,
+      "rightWarmMs": 34.5621,
+      "ratio": 1.7062395402911688
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "06-my-parser-BiliLiveCard-Dark-192.png",
+      "leftSize": [
+        840,
+        580
+      ],
+      "rightSize": [
+        840,
+        580
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 4.666851978492843,
+      "meanAbsoluteError": 0.7499220032840722,
+      "changedPixelPercent": 49.518267651888344,
+      "over10Percent": 2.413998357963875,
+      "diff": "results/diffs/Same-fonts,-different-renderer/06-my-parser-BiliLiveCard-Dark-192.png",
+      "leftWarmMs": 39.7645,
+      "rightWarmMs": 686.8442,
+      "ratio": 17.27279860176791
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "06-my-parser-BiliLiveCard-Light-192.png",
+      "leftSize": [
+        840,
+        580
+      ],
+      "rightSize": [
+        840,
+        580
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 7.368362247653388,
+      "meanAbsoluteError": 1.1067472290640394,
+      "changedPixelPercent": 41.54926108374384,
+      "over10Percent": 2.788382594417077,
+      "diff": "results/diffs/Same-fonts,-different-renderer/06-my-parser-BiliLiveCard-Light-192.png",
+      "leftWarmMs": 34.969,
+      "rightWarmMs": 685.86865,
+      "ratio": 19.613619205582086
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "07-my-parser-DouyinCard-Dark-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 4.561189612764827,
+      "meanAbsoluteError": 0.5456453450520833,
+      "changedPixelPercent": 6.220269097222222,
+      "over10Percent": 1.9665798611111112,
+      "diff": "results/diffs/Same-fonts,-different-renderer/07-my-parser-DouyinCard-Dark-192.png",
+      "leftWarmMs": 27.08325,
+      "rightWarmMs": 37.60835,
+      "ratio": 1.3886202726777621
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "07-my-parser-DouyinCard-Light-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.350901910604903,
+      "meanAbsoluteError": 0.7669341362847222,
+      "changedPixelPercent": 7.1162109375,
+      "over10Percent": 2.184353298611111,
+      "diff": "results/diffs/Same-fonts,-different-renderer/07-my-parser-DouyinCard-Light-192.png",
+      "leftWarmMs": 27.581699999999998,
+      "rightWarmMs": 38.20655,
+      "ratio": 1.385213746795883
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "08-my-parser-DouyinCommentCard-Dark-192.png",
+      "leftSize": [
+        1440,
+        1200
+      ],
+      "rightSize": [
+        1440,
+        1200
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.4015249039884603,
+      "meanAbsoluteError": 0.19956727430555554,
+      "changedPixelPercent": 1.1554398148148148,
+      "over10Percent": 0.6115162037037037,
+      "diff": "results/diffs/Same-fonts,-different-renderer/08-my-parser-DouyinCommentCard-Dark-192.png",
+      "leftWarmMs": 35.63245,
+      "rightWarmMs": 19.19115,
+      "ratio": 0.5385863166860545
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "08-my-parser-DouyinCommentCard-Light-192.png",
+      "leftSize": [
+        1440,
+        1200
+      ],
+      "rightSize": [
+        1440,
+        1200
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.4015249039884603,
+      "meanAbsoluteError": 0.19956727430555554,
+      "changedPixelPercent": 1.1554398148148148,
+      "over10Percent": 0.6115162037037037,
+      "diff": "results/diffs/Same-fonts,-different-renderer/08-my-parser-DouyinCommentCard-Light-192.png",
+      "leftWarmMs": 34.9203,
+      "rightWarmMs": 20.316850000000002,
+      "ratio": 0.5818062845966387
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "09-my-parser-NetEaseMusicCard-Dark-192.png",
+      "leftSize": [
+        640,
+        366
+      ],
+      "rightSize": [
+        640,
+        366
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.1656965839575224,
+      "meanAbsoluteError": 0.8347666922814208,
+      "changedPixelPercent": 96.94501366120218,
+      "over10Percent": 1.404542349726776,
+      "diff": "results/diffs/Same-fonts,-different-renderer/09-my-parser-NetEaseMusicCard-Dark-192.png",
+      "leftWarmMs": 11.53555,
+      "rightWarmMs": 163.4499,
+      "ratio": 14.169233369887001
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "09-my-parser-NetEaseMusicCard-Light-192.png",
+      "leftSize": [
+        640,
+        366
+      ],
+      "rightSize": [
+        640,
+        366
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.575633402720274,
+      "meanAbsoluteError": 1.1161693135245903,
+      "changedPixelPercent": 96.83615095628414,
+      "over10Percent": 2.0393613387978142,
+      "diff": "results/diffs/Same-fonts,-different-renderer/09-my-parser-NetEaseMusicCard-Light-192.png",
+      "leftWarmMs": 11.8393,
+      "rightWarmMs": 173.62810000000002,
+      "ratio": 14.665402515351417
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "10-my-parser-WeixinChannelsCard-Dark-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 4.683141231556535,
+      "meanAbsoluteError": 0.5101955837673611,
+      "changedPixelPercent": 5.622178819444444,
+      "over10Percent": 1.6736111111111112,
+      "diff": "results/diffs/Same-fonts,-different-renderer/10-my-parser-WeixinChannelsCard-Dark-192.png",
+      "leftWarmMs": 27.088949999999997,
+      "rightWarmMs": 37.11035,
+      "ratio": 1.3699442023408068
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "10-my-parser-WeixinChannelsCard-Light-192.png",
+      "leftSize": [
+        720,
+        1280
+      ],
+      "rightSize": [
+        720,
+        1280
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.018509341884475,
+      "meanAbsoluteError": 0.6583921983506944,
+      "changedPixelPercent": 5.681532118055556,
+      "over10Percent": 1.808159722222222,
+      "diff": "results/diffs/Same-fonts,-different-renderer/10-my-parser-WeixinChannelsCard-Light-192.png",
+      "leftWarmMs": 26.660449999999997,
+      "rightWarmMs": 39.2381,
+      "ratio": 1.47177185681412
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "11-my-parser-XCard-Dark-192.png",
+      "leftSize": [
+        840,
+        826
+      ],
+      "rightSize": [
+        840,
+        826
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.275904347850888,
+      "meanAbsoluteError": 0.7082569468465352,
+      "changedPixelPercent": 3.533955955263461,
+      "over10Percent": 2.5295457165917212,
+      "diff": "results/diffs/Same-fonts,-different-renderer/11-my-parser-XCard-Dark-192.png",
+      "leftWarmMs": 18.595,
+      "rightWarmMs": 11.1122,
+      "ratio": 0.5975907502016672
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "11-my-parser-XCard-Light-192.png",
+      "leftSize": [
+        840,
+        826
+      ],
+      "rightSize": [
+        840,
+        826
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 9.685984197773148,
+      "meanAbsoluteError": 1.1819421624582036,
+      "changedPixelPercent": 3.5328029516891504,
+      "over10Percent": 2.875590914331834,
+      "diff": "results/diffs/Same-fonts,-different-renderer/11-my-parser-XCard-Light-192.png",
+      "leftWarmMs": 18.4947,
+      "rightWarmMs": 12.58345,
+      "ratio": 0.6803814065651239
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "12-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftSize": [
+        1520,
+        1368
+      ],
+      "rightSize": [
+        1520,
+        1368
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.1979642281005365,
+      "meanAbsoluteError": 0.42324357013696523,
+      "changedPixelPercent": 4.246306555863343,
+      "over10Percent": 1.116353108648815,
+      "diff": "results/diffs/Same-fonts,-different-renderer/12-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftWarmMs": 49.388000000000005,
+      "rightWarmMs": 798.8005,
+      "ratio": 16.173979509192517
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "12-rss-subscriber-ArticleCard-Light-192.png",
+      "leftSize": [
+        1520,
+        1368
+      ],
+      "rightSize": [
+        1520,
+        1368
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.1979642281005365,
+      "meanAbsoluteError": 0.42324357013696523,
+      "changedPixelPercent": 4.246306555863343,
+      "over10Percent": 1.116353108648815,
+      "diff": "results/diffs/Same-fonts,-different-renderer/12-rss-subscriber-ArticleCard-Light-192.png",
+      "leftWarmMs": 48.88845,
+      "rightWarmMs": 805.3378,
+      "ratio": 16.472966518676703
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "13-rss-subscriber-DynamicCard-Dark-192.png",
+      "leftSize": [
+        1520,
+        1296
+      ],
+      "rightSize": [
+        1520,
+        1296
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.249645731456478,
+      "meanAbsoluteError": 0.448111090805718,
+      "changedPixelPercent": 4.465562053281351,
+      "over10Percent": 1.204262102014295,
+      "diff": "results/diffs/Same-fonts,-different-renderer/13-rss-subscriber-DynamicCard-Dark-192.png",
+      "leftWarmMs": 47.65245,
+      "rightWarmMs": 757.18615,
+      "ratio": 15.889763275550365
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "13-rss-subscriber-DynamicCard-Light-192.png",
+      "leftSize": [
+        1520,
+        1296
+      ],
+      "rightSize": [
+        1520,
+        1296
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.249645731456478,
+      "meanAbsoluteError": 0.448111090805718,
+      "changedPixelPercent": 4.465562053281351,
+      "over10Percent": 1.204262102014295,
+      "diff": "results/diffs/Same-fonts,-different-renderer/13-rss-subscriber-DynamicCard-Light-192.png",
+      "leftWarmMs": 47.802400000000006,
+      "rightWarmMs": 757.6950999999999,
+      "ratio": 15.850566080364162
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "14-rss-subscriber-VideoCard-Dark-192.png",
+      "leftSize": [
+        1000,
+        1016
+      ],
+      "rightSize": [
+        1000,
+        1016
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.699157071731151,
+      "meanAbsoluteError": 0.4124657972440945,
+      "changedPixelPercent": 4.97244094488189,
+      "over10Percent": 1.640551181102362,
+      "diff": "results/diffs/Same-fonts,-different-renderer/14-rss-subscriber-VideoCard-Dark-192.png",
+      "leftWarmMs": 25.490099999999998,
+      "rightWarmMs": 21.76465,
+      "ratio": 0.8538471798855243
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "14-rss-subscriber-VideoCard-Light-192.png",
+      "leftSize": [
+        1000,
+        1016
+      ],
+      "rightSize": [
+        1000,
+        1016
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.75002657474174,
+      "meanAbsoluteError": 0.6322470472440945,
+      "changedPixelPercent": 4.976673228346456,
+      "over10Percent": 1.8801181102362206,
+      "diff": "results/diffs/Same-fonts,-different-renderer/14-rss-subscriber-VideoCard-Light-192.png",
+      "leftWarmMs": 24.4424,
+      "rightWarmMs": 22.2345,
+      "ratio": 0.9096692632474717
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "15-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        1704
+      ],
+      "rightSize": [
+        1840,
+        1704
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 4.34936649162497,
+      "meanAbsoluteError": 0.3578970995356195,
+      "changedPixelPercent": 4.164242702592365,
+      "over10Percent": 1.0371376811594204,
+      "diff": "results/diffs/Same-fonts,-different-renderer/15-rss-subscriber-ArticleCard-Dark-192.png",
+      "leftWarmMs": 66.18125,
+      "rightWarmMs": 67.4517,
+      "ratio": 1.0191965246954386
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "15-rss-subscriber-ArticleCard-Light-192.png",
+      "leftSize": [
+        1840,
+        1704
+      ],
+      "rightSize": [
+        1840,
+        1704
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.056243371650747,
+      "meanAbsoluteError": 0.504716444044703,
+      "changedPixelPercent": 4.165040059195754,
+      "over10Percent": 1.1546042559706062,
+      "diff": "results/diffs/Same-fonts,-different-renderer/15-rss-subscriber-ArticleCard-Light-192.png",
+      "leftWarmMs": 64.6797,
+      "rightWarmMs": 68.39675,
+      "ratio": 1.0574685720558383
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "16-rss-subscriber-GitEventCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        576
+      ],
+      "rightSize": [
+        1840,
+        574
+      ],
+      "sameSize": false,
+      "leftWarmMs": 26.433950000000003,
+      "rightWarmMs": 556.9014500000001,
+      "ratio": 21.067659203410766
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "16-rss-subscriber-GitEventCard-Light-192.png",
+      "leftSize": [
+        1840,
+        576
+      ],
+      "rightSize": [
+        1840,
+        574
+      ],
+      "sameSize": false,
+      "leftWarmMs": 26.083199999999998,
+      "rightWarmMs": 559.7091499999999,
+      "ratio": 21.45860745614035
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "17-rss-subscriber-WordPressArticleCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        1836
+      ],
+      "rightSize": [
+        1840,
+        1836
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 4.242156921646517,
+      "meanAbsoluteError": 0.33832468977929336,
+      "changedPixelPercent": 3.923611111111111,
+      "over10Percent": 1.06505162451454,
+      "diff": "results/diffs/Same-fonts,-different-renderer/17-rss-subscriber-WordPressArticleCard-Dark-192.png",
+      "leftWarmMs": 69.9459,
+      "rightWarmMs": 69.69055,
+      "ratio": 0.9963493214041138
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "17-rss-subscriber-WordPressArticleCard-Light-192.png",
+      "leftSize": [
+        1840,
+        1836
+      ],
+      "rightSize": [
+        1840,
+        1836
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 5.523064092471341,
+      "meanAbsoluteError": 0.4485988266079379,
+      "changedPixelPercent": 3.892618641659562,
+      "over10Percent": 1.1741024912380411,
+      "diff": "results/diffs/Same-fonts,-different-renderer/17-rss-subscriber-WordPressArticleCard-Light-192.png",
+      "leftWarmMs": 69.65865,
+      "rightWarmMs": 70.52445,
+      "ratio": 1.012429181444085
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "18-rss-subscriber-PostCard-Dark-192.png",
+      "leftSize": [
+        1840,
+        1970
+      ],
+      "rightSize": [
+        1840,
+        1970
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.624003628076904,
+      "meanAbsoluteError": 0.5535357123151622,
+      "changedPixelPercent": 3.314169057603178,
+      "over10Percent": 1.2306058265283601,
+      "diff": "results/diffs/Same-fonts,-different-renderer/18-rss-subscriber-PostCard-Dark-192.png",
+      "leftWarmMs": 83.04435000000001,
+      "rightWarmMs": 1779.533,
+      "ratio": 21.428706468290734
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "18-rss-subscriber-PostCard-Light-192.png",
+      "leftSize": [
+        1840,
+        1970
+      ],
+      "rightSize": [
+        1840,
+        1970
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.624003628076904,
+      "meanAbsoluteError": 0.5535357123151622,
+      "changedPixelPercent": 3.314169057603178,
+      "over10Percent": 1.2306058265283601,
+      "diff": "results/diffs/Same-fonts,-different-renderer/18-rss-subscriber-PostCard-Light-192.png",
+      "leftWarmMs": 83.34909999999999,
+      "rightWarmMs": 1795.2381,
+      "ratio": 21.53878206243379
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "19-my-parser-HeyboxCard-Dark-192.png",
+      "leftSize": [
+        720,
+        1040
+      ],
+      "rightSize": [
+        720,
+        1040
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 4.813541588636602,
+      "meanAbsoluteError": 0.6537777110042735,
+      "changedPixelPercent": 23.06597222222222,
+      "over10Percent": 2.232905982905983,
+      "diff": "results/diffs/Same-fonts,-different-renderer/19-my-parser-HeyboxCard-Dark-192.png",
+      "leftWarmMs": 42.38265,
+      "rightWarmMs": 950.9139,
+      "ratio": 22.436395553369127
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "19-my-parser-HeyboxCard-Light-192.png",
+      "leftSize": [
+        720,
+        1040
+      ],
+      "rightSize": [
+        720,
+        1040
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 6.1415666958603365,
+      "meanAbsoluteError": 0.8096260683760684,
+      "changedPixelPercent": 23.075186965811966,
+      "over10Percent": 2.407719017094017,
+      "diff": "results/diffs/Same-fonts,-different-renderer/19-my-parser-HeyboxCard-Light-192.png",
+      "leftWarmMs": 40.3067,
+      "rightWarmMs": 988.1009,
+      "ratio": 24.514557133181334
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "20-my-parser-HeyboxArticleDocument-Dark-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.3023233351266836,
+      "meanAbsoluteError": 0.30306510416666665,
+      "changedPixelPercent": 15.691174768518518,
+      "over10Percent": 0.9800347222222222,
+      "diff": "results/diffs/Same-fonts,-different-renderer/20-my-parser-HeyboxArticleDocument-Dark-192.png",
+      "leftWarmMs": 140.28595,
+      "rightWarmMs": 4127.03785,
+      "ratio": 29.418753980708683
+    },
+    {
+      "pair": "Same fonts, different renderer",
+      "left": "skia-fonts",
+      "right": "simd-fonts",
+      "file": "20-my-parser-HeyboxArticleDocument-Light-192.png",
+      "leftSize": [
+        1440,
+        2400
+      ],
+      "rightSize": [
+        1440,
+        2400
+      ],
+      "sameSize": true,
+      "exact": false,
+      "rmse": 3.822329702517219,
+      "meanAbsoluteError": 0.282218677662037,
+      "changedPixelPercent": 15.502546296296297,
+      "over10Percent": 0.8750289351851851,
+      "diff": "results/diffs/Same-fonts,-different-renderer/20-my-parser-HeyboxArticleDocument-Light-192.png",
+      "leftWarmMs": 139.47095000000002,
+      "rightWarmMs": 4053.70225,
+      "ratio": 29.064850063758794
+    }
+  ]
+}

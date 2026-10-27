@@ -29,7 +29,8 @@ public static class AvaloniaIntegration
             // Fluent resources, system fonts and dispatcher are needed only to render.
             if (_renderer is null)
             {
-                global::Avalonia.Skia.SkiaPlatform.Initialize();
+                // Register the managed bitmap decoder before the first render, preserving lazy Application setup.
+                LabRenderingBackend.Configure(AppBuilder.Configure<HeadlessHostApp>()).RenderingSubsystemInitializer!();
                 _renderer = new AxamlRenderer();
             }
             return _renderer;

@@ -38,10 +38,8 @@ public static class Program
     /// 自己声明渲染系统（这里固定 Skia，与运行时一致）。运行时本方法不参与 ShiroBot 的启动流程。
     /// </summary>
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<HeadlessHostApp>()
-            .UseSkia()
-            .UseHarfBuzz()
-            .ConfigureFonts(SystemFontConfiguration.Apply);
+        LabRenderingBackend.Configure(AppBuilder.Configure<HeadlessHostApp>())
+            .ConfigureFonts(LabRenderingBackend.ApplyFonts);
 
     public static async Task Main(string[] args)
     {

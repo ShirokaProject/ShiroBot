@@ -1,0 +1,128 @@
+[
+  {
+    "plugin": "github-view",
+    "control": "ShiroBot.Plugin.Github.Views.DescriptionCard",
+    "model": "ShiroBot.Plugin.GithubView.Views.DescriptionCardViewModel",
+    "source": "sources/github-view/Views/DescriptionCard.axaml"
+  },
+  {
+    "plugin": "jm-parser",
+    "control": "ShiroBot.JmParser.Views.PreviewCard",
+    "model": "ShiroBot.JmParser.Views.PreviewCardViewModel",
+    "source": "sources/jm-parser/Views/PreviewCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "Shirobot.Plugin.MyParser.Views.MediaCard",
+    "model": "Shirobot.Plugin.MyParser.Views.MediaCardViewModel",
+    "source": "sources/my-parser/src/MyParser/Views/MediaCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.BiliBili.Views.BiliArticleDocument",
+    "model": "MyParser.Provider.BiliBili.Views.BiliArticleDocumentViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.BiliBili/Views/BiliArticleDocument.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.BiliBili.Views.BiliBangumiCard",
+    "model": "MyParser.Provider.BiliBili.Views.BiliCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.BiliBili/Views/BiliBangumiCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.BiliBili.Views.BiliCard",
+    "model": "MyParser.Provider.BiliBili.Views.BiliCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.BiliBili/Views/BiliCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.BiliBili.Views.BiliLiveCard",
+    "model": "MyParser.Provider.BiliBili.Views.BiliLiveCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.BiliBili/Views/BiliLiveCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.Douyin.Views.DouyinCard",
+    "model": "MyParser.Provider.Douyin.Views.DouyinCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.Douyin/Views/DouyinCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.Douyin.Views.DouyinCommentCard",
+    "model": "MyParser.Provider.Douyin.Views.DouyinCommentCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.Douyin/Views/DouyinCommentCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.NetEaseCloudMusic.Views.NetEaseMusicCard",
+    "model": "MyParser.Provider.NetEaseCloudMusic.Views.NetEaseMusicCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.NetEaseCloudMusic/Views/NetEaseMusicCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.WeixinChannels.Views.WeixinChannelsCard",
+    "model": "MyParser.Provider.WeixinChannels.Views.WeixinChannelsCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.WeixinChannels/Views/WeixinChannelsCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.X.Views.XCard",
+    "model": "MyParser.Provider.X.Views.XCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.X/Views/XCard.axaml"
+  },
+  {
+    "plugin": "rss-subscriber",
+    "control": "Shirobot.Plugin.RssSubscriber.Presentation.Cards.Bilibili.ArticleCard",
+    "model": "Shirobot.Plugin.RssSubscriber.Presentation.CardViewModel",
+    "source": "sources/rss-subscriber/Shirobot.Plugin.RssSubscriber/Presentation/Cards/Bilibili/ArticleCard.axaml"
+  },
+  {
+    "plugin": "rss-subscriber",
+    "control": "Shirobot.Plugin.RssSubscriber.Presentation.Cards.Bilibili.DynamicCard",
+    "model": "Shirobot.Plugin.RssSubscriber.Presentation.CardViewModel",
+    "source": "sources/rss-subscriber/Shirobot.Plugin.RssSubscriber/Presentation/Cards/Bilibili/DynamicCard.axaml"
+  },
+  {
+    "plugin": "rss-subscriber",
+    "control": "Shirobot.Plugin.RssSubscriber.Presentation.Cards.Bilibili.VideoCard",
+    "model": "Shirobot.Plugin.RssSubscriber.Presentation.CardViewModel",
+    "source": "sources/rss-subscriber/Shirobot.Plugin.RssSubscriber/Presentation/Cards/Bilibili/VideoCard.axaml"
+  },
+  {
+    "plugin": "rss-subscriber",
+    "control": "Shirobot.Plugin.RssSubscriber.Presentation.Cards.Generic.ArticleCard",
+    "model": "Shirobot.Plugin.RssSubscriber.Presentation.CardViewModel",
+    "source": "sources/rss-subscriber/Shirobot.Plugin.RssSubscriber/Presentation/Cards/Generic/ArticleCard.axaml"
+  },
+  {
+    "plugin": "rss-subscriber",
+    "control": "Shirobot.Plugin.RssSubscriber.Presentation.Cards.Git.GitEventCard",
+    "model": "Shirobot.Plugin.RssSubscriber.Presentation.CardViewModel",
+    "source": "sources/rss-subscriber/Shirobot.Plugin.RssSubscriber/Presentation/Cards/Git/GitEventCard.axaml"
+  },
+  {
+    "plugin": "rss-subscriber",
+    "control": "Shirobot.Plugin.RssSubscriber.Presentation.Cards.WordPress.WordPressArticleCard",
+    "model": "Shirobot.Plugin.RssSubscriber.Presentation.CardViewModel",
+    "source": "sources/rss-subscriber/Shirobot.Plugin.RssSubscriber/Presentation/Cards/WordPress/WordPressArticleCard.axaml"
+  },
+  {
+    "plugin": "rss-subscriber",
+    "control": "Shirobot.Plugin.RssSubscriber.Presentation.Cards.X.PostCard",
+    "model": "Shirobot.Plugin.RssSubscriber.Presentation.CardViewModel",
+    "source": "sources/rss-subscriber/Shirobot.Plugin.RssSubscriber/Presentation/Cards/X/PostCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.Heybox.Views.HeyboxCard",
+    "model": "MyParser.Provider.Heybox.Views.HeyboxCardViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.Heybox/Views/Cover/HeyboxCard.axaml"
+  },
+  {
+    "plugin": "my-parser",
+    "control": "MyParser.Provider.Heybox.Views.HeyboxArticleDocument",
+    "model": "MyParser.Provider.Heybox.Views.HeyboxArticleDocumentViewModel",
+    "source": "sources/my-parser/src/MyParser.Provider.Heybox/Views/Article/HeyboxArticleDocument.axaml"
+  }
+]

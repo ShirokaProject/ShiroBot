@@ -1,0 +1,116 @@
+[
+  {
+    "id": "ai-chat",
+    "tag": "v1.4.1",
+    "assets": [
+      {
+        "file": "ShiroBot.AiChatPlugin.dll",
+        "sha256": "44f6cdbdd83ea390792a1c95615301e17f492a2c8452c286b012bb4177e7cd50"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "file-link",
+    "tag": "v1.2.2",
+    "assets": [
+      {
+        "file": "ShiroBot.Plugin.FileLink.zip",
+        "sha256": "a0572c6decf6646e2ca65ae74994727b670e8fe5bfea83e49e240d72665c6d75"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "github-view",
+    "tag": "v1.1.1",
+    "assets": [
+      {
+        "file": "ShiroBot.Plugin.GithubView.dll",
+        "sha256": "410bf0ed25c17163e8f47972341733e0572090d5ba4a7b0e78c21f57545c36e1"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "jm-parser",
+    "tag": "v1.3.4",
+    "assets": [
+      {
+        "file": "ShiroBot.JmParser.dll",
+        "sha256": "838b76f77d9de4dd5e8f401961bd4a47330875eace9bde852452840ba3e437f6"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "my-list",
+    "tag": "v1.4.2",
+    "assets": [
+      {
+        "file": "Shirobot.Plugin.MyList.dll",
+        "sha256": "08866fc621daa92acd78e0ad3d5ebae8ac33115b6822660376f69639636125a4"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "my-parser",
+    "tag": "v0.6.15",
+    "assets": [
+      {
+        "file": "Shirobot.Plugin.MyParser.zip",
+        "sha256": "7af59cdf169955e0ecbcca60ea2f5fcac69d59012611d5bc38dbd4c073389115"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "onebot-server",
+    "tag": "v0.2.3",
+    "assets": [
+      {
+        "file": "ShiroBot.Plugin.OneBotServer.zip",
+        "sha256": "8200ac1e0ecd86c7385d2b9814be09c4b48c68f6cd7a812794904f64eca8fe0b"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "rss-subscriber",
+    "tag": "v0.2.2",
+    "assets": [
+      {
+        "file": "Shirobot.Plugin.RssSubscriber.zip",
+        "sha256": "9101a28ede06aeae1c8c665e39e1f470283b2fd923f1ca4f81667517d3461c58"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "video-previewer",
+    "tag": "v1.1.0",
+    "assets": [
+      {
+        "file": "ShiroBot.Plugin.VideoPreviewer.dll",
+        "sha256": "2bde6e7e45bd0215f230c1dae88ec90d75bb8493f025f770cd7f40a1af400dce"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "video-tool",
+    "tag": "v0.1.3",
+    "assets": [
+      {
+        "file": "ShiroBot.Plugin.VideoTool.zip",
+        "sha256": "237102aa9332c7f853386da0d819e8ef55934a6388d3cad8b16b75614a713384"
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "shiro-status",
+    "error": "gh: Not Found (HTTP 404)\n"
+  }
+]
