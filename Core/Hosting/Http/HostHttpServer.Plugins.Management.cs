@@ -39,12 +39,26 @@ internal sealed partial class HostHttpServer
 {
     private static void MapPluginManagementEndpoints(RouteGroupBuilder api, ApiHostConfig config, ConfigManager configManager, string configPath, PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy, HostRuntimeState runtimeState)
     {
-        api.MapGet("/plugins/{id}", (string id) =>
+        api.MapGet("/plugins/{id}", async (string id) =>
         {
             var plugin = FindPluginListItem(pluginManager, id);
             if (plugin is null)
             {
                 return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
+            }
+
+            var loaded = FindLoadedPlugin(pluginManager, plugin.Id);
+            IReadOnlyList<ShiroBot.SDK.Dashboard.DashboardTabDescriptor> dashboardTabs = [];
+            if (loaded is not null)
+            {
+                try
+                {
+                    dashboardTabs = await PluginDashboardTabs.ListAsync(loaded).ConfigureAwait(false) ?? [];
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    BotLog.Error($"读取插件 Dashboard tabs 失败: {plugin.Name} - {ex.Message}");
+                }
             }
 
             return Results.Ok(new
@@ -57,7 +71,49 @@ internal sealed partial class HostHttpServer
                 repo = plugin.Repo,
                 description = plugin.Description,
                 category = plugin.Category,
-                listeners = FindLoadedPlugin(pluginManager, plugin.Id) is { } loaded ? CreatePluginListeners(loaded) : null
+                listeners = loaded is { } ? CreatePluginListeners(loaded) : null,
+                dashboard_tabs = dashboardTabs.Select(tab => new
+                {
+                    contract_version = tab.ContractVersion,
+                    id = tab.Id,
+                    label = tab.Label,
+                    kind = tab.Kind,
+                    icon = tab.Icon,
+                    description = tab.Description,
+                    order = tab.Order,
+                    source = tab.Source is null ? null : new { path = tab.Source.Path, method = tab.Source.Method },
+                    fields = tab.Fields is null ? null : new
+                    {
+                        image = tab.Fields.Image,
+                        title = tab.Fields.Title,
+                        description = tab.Fields.Description,
+                        tags = tab.Fields.Tags,
+                        meta = tab.Fields.Meta
+                    },
+                    columns = tab.Columns?.Select(column => new { key = column.Key, label = column.Label, type = column.Type }),
+                    filters = tab.Filters?.Select(filter => new
+                    {
+                        key = filter.Key,
+                        label = filter.Label,
+                        type = filter.Type,
+                        options = filter.Options?.Select(option => new { value = option.Value, label = option.Label })
+                    }),
+                    pagination = tab.Pagination is null ? null : new
+                    {
+                        page_param = tab.Pagination.PageParameter,
+                        page_size_param = tab.Pagination.PageSizeParameter,
+                        page_size = tab.Pagination.PageSize
+                    },
+                    actions = tab.Actions?.Select(action => new
+                    {
+                        id = action.Id,
+                        label = action.Label,
+                        path = action.Path,
+                        method = action.Method,
+                        confirm = action.Confirm,
+                        tone = action.Tone
+                    })
+                })
             });
         });
 
