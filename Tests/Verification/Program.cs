@@ -956,7 +956,18 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
             probeConfigPath, true, "First probe"));
         await manager.LoadInstanceAsync(new InstalledAdapterInstance("probe-b", "lifecycle-probe", path,
             probeConfigPath, true, "Second probe"));
+        var instanceSources = logs.GetSources().Where(source => source.Source is "probe-a" or "probe-b").ToArray();
+        if (instanceSources is not [{ Source: "probe-a", PluginName: "First probe", Description: "lifecycle-probe", Kind: "adapter" },
+                                   { Source: "probe-b", PluginName: "Second probe", Description: "lifecycle-probe", Kind: "adapter" }])
+            throw new InvalidOperationException("Adapter log sources must show separate instance names above the adapter type.");
+        logs.Record("probe-a", "info", "first instance log");
+        logs.Record("probe-b", "info", "second instance log");
+        if (logs.GetHistory("probe-a", 100).Any(entry => entry.Message == "second instance log") ||
+            logs.GetHistory("probe-b", 100).Any(entry => entry.Message == "first instance log"))
+            throw new InvalidOperationException("Adapter log history mixed two instances of the same adapter.");
         await LifecycleStep("ReloadByIdAsync probe-a", () => manager.ReloadByIdAsync("probe-a"));
+        if (logs.GetSources().Single(source => source.Source == "probe-a").PluginName != "First probe")
+            throw new InvalidOperationException("Reloading an adapter lost its log source instance name.");
         if (!manager.LoadedIds.Order().SequenceEqual(new[] { "probe-a", "probe-b" }))
             throw new InvalidOperationException("Reloading an adapter instance disrupted another instance of the same package.");
         await LifecycleStep("StopByIdAsync probe-a", () => manager.StopByIdAsync("probe-a"));

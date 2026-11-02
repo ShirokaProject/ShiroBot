@@ -450,7 +450,9 @@ internal sealed class AdapterManager(
             subscription = null; // Entry owns it now.
             configWatch = null;
             TraceLoad("log registration");
-            logHub.RegisterSource(instanceId, metadata.Description ?? $"{metadata.Name} Adapter logs", metadata.Name, HostLogHub.LogSourceKind.Adapter);
+            // Keep the instance ID as the routing key; show its configured name above the adapter type.
+            logHub.RegisterSource(instanceId, metadata.Name,
+                string.IsNullOrWhiteSpace(instanceName) ? instanceId : instanceName, HostLogHub.LogSourceKind.Adapter);
             runtimeState.RecordEvent($"{metadata.Name} Adapter loaded");
         }
         catch
