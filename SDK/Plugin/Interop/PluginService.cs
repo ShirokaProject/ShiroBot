@@ -123,6 +123,14 @@ public sealed class PluginServiceFamily<TRequest, TResponse, TMetadata>
             PluginJson.Write(_metadata, metadata));
     }
 
+    /// <summary>按名称调用这一类中的一个服务；没有插件提供或提供方正在卸载时返回 <c>null</c>。</summary>
+    public Task<TResponse?> TryCallAsync(IBotContext context, string name, TRequest request, CancellationToken cancellationToken = default) =>
+        PluginServiceCalls.TryCallAsync(context, Prefix + name, _request, _response, request, cancellationToken);
+
+    /// <summary>按名称调用这一类中的一个服务；没有插件提供时抛出 <see cref="PluginServiceUnavailableException"/>。</summary>
+    public Task<TResponse> CallAsync(IBotContext context, string name, TRequest request, CancellationToken cancellationToken = default) =>
+        PluginServiceCalls.CallAsync(context, Prefix + name, _request, _response, request, cancellationToken);
+
     /// <summary>列出当前提供的所有服务，按名称排序。描述读不出来的服务仍会列出，描述为 <c>default</c>。</summary>
     public IReadOnlyList<PluginServiceEntry<TRequest, TResponse, TMetadata>> Find(IBotContext context)
     {
