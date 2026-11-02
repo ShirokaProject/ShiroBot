@@ -56,9 +56,14 @@ public static class PluginJson
     public static T? As<T>(this JsonNode? node) =>
         node is null ? default : Deserialize<T>(Encoding.UTF8.GetBytes(node.ToJsonString()));
 
-    internal static PluginJsonType<T> TypeOf<T>() =>
-        PluginJson<T>.Type ?? throw new InvalidOperationException(
+    internal static PluginJsonType<T> TypeOf<T>()
+    {
+        if (PluginJson<T>.Type is { } type) return type;
+        // 读写代码由类型所在程序集的模块初始化器登记；还没执行过该程序集的代码时先运行它。
+        System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(T).Module.ModuleHandle);
+        return PluginJson<T>.Type ?? throw new InvalidOperationException(
             $"{typeof(T).FullName} 没有生成 JSON 读写代码。把它用在 [PluginContract] 的服务或事件里，或给它标上 [PluginJson]。");
+    }
 
     internal static byte[] Write<T>(PluginJsonType<T> type, T value)
     {
