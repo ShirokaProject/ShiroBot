@@ -261,31 +261,6 @@ if (args is not ["--without-adapter-reload-isolation"])
     Console.WriteLine("Startup updater temporary file cleanup verification passed.");
 }
 
-var serviceRegistry = new PluginServiceRegistry();
-using var providerServices = new PluginServiceScope(serviceRegistry, "provider");
-using var consumerServices = new PluginServiceScope(serviceRegistry, "consumer");
-var verificationService = new VerificationService();
-providerServices.RegisterSingleton<IVerificationService>(verificationService);
-
-if (!ReferenceEquals(consumerServices.GetRequiredService<IVerificationService>(), verificationService) ||
-    !serviceRegistry.GetConsumers("provider").SequenceEqual(["consumer"]))
-{
-    throw new InvalidOperationException("Plugin service registration or dependency tracking failed.");
-}
-
-consumerServices.Dispose();
-if (serviceRegistry.GetConsumers("provider").Count != 0)
-{
-    throw new InvalidOperationException("Plugin service consumer cleanup failed.");
-}
-
-providerServices.Dispose();
-if (serviceRegistry.GetService("consumer", typeof(IVerificationService)) is not null)
-{
-    throw new InvalidOperationException("Plugin service provider cleanup failed.");
-}
-
-Console.WriteLine("Plugin service registry verification passed.");
 await PluginInteropVerification.RunAsync();
 
 {
@@ -2668,9 +2643,7 @@ internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
     }
 }
 
-internal interface IVerificationService;
 
-internal sealed class VerificationService : IVerificationService;
 
 internal sealed class DirectSubscriberPlugin : IBotPlugin, IBotEventSubscriber
 {

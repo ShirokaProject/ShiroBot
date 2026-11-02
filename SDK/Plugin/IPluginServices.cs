@@ -3,21 +3,11 @@ using System.Text.Json.Nodes;
 namespace ShiroBot.SDK.Plugin;
 
 /// <summary>
-/// Plugin-scoped access to services exported by other plugins.
-/// Typed services (<see cref="RegisterSingleton{TService}"/>) need a contract from a shared assembly loaded by the host;
-/// named services (<see cref="Provide"/> / <see cref="CallAsync"/>) exchange JSON and need no shared assembly.
+/// 插件之间按名称提供和调用的服务。参数和返回值都是 JSON，双方不共享程序集和对象，
+/// 任何一方都可以单独卸载和更新。
 /// </summary>
-public interface IPluginServices : IServiceProvider
+public interface IPluginServices
 {
-    void RegisterSingleton<TService>(TService service)
-        where TService : class;
-
-    TService? GetService<TService>()
-        where TService : class;
-
-    TService GetRequiredService<TService>()
-        where TService : class;
-
     /// <summary>
     /// 按名称提供服务（例如 "weather.query"），参数和返回值都是 JSON，调用方不需要引用任何共享程序集。
     /// 服务随插件卸载自动注销，提供方可以随时卸载和重新加载，调用方无需跟着卸载。

@@ -150,15 +150,15 @@ internal static class PluginInteropVerification
         try { provider.Provide("math.add", (_, _) => Task.FromResult<JsonNode?>(null)); throw new InvalidOperationException("A duplicate name was accepted."); }
         catch (InvalidOperationException ex) when (ex.Message.Contains("already provided")) { }
 
-        // 按前缀发现服务：带描述副本、按名称排序，不把调用方记为依赖方。
+        // 按前缀发现服务：带描述副本、按名称排序。
         var metadata = new JsonObject { ["description"] = "Add numbers" };
         provider.Provide("math.tool.mul", (_, _) => Task.FromResult<JsonNode?>(null), metadata);
         provider.Provide("math.tool.div", (_, _) => Task.FromResult<JsonNode?>(null));
         metadata["description"] = "changed";
         var found = consumer.Find("math.tool.");
         if (found is not [{ Name: "math.tool.div", ProviderId: "provider", Metadata: null }, { Name: "math.tool.mul" } mul] ||
-            (string?)mul.Metadata?["description"] != "Add numbers" || registry.GetConsumers("provider").Count != 0)
-            throw new InvalidOperationException("Find must list prefixed services with copied metadata and record no consumers.");
+            (string?)mul.Metadata?["description"] != "Add numbers")
+            throw new InvalidOperationException("Find must list prefixed services with copied metadata.");
         mul.Metadata!["description"] = "mutated";
         if ((string?)consumer.Find("math.tool.mul")[0].Metadata?["description"] != "Add numbers")
             throw new InvalidOperationException("Find must return copies of the metadata.");

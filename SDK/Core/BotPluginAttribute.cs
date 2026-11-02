@@ -15,8 +15,9 @@ public sealed class BotPluginAttribute(string id) : Attribute
     public bool IsPluginSingleFile { get; init; }
 
     /// <summary>
-    /// Semicolon-separated assembly names containing contracts shared with other plugins.
-    /// The contract DLLs must be shipped beside the plugin and are loaded into the Default ALC.
+    /// Semicolon-separated Model contract assemblies this plugin uses, such as "ShiroBot.Model.QQ".
+    /// They are shared with the host and adapters; a DLL shipped beside the plugin is loaded into the Default ALC
+    /// when the host does not provide it yet.
     /// </summary>
     public string? SharedAssemblies { get; init; }
 

@@ -109,62 +109,11 @@ command routes, event routes and `Context` after unload.
 `OnUnloadAsync()` is called for hot unload and plugin updates. Process exit does not walk every
 plugin, so persistent state should be saved during normal operation rather than only on unload.
 
-## Services Between Plugins
+## Calling Other Plugins
 
-A plugin can export a singleton through the host-managed plugin service registry:
-
-```csharp
-public interface IImageService
-{
-    Task<byte[]> RenderAsync(string text);
-}
-
-protected override Task LoadAsync()
-{
-    Context.Services.RegisterSingleton<IImageService>(new ImageService());
-    return Task.CompletedTask;
-}
-```
-
-A consuming plugin declares the provider dependency and resolves the service through its context:
-
-```csharp
-[BotPlugin("ImageConsumer", Dependencies = "ImageProvider")]
-public sealed class ImageConsumerPlugin : PluginBase
-{
-    protected override Task LoadAsync()
-    {
-        var images = Context.Services.GetRequiredService<IImageService>();
-        return Task.CompletedTask;
-    }
-}
-```
-
-Put cross-plugin interfaces in a separate contract assembly. Both plugins reference that assembly,
-and both declare it as shared so the host loads one copy into the Default AssemblyLoadContext:
-
-```csharp
-[BotPlugin(
-    "ImageProvider",
-    SharedAssemblies = "Example.Image.Contracts")]
-public sealed class ImageProviderPlugin : PluginBase
-{
-}
-```
-
-The contract DLL must remain separate beside the plugin. Prevent automatic packaging from merging
-it into either plugin:
-
-```xml
-<PropertyGroup>
-  <ShiroBotPluginSharedAssemblies>Example.Image.Contracts</ShiroBotPluginSharedAssemblies>
-</PropertyGroup>
-```
-
-Multiple names are separated with semicolons. The same format is used by `SharedAssemblies` and
-`Dependencies`. A provider cannot be hot-unloaded while a loaded consumer has resolved one of its
-services; unload consumers first. Plugins should resolve services when needed rather than retaining
-instances beyond their own lifetime.
+Plugins provide and call services by name, and publish and subscribe to events, without sharing
+assemblies or objects; either side can unload and update on its own. See
+[Calling other plugins](../docs/plugin/interop.md).
 
 ## Opt-in plugin packaging
 

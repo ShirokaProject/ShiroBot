@@ -551,20 +551,15 @@ internal sealed class PluginManager(
 
             if (pluginHandle is not null)
             {
-                var consumers = _serviceRegistry.GetConsumers(pluginHandle.Name)
-                    .Where(IsPluginLoaded)
-                    .Concat(_loadedPlugins
-                        .Where(plugin => plugin.Dependencies.Contains(
-                            pluginHandle.Name,
-                            StringComparer.OrdinalIgnoreCase))
-                        .Select(plugin => plugin.Name))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                var dependents = _loadedPlugins
+                    .Where(plugin => plugin.Dependencies.Contains(pluginHandle.Name, StringComparer.OrdinalIgnoreCase))
+                    .Select(plugin => plugin.Name)
                     .ToArray();
-                if (consumers.Length > 0)
+                if (dependents.Length > 0)
                 {
                     CH.Warning(
-                        $"无法卸载插件 {pluginHandle.Name}，以下已加载插件依赖或正在使用它: " +
-                        string.Join(", ", consumers));
+                        $"无法卸载插件 {pluginHandle.Name}，以下已加载插件依赖它: " +
+                        string.Join(", ", dependents));
                     return Task.FromResult(false);
                 }
 
