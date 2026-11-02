@@ -53,7 +53,9 @@ jobs:
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
           dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
-          unzip -p artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
+          avalonia_version="$(sed -n 's/.*<PackageVersion Include="Avalonia" Version="\([^"]*\)".*/\1/p' Directory.Packages.props)"
+          test -n "$avalonia_version"
+          unzip -p artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg ShiroBot.SDK.nuspec | grep -Fq "<dependency id=\"Avalonia\" version=\"$avalonia_version\""
           test "$(find artifacts/nuget -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 2
           unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
           unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
