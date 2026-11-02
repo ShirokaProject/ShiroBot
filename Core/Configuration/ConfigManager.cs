@@ -517,15 +517,50 @@ public class ConfigManager(string? coreConfigPath = null)
                 value = declaredDefault is string enumName
                     ? Enum.Parse(targetType, enumName, ignoreCase: true)
                     : Enum.ToObject(targetType, declaredDefault);
-            else if (targetType.IsArray)
-                value = declaredDefault is string json
-                    ? JsonSerializer.Deserialize(json, targetType)
-                    : JsonSerializer.Deserialize(JsonSerializer.Serialize(declaredDefault), targetType);
+            else if (targetType.IsArray) value = ConvertArrayDefault(declaredDefault, targetType);
             else value = Convert.ChangeType(declaredDefault, targetType, System.Globalization.CultureInfo.InvariantCulture);
             property.SetValue(config, value);
         }
 
         return config;
+    }
+
+    /// <summary>
+    /// 数组默认值。枚举数组逐个转换，名称和数值都接受：组件自己定义的枚举交给 JsonSerializer 的话，
+    /// 反射元数据缓存会拉住组件可回收的程序集，而且默认的 JSON 转换不认枚举名称。
+    /// </summary>
+    private static object? ConvertArrayDefault(object declaredDefault, Type arrayType)
+    {
+        var elementType = arrayType.GetElementType()!;
+        var enumType = Nullable.GetUnderlyingType(elementType) ?? elementType;
+        if (!enumType.IsEnum)
+            return declaredDefault is string json
+                ? JsonSerializer.Deserialize(json, arrayType)
+                : JsonSerializer.Deserialize(JsonSerializer.Serialize(declaredDefault), arrayType);
+
+        object?[] items = declaredDefault switch
+        {
+            string json => JsonSerializer.Deserialize<JsonElement[]>(json)!.Select(item => item.ValueKind switch
+            {
+                JsonValueKind.String => (object?)item.GetString(),
+                JsonValueKind.Number => item.GetInt64(),
+                JsonValueKind.Null => null,
+                _ => throw new FormatException($"Enum array default must contain names or numbers: {json}")
+            }).ToArray(),
+            Array array => array.Cast<object?>().ToArray(),
+            _ => throw new FormatException($"Unsupported default for {arrayType.Name}: {declaredDefault}")
+        };
+        var result = Array.CreateInstance(elementType, items.Length);
+        for (var i = 0; i < items.Length; i++)
+        {
+            result.SetValue(items[i] switch
+            {
+                null => null,
+                string name => Enum.Parse(enumType, name, ignoreCase: true),
+                var number => Enum.ToObject(enumType, Convert.ToInt64(number, System.Globalization.CultureInfo.InvariantCulture))
+            }, i);
+        }
+        return result;
     }
 
     private static IReadOnlyList<string> CreateConfigCommentLines(ConfigFieldAttribute field)

@@ -45,6 +45,26 @@ if (args is ["--directory-lock-probe", var lockDirectory, var holdLock])
     return;
 }
 
+if (args is ["--plugin-unload-check", var unloadCheckDll, .. var unloadCheckRest])
+{
+    await PluginInteropVerification.CheckPluginUnloadAsync(unloadCheckDll,
+        unloadCheckRest is [var seconds] ? int.Parse(seconds) : 3);
+    return;
+}
+
+if (args is ["--adapter-unload-check", var adapterCheckDll, .. var adapterCheckRest])
+{
+    await PluginInteropVerification.CheckAdapterUnloadAsync(adapterCheckDll,
+        adapterCheckRest is [var seconds] ? int.Parse(seconds) : 3);
+    return;
+}
+
+if (args is ["--plugin-interop"])
+{
+    await PluginInteropVerification.RunAsync();
+    return;
+}
+
 if (args is ["--config-fingerprint"])
 {
     ConfigFingerprintVerification.Run();
@@ -266,6 +286,7 @@ if (serviceRegistry.GetService("consumer", typeof(IVerificationService)) is not 
 }
 
 Console.WriteLine("Plugin service registry verification passed.");
+await PluginInteropVerification.RunAsync();
 
 {
     var pluginRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"), "plugins");
@@ -601,7 +622,7 @@ Console.WriteLine("Plugin config nested patch verification passed.");
 Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.3.0.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.4.0.0");
     AssertAssemblyVersion(typeof(QGroup).Assembly, "1.0.0.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "1.0.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "1.0.0.0");
@@ -939,6 +960,12 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
                 throw new InvalidOperationException("Adapter hot reload lost the active instance.");
         }
         var finalShadow = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
+        // 配置热重载会比较新旧配置的指纹；比较时不能让宿主的 JSON 缓存记住适配器的配置类型。
+        await LifecycleStep("ApplyConfigByIdAsync lifecycle-probe", async () =>
+        {
+            if (!await manager.ApplyConfigByIdAsync("lifecycle-probe"))
+                throw new InvalidOperationException("The configurable adapter probe did not apply its config.");
+        });
         await LifecycleStep("StopByIdAsync lifecycle-probe", () => manager.StopByIdAsync("lifecycle-probe"));
         if (manager.IsLoaded || context.HasAdapter || manager.GetSnapshot().Any(item => item.RestartRequired) ||
             File.Exists(finalShadow))
@@ -2222,7 +2249,7 @@ try
         hostStatus.MessageFrequency[11].End != new TimeOnly(0, 0) ||
         hostStatus.Healthy || hostStatus.LatestError != "adapter failed" || !expiredStatus.Healthy ||
         hostStatus.Runtime.ProcessorCount != Environment.ProcessorCount || hostStatus.Runtime.MemoryBytes <= 0 ||
-        string.IsNullOrEmpty(hostStatus.Runtime.Architecture) || hostStatus.SdkAbiVersion != "1.3.0.0")
+        string.IsNullOrEmpty(hostStatus.Runtime.Architecture) || hostStatus.SdkAbiVersion != "1.4.0.0")
         throw new InvalidOperationException("Host status snapshot does not match the overview data.");
     var statusBot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
     using var statusPlugin = new PluginContext(statusBot, "status-plugin", Path.Combine(tempRoot, "status-plugin"), new HostLogHub(), new PluginServiceRegistry());

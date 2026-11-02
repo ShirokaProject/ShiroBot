@@ -4,6 +4,7 @@ using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Packages;
 using ShiroBot.Plugins.Loading;
+using ShiroBot.Plugins.Services;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Abstractions;
@@ -429,7 +430,7 @@ internal sealed class AdapterManager(
             registered = true;
             subscription = eventBridge.Bridge(instanceId, adapter.Platform, adapter.Event, directMessageHandler);
             TraceLoad("start");
-            using (BotLog.BeginScope(adapter.Logger)) await adapter.StartAsync().ConfigureAwait(false);
+            using (BotLog.BeginScope(adapter.Logger)) await StartAdapterAsync(adapter).ConfigureAwait(false);
             if (configurable is not null)
             {
                 TraceLoad("watch config");
@@ -459,7 +460,7 @@ internal sealed class AdapterManager(
             if (registered && adapter is not null) botContext.UnregisterAdapter(adapter);
             if (adapter is not null)
             {
-                try { await adapter.StopAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); } catch { }
+                try { await StopAdapterAsync(adapter).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); } catch { }
             }
             loader.Unload();
             TryDeleteDirectory(Path.GetDirectoryName(loadAssemblyPath));
@@ -489,7 +490,7 @@ internal sealed class AdapterManager(
         {
             using (BotLog.BeginScope(adapter.Logger))
             {
-                await adapter.StopAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                await StopAdapterAsync(adapter).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -601,18 +602,18 @@ internal sealed class AdapterManager(
 
         if (configurable.ApplyMode == ConfigApplyMode.RestartComponent)
         {
-            await adapter.StopAsync().ConfigureAwait(false);
+            await StopAdapterAsync(adapter).ConfigureAwait(false);
             try
             {
                 await configurable.ApplyConfigAsync(candidate).ConfigureAwait(false);
-                await adapter.StartAsync().ConfigureAwait(false);
+                await StartAdapterAsync(adapter).ConfigureAwait(false);
             }
             catch
             {
                 if (current is not null)
                 {
                     await configurable.ApplyConfigAsync(current).ConfigureAwait(false);
-                    await adapter.StartAsync().ConfigureAwait(false);
+                    await StartAdapterAsync(adapter).ConfigureAwait(false);
                 }
                 throw;
             }
@@ -625,9 +626,34 @@ internal sealed class AdapterManager(
         return candidate;
     }
 
+    /// <summary>每次启动换一个新的生命周期作用域，配置触发的重启也拿到干净的作用域。</summary>
+    internal static Task StartAdapterAsync(IBotAdapter adapter)
+    {
+        if (adapter is ILifetimeAwareAdapter aware) aware.Lifetime = new PluginLifetimeScope();
+        return adapter.StartAsync();
+    }
+
+    /// <summary>
+    /// 先发出停止信号，再调用适配器自己的 StopAsync（关闭连接会让接收循环退出），然后等待登记的任务结束并释放资源。
+    /// StopAsync 失败时不释放资源，保持可以重试。
+    /// </summary>
+    internal static async Task StopAdapterAsync(IBotAdapter adapter)
+    {
+        var scope = (adapter as ILifetimeAwareAdapter)?.Lifetime as PluginLifetimeScope;
+        scope?.Cancel();
+        await adapter.StopAsync().ConfigureAwait(false);
+        if (scope is null) return;
+        await scope.StopTasksAsync().ConfigureAwait(false);
+        await scope.DisposeResourcesAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 先把配置复制成普通容器再序列化：直接用反射序列化适配器的配置类型会被 System.Text.Json 缓存，
+    /// 拉住可回收的 ALC，适配器热重载过一次配置后就再也卸载不掉。
+    /// </summary>
     private static string Fingerprint(object? config, Type configType)
     {
-        try { return JsonSerializer.Serialize(config, configType); }
+        try { return JsonSerializer.Serialize(ShiroBot.Plugins.ConfigFingerprintValue.Create(config)); }
         catch { return RuntimeHelpers.GetHashCode(config ?? configType).ToString(System.Globalization.CultureInfo.InvariantCulture); }
     }
 

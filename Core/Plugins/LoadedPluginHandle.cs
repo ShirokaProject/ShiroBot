@@ -51,6 +51,8 @@ internal sealed class LoadedPluginHandle
         _plugin = plugin;
         _context = context;
         _loader = loader;
+        // 其他插件的按名称调用和事件处理与宿主事件一样计入正在处理的调用，卸载时一并等待。
+        context.AttachDispatchGuard(work => DispatchAsync<IBotPlugin>(_ => work()));
         _assemblyPath = assemblyPath;
         var source = new FileInfo(assemblyPath);
         SourceLength = source.Length;
@@ -448,10 +450,19 @@ internal sealed class LoadedPluginHandle
             }
 
             ReleaseAvaloniaPluginResources(plugin.GetType().Assembly.GetName().Name);
+            // 先停掉插件登记的后台任务和计时器（上下文仍可用），再执行插件自己的 OnUnload，最后释放登记的资源。
             var unloadTask = Task.Run(() =>
                 BotLog.RunScoped(
                     new ConsoleLogger($"[Plugin:{Name}]", _logHub),
-                    plugin.OnUnload));
+                    async () =>
+                    {
+                        if (context is not null) await context.StopLifetimeTasksAsync().ConfigureAwait(false);
+                        try { await plugin.OnUnload().ConfigureAwait(false); }
+                        finally
+                        {
+                            if (context is not null) await context.DisposeLifetimeAsync().ConfigureAwait(false);
+                        }
+                    }));
 
             if (await Task.WhenAny(unloadTask, Task.Delay(_pluginOnUnloadTimeout)).ConfigureAwait(false) != unloadTask)
             {

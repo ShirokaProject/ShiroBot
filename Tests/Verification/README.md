@@ -2,6 +2,18 @@
 
 Run the standard checks with `dotnet run --project Tests/Verification`.
 
+To check that a plugin or adapter DLL releases its collectible assembly after unloading, load it
+into an isolated temporary host directory, let it run for a few seconds and unload it:
+
+```sh
+dotnet run --project Tests/Verification -- --plugin-unload-check path/to/Plugin.dll [seconds]
+dotnet run --project Tests/Verification -- --adapter-unload-check path/to/Adapter.dll [seconds]
+```
+
+The plugin check copies the DLL's whole directory. The adapter check copies only the DLL, starts it
+with a default config (never your real credentials), applies one config reload and stops it.
+`--plugin-interop` runs the lifetime, named service and event bus checks with `samples/PluginInterop`.
+
 For system-font selection and actual Avalonia headless rendering checks:
 
 ```sh

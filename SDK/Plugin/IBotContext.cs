@@ -31,6 +31,14 @@ public interface IBotContext
     public IConfigContext Config { get; }
     public IWebHostContext WebHost { get; }
     public IPluginServices Services { get; }
+
+    /// <summary>插件的生命周期作用域：登记的后台任务、计时器和资源在卸载时自动停止和释放。旧宿主不支持。</summary>
+    public IPluginLifetime Lifetime =>
+        throw new NotSupportedException("This host does not support plugin lifetimes.");
+
+    /// <summary>插件之间按主题发布和订阅 JSON 消息的事件总线。旧宿主不支持。</summary>
+    public IPluginEventBus Bus =>
+        throw new NotSupportedException("This host does not support the plugin event bus.");
     /// <summary>
     /// 创建插件独立临时目录，保留时长必须大于零，从创建时开始计算。
     /// 宿主每 30 秒清理到期目录，文件占用时重试；退出和下次启动清理遗留目录。

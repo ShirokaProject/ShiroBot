@@ -12,6 +12,9 @@
     <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" />
     <ProjectReference Include="..\SharedContractPluginProbe\ShiroBot.SharedContractPluginProbe.csproj" />
     <ProjectReference Include="../ExternalConfigPluginProbe/ShiroBot.ExternalConfigPluginProbe.csproj" />
+    <!-- 示例插件只复制 DLL 供 PluginInteropVerification 加载到可回收 ALC，测试代码不引用它们的类型。 -->
+    <ProjectReference Include="../../samples/PluginInterop/Greeter/ShiroBot.Samples.Greeter.csproj" />
+    <ProjectReference Include="../../samples/PluginInterop/GreeterClient/ShiroBot.Samples.GreeterClient.csproj" />
     <None Include="../AbiFixtures/frozen/**/*.dll" Link="fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1147,7 +1147,12 @@ internal sealed class PluginManager(
             {
                 using (BotLog.BeginScope(new ConsoleLogger($"[Plugin:{pluginName}]", logHub)))
                 {
-                    await plugin.OnUnload().ConfigureAwait(false);
+                    if (context is not null) await context.StopLifetimeTasksAsync().ConfigureAwait(false);
+                    try { await plugin.OnUnload().ConfigureAwait(false); }
+                    finally
+                    {
+                        if (context is not null) await context.DisposeLifetimeAsync().ConfigureAwait(false);
+                    }
                 }
             }
             catch (Exception ex)

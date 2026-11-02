@@ -19,10 +19,13 @@ SDK 1.0.0 adds host-managed temporary directories (SDK ABI 1.2.0.0). QQ, Discord
 Telegram Model ABI versions are 1.0.0.0. Components using CreateTempDirectory require host 1.0.0.
 SDK 1.0.2 adds route descriptions for the Dashboard (SDK ABI 1.3.0.0); components using the
 MapWhen description overloads require host 1.0.2.
+SDK 1.0.3 adds plugin lifetimes, named JSON services, the plugin event bus and lifetime-aware adapters
+(SDK ABI 1.4.0.0); components using them require host 1.0.3.
 Package versions follow the 1.0 release series; ABI numbers track each assembly's contracts.
 
 | ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
+| 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.2 | 1.3.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.1 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.0 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |

@@ -18,7 +18,9 @@
 | `Context.WebHost` | 宿主 HTTP 服务与公开地址 |
 | `Context.Updater` | 插件更新能力 |
 | `Context.Render` | 可选图片渲染服务 |
-| `Context.Services` | 发布、调用其他插件的共享服务 |
+| `Context.Services` | 发布、调用其他插件的共享服务；按名称的 JSON 服务不需要共享程序集 |
+| `Context.Lifetime` | 生命周期作用域：后台任务、计时器和资源在卸载时自动停止和释放 |
+| `Context.Bus` | 插件之间按主题发布和订阅 JSON 事件 |
 | `Context.CreateTempDirectory(retention)` | 创建由宿主按保留时长清理的临时目录 |
 | `Context.PluginDirectory` | 插件稳定数据目录 |
 | `Context.OwnerList` | 宿主所有者身份列表（`UserReference`） |
@@ -199,6 +201,64 @@ var path = Path.Combine(temp.Path, "video.mp4");
 Ctrl+C/正常退出时尝试清理；强制终止时遗留的文件，下次启动会在加载插件之前全部清理，未到期也不续存。
 清理只针对专用临时区，不影响 `cache/adapters`、Cookie 或插件持久数据。订阅记录、登录凭据等不要保存在临时目录。
 新接口要求宿主 1.0.0；不需要升级适配器才能使用宿主提供的此服务。
+
+## 生命周期作用域
+
+需要宿主 1.0.3（SDK ABI 1.4.0.0）。
+
+插件自己创建的计时器、后台循环、`HttpClient` 等，如果卸载时没有停掉和释放，旧程序集就无法回收，只能重启宿主。登记到 `Context.Lifetime` 后由宿主统一收尾，插件不需要在 `OnUnloadAsync` 里逐个处理：
+
+```csharp
+protected override Task LoadAsync()
+{
+    var http = Context.Lifetime.Track(new HttpClient());          // 卸载时释放
+    Context.Lifetime.SetInterval(TimeSpan.FromMinutes(5), async ct => // 卸载时停止
+        await http.GetStringAsync("https://example.com/ping", ct));
+    _ = Context.Lifetime.Run(async ct =>                           // 卸载时取消并等待结束
+    {
+        while (!ct.IsCancellationRequested) await PollAsync(ct);
+    });
+    return Task.CompletedTask;
+}
+```
+
+卸载顺序：`Lifetime.Stopping` 取消、停止接收其他插件的调用和事件 → 等待正在处理的事件和调用 → 等待 `Run`、`SetInterval`、`SetTimeout` 结束（此时 `Context` 仍可用）→ 插件的 `OnUnloadAsync` → 按登记的相反顺序释放 `Track` 的资源和执行 `Defer` 回调。超过卸载超时仍未结束的任务会让插件保持驻留，并提示重启。
+
+随配置开关重建的功能可以放进子作用域，关闭时单独释放：`var feature = Context.Lifetime.CreateScope(); … await feature.DisposeAsync();`。
+
+不要直接订阅 `AppDomain`、`Console`、`TaskScheduler` 等静态事件，也不要把插件对象存进宿主或其他插件的静态集合。这些引用宿主无法替你解除，会让插件程序集一直留在内存中。
+
+## 插件之间互相调用
+
+需要宿主 1.0.3（SDK ABI 1.4.0.0）。
+
+按名称提供和调用服务，参数和返回值都是 JSON，双方**不需要共享程序集**，提供方可以单独卸载、更新和重新加载，调用方不用跟着卸载：
+
+```csharp
+// 提供方
+Context.Services.Provide("weather.query", async (args, ct) =>
+{
+    var city = args?["city"]?.GetValue<string>();
+    return new JsonObject { ["text"] = await QueryAsync(city, ct) };
+});
+
+// 调用方
+try
+{
+    var result = await Context.Services.CallAsync("weather.query", new JsonObject { ["city"] = "上海" });
+}
+catch (PluginServiceUnavailableException) { /* 提供方没有加载或正在卸载 */ }
+catch (PluginServiceException ex) { /* 提供方处理失败：ex.RemoteType、ex.RemoteMessage */ }
+```
+
+事件总线用于通知，不需要返回结果：`Context.Bus.On("weather.updated", (payload, ct) => …)` 订阅，`await Context.Bus.EmitAsync("weather.updated", payload)` 发布，返回收到消息的订阅者数量。
+
+- 服务和订阅随插件卸载自动注销；同一服务名同时只能由一个插件提供。
+- 参数、返回值和事件内容在插件之间按 JSON 复制，双方不共享对象；提供方的异常只传类型名和消息。请只放字符串、数字、布尔、数组和 `JsonObject`，不要用 `JsonValue.Create(自定义对象)`。
+- 其他插件的调用和事件计入提供方正在处理的调用，卸载会等它们结束。
+- 需要强类型接口时，仍可用 `RegisterSingleton` / `GetService` 共享契约程序集，但提供方在有调用方加载时不能卸载。
+
+完整示例见仓库 `samples/PluginInterop`。
 
 ## 插件目录与热更新
 

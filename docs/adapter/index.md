@@ -71,3 +71,37 @@ internal sealed class MyUserService : IUserService;
 `StartAsync()` 和 `StopAsync()` 是宿主管理的生命周期入口。适配器作者按需**重写实现**它们，插件或其他业务代码通常不应主动调用，否则可能重复建立连接或绕过宿主的加载与卸载顺序。插件自己的初始化入口是 `PluginBase.LoadAsync()`，不是适配器的 `StartAsync()`。
 
 配置文件与发布目录见[配置与部署](/adapter/deployment)。
+
+## 生命周期作用域（可选）
+
+需要宿主 1.0.3（SDK ABI 1.4.0.0）。
+
+接收循环、心跳计时器、`ClientWebSocket` 这类对象如果停止后还在运行或没有释放，旧程序集就无法回收，热重载和卸载会要求重启宿主。适配器实现 `ILifetimeAwareAdapter` 后，宿主在**每次** `StartAsync()` 之前注入一个新的 `Lifetime`，启动期间登记的东西在停止时统一收尾，配置触发的重启也会换成新的作用域：
+
+```csharp
+[BotAdapter("example")]
+public sealed class ExampleAdapter : IBotAdapter, ILifetimeAwareAdapter
+{
+    public IPluginLifetime Lifetime { get; set; } = null!;
+    // Platform、Message、Event 等其余成员省略
+
+    public async Task StartAsync()
+    {
+        var socket = Lifetime.Track(new ClientWebSocket());          // 停止后释放
+        await socket.ConnectAsync(endpoint, Lifetime.Stopping);
+        _ = Lifetime.Run(ct => ReceiveLoopAsync(socket, ct));       // 停止时取消并等待结束
+        Lifetime.SetInterval(TimeSpan.FromSeconds(30), ct => SendHeartbeatAsync(socket, ct));
+    }
+
+    public Task StopAsync() => Task.CompletedTask;                  // 不必再手动收尾
+}
+```
+
+停止顺序：`Lifetime.Stopping` 取消 → 适配器的 `StopAsync()` → 等待 `Run`、`SetInterval`、`SetTimeout` 结束 → 按登记的相反顺序释放 `Track` 的资源。整个过程受宿主的停止超时限制。不实现该接口的适配器行为不变。
+
+自检能否干净卸载（不使用已有配置，以默认配置启动，并执行一次配置热重载）：
+
+```sh
+dotnet run --project Tests/Verification -- --adapter-unload-check path/to/YourAdapter.dll
+```
+
