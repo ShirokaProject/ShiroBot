@@ -12,9 +12,34 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    env:
+      # CI verifies unpublished host changes with the current Dashboard source.
+      # Release packaging still downloads its explicitly versioned Dashboard asset.
+      DashboardDistPath: ${{ github.workspace }}/artifacts/dashboard-source/dist
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+
+      - name: Checkout Dashboard
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: ShirokaProject/Shirobot.Dashboard
+          ref: main
+          path: artifacts/dashboard-source
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: artifacts/dashboard-source/package-lock.json
+
+      - name: Build Dashboard for host verification
+        working-directory: artifacts/dashboard-source
+        run: |
+          npm ci
+          npm run build
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
