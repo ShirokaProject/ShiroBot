@@ -20,6 +20,7 @@ internal sealed class PluginLifetimeScope : IPluginScope
     private Task? _disposeResources;
     // 任务停止后不再接受新任务；资源释放开始后不再接受新资源。OnUnload 期间仍可以 Track。
     private bool _tasksClosed;
+    private bool _scopesClosed;
     private bool _resourcesClosed;
 
     public PluginLifetimeScope() : this(null)
@@ -39,6 +40,7 @@ internal sealed class PluginLifetimeScope : IPluginScope
     /// <summary>宿主开始卸载插件：只发出取消信号，不等待也不释放。</summary>
     public void Cancel()
     {
+        lock (_gate) _scopesClosed = true;
         try { _stopping.Cancel(); }
         catch (ObjectDisposedException) { }
         catch (AggregateException ex) { BotLog.Warning($"插件取消回调失败: {ex.InnerException?.Message ?? ex.Message}"); }
@@ -102,13 +104,13 @@ internal sealed class PluginLifetimeScope : IPluginScope
 
     public IPluginScope CreateScope()
     {
-        var child = new PluginLifetimeScope(this);
         lock (_gate)
         {
-            if (_tasksClosed) throw Closed();
+            if (_scopesClosed || _tasksClosed || _stopping.IsCancellationRequested) throw Closed();
+            var child = new PluginLifetimeScope(this);
             _children.Add(child);
+            return child;
         }
-        return child;
     }
 
     /// <summary>取消并等待本作用域和子作用域的后台任务、计时器结束；不释放资源。</summary>

@@ -34,6 +34,7 @@ public interface IPluginLifetime
 
     /// <summary>
     /// 创建子作用域：随所在作用域一起停止，也可以单独释放，适合随配置开关重建的功能。
+    /// 开始停止后不再接受新子作用域，调用会抛出 ObjectDisposedException。
     /// </summary>
     IPluginScope CreateScope();
 }

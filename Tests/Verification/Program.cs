@@ -92,6 +92,7 @@ if (args is ["--plugin-priority"])
 if (args is ["--plugin-actions"])
 {
     await PluginActionsVerification.RunAsync();
+    await PluginDashboardVerification.RunAsync();
     return;
 }
 
@@ -194,6 +195,7 @@ await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
 await PluginPriorityVerification.RunAsync();
 await PluginActionsVerification.RunAsync();
+await PluginDashboardVerification.RunAsync();
 await ContactDirectoryVerification.RunAsync();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();

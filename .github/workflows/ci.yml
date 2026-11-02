@@ -12,9 +12,34 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    env:
+      # CI verifies unpublished host changes with the current Dashboard source.
+      # Release packaging still downloads its explicitly versioned Dashboard asset.
+      DashboardDistPath: ${{ github.workspace }}/artifacts/dashboard-source/dist
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+
+      - name: Checkout Dashboard
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: ShirokaProject/Shirobot.Dashboard
+          ref: main
+          path: artifacts/dashboard-source
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: artifacts/dashboard-source/package-lock.json
+
+      - name: Build Dashboard for host verification
+        working-directory: artifacts/dashboard-source
+        run: |
+          npm ci
+          npm run build
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
@@ -53,7 +78,9 @@ jobs:
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
           dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
-          unzip -p artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg ShiroBot.SDK.nuspec | grep -q '<dependency id="Avalonia" version="12.1.2"'
+          avalonia_version="$(sed -n 's/.*<PackageVersion Include="Avalonia" Version="\([^"]*\)".*/\1/p' Directory.Packages.props)"
+          test -n "$avalonia_version"
+          unzip -p artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg ShiroBot.SDK.nuspec | grep -Fq "<dependency id=\"Avalonia\" version=\"$avalonia_version\""
           test "$(find artifacts/nuget -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 2
           unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
           unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
@@ -281,7 +308,7 @@ jobs:
           log_path="$RUNNER_TEMP/shirobot-legacy-host.log"
           legacy_build_root="$RUNNER_TEMP/shirobot-legacy-abi-build"
 
-          # The rejection check below asserts a console diagnostic; the success probe disables logging.
+          # Keep console output for troubleshooting; assertions use unwrapped API diagnostics.
           sed -i 's/^enable_log = false$/enable_log = true/' "$config_path"
 
           dotnet publish Tests/SharedContractPluginProbe/ShiroBot.SharedContractPluginProbe.csproj -c Release \
@@ -303,15 +330,19 @@ jobs:
             --retry 40 --retry-delay 1 --retry-connrefused \
             http://127.0.0.1:17081/api/v1/plugins/list -o "$response_path"
           for attempt in $(seq 1 40); do
-            if grep -q 'Component contract preflight failed before activation:' "$log_path"; then break; fi
+            curl --fail --silent --show-error -H 'Authorization: Bearer single-file-ci-test-token' http://127.0.0.1:17081/api/v1/plugins/list -o "$response_path"
+            if jq -e 'any(.[]; .id == "SharedContractPluginProbe" and .status == "error")' "$response_path"; then break; fi
             sleep 1
           done
           curl --fail --silent --show-error -H 'Authorization: Bearer single-file-ci-test-token' http://127.0.0.1:17081/api/v1/plugins/list -o "$response_path"
           jq -e 'all(.[]; .id != "SharedContractPluginProbe" or .enable != true)' "$response_path"
           # Check the explicit preflight diagnostic as well as disabled state: absence alone is insufficient.
+          # Spectre may wrap console lines at the redirected runner's width, splitting both strings.
           cat "$log_path"
-          grep -q 'Component contract preflight failed before activation:' "$log_path"
-          grep -q 'Version=0.8.0.0' "$log_path"
+          jq -e 'any(.[];
+            .id == "SharedContractPluginProbe" and .enable == false and .status == "error" and
+            ((.errorMessage // "") | contains("Component contract preflight failed before activation:") and contains("Version=0.8.0.0"))
+          )' "$response_path"
 
   verify-shadow-cleanup-windows:
     runs-on: windows-latest
