@@ -27,6 +27,7 @@ internal static class PluginInteropVerification
         await VerifyLifetimeScopeAsync();
         await VerifyAdapterLifetimeAsync();
         await VerifyNamedServicesAsync();
+        await PluginContractVerification.RunAsync();
         VerifyEnumArrayDefaults();
         await VerifySamplePluginsAsync();
     }

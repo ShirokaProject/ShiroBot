@@ -12,6 +12,7 @@
     <Project Path="SDK.Generators/ShiroBot.SDK.Generators.csproj" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="Tests/InteropContractProbe/ShiroBot.InteropContractProbe.csproj" />
     <Project Path="Tests/Verification/ShiroBot.Verification.csproj" />
   </Folder>
   <Folder Name="/Templates/">
