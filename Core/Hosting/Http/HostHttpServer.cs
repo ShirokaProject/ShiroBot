@@ -208,6 +208,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         MapPluginCatalogEndpoints(api, pluginManager);
         MapPluginInstallEndpoints(api, pluginManager, eventDispatcher, routePolicy, runtimeState);
         MapPluginManagementEndpoints(api, config, configManager, configPath, pluginManager, eventDispatcher, routePolicy, runtimeState);
+        MapPluginPageEndpoints(api, config, pluginManager);
 
         api.MapGet("/status", () => Results.Ok(new
         {

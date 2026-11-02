@@ -51,6 +51,7 @@ export default defineConfig({
             { text: '调用 API', link: '/plugin/apis' },
             { text: '通用富消息与互动', link: '/plugin/rich-messages' },
             { text: '插件操作与控制台', link: '/plugin/actions' },
+            { text: 'Dashboard 页面', link: '/plugin/dashboard-pages' },
             { text: '插件之间互相调用', link: '/plugin/interop' },
             { text: '上下文、配置与日志', link: '/plugin/context-config' },
             { text: 'ABI 兼容性与版本', link: '/plugin/api-compatibility' }
