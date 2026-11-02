@@ -251,6 +251,17 @@ catch (PluginServiceUnavailableException) { /* 提供方没有加载或正在卸
 catch (PluginServiceException ex) { /* 提供方处理失败：ex.RemoteType、ex.RemoteMessage */ }
 ```
 
+需要让其他插件发现时，提供服务时附带描述，调用方按名称前缀列出：
+
+```csharp
+// 提供方：附带描述（只在注册时复制保存）
+Context.Services.Provide("chat.tool.weather", HandleAsync, new JsonObject { ["description"] = "查询天气" });
+
+// 调用方：列出当前可调用的服务，不会因此成为提供方的依赖方
+foreach (var service in Context.Services.Find("chat.tool."))
+    Console.WriteLine($"{service.Name} 由 {service.ProviderId} 提供：{service.Metadata?["description"]}");
+```
+
 事件总线用于通知，不需要返回结果：`Context.Bus.On("weather.updated", (payload, ct) => …)` 订阅，`await Context.Bus.EmitAsync("weather.updated", payload)` 发布，返回收到消息的订阅者数量。
 
 - 服务和订阅随插件卸载自动注销；同一服务名同时只能由一个插件提供。

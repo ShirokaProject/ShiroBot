@@ -92,11 +92,11 @@ internal sealed class PluginServiceRegistry
     }
 
     public IDisposable Provide(string ownerPluginId, string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler,
-        PluginInvoker invoke, CancellationToken ownerStopping)
+        PluginInvoker invoke, CancellationToken ownerStopping, JsonNode? metadata = null)
     {
         ValidateName(name, nameof(name));
         ArgumentNullException.ThrowIfNull(handler);
-        var entry = new NamedService(ownerPluginId, handler, invoke, ownerStopping);
+        var entry = new NamedService(ownerPluginId, handler, invoke, ownerStopping, Isolate(metadata));
         lock (_lock)
         {
             if (_named.TryGetValue(name, out var existing))
@@ -115,6 +115,20 @@ internal sealed class PluginServiceRegistry
     public bool IsAvailable(string name)
     {
         lock (_lock) return _named.ContainsKey(name);
+    }
+
+    public IReadOnlyList<PluginServiceInfo> Find(string prefix)
+    {
+        ArgumentNullException.ThrowIfNull(prefix);
+        lock (_lock)
+        {
+            // 提供方开始卸载后不再列出，和 CallAsync 拒绝调用保持一致。
+            return _named
+                .Where(pair => pair.Key.StartsWith(prefix, StringComparison.Ordinal) && !pair.Value.OwnerStopping.IsCancellationRequested)
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => new PluginServiceInfo(pair.Key, pair.Value.OwnerPluginId, Isolate(pair.Value.Metadata)))
+                .ToArray();
+        }
     }
 
     public async Task<JsonNode?> CallAsync(string name, JsonNode? arguments, CancellationToken cancellationToken)
@@ -247,7 +261,7 @@ internal sealed class PluginServiceRegistry
     }
 
     private sealed record NamedService(string OwnerPluginId, Func<JsonNode?, CancellationToken, Task<JsonNode?>> Handler,
-        PluginInvoker Invoke, CancellationToken OwnerStopping);
+        PluginInvoker Invoke, CancellationToken OwnerStopping, JsonNode? Metadata);
 
     private sealed record BusSubscription(string OwnerPluginId, Func<JsonNode?, CancellationToken, Task> Handler,
         PluginInvoker Invoke, CancellationToken OwnerStopping);
@@ -291,10 +305,13 @@ internal sealed class PluginServiceScope(PluginServiceRegistry registry, string 
         where TService : class => GetService<TService>()
             ?? throw new InvalidOperationException($"Required plugin service {typeof(TService).FullName} is not registered.");
 
-    public IDisposable Provide(string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler)
+    public IDisposable Provide(string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler) =>
+        Provide(name, handler, null);
+
+    public IDisposable Provide(string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler, JsonNode? metadata)
     {
         ThrowIfDisposed();
-        var registration = registry.Provide(pluginId, name, handler, _invoke, lifetime?.Stopping ?? CancellationToken.None);
+        var registration = registry.Provide(pluginId, name, handler, _invoke, lifetime?.Stopping ?? CancellationToken.None, metadata);
         lifetime?.Track(registration);
         return registration;
     }
@@ -306,6 +323,8 @@ internal sealed class PluginServiceScope(PluginServiceRegistry registry, string 
     }
 
     public bool IsAvailable(string name) => registry.IsAvailable(name);
+
+    public IReadOnlyList<PluginServiceInfo> Find(string prefix) => registry.Find(prefix);
 
     public void Dispose()
     {

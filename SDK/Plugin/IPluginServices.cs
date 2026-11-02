@@ -36,4 +36,20 @@ public interface IPluginServices : IServiceProvider
 
     /// <summary>当前是否有插件提供该名称的服务。</summary>
     bool IsAvailable(string name) => false;
+
+    /// <summary>
+    /// 提供服务并附带描述信息（例如工具说明和参数格式），其他插件可以用 <see cref="Find"/> 按名称前缀发现它。
+    /// 描述在注册时复制保存；要更新描述，注销后重新提供。
+    /// </summary>
+    IDisposable Provide(string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler, JsonNode? metadata) =>
+        metadata is null ? Provide(name, handler) : throw new NotSupportedException("This host does not support service metadata.");
+
+    /// <summary>
+    /// 列出名称以 <paramref name="prefix"/> 开头、当前可调用的服务（例如 "chat.tool."），按名称排序。
+    /// 描述是副本；列出不会让调用方依赖提供方，提供方仍可随时卸载。
+    /// </summary>
+    IReadOnlyList<PluginServiceInfo> Find(string prefix) => [];
 }
+
+/// <summary>按名称提供的服务：名称、提供方插件 ID 和注册时附带的描述。</summary>
+public sealed record PluginServiceInfo(string Name, string ProviderId, JsonNode? Metadata);
