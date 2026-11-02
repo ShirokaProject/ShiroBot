@@ -25,6 +25,7 @@ internal static class PluginInteropVerification
     public static async Task RunAsync()
     {
         await VerifyLifetimeScopeAsync();
+        await VerifyStoppingScopeCreationAsync();
         await VerifyAdapterLifetimeAsync();
         await VerifyNamedServicesAsync();
         await PluginContractVerification.RunAsync();
@@ -81,6 +82,41 @@ internal static class PluginInteropVerification
             throw new InvalidOperationException("Disposing a child scope must stop only its own work.");
         await parent.DisposeResourcesAsync();
         Console.WriteLine("Plugin lifetime scope task, timer and reverse-order release verification passed.");
+    }
+
+    private static async Task VerifyStoppingScopeCreationAsync()
+    {
+        var parent = new PluginLifetimeScope();
+        var child = parent.CreateScope();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var work = child.Run(async _ => { started.SetResult(); await release.Task; });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var cancellationRejected = false;
+        using var callback = parent.Stopping.Register(() =>
+        {
+            try { parent.CreateScope(); }
+            catch (ObjectDisposedException) { cancellationRejected = true; }
+        });
+        var stopping = parent.StopTasksAsync();
+        try
+        {
+            if (!cancellationRejected || stopping.IsCompleted)
+                throw new InvalidOperationException("Stopping must reject scopes even in cancellation callbacks and wait for existing child tasks.");
+            foreach (var scope in new IPluginLifetime[] { parent, child })
+            {
+                try { scope.CreateScope(); throw new InvalidOperationException("Stopping accepted a new child scope."); }
+                catch (ObjectDisposedException) { }
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await work.WaitAsync(TimeSpan.FromSeconds(2));
+            await stopping.WaitAsync(TimeSpan.FromSeconds(2));
+            await parent.DisposeAsync();
+        }
+        Console.WriteLine("Stopping scope creation and child task drain verification passed.");
     }
 
     /// <summary>适配器每次启动拿到新的作用域；停止时先取消、再 StopAsync、再等任务、最后释放资源。</summary>

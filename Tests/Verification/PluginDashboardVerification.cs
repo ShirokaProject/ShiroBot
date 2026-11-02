@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Plugins;
@@ -42,20 +44,44 @@ internal static class PluginDashboardVerification
             if ((await PluginDashboard.RunActionAsync(handle, "library", "format-disk", "m1", CancellationToken.None)).Status != PluginPageStatus.NotFound)
                 throw new InvalidOperationException("An undeclared action must not reach the plugin.");
 
+            foreach (var itemId in new[] { "protected", "missing", "mismatched", "no-actions" })
+            {
+                if ((await PluginDashboard.RunActionAsync(handle, "library", "delete", itemId, CancellationToken.None)).Status != PluginPageStatus.NotFound ||
+                    plugin.Deleted != "m1")
+                    throw new InvalidOperationException("Unsupported item actions must not reach the plugin: " + itemId);
+            }
+
             var file = await PluginDashboard.OpenFileAsync(handle, "library", "m1", CancellationToken.None);
-            if (file.Value is not { Path: { } path, ContentType: "image/png" } || path != plugin.ImagePath)
-                throw new InvalidOperationException("A file on disk was not returned by path.");
+            using var fileStream = file.Value?.Content ?? throw new InvalidOperationException("A file was not opened before leaving plugin dispatch.");
+            if (file.Value!.ContentType != "image/png" || !fileStream.CanRead)
+                throw new InvalidOperationException("A file on disk was not returned as an open stream.");
             var bytes = await PluginDashboard.OpenFileAsync(handle, "library", "inline", CancellationToken.None);
-            if (bytes.Value?.Content is not [4, 5] || ReferenceEquals(bytes.Value.Content, plugin.Inline))
-                throw new InvalidOperationException("File contents must be copied out of the plugin.");
-            if ((await PluginDashboard.OpenFileAsync(handle, "library", "missing", CancellationToken.None)).Status != PluginPageStatus.NotFound)
-                throw new InvalidOperationException("A missing file must be reported as not found.");
+            using var inline = bytes.Value?.Content ?? throw new InvalidOperationException("Inline content was not copied.");
+            plugin.Inline[0] = 99;
+            using var copied = new MemoryStream();
+            await inline.CopyToAsync(copied);
+            if (!copied.ToArray().SequenceEqual(new byte[] { 4, 5 }))
+                throw new InvalidOperationException("Inline file contents still depend on plugin-owned bytes.");
+            foreach (var id in new[] { "missing", "deleted-path" })
+                if ((await PluginDashboard.OpenFileAsync(handle, "library", id, CancellationToken.None)).Status != PluginPageStatus.NotFound)
+                    throw new InvalidOperationException("A missing file must be reported as not found.");
 
             var broken = await PluginDashboard.QueryAsync(handle, "stats", 1, 0, new Dictionary<string, string>(), CancellationToken.None);
             if (broken.Status != PluginPageStatus.Failed || !broken.Message.Contains("统计库坏了", StringComparison.Ordinal))
                 throw new InvalidOperationException("A throwing page did not report its reason: " + broken.Message);
             if ((await PluginDashboard.QueryAsync(handle, "missing", 1, 0, new Dictionary<string, string>(), CancellationToken.None)).Status != PluginPageStatus.NotFound)
                 throw new InvalidOperationException("A missing page must be reported as not found.");
+
+            await handle.UnloadAsync();
+            if (File.Exists(plugin.ImagePath)) throw new InvalidOperationException("The unload fixture did not delete its file.");
+            using var services = new ServiceCollection().AddLogging().BuildServiceProvider();
+            var http = new DefaultHttpContext { RequestServices = services };
+            http.Request.Method = "GET";
+            using var body = new MemoryStream();
+            http.Response.Body = body;
+            await Results.File(fileStream, file.Value.ContentType, enableRangeProcessing: true).ExecuteAsync(http);
+            if (!body.ToArray().SequenceEqual(new byte[] { 1, 2, 3 }) || fileStream.CanRead)
+                throw new InvalidOperationException("HTTP response must survive plugin file deletion and dispose its stream.");
 
             Console.WriteLine("Plugin dashboard page listing, queries, actions, files and failures verification passed.");
         }
@@ -90,6 +116,22 @@ internal static class PluginDashboardVerification
             return Task.FromResult(new DashboardPageData([new DashboardItem("m1", "猫猫", ImageFileId: "m1", Actions: ["delete"])], 1));
         }
 
+        public Task<DashboardItem?> GetItemAsync(string pageId, string itemId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<DashboardItem?>(itemId switch
+            {
+                "m1" => new DashboardItem("m1", "猫猫", Actions: ["DELETE"]),
+                "protected" => new DashboardItem("protected", "保护条目", Actions: []),
+                "mismatched" => new DashboardItem("different-id", "错误的 ID", Actions: ["delete"]),
+                "no-actions" => new DashboardItem("no-actions", "只读条目"),
+                _ => null
+            });
+
+        protected override Task OnUnloadAsync()
+        {
+            File.Delete(ImagePath);
+            return Task.CompletedTask;
+        }
+
         public Task<PluginActionResult> RunActionAsync(string pageId, string actionId, string itemId, CancellationToken cancellationToken = default)
         {
             Deleted = itemId;
@@ -100,6 +142,7 @@ internal static class PluginDashboardVerification
             Task.FromResult(fileId switch
             {
                 "m1" => DashboardFile.FromPath(ImagePath, "image/png"),
+                "deleted-path" => DashboardFile.FromPath(ImagePath + ".missing", "image/png"),
                 "inline" => DashboardFile.FromBytes(Inline, "image/png"),
                 _ => null
             });

@@ -4,6 +4,8 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Plugins;
 
+internal sealed record PluginPageFile(Stream Content, string ContentType);
+
 internal enum PluginPageStatus { Done, NotFound, Unloading, Failed }
 
 /// <summary>调用插件页面的结果；<see cref="Message"/> 可以直接给用户看。</summary>
@@ -53,22 +55,34 @@ internal static class PluginDashboard
         {
             var action = (descriptor.Actions ?? []).FirstOrDefault(candidate =>
                 string.Equals(candidate.Id, actionId, StringComparison.OrdinalIgnoreCase));
-            return action is null
-                ? null
-                : await provider.RunActionAsync(descriptor.Id, action.Id, itemId, cancellationToken).ConfigureAwait(false);
+            if (action is null) return null;
+            var item = await provider.GetItemAsync(descriptor.Id, itemId, cancellationToken).ConfigureAwait(false);
+            if (item is null || !string.Equals(item.Id, itemId, StringComparison.Ordinal) ||
+                !(item.Actions ?? []).Contains(action.Id, StringComparer.OrdinalIgnoreCase)) return null;
+            return await provider.RunActionAsync(descriptor.Id, action.Id, item.Id, cancellationToken).ConfigureAwait(false);
         }, cancellationToken);
 
-    /// <summary>读取文件；内存中的内容复制一份，磁盘文件只返回路径，宿主不保留插件的对象。</summary>
-    public static Task<PluginPageOutcome<DashboardFile>> OpenFileAsync(LoadedPluginHandle plugin, string pageId, string fileId,
+    /// <summary>在插件调用结束前打开宿主拥有的流，文件删除或热卸载不影响正在发送的响应。</summary>
+    public static Task<PluginPageOutcome<PluginPageFile>> OpenFileAsync(LoadedPluginHandle plugin, string pageId, string fileId,
         CancellationToken cancellationToken) =>
         RunAsync(plugin, pageId, "读取页面文件", async (provider, descriptor) =>
-            await provider.OpenFileAsync(descriptor.Id, fileId, cancellationToken).ConfigureAwait(false) switch
+        {
+            var file = await provider.OpenFileAsync(descriptor.Id, fileId, cancellationToken).ConfigureAwait(false);
+            if (file is null) return null;
+            if (file.Path is { } path)
             {
-                null => null,
-                { Path: { } path } file => DashboardFile.FromPath(path, file.ContentType),
-                { Content: { } content } file => DashboardFile.FromBytes(content.ToArray(), file.ContentType),
-                _ => null
-            }, cancellationToken);
+                try
+                {
+                    return new PluginPageFile(new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.Read | FileShare.Delete, 4096, FileOptions.Asynchronous), file.ContentType);
+                }
+                catch (FileNotFoundException) { return null; }
+                catch (DirectoryNotFoundException) { return null; }
+            }
+            return file.Content is { } content
+                ? new PluginPageFile(new MemoryStream(content.ToArray(), writable: false), file.ContentType)
+                : null;
+        }, cancellationToken);
 
     private static async Task<PluginPageOutcome<T>> RunAsync<T>(LoadedPluginHandle plugin, string pageId, string operation,
         Func<IPluginDashboardProvider, DashboardPage, Task<T?>> work, CancellationToken cancellationToken) where T : class

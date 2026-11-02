@@ -40,6 +40,9 @@ public sealed class NotesPlugin : PluginBase, IPluginDashboardProvider
             HasMore: query.Page * query.PageSize < total);
     }
 
+    public Task<DashboardItem?> GetItemAsync(string pageId, string itemId, CancellationToken ct) =>
+        _store.FindDashboardItemAsync(itemId, ct); // 返回当前条目及其支持的 Actions；不存在时返回 null
+
     public async Task<PluginActionResult> RunActionAsync(string pageId, string actionId, string itemId, CancellationToken ct)
     {
         var removed = await _store.RemoveAsync(itemId, ct);
@@ -81,6 +84,8 @@ public sealed class NotesPlugin : PluginBase, IPluginDashboardProvider
 
 ## 操作
 
+声明操作的插件必须实现 `GetItemAsync(pageId, itemId, ct)`，返回当前条目（包括 `Actions`）；默认返回 null，拒绝操作。宿主按 ID 检查条目存在、ID 一致，并支持该操作，不扫描分页数据。检查与执行之间数据仍可能变化，插件应在存储操作中再次验证条目状态。
+
 `RunActionAsync` 只会收到页面上声明过、而且条目支持的操作，`itemId` 是条目 ID。返回的 `PluginActionResult` 和[插件操作](./actions)相同：`Message` 提示给用户，`Refresh` 为 true 时重新读取数据，`Details` 在居中的对话框里显示较长的内容。
 
 ## 图片和文件
@@ -92,7 +97,7 @@ public Task<DashboardFile?> OpenFileAsync(string pageId, string fileId, Cancella
     Task.FromResult(_store.Find(fileId) is { } meme ? DashboardFile.FromPath(meme.FilePath, meme.Mime) : null);
 ```
 
-`DashboardFile.FromPath` 交出磁盘上的文件，`FromBytes` 交出内存中的内容。宿主在请求结束前读完，不保留插件的对象，不影响插件热更新。
+`DashboardFile.FromPath` 交出磁盘上的文件，`FromBytes` 交出内存中的内容。宿主在插件调用结束前打开文件流（允许删除共享），或复制内存内容，响应结束时释放流。插件热卸载删除文件后，已经打开的响应仍可读完。
 
 ## 出错时
 

@@ -2947,6 +2947,7 @@
   "ShiroBot.SDK.Dashboard.DashboardQuery static System.Boolean op_Inequality(ShiroBot.SDK.Dashboard.DashboardQuery left,ShiroBot.SDK.Dashboard.DashboardQuery right)",
   "ShiroBot.SDK.Dashboard.IPluginDashboardProvider System.Collections.Generic.IReadOnlyList\u003CShiroBot.SDK.Dashboard.DashboardPage\u003E get_Pages()",
   "ShiroBot.SDK.Dashboard.IPluginDashboardProvider System.Threading.Tasks.Task\u003CShiroBot.SDK.Dashboard.DashboardFile\u003E OpenFileAsync(System.String pageId,System.String fileId,System.Threading.CancellationToken cancellationToken=null)",
+  "ShiroBot.SDK.Dashboard.IPluginDashboardProvider System.Threading.Tasks.Task\u003CShiroBot.SDK.Dashboard.DashboardItem\u003E GetItemAsync(System.String pageId,System.String itemId,System.Threading.CancellationToken cancellationToken=null)",
   "ShiroBot.SDK.Dashboard.IPluginDashboardProvider System.Threading.Tasks.Task\u003CShiroBot.SDK.Dashboard.DashboardPageData\u003E QueryAsync(System.String pageId,ShiroBot.SDK.Dashboard.DashboardQuery query,System.Threading.CancellationToken cancellationToken=null)",
   "ShiroBot.SDK.Dashboard.IPluginDashboardProvider System.Threading.Tasks.Task\u003CShiroBot.SDK.Plugin.PluginActionResult\u003E RunActionAsync(System.String pageId,System.String actionId,System.String itemId,System.Threading.CancellationToken cancellationToken=null)",
   "ShiroBot.SDK.Dashboard.IPluginDashboardProvider property System.Collections.Generic.IReadOnlyList\u003CShiroBot.SDK.Dashboard.DashboardPage\u003E Pages nullable=NotNull/Unknown required=False init=False",

@@ -122,10 +122,8 @@ internal sealed partial class HostHttpServer
             var file = outcome.Value!;
             // 文件随条目变化很少；短时间缓存，切换页面时不必重新读取。
             context.Response.Headers.CacheControl = "private, max-age=300";
-            if (file.Content is { } content) return Results.File(content, file.ContentType);
-            return File.Exists(file.Path)
-                ? Results.File(file.Path!, file.ContentType, enableRangeProcessing: true)
-                : Results.NotFound(new { error = "file_not_found", message = "文件不存在。" });
+            context.Response.RegisterForDispose(file.Content);
+            return Results.File(file.Content, file.ContentType, enableRangeProcessing: true);
         });
     }
 

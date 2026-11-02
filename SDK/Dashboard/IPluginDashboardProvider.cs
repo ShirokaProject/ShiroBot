@@ -16,6 +16,13 @@ public interface IPluginDashboardProvider
     Task<DashboardPageData> QueryAsync(string pageId, DashboardQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 按 ID 读取当前条目，供宿主检查操作是否适用；不存在时返回 null。
+    /// 声明操作的插件需要实现此方法，默认不允许执行条目操作。
+    /// </summary>
+    Task<DashboardItem?> GetItemAsync(string pageId, string itemId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<DashboardItem?>(null);
+
+    /// <summary>
     /// 对一个条目执行页面上声明的操作，<paramref name="itemId"/> 是条目 ID。
     /// 结果的 Message 提示给用户，Refresh 为 true 时 Dashboard 重新读取数据。
     /// </summary>
