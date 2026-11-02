@@ -13,4 +13,12 @@ public interface IPluginEventBus
 
     /// <summary>发布消息并等待所有订阅者处理完成，返回实际收到消息的订阅者数量。</summary>
     Task<int> EmitAsync(string topic, JsonNode? payload = null, CancellationToken cancellationToken = default);
+
+    /// <summary>以 UTF-8 JSON 字节订阅，供强类型封装使用。</summary>
+    IDisposable OnUtf8(string topic, PluginUtf8EventHandler handler) =>
+        throw new NotSupportedException("This host does not support the plugin event bus.");
+
+    /// <summary>以 UTF-8 JSON 字节发布，供强类型封装使用。</summary>
+    Task<int> EmitUtf8Async(string topic, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This host does not support the plugin event bus.");
 }

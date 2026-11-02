@@ -39,7 +39,25 @@ public interface IPluginServices
     /// 描述是副本；列出不会让调用方依赖提供方，提供方仍可随时卸载。
     /// </summary>
     IReadOnlyList<PluginServiceInfo> Find(string prefix) => [];
+
+    /// <summary>以 UTF-8 JSON 字节提供服务，供强类型封装使用；空字节表示 JSON null。</summary>
+    IDisposable ProvideUtf8(string name, PluginUtf8Handler handler, ReadOnlyMemory<byte> metadata = default) =>
+        throw new NotSupportedException("This host does not support named plugin services.");
+
+    /// <summary>以 UTF-8 JSON 字节调用服务，供强类型封装使用；空字节表示 JSON null。</summary>
+    Task<ReadOnlyMemory<byte>> CallUtf8Async(string name, ReadOnlyMemory<byte> request, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This host does not support named plugin services.");
 }
 
+/// <summary>以 UTF-8 JSON 字节处理一次服务调用。</summary>
+public delegate Task<ReadOnlyMemory<byte>> PluginUtf8Handler(ReadOnlyMemory<byte> request, CancellationToken cancellationToken);
+
+/// <summary>以 UTF-8 JSON 字节处理一条事件。</summary>
+public delegate Task PluginUtf8EventHandler(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken);
+
 /// <summary>按名称提供的服务：名称、提供方插件 ID 和注册时附带的描述。</summary>
-public sealed record PluginServiceInfo(string Name, string ProviderId, JsonNode? Metadata);
+public sealed record PluginServiceInfo(string Name, string ProviderId, JsonNode? Metadata)
+{
+    /// <summary>描述的 UTF-8 JSON 字节；没有描述时为空。</summary>
+    public ReadOnlyMemory<byte> MetadataUtf8 { get; init; }
+}

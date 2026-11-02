@@ -10,18 +10,22 @@ namespace ShiroBot.Plugins.Services;
 /// </summary>
 internal delegate Task<bool> PluginInvoker(Func<Task> work);
 
+/// <summary>
+/// 按名称的服务和事件。消息在宿主里只以 UTF-8 JSON 字节存在，进出时各复制一份，
+/// 双方都不会拿到对方创建的对象，空字节表示 JSON null。
+/// </summary>
 internal sealed class PluginServiceRegistry
 {
     private readonly Lock _lock = new();
     private readonly Dictionary<string, NamedService> _named = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<BusSubscription>> _topics = new(StringComparer.Ordinal);
 
-    public IDisposable Provide(string ownerPluginId, string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler,
-        PluginInvoker invoke, CancellationToken ownerStopping, JsonNode? metadata = null)
+    public IDisposable Provide(string ownerPluginId, string name, PluginUtf8Handler handler,
+        PluginInvoker invoke, CancellationToken ownerStopping, ReadOnlyMemory<byte> metadata = default)
     {
         ValidateName(name, nameof(name));
         ArgumentNullException.ThrowIfNull(handler);
-        var entry = new NamedService(ownerPluginId, handler, invoke, ownerStopping, Isolate(metadata));
+        var entry = new NamedService(ownerPluginId, handler, invoke, ownerStopping, metadata.ToArray());
         lock (_lock)
         {
             if (_named.TryGetValue(name, out var existing))
@@ -51,25 +55,27 @@ internal sealed class PluginServiceRegistry
             return _named
                 .Where(pair => pair.Key.StartsWith(prefix, StringComparison.Ordinal) && !pair.Value.OwnerStopping.IsCancellationRequested)
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                .Select(pair => new PluginServiceInfo(pair.Key, pair.Value.OwnerPluginId, Isolate(pair.Value.Metadata)))
+                .Select(pair => new PluginServiceInfo(pair.Key, pair.Value.OwnerPluginId, PluginJsonBytes.ToNode(pair.Value.Metadata))
+                {
+                    MetadataUtf8 = pair.Value.Metadata.ToArray()
+                })
                 .ToArray();
         }
     }
 
-    public async Task<JsonNode?> CallAsync(string name, JsonNode? arguments, CancellationToken cancellationToken)
+    public async Task<ReadOnlyMemory<byte>> CallAsync(string name, ReadOnlyMemory<byte> request, CancellationToken cancellationToken)
     {
         NamedService? entry;
         lock (_lock) _named.TryGetValue(name, out entry);
         if (entry is null) throw new PluginServiceUnavailableException(name);
 
-        // 参数和返回值都按 JSON 文本复制，双方不会持有对方插件创建的对象。
-        var input = Isolate(arguments);
+        var input = request.ToArray();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, entry.OwnerStopping);
-        JsonNode? result = null;
+        byte[] result = [];
         Exception? failure = null;
         var ran = await entry.Invoke(async () =>
         {
-            try { result = Isolate(await entry.Handler(input, linked.Token).ConfigureAwait(false)); }
+            try { result = (await entry.Handler(input, linked.Token).ConfigureAwait(false)).ToArray(); }
             catch (Exception ex) { failure = ex; }
         }).ConfigureAwait(false);
 
@@ -84,7 +90,7 @@ internal sealed class PluginServiceRegistry
         return result;
     }
 
-    public IDisposable Subscribe(string ownerPluginId, string topic, Func<JsonNode?, CancellationToken, Task> handler,
+    public IDisposable Subscribe(string ownerPluginId, string topic, PluginUtf8EventHandler handler,
         PluginInvoker invoke, CancellationToken ownerStopping)
     {
         ValidateName(topic, nameof(topic));
@@ -101,20 +107,20 @@ internal sealed class PluginServiceRegistry
         });
     }
 
-    public async Task<int> EmitAsync(string topic, JsonNode? payload, CancellationToken cancellationToken)
+    public async Task<int> EmitAsync(string topic, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
         ValidateName(topic, nameof(topic));
         BusSubscription[] subscribers;
         lock (_lock) subscribers = _topics.TryGetValue(topic, out var list) ? [.. list] : [];
         if (subscribers.Length == 0) return 0;
 
-        var json = payload?.ToJsonString();
+        var json = payload.ToArray();
         var delivered = await Task.WhenAll(subscribers.Select(async subscriber =>
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, subscriber.OwnerStopping);
             return await subscriber.Invoke(async () =>
             {
-                try { await subscriber.Handler(json is null ? null : JsonNode.Parse(json), linked.Token).ConfigureAwait(false); }
+                try { await subscriber.Handler(json.ToArray(), linked.Token).ConfigureAwait(false); }
                 catch (Exception ex) when (!linked.IsCancellationRequested)
                 {
                     // 在订阅者的日志作用域内，记录到订阅者自己的日志。
@@ -160,12 +166,10 @@ internal sealed class PluginServiceRegistry
             throw new ArgumentException("Names must be at most 200 characters without whitespace, e.g. \"weather.query\".", parameter);
     }
 
-    private static JsonNode? Isolate(JsonNode? node) => node is null ? null : JsonNode.Parse(node.ToJsonString());
+    private sealed record NamedService(string OwnerPluginId, PluginUtf8Handler Handler,
+        PluginInvoker Invoke, CancellationToken OwnerStopping, byte[] Metadata);
 
-    private sealed record NamedService(string OwnerPluginId, Func<JsonNode?, CancellationToken, Task<JsonNode?>> Handler,
-        PluginInvoker Invoke, CancellationToken OwnerStopping, JsonNode? Metadata);
-
-    private sealed record BusSubscription(string OwnerPluginId, Func<JsonNode?, CancellationToken, Task> Handler,
+    private sealed record BusSubscription(string OwnerPluginId, PluginUtf8EventHandler Handler,
         PluginInvoker Invoke, CancellationToken OwnerStopping);
 
     private sealed class Registration(Action remove) : IDisposable
@@ -192,16 +196,27 @@ internal sealed class PluginServiceScope(PluginServiceRegistry registry, string 
 
     public IDisposable Provide(string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler, JsonNode? metadata)
     {
+        ArgumentNullException.ThrowIfNull(handler);
+        return ProvideUtf8(name,
+            async (request, ct) => PluginJsonBytes.FromNode(await handler(PluginJsonBytes.ToNode(request), ct).ConfigureAwait(false)),
+            PluginJsonBytes.FromNode(metadata));
+    }
+
+    public IDisposable ProvideUtf8(string name, PluginUtf8Handler handler, ReadOnlyMemory<byte> metadata = default)
+    {
         ThrowIfDisposed();
         var registration = registry.Provide(pluginId, name, handler, _invoke, lifetime?.Stopping ?? CancellationToken.None, metadata);
         lifetime?.Track(registration);
         return registration;
     }
 
-    public Task<JsonNode?> CallAsync(string name, JsonNode? arguments = null, CancellationToken cancellationToken = default)
+    public async Task<JsonNode?> CallAsync(string name, JsonNode? arguments = null, CancellationToken cancellationToken = default) =>
+        PluginJsonBytes.ToNode(await CallUtf8Async(name, PluginJsonBytes.FromNode(arguments), cancellationToken).ConfigureAwait(false));
+
+    public Task<ReadOnlyMemory<byte>> CallUtf8Async(string name, ReadOnlyMemory<byte> request, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        return registry.CallAsync(name, arguments, cancellationToken);
+        return registry.CallAsync(name, request, cancellationToken);
     }
 
     public bool IsAvailable(string name) => registry.IsAvailable(name);
@@ -222,9 +237,18 @@ internal sealed class PluginServiceScope(PluginServiceRegistry registry, string 
 internal sealed class PluginEventBusScope(PluginServiceRegistry registry, string pluginId,
     PluginInvoker invoke, PluginLifetimeScope lifetime) : IPluginEventBus
 {
-    public IDisposable On(string topic, Func<JsonNode?, CancellationToken, Task> handler) =>
+    public IDisposable On(string topic, Func<JsonNode?, CancellationToken, Task> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return OnUtf8(topic, (payload, ct) => handler(PluginJsonBytes.ToNode(payload), ct));
+    }
+
+    public IDisposable OnUtf8(string topic, PluginUtf8EventHandler handler) =>
         lifetime.Track(registry.Subscribe(pluginId, topic, handler, invoke, lifetime.Stopping));
 
     public Task<int> EmitAsync(string topic, JsonNode? payload = null, CancellationToken cancellationToken = default) =>
+        EmitUtf8Async(topic, PluginJsonBytes.FromNode(payload), cancellationToken);
+
+    public Task<int> EmitUtf8Async(string topic, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
         registry.EmitAsync(topic, payload, cancellationToken);
 }
