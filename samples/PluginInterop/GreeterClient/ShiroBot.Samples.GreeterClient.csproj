@@ -6,9 +6,19 @@
     <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
   </PropertyGroup>
 
-  <!-- 只引用 SDK：两个示例插件之间没有共享程序集，也不互相引用。 -->
+  <!-- 只引用 SDK；在仓库里构建时直接用 SDK 的源生成器项目，NuGet 包会自带它。 -->
   <ItemGroup>
     <ProjectReference Include="..\..\..\SDK\ShiroBot.SDK.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\SDK.Generators\ShiroBot.SDK.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!--
+    导入问候插件的契约。一般把对方的 DLL 放进 contracts 目录即可；这里直接指向它的构建输出，
+    并只为了构建顺序引用它的项目，不引用它的程序集。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Greeter\ShiroBot.Samples.Greeter.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <PluginContract Include="..\Greeter\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Samples.Greeter.dll" />
   </ItemGroup>
 
   <Import Project="..\..\..\SDK\buildTransitive\ShiroBot.SDK.props" />

@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/SDK/">
     <Project Path="SDK/ShiroBot.SDK.csproj" />
+    <Project Path="SDK.Generators/ShiroBot.SDK.Generators.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Verification/ShiroBot.Verification.csproj" />

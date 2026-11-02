@@ -174,6 +174,94 @@
     </Task>
   </UsingTask>
 
+  <!--
+    插件契约导入：从 PluginContract 项（默认 contracts/*.dll）里截出提供方嵌入的契约源码，
+    写到 obj/…/PluginContracts/ 并加入编译。提供方的 DLL 只在构建时读取，不会被引用，也不会进入成品。
+  -->
+  <ItemGroup Condition="'$(ShiroBotPluginContractsDefaultItems)' != 'false'">
+    <PluginContract Include="$(MSBuildProjectDirectory)/contracts/*.dll" />
+  </ItemGroup>
+
+  <UsingTask TaskName="ShiroBotExtractPluginContracts"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ContractAssemblies ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutputDirectory ParameterType="System.String" Required="true" />
+      <GeneratedFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var start = Encoding.UTF8.GetBytes("// <shirobot-plugin-contract>");
+        var end = Encoding.UTF8.GetBytes("// </shirobot-plugin-contract>");
+        Func<byte[], byte[], int, int> indexOf = (bytes, marker, from) =>
+        {
+            for (var offset = from; offset <= bytes.Length - marker.Length; offset++)
+            {
+                var matches = true;
+                for (var index = 0; index < marker.Length; index++)
+                {
+                    if (bytes[offset + index] == marker[index]) continue;
+                    matches = false;
+                    break;
+                }
+                if (matches) return offset;
+            }
+            return -1;
+        };
+
+        Directory.CreateDirectory(OutputDirectory);
+        var generated = new List<ITaskItem>();
+        var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in ContractAssemblies)
+        {
+            var path = item.GetMetadata("FullPath");
+            if (!File.Exists(path))
+            {
+                Log.LogError("找不到插件契约 DLL：" + path);
+                continue;
+            }
+            var bytes = File.ReadAllBytes(path);
+            var count = 0;
+            for (var at = indexOf(bytes, start, 0); at >= 0; at = indexOf(bytes, start, at + start.Length))
+            {
+                var stop = indexOf(bytes, end, at);
+                if (stop < 0) break;
+                var source = Encoding.UTF8.GetString(bytes, at, stop - at + end.Length) + Environment.NewLine;
+                var file = Path.Combine(OutputDirectory, Path.GetFileNameWithoutExtension(path) + (count == 0 ? "" : "." + count) + ".g.cs");
+                // 内容没变就不重写，保持增量构建。
+                if (!File.Exists(file) || File.ReadAllText(file) != source) File.WriteAllText(file, source, new UTF8Encoding(false));
+                expected.Add(Path.GetFullPath(file));
+                generated.Add(new Microsoft.Build.Utilities.TaskItem(file));
+                count++;
+            }
+            if (count == 0)
+                Log.LogWarning("{0} 里没有插件契约；提供方需要用 [PluginContract] 声明契约，并用 ShiroBot.SDK 1.0.3 或更新版本构建。", Path.GetFileName(path));
+        }
+        foreach (var stale in Directory.GetFiles(OutputDirectory, "*.g.cs"))
+            if (!expected.Contains(Path.GetFullPath(stale))) File.Delete(stale);
+        GeneratedFiles = generated.ToArray();
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="ImportShiroBotPluginContracts"
+          BeforeTargets="CoreCompile"
+          Condition="'@(PluginContract)' != ''">
+    <ShiroBotExtractPluginContracts ContractAssemblies="@(PluginContract)"
+                                    OutputDirectory="$(IntermediateOutputPath)PluginContracts">
+      <Output TaskParameter="GeneratedFiles" ItemName="_ShiroBotPluginContractSource" />
+    </ShiroBotExtractPluginContracts>
+    <ItemGroup>
+      <Compile Include="@(_ShiroBotPluginContractSource)" />
+      <FileWrites Include="@(_ShiroBotPluginContractSource)" />
+    </ItemGroup>
+  </Target>
+
   <UsingTask TaskName="ShiroBotProbePluginAssembly"
              TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">

@@ -60,4 +60,7 @@ public sealed record PluginServiceInfo(string Name, string ProviderId, JsonNode?
 {
     /// <summary>描述的 UTF-8 JSON 字节；没有描述时为空。</summary>
     public ReadOnlyMemory<byte> MetadataUtf8 { get; init; }
+
+    /// <summary>按契约类型读出描述；没有描述时为 <c>default</c>。</summary>
+    public T? GetMetadata<T>() => PluginJson.Deserialize<T>(MetadataUtf8.Span);
 }
