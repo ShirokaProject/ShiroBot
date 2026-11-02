@@ -67,6 +67,7 @@ public sealed class NotesPlugin : PluginBase, IPluginDashboardProvider
 | `Filters` | 筛选项：`text` 文本输入，`select` 下拉选择（`Options`） |
 | `PageSize` | 每页数量，默认 24；0 表示不分页 |
 | `Actions` | 条目上的操作：`Confirm` 执行前的确认提示，`Tone` 为 `danger` 时显示为危险操作 |
+| `Upload` | 可选文件上传能力，通过属性初始化器声明；为空时不显示按钮，也不允许上传 |
 
 ## 数据
 
@@ -100,6 +101,29 @@ public Task<DashboardFile?> OpenFileAsync(string pageId, string fileId, Cancella
 
 `DashboardFile.FromPath` 交出磁盘上的文件，`FromBytes` 交出内存中的内容。宿主在插件调用结束前打开文件流（允许删除共享），或复制内存内容，响应结束时释放流。插件热卸载删除文件后，已经打开的响应仍可读完。
 
+## 文件上传
+
+在页面上声明 `Upload`，配置窗口中的对应插件页面会显示上传按钮，支持多选、逐个处理和取消：
+
+```csharp
+new DashboardPage("library", "表情库", DashboardPageKinds.Gallery)
+{
+    Upload = new DashboardUpload("上传图片", ["image/png", "image/jpeg", "image/gif", "image/webp"],
+        MaxBytes: 5_000_000, Description: "上传后自动去重并刷新表情库。")
+};
+```
+
+插件实现 `UploadAsync(string pageId, DashboardUploadFile file, CancellationToken ct)`。
+`file.FileName` 是显示用的文件名，`ContentType` 是客户端声明的 MIME，`Content` 是宿主读取的文件字节。
+插件应按真实内容识别格式，用自己生成的文件名保存，不使用上传文件名作为磁盘路径。
+
+宿主统一做 Bearer 鉴权、声明检查和流式大小限制，单文件最多 20,000,000 字节，页面可设置更小的上限。
+未声明 `Upload` 的页面拒绝上传，空文件和不支持的 MIME 返回 400，超限返回 413；插件默认实现也拒绝上传。
+接收文件和调用插件都在插件调用保护范围内，支持请求取消和热卸载等待。
+
+返回 `PluginActionResult`：`Ok` 和 `Message` 提示处理结果，`Refresh = true` 表示入库后需要刷新数据。
+前端多文件按顺序发送，不把图片写进 `config.toml`，也不依赖配置保存按钮。上传完成后清空筛选并返回第一页。
+
 ## 出错时
 
 - 插件抛出异常时，Dashboard 显示失败原因，不影响宿主和其他插件。
@@ -116,3 +140,4 @@ Dashboard 通过以下接口访问页面，都需要 API 密钥，也可以用�
 | `GET /api/v1/plugins/{id}/pages/{page}/data?page=1&page_size=24&筛选项=值` | 一页数据 |
 | `POST /api/v1/plugins/{id}/pages/{page}/actions/{action}?item=条目ID` | 执行操作 |
 | `GET /api/v1/plugins/{id}/pages/{page}/files?id=文件ID` | 读取文件 |
+| `POST /api/v1/plugins/{id}/pages/{page}/upload?name=文件名` | 上传一个文件，正文为原始二进制字节，Content-Type 为文件 MIME；无需 multipart |

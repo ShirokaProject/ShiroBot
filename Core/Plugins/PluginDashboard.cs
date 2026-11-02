@@ -6,7 +6,12 @@ namespace ShiroBot.Plugins;
 
 internal sealed record PluginPageFile(Stream Content, string ContentType);
 
-internal enum PluginPageStatus { Done, NotFound, Unloading, Failed }
+internal enum PluginPageStatus { Done, NotFound, Unloading, Failed, InvalidUpload, UploadTooLarge }
+
+internal sealed class PluginPageUploadException(PluginPageStatus status, string message) : Exception(message)
+{
+    public PluginPageStatus Status { get; } = status;
+}
 
 /// <summary>调用插件页面的结果；<see cref="Message"/> 可以直接给用户看。</summary>
 internal sealed record PluginPageOutcome<T>(PluginPageStatus Status, string Message, T? Value = default);
@@ -62,6 +67,38 @@ internal static class PluginDashboard
             return await provider.RunActionAsync(descriptor.Id, action.Id, item.Id, cancellationToken).ConfigureAwait(false);
         }, cancellationToken);
 
+    internal const long MaxUploadBytes = 20_000_000;
+
+    public static Task<PluginPageOutcome<PluginActionResult>> UploadAsync(LoadedPluginHandle plugin, string pageId,
+        string fileName, string contentType, Stream body, long? contentLength, CancellationToken cancellationToken) =>
+        RunAsync(plugin, pageId, "上传文件", async (provider, descriptor) =>
+        {
+            if (descriptor.Upload is not { MaxBytes: > 0 } upload) return null;
+            var limit = Math.Min(upload.MaxBytes, MaxUploadBytes);
+            if (contentLength > limit) throw new PluginPageUploadException(PluginPageStatus.UploadTooLarge, $"单文件不能超过 {limit} 字节。");
+            var name = Path.GetFileName(fileName.Replace('\\', '/')).Trim();
+            if (string.IsNullOrEmpty(name) || name.Length > 255)
+                throw new PluginPageUploadException(PluginPageStatus.InvalidUpload, "文件名为空或过长。");
+            var mime = contentType.Split(';', 2)[0].Trim().ToLowerInvariant();
+            if (mime.Length == 0) mime = "application/octet-stream";
+            if (upload.ContentTypes is { Count: > 0 } types && mime != "application/octet-stream" &&
+                !types.Contains(mime, StringComparer.OrdinalIgnoreCase))
+                throw new PluginPageUploadException(PluginPageStatus.InvalidUpload, "不支持这种文件类型。");
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            while (true)
+            {
+                var read = await body.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, limit - buffer.Length + 1)), cancellationToken).ConfigureAwait(false);
+                if (read == 0) break;
+                if (buffer.Length + read > limit)
+                    throw new PluginPageUploadException(PluginPageStatus.UploadTooLarge, $"单文件不能超过 {limit} 字节。");
+                buffer.Write(chunk, 0, read);
+            }
+            if (buffer.Length == 0) throw new PluginPageUploadException(PluginPageStatus.InvalidUpload, "文件为空。");
+            return await provider.UploadAsync(descriptor.Id, new DashboardUploadFile(name, mime, buffer.ToArray()), cancellationToken)
+                .ConfigureAwait(false);
+        }, cancellationToken);
+
     /// <summary>在插件调用结束前打开宿主拥有的流，文件删除或热卸载不影响正在发送的响应。</summary>
     public static Task<PluginPageOutcome<PluginPageFile>> OpenFileAsync(LoadedPluginHandle plugin, string pageId, string fileId,
         CancellationToken cancellationToken) =>
@@ -104,6 +141,10 @@ internal static class PluginDashboard
             return dispatch.Result is { } value
                 ? new(PluginPageStatus.Done, "", value)
                 : new(PluginPageStatus.NotFound, $"{descriptor.Title}：未找到请求的内容。");
+        }
+        catch (PluginPageUploadException ex)
+        {
+            return new(ex.Status, ex.Message);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

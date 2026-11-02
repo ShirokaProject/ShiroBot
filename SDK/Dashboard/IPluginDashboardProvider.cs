@@ -28,6 +28,10 @@ public interface IPluginDashboardProvider
     /// </summary>
     Task<PluginActionResult> RunActionAsync(string pageId, string actionId, string itemId, CancellationToken cancellationToken = default);
 
+    /// <summary>接收页面声明的文件上传；未实现时拒绝。内容由宿主限流读取，插件仍需检查实际格式。</summary>
+    Task<PluginActionResult> UploadAsync(string pageId, DashboardUploadFile file, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PluginActionResult(false, "此页面不支持上传。"));
+
     /// <summary>读取条目引用的文件（例如图片）；不存在时返回 null。</summary>
     Task<DashboardFile?> OpenFileAsync(string pageId, string fileId, CancellationToken cancellationToken = default) =>
         Task.FromResult<DashboardFile?>(null);
@@ -69,7 +73,18 @@ public sealed record DashboardPage(
     IReadOnlyList<DashboardColumn>? Columns = null,
     IReadOnlyList<DashboardFilter>? Filters = null,
     int PageSize = 24,
-    IReadOnlyList<DashboardAction>? Actions = null);
+    IReadOnlyList<DashboardAction>? Actions = null)
+{
+    /// <summary>为 null 时不允许上传；宿主单文件硬上限为 20 MB。</summary>
+    public DashboardUpload? Upload { get; init; }
+}
+
+/// <summary>上传按钮、允许的 MIME 类型和每个文件的最大字节数。类型提示不能替代插件对实际内容的检查。</summary>
+public sealed record DashboardUpload(string Label = "上传文件", IReadOnlyList<string>? ContentTypes = null,
+    long MaxBytes = 5_000_000, string? Description = null);
+
+/// <summary>上传文件的内容；文件名仅用于显示，不应作为磁盘路径。</summary>
+public sealed record DashboardUploadFile(string FileName, string ContentType, ReadOnlyMemory<byte> Content);
 
 public sealed record DashboardColumn(string Key, string Label);
 

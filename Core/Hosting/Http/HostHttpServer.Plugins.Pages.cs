@@ -34,6 +34,13 @@ internal sealed partial class HostHttpServer
                         icon = page.Icon,
                         description = page.Description,
                         page_size = page.PageSize,
+                        upload = page.Upload is not { MaxBytes: > 0 } ? null : new
+                        {
+                            label = page.Upload.Label,
+                            content_types = page.Upload.ContentTypes ?? [],
+                            max_bytes = Math.Min(page.Upload.MaxBytes, PluginDashboard.MaxUploadBytes),
+                            description = page.Upload.Description
+                        },
                         columns = (page.Columns ?? []).Select(column => new { key = column.Key, label = column.Label }),
                         filters = (page.Filters ?? []).Select(filter => new
                         {
@@ -108,6 +115,19 @@ internal sealed partial class HostHttpServer
             return Results.Ok(new { ok = result.Ok, message = result.Message, refresh = result.Refresh, title = result.Title, details = result.Details });
         });
 
+        api.MapPost("/plugins/{id}/pages/{pageId}/upload", async (string id, string pageId, HttpContext context) =>
+        {
+            if (Unauthorized(context, config) is { } denied) return denied;
+            if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            var outcome = await PluginDashboard.UploadAsync(plugin, pageId, context.Request.Query["name"].ToString(),
+                context.Request.ContentType ?? "application/octet-stream", context.Request.Body, context.Request.ContentLength,
+                context.RequestAborted).ConfigureAwait(false);
+            if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message);
+            var result = outcome.Value!;
+            return Results.Ok(new { ok = result.Ok, message = result.Message, refresh = result.Refresh, title = result.Title, details = result.Details });
+        });
+
         api.MapGet("/plugins/{id}/pages/{pageId}/files", async (string id, string pageId, HttpContext context) =>
         {
             if (Unauthorized(context, config) is { } denied) return denied;
@@ -134,6 +154,8 @@ internal sealed partial class HostHttpServer
 
     private static IResult PageFailure(PluginPageStatus status, string message) => status switch
     {
+        PluginPageStatus.InvalidUpload => Results.BadRequest(new { error = "invalid_upload", message }),
+        PluginPageStatus.UploadTooLarge => Results.Json(new { error = "upload_too_large", message }, statusCode: StatusCodes.Status413PayloadTooLarge),
         PluginPageStatus.NotFound => Results.NotFound(new { error = "page_not_found", message }),
         PluginPageStatus.Unloading => Results.Conflict(new { error = "plugin_unloading", message }),
         _ => Results.Json(new { error = "page_failed", message }, statusCode: StatusCodes.Status500InternalServerError)

@@ -66,6 +66,41 @@ internal static class PluginDashboardVerification
                 if ((await PluginDashboard.OpenFileAsync(handle, "library", id, CancellationToken.None)).Status != PluginPageStatus.NotFound)
                     throw new InvalidOperationException("A missing file must be reported as not found.");
 
+            using (var uploadBody = new MemoryStream([7, 8, 9]))
+            {
+                var uploaded = await PluginDashboard.UploadAsync(handle, "library", "../../image.png", "image/png", uploadBody, 3, CancellationToken.None);
+                if (uploaded is not { Status: PluginPageStatus.Done, Value: { Ok: true, Refresh: true } } ||
+                    plugin.LastUpload is not { FileName: "image.png", ContentType: "image/png" } ||
+                    !plugin.LastUpload.Content.Span.SequenceEqual(new byte[] { 7, 8, 9 }))
+                    throw new InvalidOperationException("Declared uploads must run inside plugin dispatch with a safe display name and bounded contents.");
+            }
+            foreach (var (pageId, name, mime, contents, length, expected) in new[]
+            {
+                ("library", "x.png", "image/png", new byte[] { 1 }, (long?)5, PluginPageStatus.UploadTooLarge),
+                ("library", "x.png", "image/png", new byte[] { 1, 2, 3, 4, 5 }, (long?)null, PluginPageStatus.UploadTooLarge),
+                ("library", "x.png", "image/png", Array.Empty<byte>(), (long?)0, PluginPageStatus.InvalidUpload),
+                ("library", "", "image/png", new byte[] { 1 }, (long?)1, PluginPageStatus.InvalidUpload),
+                ("library", "x.txt", "text/plain", new byte[] { 1 }, (long?)1, PluginPageStatus.InvalidUpload),
+                ("stats", "x.png", "image/png", new byte[] { 1 }, (long?)1, PluginPageStatus.NotFound),
+            })
+            {
+                using var bodyInput = new MemoryStream(contents);
+                var outcome = await PluginDashboard.UploadAsync(handle, pageId, name, mime, bodyInput, length, CancellationToken.None);
+                if (outcome.Status != expected || plugin.UploadCalls != 1)
+                    throw new InvalidOperationException("Invalid or undeclared uploads reached the plugin: " + outcome.Status);
+            }
+            using (var cancellation = new CancellationTokenSource())
+            using (var cancelledBody = new MemoryStream([1]))
+            {
+                cancellation.Cancel();
+                try
+                {
+                    await PluginDashboard.UploadAsync(handle, "library", "x.png", "image/png", cancelledBody, 1, cancellation.Token);
+                    throw new InvalidOperationException("Upload cancellation was swallowed.");
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            }
+
             var broken = await PluginDashboard.QueryAsync(handle, "stats", 1, 0, new Dictionary<string, string>(), CancellationToken.None);
             if (broken.Status != PluginPageStatus.Failed || !broken.Message.Contains("统计库坏了", StringComparison.Ordinal))
                 throw new InvalidOperationException("A throwing page did not report its reason: " + broken.Message);
@@ -97,12 +132,15 @@ internal static class PluginDashboardVerification
         public byte[] Inline { get; } = [4, 5];
         public DashboardQuery? LastQuery { get; private set; }
         public string? Deleted { get; private set; }
+        public DashboardUploadFile? LastUpload { get; private set; }
+        public int UploadCalls { get; private set; }
 
         public IReadOnlyList<DashboardPage> Pages { get; } =
         [
             new("library", "表情库", DashboardPageKinds.Gallery, Order: 20,
                 Filters: [new DashboardFilter("q", "搜索"), new DashboardFilter("tag", "标签")],
-                Actions: [new DashboardAction("delete", "删除", "确定删除？", "danger")]),
+                Actions: [new DashboardAction("delete", "删除", "确定删除？", "danger")])
+                { Upload = new DashboardUpload("上传图片", ["image/png"], 4) },
             new("LIBRARY", "重复", DashboardPageKinds.Gallery),
             new("stats", "统计", DashboardPageKinds.Stats, Order: 10),
             new("html", "注入页面", "iframe"),
@@ -136,6 +174,13 @@ internal static class PluginDashboardVerification
         {
             Deleted = itemId;
             return Task.FromResult(new PluginActionResult(true, "已删除", Refresh: true));
+        }
+
+        public Task<PluginActionResult> UploadAsync(string pageId, DashboardUploadFile file, CancellationToken cancellationToken = default)
+        {
+            UploadCalls++;
+            LastUpload = file;
+            return Task.FromResult(new PluginActionResult(true, "已上传", Refresh: true));
         }
 
         public Task<DashboardFile?> OpenFileAsync(string pageId, string fileId, CancellationToken cancellationToken = default) =>
