@@ -2,39 +2,253 @@
 
 需要宿主 1.0.3（SDK ABI 1.4.0.0）。调用方和提供方都要引用 `ShiroBot.SDK` 1.0.3 或更新版本。
 
-插件之间可以按**名称**提供和调用服务，参数和返回值都是 JSON。双方不引用对方的任何类型，也不需要共享程序集，所以任何一方都可以单独卸载、更新和重新加载，另一方不用跟着动。
+插件之间可以按**名称**提供和调用服务、发布和订阅事件。提供方在自己的插件里声明一份**契约**，调用方把提供方的插件 DLL 放进项目，SDK 在构建时生成契约代码，然后就能像调用普通方法一样调用对方。
 
-宿主只负责转发调用和事件，不理解服务的含义。服务名和 JSON 字段由插件之间约定，例如 AI 聊天插件约定的 [`chat.tool.*` 聊天工具](#约定-聊天工具-chat-tool)。
+运行时双方不共享任何程序集和对象，消息按 JSON 复制，所以任何一方都可以单独卸载、更新和重新加载，另一方不用跟着动。
 
-## 提供和调用服务
+## 快速上手
+
+以一个天气服务为例：天气插件提供 `weather.query`，其他插件调用它。
+
+### 1. 提供方声明契约
+
+在天气插件里声明消息类型，再用一个 `[PluginContract]` 类列出对外的服务和事件：
 
 ```csharp
-using System.Text.Json.Nodes;
+using System.ComponentModel;
+using ShiroBot.SDK.Plugin;
 
-// 提供方
-Context.Services.Provide("weather.query", async (args, ct) =>
-{
-    var city = args?["city"]?.GetValue<string>() ?? "上海";
-    return new JsonObject { ["text"] = await QueryAsync(city, ct) };
-});
+namespace Weather;
 
-// 调用方
-try
+public sealed record WeatherQuery([property: Description("城市名，例如 上海")] string City);
+public sealed record WeatherReply(string Text, double Temperature);
+public sealed record WeatherUpdated(string City);
+
+[PluginContract]
+public static partial class WeatherApi
 {
-    var result = await Context.Services.CallAsync("weather.query", new JsonObject { ["city"] = "北京" }, ct);
-    var text = result?["text"]?.GetValue<string>();
+    [PluginService("weather.query")]
+    public static partial PluginService<WeatherQuery, WeatherReply> Query { get; }
+
+    [PluginEvent("weather.updated")]
+    public static partial PluginEvent<WeatherUpdated> Updated { get; }
 }
-catch (PluginServiceUnavailableException) { /* 没有插件提供这个服务，或提供方正在卸载 */ }
-catch (PluginServiceException ex) { /* 提供方处理时抛出异常：ex.RemoteType、ex.RemoteMessage */ }
 ```
 
-| 接口 | 说明 |
+属性的实现和 JSON 读写代码由 SDK 在编译时生成，不需要自己写任何序列化代码。
+
+### 2. 提供方实现服务
+
+```csharp
+protected override Task LoadAsync()
+{
+    WeatherApi.Query.Provide(Context, async (query, ct) =>
+    {
+        var weather = await FetchAsync(query.City, ct);
+        return new WeatherReply(weather.Summary, weather.Temperature);
+    });
+    return Task.CompletedTask;
+}
+
+// 天气变化时
+await WeatherApi.Updated.EmitAsync(Context, new WeatherUpdated("上海"), ct);
+```
+
+服务随插件卸载自动注销，不需要在 `OnUnloadAsync` 里处理。
+
+### 3. 调用方引用契约
+
+把天气插件的 DLL 放进调用方项目的 `contracts` 目录：
+
+```text
+MyPlugin/
+  contracts/
+    WeatherPlugin.dll        ← 从天气插件的 Release 下载，或从它的构建输出复制
+  MyPlugin.csproj
+  Plugin.cs
+```
+
+也可以在 `.csproj` 里直接指向别处的 DLL：
+
+```xml
+<ItemGroup>
+  <PluginContract Include="../Shirobot.Plugin.Weather/bin/Release/net10.0/WeatherPlugin.dll" />
+</ItemGroup>
+```
+
+构建时 SDK 读取 DLL 里的 `[PluginContract]`，在 `obj/` 下生成一份契约代码（`WeatherApi`、`WeatherQuery`、`WeatherReply`、`WeatherUpdated`，命名空间不变），编进调用方自己的程序集。天气插件的 DLL **只在构建时读取**，不会被引用，也不会进入调用方的成品。
+
+### 4. 调用方调用
+
+```csharp
+using Weather;
+
+var reply = await WeatherApi.Query.TryCallAsync(Context, new WeatherQuery("北京"), ct);
+if (reply is null)
+{
+    await ReplyAsync("天气插件没有加载。");
+    return;
+}
+await ReplyAsync($"{reply.Text}，{reply.Temperature}°C");
+
+// 订阅事件
+WeatherApi.Updated.On(Context, (e, ct) => RefreshAsync(e.City, ct));
+```
+
+`TryCallAsync` 在没有插件提供这个服务时返回 `null`。插件的加载顺序不固定，提供方也可能随时被卸载或更新，所以调用方总要考虑对方不在的情况。
+
+## 契约是怎么工作的
+
+```text
+构建时                                              运行时
+──────────────────────────────────────────────     ────────────────────────────────────────
+WeatherPlugin.dll ──读取 [PluginContract]──┐        WeatherPlugin            MyPlugin
+                                          ↓         （自己的 WeatherApi）     （生成的 WeatherApi）
+MyPlugin 编译 ← obj/PluginContracts/Weather.g.cs          │                       │
+          ↓                                               └──── JSON（宿主转发）───┘
+MyPlugin.dll（不含也不引用 WeatherPlugin.dll）
+```
+
+- **双方各有一份契约类型**：提供方用自己声明的，调用方用生成的副本。运行时它们是两个不相关的类型，宿主只转发 JSON，所以谁都可以单独卸载。
+- **生成的代码是 `internal` 的**：不会成为调用方的公开 API，多个插件引用同一份契约也不会冲突。
+- **序列化代码在各自的程序集里**：SDK 在编译时为契约类型生成 JSON 读写代码，不使用反射序列化。宿主的序列化器如果用反射处理插件里的类型，会缓存这些类型，插件卸载后程序集也无法释放，热更新会失效。
+- **宿主内部只传 UTF-8 字节**：调用方把请求直接写成 JSON 字节，宿主复制后交给提供方，提供方直接读成自己的类型，中间不经过 `JsonNode`。
+- **生成的文件可以直接看**：在 `obj/<配置>/<框架>/PluginContracts/` 下，跳转到 `WeatherApi` 的定义也会打开它。
+
+::: warning 不要把契约当成共享程序集
+不要把提供方的 DLL 加进 `SharedAssemblies`，也不要用 `<Reference>` 直接引用它。那会让调用方在运行时依赖提供方的程序集，提供方就无法单独卸载和更新。
+:::
+
+### 契约里能放什么
+
+契约只描述消息格式，生成时只取 `[PluginContract]` 类用到的类型：
+
+| 可以 | 说明 |
 | --- | --- |
-| `Provide(name, handler)` | 提供服务。返回的 `IDisposable` 可以提前注销；不注销也会随插件卸载自动注销 |
-| `Provide(name, handler, metadata)` | 同上，附带一段描述，供其他插件用 `Find` 发现 |
-| `CallAsync(name, arguments, ct)` | 调用服务，返回提供方的 JSON 结果 |
-| `IsAvailable(name)` | 当前是否有插件提供这个服务 |
-| `Find(prefix)` | 列出名称以 `prefix` 开头、当前可调用的服务 |
+| `record` / 类的公开属性 | 生成同名的 record；只取属性，不取方法和逻辑 |
+| 枚举 | 按名称序列化 |
+| `string`、数值、`bool`、`DateTimeOffset`、`Guid` | |
+| `List<T>`、数组、`Dictionary<string, T>` | |
+| 可空类型、默认值 | 保留 |
+| `[Description]`、`[JsonPropertyName]` | 保留，前者用于[生成参数格式](#描述和发现) |
+
+不能放接口、委托、带逻辑的类型，也不能引用提供方插件里契约以外的类型；违反时提供方构建就会报错，指出是哪个类型。
+
+字段名在线上统一用 snake_case，例如 `Temperature` 是 `temperature`。
+
+### 契约变化时
+
+调用方用的是构建时那一版契约。提供方升级后，调用方不重新构建也能继续工作，只要提供方遵守：
+
+- **只加字段，不改字段**：旧调用方收不到新字段，新字段对它也无害；改名、改类型、删字段都是不兼容的修改。
+- **不兼容的修改换服务名**：例如增加 `weather.query.v2`，一段时间内同时提供新旧两个服务。
+
+调用方想用新字段时，换上新版的 DLL 重新构建即可。
+
+## 描述和发现
+
+提供方可以附带一段描述，其他插件按名称前缀找到当前可调用的服务。适合做“任何插件都可以来接入”的扩展点：调用方只认一个前缀，不写死某个插件的服务名。
+
+例如天气聚合插件定义扩展点 `weather.source.*`，并在自己的契约里给出描述格式：
+
+```csharp
+// 天气聚合插件的契约
+public sealed record SourceInfo(string Title, JsonObject Parameters);
+public sealed record SourceQuery([property: Description("城市名")] string City, [property: Description("预报天数")] int Days = 1);
+
+[PluginContract]
+public static partial class WeatherSources
+{
+    public const string Prefix = "weather.source.";
+
+    [PluginService("weather.source.*")]   // 一类服务：名称由提供方补全
+    public static partial PluginServiceFamily<SourceQuery, WeatherReply, SourceInfo> Sources { get; }
+}
+```
+
+```csharp
+// 某个天气源插件：放入聚合插件的 DLL，提供其中一个
+WeatherSources.Sources.Provide(Context, "hefeng", HandleAsync,
+    new SourceInfo("和风天气", PluginJsonSchema.For<SourceQuery>()));
+
+// 聚合插件：列出当前所有天气源并调用
+foreach (var source in WeatherSources.Sources.Find(Context))
+{
+    BotLog.Info($"{source.Name}（{source.ProviderId}）：{source.Metadata?.Title}");
+    var reply = await source.TryCallAsync(Context, new SourceQuery("北京"), ct);
+}
+```
+
+- `Find` 按名称排序，返回服务名、提供方插件 ID 和描述。
+- `PluginJsonSchema.For<T>()` 从 record 生成 JSON Schema：字段类型、必填字段、默认值和 `[Description]` 的说明，适合把参数格式告诉调用方，例如生成表单，或交给 AI 模型作为工具参数。
+- 描述在提供时复制保存；要更新描述，先 `Dispose` 原来的注册，再重新提供。
+- 正在卸载的提供方不会再被列出。
+- 查找只是在宿主内存里筛选，开销很小，在需要时现查即可，不必自己缓存。
+
+## 谁提供契约
+
+**谁定义接口，谁提供契约**：
+
+| 场景 | 契约由谁提供 | 另一方要做什么 |
+| --- | --- | --- |
+| 点对点调用（某插件调 `weather.query`） | 提供服务的插件 | 调用方放入提供方的 DLL |
+| 扩展点（聚合插件发现所有 `weather.source.*`） | 定义扩展点的插件 | 每个接入的插件放入定义方的 DLL；定义方不需要知道有哪些插件接入 |
+
+双方都不写对方插件的代码，也不在运行时引用对方。新增一个扩展点的实现时，定义方不用改任何代码。
+
+## 接口参考
+
+### 声明契约
+
+| 特性 | 说明 |
+| --- | --- |
+| `[PluginContract]` | 标在 `static partial class` 上，它的属性就是对外的服务和事件 |
+| `[PluginService("name")]` | 标在 `PluginService<TRequest, TResponse>` 属性上 |
+| `[PluginService("prefix.*")]` | 标在 `PluginServiceFamily<TRequest, TResponse, TMetadata>` 属性上，表示一类服务 |
+| `[PluginEvent("topic")]` | 标在 `PluginEvent<T>` 属性上 |
+| `<PluginContract Include="…dll" />` | 调用方引用契约；`contracts/*.dll` 默认包含 |
+
+### `PluginService<TRequest, TResponse>`
+
+| 成员 | 说明 |
+| --- | --- |
+| `Provide(context, handler)` | 提供服务，返回的 `IDisposable` 可以提前注销 |
+| `Provide(context, handler, metadata)` | 同上，附带描述，供其他插件发现 |
+| `TryCallAsync(context, request, ct)` | 调用服务；没有提供方或提供方正在卸载时返回 `null` |
+| `CallAsync(context, request, ct)` | 调用服务；没有提供方时抛出 `PluginServiceUnavailableException` |
+| `IsAvailable(context)` | 当前是否有插件提供这个服务 |
+
+不需要参数的服务用 `PluginService<TResponse>`。
+
+### `PluginServiceFamily<TRequest, TResponse, TMetadata>`
+
+| 成员 | 说明 |
+| --- | --- |
+| `Provide(context, name, handler, metadata)` | 提供这一类中的一个服务，完整名称为前缀加 `name` |
+| `Find(context)` | 列出当前提供的所有服务，每一项可以直接 `TryCallAsync` / `CallAsync` |
+
+### `PluginEvent<T>`
+
+| 成员 | 说明 |
+| --- | --- |
+| `On(context, handler)` | 订阅，返回的 `IDisposable` 可以提前退订；随插件卸载自动退订 |
+| `EmitAsync(context, payload, ct)` | 发布，等所有订阅者处理完，返回成功处理的数量 |
+
+### `PluginServiceEntry`
+
+`Find` 返回的每一项：`Name`（完整服务名）、`ShortName`（去掉前缀的名称）、`ProviderId`、`Metadata`，以及 `TryCallAsync` / `CallAsync`。
+
+### JSON 工具
+
+| 成员 | 说明 |
+| --- | --- |
+| `[PluginJson]` | 标在不出现在任何契约服务里的 record 上，为它生成 JSON 读写代码；用于下面几个方法的类型参数时会自动生成，不必标记 |
+| `PluginJsonSchema.For<T>()` | 生成类型 `T` 的 JSON Schema |
+| `PluginJson.As<T>(node)` | 把 `JsonNode` 读成 `T`，例如收到的工具参数 |
+| `PluginJson.Serialize<T>` / `Deserialize<T>` / `ToNode<T>` | 在 `T` 和 UTF-8 JSON、`JsonNode` 之间转换 |
+| `service.ToCallJson(request)` | 描述一次对 `service` 的调用：`{ "service": 服务名, "arguments": 请求 }`，用于让其他插件稍后代为调用 |
+
+## 规则与行为
 
 ### 服务名
 
@@ -42,226 +256,58 @@ catch (PluginServiceException ex) { /* 提供方处理时抛出异常：ex.Remot
 - 同一个名字同时只能由一个插件提供，重复提供会抛出 `InvalidOperationException`。
 - 建议用“领域.动作”的形式，并以插件或领域名开头，例如 `meme.send`、`weather.query`，避免和其他插件撞名。
 
-### 参数和返回值
+### 消息内容
 
-- 参数、返回值都按 JSON 文本复制一份再交给对方，双方不会持有对方创建的对象，也就不会因此拉住对方的程序集。
-- 只放字符串、数字、布尔、数组和 `JsonObject`，不要用 `JsonValue.Create(自定义对象)`。
-- 大文件、图片不要直接放进 JSON，传文件路径、ID 或 URL。
-- 每次调用都会复制，适合普通大小的请求，不适合在热路径上高频传大对象。
+- 请求和响应都按 JSON 复制一份再交给对方，双方不会持有对方创建的对象。
+- 大文件、图片不要放进消息，传文件路径、ID 或 URL。
+- 每次调用都会序列化和复制，适合普通大小的请求，不适合在热路径上高频传大对象。
 
 ### 失败和取消
 
-| 情况 | 调用方收到 |
-| --- | --- |
-| 没有插件提供这个服务 | `PluginServiceUnavailableException` |
-| 提供方正在卸载 | `PluginServiceUnavailableException` |
-| 提供方的处理函数抛出异常 | `PluginServiceException`，只带异常类型名 `RemoteType` 和消息 `RemoteMessage`，不带原始异常对象 |
-| 调用方取消 `ct` | `OperationCanceledException` |
+| 情况 | `TryCallAsync` | `CallAsync` |
+| --- | --- | --- |
+| 没有插件提供这个服务 | 返回 `null` | 抛出 `PluginServiceUnavailableException` |
+| 提供方正在卸载 | 返回 `null` | 抛出 `PluginServiceUnavailableException` |
+| 提供方的处理函数抛出异常 | 抛出 `PluginServiceException` | 同左 |
+| 调用方取消 `ct` | 抛出 `OperationCanceledException` | 同左 |
+
+`PluginServiceException` 只带异常类型名 `RemoteType` 和消息 `RemoteMessage`，不带原始异常对象。提供方出错通常是 bug，所以 `TryCallAsync` 也不会把它吞掉。
 
 提供方收到的 `ct` 同时连着调用方的取消和提供方自己的卸载：任何一方取消，处理函数都应尽快结束。宿主不设调用超时，需要时由调用方自己传带超时的 `ct`。
 
-::: tip
-调用方不能假设提供方一定在。插件的加载顺序不固定，提供方也可能随时被卸载或更新，所以总要处理 `PluginServiceUnavailableException`，把它当作“这个功能暂时不可用”。
-:::
+### 事件
 
-### 描述和发现
-
-提供方可以在注册时附带一段描述，调用方用 `Find` 按前缀列出当前可调用的服务，适合做“任何插件都可以来扩展”的扩展点：
-
-```csharp
-// 提供方
-Context.Services.Provide("chat.tool.weather", HandleAsync, new JsonObject
-{
-    ["description"] = "查询城市天气"
-});
-
-// 调用方
-foreach (var service in Context.Services.Find("chat.tool."))
-    BotLog.Info($"{service.Name} 由 {service.ProviderId} 提供：{service.Metadata?["description"]}");
-```
-
-- `Find` 按名称排序，返回服务名 `Name`、提供方插件 ID `ProviderId` 和描述的副本 `Metadata`。
-- 描述在注册时复制保存。要更新描述，先 `Dispose` 原来的注册，再重新 `Provide`。
-- 正在卸载的提供方不会再被列出。
-- `Find` 只是在宿主内存里查询，开销很小，可以在需要时现查，不必自己缓存；现查还能马上反映提供方的卸载、更新和配置变化。
-
-## 事件总线
-
-事件用于通知，不需要返回结果：
-
-```csharp
-// 订阅
-Context.Bus.On("weather.updated", async (payload, ct) =>
-{
-    var city = payload?["city"]?.GetValue<string>();
-    await RefreshAsync(city, ct);
-});
-
-// 发布：返回成功处理这条事件的订阅者数量
-var delivered = await Context.Bus.EmitAsync("weather.updated", new JsonObject { ["city"] = "上海" }, ct);
-```
-
-- 每个订阅者拿到独立的一份 JSON 副本，并发处理；`EmitAsync` 等所有订阅者处理完才返回。
+- 每个订阅者拿到独立的副本，并发处理；`EmitAsync` 等所有订阅者处理完才返回。
 - 订阅者处理失败只记在订阅者自己的日志里，不会抛给发布方，也不影响其他订阅者。
-- 主题名的规则和服务名相同。同一个主题可以有任意多个订阅者，也可以没有订阅者（返回 0）。
-- 订阅随插件卸载自动注销；`On` 返回的 `IDisposable` 可以提前退订。
+- 同一个主题可以有任意多个订阅者，也可以没有订阅者（返回 0）。
 
 ## 生命周期与热更新
 
-- **注册时机**：在 `LoadAsync` 里 `Provide` 和 `On`。服务和订阅登记在插件的生命周期上，不需要在 `OnUnloadAsync` 里手动注销。
+- **注册时机**：在 `LoadAsync` 里提供服务和订阅事件，它们登记在插件的生命周期上，卸载时自动注销。
 - **加载顺序**：提供方和调用方谁先加载都可以。调用方在需要时才调用，不要在加载阶段就要求对方存在。
-- **卸载**：插件开始卸载时，宿主立即停止它接收新的调用和事件（新调用会收到 `PluginServiceUnavailableException`），等它正在处理的调用和事件结束，再执行它的 `OnUnloadAsync` 并释放程序集。完整顺序见[生命周期作用域](./context-config#生命周期作用域)。
-- **更新**：提供方替换 DLL 后热重载，重新加载时再次 `Provide`。调用方不需要任何操作，下一次调用就会用到新版本。
-- **不记依赖**：`CallAsync`、`Find` 和事件都不会让宿主认为调用方依赖提供方，所以提供方随时可以卸载。
+- **卸载**：插件开始卸载时，宿主立即停止它接收新的调用和事件，等它正在处理的调用和事件结束，再执行它的 `OnUnloadAsync` 并释放程序集。完整顺序见[生命周期作用域](./context-config#生命周期作用域)。
+- **更新**：提供方替换 DLL 后热重载，重新加载时再次提供。调用方不需要任何操作，下一次调用就会用到新版本。
+- **不记依赖**：调用、查找和事件都不会让宿主认为调用方依赖提供方，所以提供方随时可以卸载。
 
 ### 要不要声明依赖
 
 按名称调用的双方**不需要**在 `BotPlugin` 里声明依赖。依赖声明表示“没有对方就不能工作”，会让对方无法单独卸载。可选的功能（对方在就用，不在就跳过）不应该声明依赖。
 
-## 设计自己的约定
+## 不引用契约时
 
-服务名和字段是插件之间的公开约定，发布后要像公开 API 一样维护：
-
-- **写进文档**：在提供方的 README 里写清楚服务名、参数字段、返回字段和错误情况。
-- **读取时宽容**：缺少的字段用默认值，不认识的字段直接忽略，这样双方可以各自加字段而不必同时发布。
-- **不兼容的修改换名字**：例如从 `weather.query` 改成 `weather.query.v2`，旧名字保留一段时间。也可以在描述里放版本号，让调用方自己判断。
-- **扩展点用前缀**：希望多个插件都能接入时，约定一个前缀（例如 `chat.tool.`），调用方用 `Find` 发现，而不是写死某一个插件的服务名。
-
-## 约定：聊天工具 chat.tool.*
-
-AI 聊天插件（AIChat）约定的扩展点：任何插件按名称提供 `chat.tool.<工具名>` 服务，AI 聊天插件就会把它作为工具交给模型。聊天插件里不需要任何针对具体工具插件的代码，例如 MemePlugin 的发表情就是这样接入的。
-
-### 整体流程
-
-以 MemePlugin 的发表情为例：
-
-```text
-群聊：@机器人 发个猫猫表情
-│
-├─ 1. 聊天插件准备调用模型时，调用 Find("chat.tool.")
-│     → 找到 MemePlugin 提供的 chat.tool.send_meme，以及它的说明、参数格式和提示词
-│     → 作为工具 send_meme 加入本轮请求，提示词追加到系统提示
-│
-├─ 2. 模型调用 send_meme {"query": "猫"}
-│     → 聊天插件 CallAsync("chat.tool.send_meme", { arguments, context })
-│     → MemePlugin 只选一张图，返回
-│        { content: "已选好…", after_reply: { service: "meme.send", arguments: { id } } }
-│     → content 交还给模型，模型写出最终回复，例如“喵～”
-│
-├─ 3. 聊天插件照常发出文字回复（分条、折叠、@、引用都按聊天插件自己的设置）
-│
-└─ 4. 聊天插件 CallAsync("meme.send", { arguments, context, reply })
-      → MemePlugin 自己把图发到同一个会话（QQ 原生表情、冷却、使用次数都由它处理）
-```
-
-MemePlugin 不在时，第 1 步找不到这个工具，模型就只用文字回复；第 2、4 步之间 MemePlugin 被卸载，调用会收到 `PluginServiceUnavailableException`，聊天插件告诉模型改用文字，或者只记一条日志。
-
-### 工具描述
-
-提供时的 `metadata`：
-
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `description` | 是 | 交给模型的工具说明。聊天插件会在前面加上 `[提供方插件 ID]` |
-| `parameters` | 否 | 模型参数的 JSON Schema（`type` 为 `object`），缺省为无参数 |
-| `prompt` | 否 | 追加到系统提示的使用说明，例如什么时候该用、什么时候不该用 |
-| `max_calls_per_turn` | 否 | 每轮回复最多调用几次，1–5，默认 1 |
-
-工具名取服务名的后缀，只能用字母、数字、下划线和连字符，最长 64 个字符；和聊天插件的内置工具、MCP 工具或其他插件工具重名时会被跳过。
-
-### 工具调用
-
-聊天插件调用服务时传：
-
-```json
-{
-  "arguments": { "query": "猫" },
-  "context": {
-    "platform": "qq",
-    "instance_id": "qq-main",
-    "channel_type": "Group",
-    "channel_id": "123456",
-    "message_id": "998877",
-    "sender_id": "10001",
-    "is_group": true,
-    "proactive": false
-  }
-}
-```
-
-`arguments` 是模型给的参数；`context` 是触发这次回复的会话，提供方可以据此选择内容，或在之后发消息到同一个会话。`proactive` 为 true 表示这是机器人主动插话。
-
-返回：
-
-| 字段 | 说明 |
-| --- | --- |
-| `content` | 交给模型的结果，字符串；不是字符串时按 JSON 文本交给模型 |
-| `after_reply` | 可选，`{ "service": 服务名, "arguments": … }`，要求聊天插件在文字回复发出后调用这个服务 |
-
-没有合适结果时，在 `content` 里告诉模型改用文字回复即可，不要抛异常。
-
-### 回复后的动作
-
-需要发图片、文件等“跟在回复后面”的内容时，不要在工具调用里直接发：那时模型还没写出回复，消息顺序会乱，也可能发出后模型又决定不回复。改为返回 `after_reply`，由聊天插件在文字发出后调用。调用参数：
-
-```json
-{
-  "arguments": { "id": "68c567ca299d8df1" },
-  "context": { "...": "同工具调用" },
-  "reply": { "text_sent": true, "mention": false, "quote": false }
-}
-```
-
-| 字段 | 说明 |
-| --- | --- |
-| `arguments` | `after_reply.arguments` 的副本 |
-| `reply.text_sent` | 聊天插件是否已经发出文字回复 |
-| `reply.mention` / `reply.quote` | 没有发出文字时，这个动作是否应该 @ 发送者、引用触发消息（按聊天插件的设置） |
-
-模型只调用了工具、没有写文字时，`text_sent` 为 false，聊天插件不发文字，由这个动作代替回复，并按 `mention` / `quote` @、引用。可以返回 `{ "history": "…" }`，这段文字会代替空回复写入对话历史，例如 `[表情：猫猫]`。
-
-### 写一个工具插件
+调用方也可以不放入提供方的 DLL，自己声明消息格式，或直接用宿主的 JSON 接口。适合只读一两个字段、或写转发和调试这类通用工具的场景：
 
 ```csharp
-using System.Text.Json.Nodes;
-using ShiroBot.SDK.Plugin;
+// 直接用 JSON 接口调用
+var result = await Context.Services.CallAsync("weather.query", new JsonObject { ["city"] = "北京" }, ct);
 
-[BotPlugin("weather", Name = "天气")]
-public sealed class WeatherPlugin : PluginBase
-{
-    protected override Task LoadAsync()
-    {
-        Context.Services.Provide("chat.tool.query_weather", async (input, ct) =>
-        {
-            var city = input?["arguments"]?["city"]?.GetValue<string>() ?? "上海";
-            return new JsonObject { ["content"] = await QueryAsync(city, ct) };
-        }, new JsonObject
-        {
-            ["description"] = "查询城市当前天气。用户问天气时使用。",
-            ["parameters"] = new JsonObject
-            {
-                ["type"] = "object",
-                ["required"] = new JsonArray("city"),
-                ["properties"] = new JsonObject
-                {
-                    ["city"] = new JsonObject { ["type"] = "string", ["description"] = "城市名，例如 上海" }
-                }
-            }
-        });
-        return Task.CompletedTask;
-    }
-}
+// 只读一两个字段时，可以自己声明一个 record 来读结果，只写用到的字段
+public sealed record WeatherReply(string Text);
+var reply = result.As<WeatherReply>();
 ```
 
-不需要引用 AI 聊天插件，也不需要声明依赖。装上就能在聊天里使用，卸载后聊天插件自动不再提供这个工具。
-
-### 注意事项
-
-- **什么时候查询**：聊天插件只在确定要调用模型的那一轮查询工具，普通群消息不会触发。
-- **提示词缓存**：工具描述和 `prompt` 在注册时就固定，每轮相同，并且排在系统提示中稳定的部分，不会破坏上游的前缀缓存。不要把会变化的状态（冷却、剩余次数）放进描述，放进工具调用的结果。
-- **使用策略由提供方决定**：例如“只在用户明确要求时才发表情”写在提供方的 `description` 和 `prompt` 里，由提供方的配置控制；改配置后重新 `Provide` 即可。
-- **聊天插件这边的开关**：AIChat 的 `[tool_use.plugin_tools]` 可以关闭全部插件工具、允许主动插话时使用，或用 `disabled` 去掉某个工具。
+这几种写法在线上完全一样，可以混用。直接用 JSON 接口时只放字符串、数字、布尔、数组和 `JsonObject`，不要用 `JsonValue.Create(自定义对象)`，原因见[契约是怎么工作的](#契约是怎么工作的)。
 
 ## 示例
 
-仓库 `samples/PluginInterop` 有一对可运行的示例：`Greeter` 提供 `greeter.greet` 服务并发布 `greeter.greeted` 事件，`GreeterClient` 调用服务、订阅事件，并演示提供方热更新时调用方不受影响。
+仓库 `samples/PluginInterop` 有一对可运行的示例：`Greeter` 声明契约、提供 `greeter.greet` 服务并发布 `greeter.greeted` 事件；`GreeterClient` 放入 `Greeter` 的 DLL 后调用服务、订阅事件，并演示提供方热更新时调用方不受影响。

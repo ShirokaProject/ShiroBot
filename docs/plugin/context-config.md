@@ -230,7 +230,7 @@ protected override Task LoadAsync()
 
 ## 插件之间互相调用
 
-需要宿主 1.0.3。插件之间可以按名称提供和调用服务（`Context.Services.Provide` / `CallAsync` / `Find`），用事件总线（`Context.Bus`）发通知，参数和返回值都是 JSON，不需要共享程序集，任何一方都可以单独卸载和更新。用法、生命周期，以及聊天工具 `chat.tool.*` 约定，见[插件之间互相调用](./interop)。
+需要宿主 1.0.3。插件之间可以按名称提供和调用服务、发布和订阅事件：提供方用 `[PluginContract]` 声明契约，调用方放入提供方的 DLL，SDK 在构建时生成契约代码；运行时不共享程序集，任何一方都可以单独卸载和更新。用法和生命周期见[插件之间互相调用](./interop)。
 
 ## 插件目录与热更新
 
