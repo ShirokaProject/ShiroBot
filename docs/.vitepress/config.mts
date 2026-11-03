@@ -49,7 +49,6 @@ export default defineConfig({
           items: [
             { text: '接收消息与事件', link: '/plugin/routes-events' },
             { text: '调用 API', link: '/plugin/apis' },
-            { text: '通用富消息与互动', link: '/plugin/rich-messages' },
             { text: '插件操作与控制台', link: '/plugin/actions' },
             { text: 'Dashboard 页面', link: '/plugin/dashboard-pages' },
             { text: '插件之间互相调用', link: '/plugin/interop' },
@@ -60,7 +59,14 @@ export default defineConfig({
         {
           text: 'Model',
           items: [
-            { text: '通用 Model', link: '/plugin/models' },
+            {
+              text: '通用 Model',
+              link: '/plugin/models',
+              collapsed: false,
+              items: [
+                { text: '富消息、按钮与表情回应', link: '/plugin/rich-messages' }
+              ]
+            },
             {
               text: 'QQ Model',
               items: [
