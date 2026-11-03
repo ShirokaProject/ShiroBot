@@ -2,8 +2,10 @@ using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Models;
+using ShiroBot.SDK.Dashboard;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Hosting.Logging;
+using ShiroBot.Plugins.Dashboard;
 using ShiroBot.Plugins.Services;
 
 namespace ShiroBot.Hosting.Context;
@@ -32,6 +34,8 @@ internal sealed class PluginContext : IBotContext, IDisposable
     public IPluginServices Services { get; }
     public IPluginLifetime Lifetime => _lifetime;
     public IPluginEventBus Bus { get; }
+    public IPluginDashboard Dashboard => DashboardScope;
+    internal PluginDashboardScope DashboardScope { get; }
     public TemporaryDirectory CreateTempDirectory(TimeSpan retention)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
@@ -71,6 +75,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
         _serviceRegistry = serviceRegistry;
         Services = new PluginServiceScope(serviceRegistry, pluginName, InvokeAsync, _lifetime);
         Bus = new PluginEventBusScope(serviceRegistry, pluginName, InvokeAsync, _lifetime);
+        DashboardScope = new PluginDashboardScope(InvokeAsync, _lifetime);
         PluginDirectory = Path.GetFullPath(pluginDirectory);
         Directory.CreateDirectory(PluginDirectory);
         Config = ConfigContext.ForPlugin(Path.Combine(PluginDirectory, "config.toml"), this);

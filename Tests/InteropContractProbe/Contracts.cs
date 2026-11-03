@@ -42,3 +42,10 @@ public static partial class ProbeApi
     [PluginEvent("probe.moved")]
     public static partial PluginEvent<Point> Moved { get; }
 }
+
+[PluginJson]
+public sealed record DashboardRule(
+    [property: System.ComponentModel.Description("名称"), System.ComponentModel.DataAnnotations.MaxLength(10)] string Name,
+    [property: ShiroBot.SDK.Dashboard.UiField(Kind = ShiroBot.SDK.Dashboard.UiFieldKind.Group)] string Group,
+    [property: System.ComponentModel.DataAnnotations.Range(typeof(int), "0", "3600")] int Cooldown = 45,
+    bool Enabled = true);

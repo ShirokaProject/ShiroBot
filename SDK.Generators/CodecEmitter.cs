@@ -282,6 +282,10 @@ internal sealed class CodecEmitter
             if (property.Description is { Length: > 0 } description) extra.Add("\"description\":" + JsonString(description));
             if (property.Parameter is { HasExplicitDefaultValue: true } parameter && parameter.ExplicitDefaultValue is { } value)
                 extra.Add("\"default\":" + JsonValue(value, parameter.Type));
+            if (property.Minimum is { } minimum) extra.Add("\"minimum\":" + minimum);
+            if (property.Maximum is { } maximum) extra.Add("\"maximum\":" + maximum);
+            if (property.MaxLength is { } maxLength) extra.Add("\"maxLength\":" + maxLength);
+            if (property.UiHint is { } hint) extra.Add("\"x-ui\":" + JsonString(hint));
             return JsonString(property.JsonName) + ":" + Merge(extra, schema);
         });
         var required = model.Properties.Where(property => property.Required).Select(property => JsonString(property.JsonName)).ToList();

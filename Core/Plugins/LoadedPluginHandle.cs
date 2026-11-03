@@ -29,6 +29,9 @@ internal sealed class LoadedPluginHandle
     private Task<PluginUnloadResult>? _unloadTask;
     private IBotPlugin? _plugin;
     private PluginContext? _context;
+
+    /// <summary>插件注册的 Dashboard 页面；卸载后为 null。</summary>
+    internal ShiroBot.Plugins.Dashboard.PluginDashboardScope? Dashboard => _context?.DashboardScope;
     private DllLoader<IBotPlugin>? _loader;
     private readonly Func<string, bool>? _groupRouteFilter;
     private readonly Func<int?>? _priorityOverride;

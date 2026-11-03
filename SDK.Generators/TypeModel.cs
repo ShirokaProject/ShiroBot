@@ -58,6 +58,12 @@ internal sealed class PropertyModel
     public IParameterSymbol? Parameter { get; set; }
     public string? Description { get; set; }
     public bool Required { get; set; }
+
+    /// <summary>[Range] 的下限和上限、[MaxLength]/[StringLength] 的长度、[UiField] 的控件，写进 JSON Schema 供表单使用。</summary>
+    public string? Minimum { get; set; }
+    public string? Maximum { get; set; }
+    public int? MaxLength { get; set; }
+    public string? UiHint { get; set; }
     public bool Settable => Symbol.SetMethod is { } set && !set.IsInitOnly && set.DeclaredAccessibility == Accessibility.Public;
 }
 
@@ -245,7 +251,13 @@ internal sealed class TypeCatalog
                 Parameter = parameter,
                 Description = AttributeString(property, "global::System.ComponentModel.DescriptionAttribute")
                               ?? (parameter is null ? null : AttributeString(parameter, "global::System.ComponentModel.DescriptionAttribute")),
-                Required = property.IsRequired || parameter is { HasExplicitDefaultValue: false } && !type.Nullable
+                Required = property.IsRequired || parameter is { HasExplicitDefaultValue: false } && !type.Nullable,
+                Minimum = RangeBound(property, parameter, 0),
+                Maximum = RangeBound(property, parameter, 1),
+                MaxLength = int.TryParse(Argument(property, parameter, "global::System.ComponentModel.DataAnnotations.MaxLengthAttribute", 0)
+                                         ?? Argument(property, parameter, "global::System.ComponentModel.DataAnnotations.StringLengthAttribute", 0),
+                    out var maxLength) ? maxLength : null,
+                UiHint = UiHintOf(property, parameter)
             });
         }
     }
@@ -264,6 +276,49 @@ internal sealed class TypeCatalog
         var ns = symbol.ContainingNamespace?.ToDisplayString() ?? "";
         return ns == "System" || ns.StartsWith("System.", System.StringComparison.Ordinal)
                || ns.StartsWith("Microsoft.", System.StringComparison.Ordinal);
+    }
+
+    /// <summary>属性或主构造函数参数上某个特性的第 <paramref name="index"/> 个构造参数，按不变文化格式化。</summary>
+    private static string? Argument(IPropertySymbol property, IParameterSymbol? parameter, string attribute, int index)
+    {
+        foreach (var symbol in new ISymbol?[] { property, parameter })
+        {
+            var data = symbol?.GetAttributes().FirstOrDefault(candidate =>
+                candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == attribute);
+            if (data is not null && data.ConstructorArguments.Length > index && data.ConstructorArguments[index].Value is { } value)
+                return System.Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return null;
+    }
+
+    private static string? RangeBound(IPropertySymbol property, IParameterSymbol? parameter, int index)
+    {
+        foreach (var symbol in new ISymbol?[] { property, parameter })
+        {
+            var data = symbol?.GetAttributes().FirstOrDefault(candidate =>
+                candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::System.ComponentModel.DataAnnotations.RangeAttribute");
+            if (data is null) continue;
+            var offset = data.ConstructorArguments.Length == 3 ? 1 : 0;
+            if (data.ConstructorArguments.Length <= index + offset) continue;
+            var text = System.Convert.ToString(data.ConstructorArguments[index + offset].Value, System.Globalization.CultureInfo.InvariantCulture);
+            if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)
+                && !double.IsNaN(value) && !double.IsInfinity(value))
+                return value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return null;
+    }
+
+    /// <summary>[UiField(Kind = …)] 对应的控件名；值与 ShiroBot.SDK.Dashboard.UiFieldKind 一致。</summary>
+    private static string? UiHintOf(IPropertySymbol property, IParameterSymbol? parameter)
+    {
+        foreach (var symbol in new ISymbol?[] { property, parameter })
+        {
+            var data = symbol?.GetAttributes().FirstOrDefault(candidate =>
+                candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::ShiroBot.SDK.Dashboard.UiFieldAttribute");
+            if (data?.NamedArguments.FirstOrDefault(argument => argument.Key == "Kind").Value.Value is int kind)
+                return kind switch { 1 => "textarea", 2 => "secret", 7 => "user", 8 => "users", 9 => "group", 10 => "groups", _ => null };
+        }
+        return null;
     }
 
     public static bool HasAttribute(ISymbol symbol, string fullName) =>

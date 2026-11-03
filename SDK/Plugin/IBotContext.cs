@@ -39,6 +39,10 @@ public interface IBotContext
     /// <summary>插件之间按主题发布和订阅 JSON 消息的事件总线。旧宿主不支持。</summary>
     public IPluginEventBus Bus =>
         throw new NotSupportedException("This host does not support the plugin event bus.");
+
+    /// <summary>插件在 Dashboard 里的页面：用组件描述页面，交互由宿主转给插件。旧宿主不支持。</summary>
+    public ShiroBot.SDK.Dashboard.IPluginDashboard Dashboard =>
+        throw new NotSupportedException("This host does not support plugin Dashboard pages.");
     /// <summary>
     /// 创建插件独立临时目录，保留时长必须大于零，从创建时开始计算。
     /// 宿主每 30 秒清理到期目录，文件占用时重试；退出和下次启动清理遗留目录。

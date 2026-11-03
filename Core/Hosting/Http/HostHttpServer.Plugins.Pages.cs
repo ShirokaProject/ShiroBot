@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -8,111 +10,57 @@ using ShiroBot.SDK.Dashboard;
 namespace ShiroBot.Hosting.Http;
 
 /// <summary>
-/// 插件页面（<see cref="IPluginDashboardProvider"/>）的 API。全部需要 API 密钥，宿主在进程内调用插件，
+/// 插件页面（<see cref="IPluginDashboard"/>）的 API。全部需要 API 密钥，宿主在进程内渲染页面、调用处理函数，
 /// 插件不需要开放网页路由。
 /// </summary>
 internal sealed partial class HostHttpServer
 {
+    private const int MaxPageRequestBytes = 1_000_000;
+
     private static void MapPluginPageEndpoints(RouteGroupBuilder api, ApiHostConfig config, PluginManager pluginManager)
     {
-        api.MapGet("/plugins/{id}/pages", async (string id, HttpContext context) =>
+        api.MapGet("/plugins/{id}/pages", (string id, HttpContext context) =>
         {
             if (Unauthorized(context, config) is { } denied) return denied;
             if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
                 return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-            try
-            {
-                var pages = await PluginDashboard.ListAsync(plugin).ConfigureAwait(false);
-                if (pages is null) return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
-                return Results.Ok(new
-                {
-                    pages = pages.Select(page => new
-                    {
-                        id = page.Id,
-                        title = page.Title,
-                        kind = page.Kind,
-                        icon = page.Icon,
-                        description = page.Description,
-                        page_size = page.PageSize,
-                        upload = page.Upload is not { MaxBytes: > 0 } ? null : new
-                        {
-                            label = page.Upload.Label,
-                            content_types = page.Upload.ContentTypes ?? [],
-                            max_bytes = Math.Min(page.Upload.MaxBytes, PluginDashboard.MaxUploadBytes),
-                            description = page.Upload.Description
-                        },
-                        columns = (page.Columns ?? []).Select(column => new { key = column.Key, label = column.Label }),
-                        filters = (page.Filters ?? []).Select(filter => new
-                        {
-                            key = filter.Key,
-                            label = filter.Label,
-                            type = filter.Type == "select" ? "select" : "text",
-                            options = (filter.Options ?? []).Select(option => new { value = option.Value, label = option.Label })
-                        }),
-                        actions = (page.Actions ?? []).Select(action => new
-                        {
-                            id = action.Id,
-                            label = action.Label,
-                            confirm = action.Confirm,
-                            tone = action.Tone == "danger" ? "danger" : "default"
-                        })
-                    })
-                });
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                return Results.Json(new { error = "pages_failed", message = $"插件页面读取失败: {ex.Message}" },
-                    statusCode: StatusCodes.Status500InternalServerError);
-            }
-        });
-
-        api.MapGet("/plugins/{id}/pages/{pageId}/data", async (string id, string pageId, HttpContext context) =>
-        {
-            if (Unauthorized(context, config) is { } denied) return denied;
-            if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
-                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-
-            var query = context.Request.Query;
-            var page = int.TryParse(query["page"], out var parsedPage) ? parsedPage : 1;
-            var pageSize = int.TryParse(query["page_size"], out var parsedSize) ? parsedSize : 0;
-            var filters = query.Where(pair => pair.Key is not ("page" or "page_size"))
-                .ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.Ordinal);
-            var outcome = await PluginDashboard.QueryAsync(plugin, pageId, page, pageSize, filters, context.RequestAborted).ConfigureAwait(false);
-            if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message);
-
-            var data = outcome.Value!;
             return Results.Ok(new
             {
-                items = data.Items.Select(item => new
+                pages = PluginDashboard.List(plugin).Select(page => new
                 {
-                    id = item.Id,
-                    title = item.Title,
-                    description = item.Description,
-                    image = item.ImageFileId,
-                    tags = item.Tags ?? [],
-                    meta = item.Meta,
-                    values = item.Values ?? new Dictionary<string, string>(),
-                    actions = item.Actions ?? []
-                }),
-                total = data.Total,
-                has_more = data.HasMore,
-                metrics = (data.Metrics ?? []).Select(metric => new { label = metric.Label, value = metric.Value, hint = metric.Hint })
+                    id = page.Id, title = page.Title, icon = page.Icon, description = page.Description
+                })
             });
         });
 
-        api.MapPost("/plugins/{id}/pages/{pageId}/actions/{actionId}", async (string id, string pageId, string actionId, HttpContext context) =>
+        api.MapPost("/plugins/{id}/pages/{pageId}/render", async (string id, string pageId, HttpContext context) =>
         {
             if (Unauthorized(context, config) is { } denied) return denied;
             if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
                 return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-            var itemId = context.Request.Query["item"].ToString();
-            if (string.IsNullOrWhiteSpace(itemId))
-                return Results.BadRequest(new { error = "item_required", message = "缺少条目 ID。" });
+            if (await ReadPageRequestAsync(context).ConfigureAwait(false) is not { } body)
+                return Results.BadRequest(new { error = "invalid_request", message = "请求内容无效。" });
 
-            var outcome = await PluginDashboard.RunActionAsync(plugin, pageId, actionId, itemId, context.RequestAborted).ConfigureAwait(false);
-            if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message);
-            var result = outcome.Value!;
-            return Results.Ok(new { ok = result.Ok, message = result.Message, refresh = result.Refresh, title = result.Title, details = result.Details });
+            var outcome = await PluginDashboard.RenderAsync(plugin, pageId, ReadState(body["state"]), context.RequestAborted).ConfigureAwait(false);
+            return outcome.Status == PluginPageStatus.Done
+                ? Results.Text(new JsonObject { ["view"] = outcome.Value!.View, ["state"] = StateJson(outcome.Value.State) }.ToJsonString(),
+                    "application/json; charset=utf-8")
+                : PageFailure(outcome.Status, outcome.Message, outcome.Errors);
+        });
+
+        api.MapPost("/plugins/{id}/pages/{pageId}/events", async (string id, string pageId, HttpContext context) =>
+        {
+            if (Unauthorized(context, config) is { } denied) return denied;
+            if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            if (await ReadPageRequestAsync(context).ConfigureAwait(false) is not { } body ||
+                body["event"] is not JsonObject e || PageString(e["kind"]) is not { } kind || PageString(e["element"]) is not { } element)
+                return Results.BadRequest(new { error = "invalid_request", message = "请求内容无效。" });
+
+            var outcome = await PluginDashboard.EventAsync(plugin, pageId, ReadState(body["state"]),
+                new PluginPageEvent(kind, element, PageString(e["action"]), PageString(e["item"]), e["values"] as JsonObject),
+                context.RequestAborted).ConfigureAwait(false);
+            return EventResponse(outcome);
         });
 
         api.MapPost("/plugins/{id}/pages/{pageId}/upload", async (string id, string pageId, HttpContext context) =>
@@ -120,12 +68,15 @@ internal sealed partial class HostHttpServer
             if (Unauthorized(context, config) is { } denied) return denied;
             if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
                 return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-            var outcome = await PluginDashboard.UploadAsync(plugin, pageId, context.Request.Query["name"].ToString(),
-                context.Request.ContentType ?? "application/octet-stream", context.Request.Body, context.Request.ContentLength,
-                context.RequestAborted).ConfigureAwait(false);
-            if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message);
-            var result = outcome.Value!;
-            return Results.Ok(new { ok = result.Ok, message = result.Message, refresh = result.Refresh, title = result.Title, details = result.Details });
+            var query = context.Request.Query;
+            JsonNode? state;
+            try { state = query.TryGetValue("state", out var raw) && raw.ToString().Length > 0 ? JsonNode.Parse(raw.ToString()) : null; }
+            catch (JsonException) { return Results.BadRequest(new { error = "invalid_request", message = "状态无效。" }); }
+
+            var outcome = await PluginDashboard.UploadAsync(plugin, pageId, ReadState(state), query["element"].ToString(),
+                query["name"].ToString(), context.Request.ContentType ?? "application/octet-stream", context.Request.Body,
+                context.Request.ContentLength, context.RequestAborted).ConfigureAwait(false);
+            return EventResponse(outcome);
         });
 
         api.MapGet("/plugins/{id}/pages/{pageId}/files", async (string id, string pageId, HttpContext context) =>
@@ -138,7 +89,7 @@ internal sealed partial class HostHttpServer
                 return Results.BadRequest(new { error = "file_required", message = "缺少文件 ID。" });
 
             var outcome = await PluginDashboard.OpenFileAsync(plugin, pageId, fileId, context.RequestAborted).ConfigureAwait(false);
-            if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message);
+            if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message, null);
             var file = outcome.Value!;
             // 文件随条目变化很少；短时间缓存，切换页面时不必重新读取。
             context.Response.Headers.CacheControl = "private, max-age=300";
@@ -147,16 +98,74 @@ internal sealed partial class HostHttpServer
         });
     }
 
+    private static IResult EventResponse(PluginPageOutcome<PluginPageEventResponse> outcome)
+    {
+        if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message, outcome.Errors);
+        var (result, state, view) = outcome.Value!;
+        var json = new JsonObject
+        {
+            ["result"] = new JsonObject
+            {
+                ["ok"] = result.Ok,
+                ["message"] = result.Message,
+                ["details_title"] = result.DetailsTitle,
+                ["details"] = result.Details,
+                ["open_page"] = result.OpenPageId is null ? null : new JsonObject
+                {
+                    ["id"] = result.OpenPageId, ["state"] = StateJson(result.OpenPageState ?? new Dictionary<string, string>())
+                },
+                ["open_form"] = result.OpenFormId is null ? null : new JsonObject
+                {
+                    ["id"] = result.OpenFormId, ["values"] = result.OpenFormValues?.DeepClone()
+                }
+            },
+            ["state"] = StateJson(state),
+            ["view"] = view
+        };
+        return Results.Text(json.ToJsonString(), "application/json; charset=utf-8");
+    }
+
+    /// <summary>读取页面请求的 JSON，超过大小限制或格式错误时为 null。</summary>
+    private static async Task<JsonObject?> ReadPageRequestAsync(HttpContext context)
+    {
+        if (context.Request.ContentLength > MaxPageRequestBytes) return null;
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16384];
+        int read;
+        while ((read = await context.Request.Body.ReadAsync(chunk, context.RequestAborted).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > MaxPageRequestBytes) return null;
+            buffer.Write(chunk, 0, read);
+        }
+        if (buffer.Length == 0) return new JsonObject();
+        try { return JsonNode.Parse(buffer.ToArray()) as JsonObject; }
+        catch (JsonException) { return null; }
+    }
+
+    private static string? PageString(JsonNode? value) =>
+        value?.GetValueKind() == JsonValueKind.String ? value.GetValue<string>() : null;
+
+    private static Dictionary<string, string> ReadState(JsonNode? state) =>
+        PluginDashboard.CleanState((state as JsonObject)?.Select(pair =>
+            new KeyValuePair<string, string?>(pair.Key, pair.Value?.GetValueKind() == JsonValueKind.String
+                ? pair.Value.GetValue<string>()
+                : pair.Value?.ToJsonString())));
+
+    private static JsonObject StateJson(IReadOnlyDictionary<string, string> state) =>
+        new(state.Select(pair => new KeyValuePair<string, JsonNode?>(pair.Key, pair.Value)));
+
     private static IResult? Unauthorized(HttpContext context, ApiHostConfig config) =>
         IsBearerAuthorized(context, config)
             ? null
             : Results.Json(new ApiError("unauthorized", "A Bearer API key is required."), statusCode: StatusCodes.Status401Unauthorized);
 
-    private static IResult PageFailure(PluginPageStatus status, string message) => status switch
+    private static IResult PageFailure(PluginPageStatus status, string message, IReadOnlyDictionary<string, string>? errors) => status switch
     {
+        PluginPageStatus.InvalidForm => Results.BadRequest(new { error = "invalid_form", message, fields = errors }),
         PluginPageStatus.InvalidUpload => Results.BadRequest(new { error = "invalid_upload", message }),
         PluginPageStatus.UploadTooLarge => Results.Json(new { error = "upload_too_large", message }, statusCode: StatusCodes.Status413PayloadTooLarge),
         PluginPageStatus.NotFound => Results.NotFound(new { error = "page_not_found", message }),
+        PluginPageStatus.Stale => Results.Conflict(new { error = "page_changed", message }),
         PluginPageStatus.Unloading => Results.Conflict(new { error = "plugin_unloading", message }),
         _ => Results.Json(new { error = "page_failed", message }, statusCode: StatusCodes.Status500InternalServerError)
     };

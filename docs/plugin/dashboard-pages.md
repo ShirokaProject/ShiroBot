@@ -2,142 +2,253 @@
 
 需要宿主 1.0.3（SDK ABI 1.4.0.0）。
 
-插件配置适合开关、数字和列表这类设置。浏览和管理插件的数据（例如表情库、订阅列表、统计）放不进配置，可以给插件加 **Dashboard 页面**：插件实现 `IPluginDashboardProvider`，Dashboard 在插件的“配置”窗口中显示专用的“插件页面”区域，用通用组件把数据渲染成卡片、表格、列表或统计数字。
+插件配置适合开关、数字和列表这类设置。浏览和管理数据（表情库、订阅列表）、按群编辑规则、看统计这类界面放不进配置，可以给插件加 **Dashboard 页面**。
 
-- Dashboard 不加载插件的 HTML 或脚本，所有页面外观一致。
-- 数据、操作和图片都经过宿主已鉴权的 API，由宿主在进程内调用插件。插件**不需要开放网页路由，也不需要自己做鉴权**。
-- 配置窗口左侧按“配置 → 插件页面 → 路由与监听”分成三个区块，用分隔线隔开；完整配置页保持同样布局。
-- 页面描述不属于配置 schema，不伪装成配置分组。选中插件页面时不显示配置保存按钮，页面操作直接走页面 API；切回配置分组时保留未保存的配置草稿。
+- 插件用 C# 描述页面由哪些组件组成：文本、指标、表格、图片网格、表单、按钮、标签页等。Dashboard 用自己的组件渲染，**不运行插件的 HTML 或脚本**，外观、深色模式和手机布局与 Dashboard 一致。
+- 按钮、表单、翻页和筛选都由宿主转给插件的处理函数，数据和图片也经过宿主已鉴权的 API。插件**不需要开放网页路由，也不需要自己做鉴权**。
+- 页面通过 `Context.Dashboard` 注册，不需要实现任何接口；随插件卸载自动注销，也可以随配置随时增减。
+- 页面显示在插件配置窗口的“插件页面”区块，和配置分开，没有保存按钮。
 
-## 示例
+## 快速上手
+
+一个表情库页面：搜索、按情绪筛选、分页显示图片，每张图可以删除，还能上传新表情。
 
 ```csharp
 using ShiroBot.SDK.Dashboard;
-using ShiroBot.SDK.Plugin;
 
-[BotPlugin("notes", Name = "笔记")]
-public sealed class NotesPlugin : PluginBase, IPluginDashboardProvider
+protected override Task LoadAsync()
 {
-    public IReadOnlyList<DashboardPage> Pages { get; } =
-    [
-        new("notes", "笔记", DashboardPageKinds.Table, Icon: "sticky_note_2",
-            Description: "所有群里记下的笔记。",
-            Columns: [new("group", "群"), new("author", "作者"), new("time", "时间")],
-            Filters: [new("q", "搜索")],
-            Actions: [new("delete", "删除", Confirm: "确定删除这条笔记？", Tone: "danger")])
-    ];
-
-    public async Task<DashboardPageData> QueryAsync(string pageId, DashboardQuery query, CancellationToken ct)
-    {
-        var (notes, total) = await _store.SearchAsync(query.Filter("q"), query.Page, query.PageSize, ct);
-        return new DashboardPageData(
-            notes.Select(note => new DashboardItem(note.Id, note.Text,
-                Values: new Dictionary<string, string>
-                {
-                    ["group"] = note.GroupName, ["author"] = note.Author, ["time"] = note.Time.ToString("g")
-                },
-                Actions: ["delete"])).ToList(),
-            Total: total,
-            HasMore: query.Page * query.PageSize < total);
-    }
-
-    public Task<DashboardItem?> GetItemAsync(string pageId, string itemId, CancellationToken ct) =>
-        _store.FindDashboardItemAsync(itemId, ct); // 返回当前条目及其支持的 Actions；不存在时返回 null
-
-    public async Task<PluginActionResult> RunActionAsync(string pageId, string actionId, string itemId, CancellationToken ct)
-    {
-        var removed = await _store.RemoveAsync(itemId, ct);
-        return new PluginActionResult(removed, removed ? "已删除" : "笔记不存在", Refresh: true);
-    }
+    Context.Dashboard.AddPage("library", "表情库", RenderLibraryAsync,
+        icon: "photo_library", files: OpenImageAsync);
+    return Task.CompletedTask;
 }
-```
 
-## 页面
+private async Task<UiNode> RenderLibraryAsync(DashboardContext page, CancellationToken ct)
+{
+    var query = page.Filter("q");
+    var emotion = page.Filter("emotion");
+    var (memes, total) = await _store.SearchAsync(query, emotion, page.Page(), pageSize: 24, ct);
 
-`Pages` 每次打开插件时读取，可以随配置变化。
+    return Ui.Column(
+        Ui.Filters(
+            Ui.Input("q", "搜索"),
+            Ui.Select("emotion", "情绪", [("happy", "开心"), ("sad", "难过"), ("daily", "日常")])),
+        Ui.Gallery(memes, meme => new UiCard(meme.Id, meme.Caption,
+                Image: meme.Id, Description: string.Join(" · ", meme.Emotions), Tags: meme.Tags))
+            .Action("delete", "删除", DeleteAsync, confirm: "确定删除这个表情？", danger: true),
+        Ui.Pager(total, pageSize: 24),
+        Ui.Upload("import", "上传表情", ImportAsync, accept: ["image/*"], maxBytes: 5_000_000));
+}
 
-| 字段 | 说明 |
-| --- | --- |
-| `Id` / `Title` | 页面 ID（插件内唯一）和导航里的标题 |
-| `Kind` | `DashboardPageKinds` 之一：`Gallery` 卡片网格（适合图片）、`Table` 表格、`List` 列表、`Stats` 统计数字 |
-| `Icon` | Material Symbols 图标名，例如 `photo_library` |
-| `Description` | 页面顶部的说明 |
-| `Order` | 导航顺序，小的在前 |
-| `Columns` | 表格的列，值取条目的 `Values` |
-| `Filters` | 筛选项：`text` 文本输入，`select` 下拉选择（`Options`） |
-| `PageSize` | 每页数量，默认 24；0 表示不分页 |
-| `Actions` | 条目上的操作：`Confirm` 执行前的确认提示，`Tone` 为 `danger` 时显示为危险操作 |
-| `Upload` | 可选文件上传能力，通过属性初始化器声明；为空时不显示按钮，也不允许上传 |
+private async Task<DashboardResult> DeleteAsync(Meme meme, DashboardEvent e, CancellationToken ct) =>
+    await _store.RemoveAsync(meme.Id, ct) ? DashboardResult.Done("已删除") : DashboardResult.Error("表情不存在");
 
-## 数据
-
-`QueryAsync` 收到 `DashboardQuery`：`Page` 从 1 开始，`PageSize` 不超过 100，`Filters` 只包含页面声明过、而且非空的筛选值，用 `query.Filter("q")` 读取。
-
-返回 `DashboardPageData`：
-
-| 字段 | 说明 |
-| --- | --- |
-| `Items` | 当前页的条目 |
-| `Total` | 总数；不知道时留空 |
-| `HasMore` | 是否还有下一页 |
-| `Metrics` | 统计页的数字：`Label`、`Value`、`Hint` |
-
-`DashboardItem` 的 `Title`、`Description`、`Tags`、`Meta` 在卡片和列表里显示；`Values` 是表格各列的值；`Actions` 是这个条目支持的操作 ID；`ImageFileId` 见下文。
-
-## 操作
-
-声明操作的插件必须实现 `GetItemAsync(pageId, itemId, ct)`，返回当前条目（包括 `Actions`）；默认返回 null，拒绝操作。宿主按 ID 检查条目存在、ID 一致，并支持该操作，不扫描分页数据。检查与执行之间数据仍可能变化，插件应在存储操作中再次验证条目状态。
-
-`RunActionAsync` 只会收到页面上声明过、而且条目支持的操作，`itemId` 是条目 ID。返回的 `PluginActionResult` 和[插件操作](./actions)相同：`Message` 提示给用户，`Refresh` 为 true 时重新读取数据，`Details` 在居中的对话框里显示较长的内容。
-
-## 图片和文件
-
-条目的 `ImageFileId` 不为空时，Dashboard 调用 `OpenFileAsync` 读取图片：
-
-```csharp
-public Task<DashboardFile?> OpenFileAsync(string pageId, string fileId, CancellationToken ct) =>
+private Task<DashboardFile?> OpenImageAsync(string fileId, CancellationToken ct) =>
     Task.FromResult(_store.Find(fileId) is { } meme ? DashboardFile.FromPath(meme.FilePath, meme.Mime) : null);
 ```
 
-`DashboardFile.FromPath` 交出磁盘上的文件，`FromBytes` 交出内存中的内容。宿主在插件调用结束前打开文件流（允许删除共享），或复制内存内容，响应结束时释放流。插件热卸载删除文件后，已经打开的响应仍可读完。
+## 复杂一点的页面
 
-## 文件上传
-
-在页面上声明 `Upload`，配置窗口中的对应插件页面会显示上传按钮，支持多选、逐个处理和取消：
+按群设置规则：用标签页分开“规则”和“新建”，规则表格里每行可以编辑和删除，顶部显示统计。
 
 ```csharp
-new DashboardPage("library", "表情库", DashboardPageKinds.Gallery)
+Context.Dashboard.AddPage("rules", "群规则", async (page, ct) =>
 {
-    Upload = new DashboardUpload("上传图片", ["image/png", "image/jpeg", "image/gif", "image/webp"],
-        MaxBytes: 5_000_000, Description: "上传后自动去重并刷新表情库。")
-};
+    var rules = await _rules.ListAsync(ct);
+    return Ui.Column(
+        Ui.Row(
+            Ui.Metric("已设置的群", rules.Count.ToString()),
+            Ui.Metric("关闭采集", rules.Count(rule => !rule.Collect).ToString(), hint: "这些群不会自动收表情")),
+        Ui.Tabs("view",
+            Ui.Tab("list", "规则",
+                Ui.Table(rules, rule => rule.Id)
+                    .Column("群", rule => rule.GroupName)
+                    .Column("自动采集", rule => rule.Collect ? "开" : "关")
+                    .Column("冷却", rule => $"{rule.Cooldown} 秒")
+                    .Action("edit", "编辑", (rule, e, ct) => Task.FromResult(DashboardResult.OpenForm("edit", rule)))
+                    .Action("delete", "删除", DeleteRuleAsync, confirm: "确定删除这条规则？", danger: true),
+                Ui.Empty("还没有单独设置的群。", when: rules.Count == 0)),
+            Ui.Tab("create", "新建",
+                Ui.Form<GroupRule>("create").Submit("保存", SaveRuleAsync))),
+        Ui.Form<GroupRule>("edit").AsDialog().Submit("保存", SaveRuleAsync));
+}, icon: "rule");
+
+[PluginJson]
+public sealed record GroupRule(
+    [property: Description("群"), UiField(Kind = UiFieldKind.Group)] string GroupId,
+    [property: Description("自动采集")] bool Collect = true,
+    [property: Description("冷却（秒）"), Range(0, 3600)] int Cooldown = 45);
+
+private async Task<DashboardResult> SaveRuleAsync(GroupRule rule, DashboardEvent e, CancellationToken ct)
+{
+    await _rules.SaveAsync(rule, ct);
+    return DashboardResult.Done("已保存").SwitchTab("view", "list");
+}
 ```
 
-插件实现 `UploadAsync(string pageId, DashboardUploadFile file, CancellationToken ct)`。
-`file.FileName` 是显示用的文件名，`ContentType` 是客户端声明的 MIME，`Content` 是宿主读取的文件字节。
-插件应按真实内容识别格式，用自己生成的文件名保存，不使用上传文件名作为磁盘路径。
+`Ui.Form<GroupRule>()` 按 record 生成表单：字段类型、默认值、`[Description]` 说明、`[Range]` 范围、必填都取自 record，群和好友字段用 Dashboard 现有的选择器。提交时宿主先校验，再把读好的 `GroupRule` 交给处理函数。需要更灵活的表单时也可以逐个声明字段，见[表单](#表单)。
 
-宿主统一做 Bearer 鉴权、声明检查和流式大小限制，单文件最多 20,000,000 字节，页面可设置更小的上限。
-未声明 `Upload` 的页面拒绝上传，空文件和不支持的 MIME 返回 400，超限返回 413；插件默认实现也拒绝上传。
-接收文件和调用插件都在插件调用保护范围内，支持请求取消和热卸载等待。
+## 多个页面
 
-返回 `PluginActionResult`：`Ok` 和 `Message` 提示处理结果，`Refresh = true` 表示入库后需要刷新数据。
-前端多文件按顺序发送，不把图片写进 `config.toml`，也不依赖配置保存按钮。上传完成后清空筛选并返回第一页。
+每调用一次 `AddPage` 就多一个页面，各自有自己的渲染函数、状态和文件读取，互不影响。插件配置窗口的“插件页面”区块按 `order` 列出所有页面：
+
+```csharp
+protected override Task LoadAsync()
+{
+    Context.Dashboard.AddPage("library", "表情库", RenderLibraryAsync, icon: "photo_library", order: 10, files: OpenImageAsync);
+    Context.Dashboard.AddPage("rules", "群规则", RenderRulesAsync, icon: "rule", order: 20);
+    Context.Dashboard.AddPage("stats", "统计", RenderStatsAsync, icon: "monitoring", order: 30);
+    return Task.CompletedTask;
+}
+```
+
+页面多了以后，可以把每个页面写成单独的类，在 `LoadAsync` 里注册：
+
+```csharp
+internal sealed class LibraryPage(MemeStore store)
+{
+    public void Register(IPluginDashboard dashboard) =>
+        dashboard.AddPage("library", "表情库", RenderAsync, icon: "photo_library", files: OpenImageAsync);
+
+    private async Task<UiNode> RenderAsync(DashboardContext page, CancellationToken ct) { /* … */ }
+    private Task<DashboardFile?> OpenImageAsync(string fileId, CancellationToken ct) { /* … */ }
+}
+
+// LoadAsync 里
+new LibraryPage(_store).Register(Context.Dashboard);
+new RulesPage(_rules).Register(Context.Dashboard);
+```
+
+- **页面之间跳转**：处理结果用 `.OpenPage("rules")` 打开另一个页面，可以带上筛选值，例如 `.OpenPage("library", ("q", "猫"))`；内容里也可以放 `Ui.Link("查看规则", page: "rules")`。
+- **按需出现**：页面可以随配置增减，例如开启 AI 标注时才注册“标注统计”页，关闭时 `Dispose`。
+- **一个页面里的分区**：内容不多、彼此相关的，用 `Ui.Tabs` 放在同一个页面里；相对独立、各自有筛选和分页的，拆成多个页面。
+
+## 页面是怎么工作的
+
+```text
+Dashboard                           宿主                              插件
+  │ 打开页面 / 翻页 / 筛选             │                                  │
+  ├──── 状态（筛选值、页码、标签页）──→ │ ── 调用页面的渲染函数 ─────────→ │ 读数据，返回组件树
+  │ ←────────── 组件树（JSON）──────── │ ←──────────────────────────────── │
+  │                                   │                                  │
+  │ 点按钮 / 提交表单 / 上传           │                                  │
+  ├──── 状态 + 事件（元素 ID、条目、表单值）→│ 用同样的状态再渲染一次，      │
+  │                                   │ 按 ID 找到元素和处理函数          │
+  │                                   │ 检查条目、表单值、文件 ─────────→ │ 处理函数
+  │ ←──── 提示 + 新的组件树 ────────── │ ←── 结果；需要时再渲染一次 ─────── │
+```
+
+- **状态在 Dashboard 这边**：筛选值、页码、当前标签页都由 Dashboard 保存，每次渲染和事件都带上。渲染函数通过 `page.Filter("q")`、`page.Page()`、`page.Tab("view")` 读取。
+- **处理函数随渲染一起声明**：按钮、行操作和表单在渲染时直接写上处理函数，不需要单独登记 ID。事件到来时，宿主用同样的状态重新渲染一次，按元素 ID 找到对应的处理函数。所以**渲染函数应只依赖状态和插件的数据**，不要依赖上一次渲染留下的东西。
+- **条目由宿主找回**：表格、图片网格、列表的操作处理函数直接收到条目对象（上例的 `Meme`、`GroupRule`），宿主从重新渲染的数据里按 key 找到它。不在当前数据里的条目（例如已被删除）不会交给插件，Dashboard 提示“内容已变化，请刷新”。
+- **一次往返**：处理函数返回后，宿主默认再渲染一次，把提示和新的组件树一起返回。
+
+## 组件
+
+组件都由静态类 `Ui` 创建，可以任意嵌套。
+
+### 布局
+
+| 组件 | 说明 |
+| --- | --- |
+| `Ui.Column(...)` | 纵向排列 |
+| `Ui.Row(...)` | 横向排列，窄屏自动换行 |
+| `Ui.Card(title, ...)` | 带标题的分组卡片 |
+| `Ui.Tabs(id, Ui.Tab(id, title, ...), ...)` | 标签页，当前标签记在状态里 |
+| `Ui.Divider()` | 分隔线 |
+
+### 内容
+
+| 组件 | 说明 |
+| --- | --- |
+| `Ui.Text(text)` / `Ui.Markdown(markdown)` | 文本；Markdown 只支持基本格式，不渲染 HTML |
+| `Ui.Notice(text, tone)` | 提示条：`info`、`success`、`warning`、`danger` |
+| `Ui.Metric(label, value, hint)` | 一个统计数字 |
+| `Ui.Image(fileId, alt)` | 图片，通过页面的 `files` 读取 |
+| `Ui.Code(text)` | 等宽文本，例如日志或配置片段 |
+| `Ui.Link(text, page:)` | 跳到插件的另一个页面；也可以用 `url:` 打开外部链接 |
+| `Ui.Empty(text, when)` | 空状态，`when` 为 false 时不显示 |
+
+### 数据
+
+| 组件 | 说明 |
+| --- | --- |
+| `Ui.Table(items, key)` | 表格；`.Column(title, value)` 声明列 |
+| `Ui.Gallery(items, card)` | 卡片网格，适合图片；`UiCard` 有标题、描述、图片、标签和次要信息 |
+| `Ui.List(items, card)` | 纵向列表，卡片字段同上 |
+| `.Action(id, label, handler, confirm, danger)` | 条目上的操作；`.When(item => …)` 只对部分条目显示 |
+| `Ui.Filters(...)` | 筛选栏：`Ui.Input`、`Ui.Select`、`Ui.Switch`，值记在状态里 |
+| `Ui.Pager(total, pageSize)` | 分页，页码记在状态里；不知道总数时用 `hasMore:` |
+
+### 交互
+
+| 组件 | 说明 |
+| --- | --- |
+| `Ui.Button(id, label, handler, confirm, danger)` | 按钮 |
+| `Ui.Form(id)` / `Ui.Form<T>(id)` | 表单，见下文 |
+| `Ui.Upload(id, label, handler, accept, maxBytes)` | 上传文件；宿主按大小限流读取，单文件上限 20 MB |
+
+## 表单
+
+逐个声明字段：
+
+```csharp
+Ui.Form("notify")
+    .Text("title", "标题", required: true, maxLength: 40)
+    .TextArea("body", "内容")
+    .Select("level", "级别", [("info", "普通"), ("urgent", "紧急")], value: "info")
+    .Groups("groups", "发送到", required: true)
+    .Switch("mention", "@全体成员")
+    .Submit("发送", async (form, e, ct) =>
+    {
+        await SendAsync(form.Get<string>("title"), form.Get<string>("body"), form.Get<string[]>("groups"), ct);
+        return DashboardResult.Done("已发送");
+    });
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `Text` / `TextArea` / `Secret` | 文本、多行文本、密码；可选 `required`、`maxLength`、`pattern` |
+| `Number` | 数字；可选 `min`、`max` |
+| `Switch` | 开关 |
+| `Select` / `MultiSelect` | 单选、多选，值必须在选项里 |
+| `Users` / `Groups` | 好友、群选择器，和配置里的一样 |
+
+宿主在调用处理函数前检查：只接受声明过的字段，类型、必填、长度、范围和选项都符合。不符合时 Dashboard 在对应字段下显示原因，不会调用插件。
+
+## 处理结果
+
+处理函数返回 `DashboardResult`：
+
+| 写法 | 说明 |
+| --- | --- |
+| `DashboardResult.Done(message)` | 成功，提示 `message` 并刷新页面 |
+| `DashboardResult.Error(message)` | 失败，提示原因，不刷新 |
+| `.WithDetails(title, text)` | 另外在居中的对话框里显示较长的内容，例如导入报告 |
+| `.SwitchTab(tabsId, tabId)` | 切换到某个标签页 |
+| `.OpenPage(pageId, filters…)` | 打开插件的另一个页面，可以带上筛选值 |
+| `.NoRefresh()` | 不重新渲染 |
+| `DashboardResult.OpenForm(formId, value)` | 打开表单并填好值，用于“编辑” |
+
+## 文件和图片
+
+`AddPage` 的 `files` 参数读取页面里引用的文件：`Ui.Image`、`UiCard.Image` 里的文件 ID 都通过它读取。
+
+- `DashboardFile.FromPath` 交出磁盘上的文件，`FromBytes` 交出内存中的内容。
+- 宿主在插件调用结束前打开独立的文件流或复制字节；响应期间不保留插件对象，不影响插件热更新。
+
+## 生命周期
+
+- `AddPage` 返回 `IDisposable`，页面登记在插件的生命周期上，卸载时自动注销。
+- 可以随配置增减页面，例如开启 AI 标注时才 `AddPage("tagging", …)`，关闭时 `Dispose`。Dashboard 下次打开插件时就能看到变化。
+- 页面 ID 在插件内唯一，重复注册会抛出异常。
 
 ## 出错时
 
-- 插件抛出异常时，Dashboard 显示失败原因，不影响宿主和其他插件。
+- 渲染函数或处理函数抛出异常时，Dashboard 显示失败原因，不影响宿主和其他插件。
 - 插件正在卸载时，页面提示稍后再试。
-- 找不到页面、操作或文件时，Dashboard 显示“未找到”。
+- 事件找不到对应的元素或条目（页面已经变化）时，Dashboard 提示刷新。
 
-## API
+## 以后：自定义网页
 
-Dashboard 通过以下接口访问页面，都需要 API 密钥，也可以用于自己的工具：
-
-| 接口 | 说明 |
-| --- | --- |
-| `GET /api/v1/plugins/{id}/pages` | 页面列表 |
-| `GET /api/v1/plugins/{id}/pages/{page}/data?page=1&page_size=24&筛选项=值` | 一页数据 |
-| `POST /api/v1/plugins/{id}/pages/{page}/actions/{action}?item=条目ID` | 执行操作 |
-| `GET /api/v1/plugins/{id}/pages/{page}/files?id=文件ID` | 读取文件 |
-| `POST /api/v1/plugins/{id}/pages/{page}/upload?name=文件名` | 上传一个文件，正文为原始二进制字节，Content-Type 为文件 MIME；无需 multipart |
+组件表达不了的界面（拖拽排版、画布编辑器、实时预览）以后可以考虑 `AddWebPage`：插件自带的前端文件打包在 DLL 里，由宿主经鉴权接口提供，在不允许同源的沙箱 iframe 里运行，通过桥接脚本调用插件的处理函数。目前不提供，有实际需要时再加。
