@@ -29,7 +29,10 @@ internal sealed partial class HostHttpServer
                 pages = PluginDashboard.List(plugin).Select(page => new
                 {
                     id = page.Id, title = page.Title, icon = page.Icon, description = page.Description,
-                    kind = page.Web is null ? null : "web"
+                    kind = page.Web is null ? null : "web",
+                    // Dashboard 在网页之外弹出确认框，并按 strict_dom 给网页加上 Trusted Types 策略。
+                    confirmations = page.Web is null ? null : page.WebConfirmations,
+                    strict_dom = page.Web is null ? (bool?)null : page.Web.StrictDom
                 })
             });
         });

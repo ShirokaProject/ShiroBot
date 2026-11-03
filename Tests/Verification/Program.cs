@@ -99,6 +99,7 @@ if (args is ["--plugin-actions"])
 if (args is ["--plugin-web-pages"])
 {
     await PluginWebPageVerification.RunAsync();
+    await PluginWebSafetyVerification.RunAsync();
     return;
 }
 
@@ -203,6 +204,7 @@ await PluginPriorityVerification.RunAsync();
 await PluginActionsVerification.RunAsync();
 await PluginDashboardVerification.RunAsync();
 await PluginWebPageVerification.RunAsync();
+await PluginWebSafetyVerification.RunAsync();
 await ContactDirectoryVerification.RunAsync();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();

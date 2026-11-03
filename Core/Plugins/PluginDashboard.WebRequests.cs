@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Json;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using ShiroBot.SDK.Dashboard;
 
@@ -41,7 +43,7 @@ internal static partial class PluginDashboard
             var ct = stopping.Token;
             ct.ThrowIfCancellationRequested();
             var response = new WebResponseFeature();
-            var isolated = new DefaultHttpContext { RequestServices = http.RequestServices, RequestAborted = ct };
+            var isolated = new DefaultHttpContext { RequestServices = new WebRequestServices(http.RequestServices), RequestAborted = ct };
             isolated.Features.Set<IHttpResponseFeature>(response);
             isolated.Features.Set<IFormFeature>(new FormFeature(isolated.Request, new FormOptions
             {
@@ -93,6 +95,29 @@ internal static partial class PluginDashboard
         !name.StartsWith("X-Forwarded-", StringComparison.OrdinalIgnoreCase) &&
         !name.Contains("Auth", StringComparison.OrdinalIgnoreCase) && !name.Contains("Token", StringComparison.OrdinalIgnoreCase) &&
         !name.Contains("Key", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 插件处理请求时使用的服务。JSON 选项每次请求新建并使用独立的类型缓存：宿主共用的 JsonOptions 会按反射一直缓存
+    /// 插件的类型，插件用过 ReadFromJsonAsync 或 Results.Json 后就再也无法卸载。这样处理后只剩 System.Text.Json
+    /// 内部几秒后过期的反射缓存；推荐插件用 DashboardWebJson 和 [PluginJson]，完全不经过反射。
+    /// </summary>
+    private sealed class WebRequestServices(IServiceProvider inner) : IServiceProvider
+    {
+        private IOptions<JsonOptions>? _json;
+
+        public object? GetService(Type serviceType) => serviceType == typeof(IOptions<JsonOptions>)
+            ? _json ??= Options.Create(CreateJsonOptions())
+            : inner.GetService(serviceType);
+
+        private static JsonOptions CreateJsonOptions()
+        {
+            var options = new JsonOptions();
+            // System.Text.Json 让设置相同的选项共用一份全局类型缓存，宿主自己的 JsonOptions 会让它一直存活；
+            // 换成新的解析器实例，这份选项就有独立的缓存，请求结束后随选项一起回收。
+            options.SerializerOptions.TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver();
+            return options;
+        }
+    }
 
     // DefaultHttpContext has no server to run completion callbacks. Multipart temp files
     // and Results.Stream registrations must still be disposed before plugin dispatch ends.

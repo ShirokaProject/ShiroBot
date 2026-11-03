@@ -11,6 +11,7 @@
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/InteropContractProbe/ShiroBot.InteropContractProbe.csproj" />
+    <Project Path="Tests/WebJsonPluginProbe/ShiroBot.WebJsonPluginProbe.csproj" />
     <Project Path="Tests/Verification/ShiroBot.Verification.csproj" />
   </Folder>
   <Folder Name="/Templates/">

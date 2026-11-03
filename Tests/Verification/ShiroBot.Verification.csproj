@@ -16,6 +16,8 @@
     <!-- 示例插件只复制 DLL 供 PluginInteropVerification 加载到可回收 ALC，测试代码不引用它们的类型。 -->
     <ProjectReference Include="../../Templates/Examples/PluginInterop/Greeter/ShiroBot.Samples.Greeter.csproj" />
     <ProjectReference Include="../InteropContractProbe/ShiroBot.InteropContractProbe.csproj" />
+    <!-- 只复制 DLL 供 PluginWebJsonVerification 加载到可回收 ALC，测试代码不引用它的类型。 -->
+    <ProjectReference Include="../WebJsonPluginProbe/ShiroBot.WebJsonPluginProbe.csproj" />
     <ProjectReference Include="../../Templates/Examples/PluginInterop/GreeterClient/ShiroBot.Samples.GreeterClient.csproj" />
     <None Include="../AbiFixtures/frozen/**/*.dll" Link="fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

@@ -37,6 +37,7 @@
 - 新增插件自定义网页 `AddWebPage`：插件 DLL 内嵌自包含 HTML，Dashboard 用沙箱 iframe 展示，通过已鉴权、限定当前页面的桥接调用插件和读取资源。
 
 - 自定义网页桥接新增通用 `request()`：支持文件及 multipart 上传、二进制和流式下载、Range、HTTP 状态码及取消，插件以 `RequestAsync` 定义页面内业务路由。
+- 自定义网页的 JSON 用 `DashboardWebJson` 读写，不影响插件热重载；危险操作可声明为由 Dashboard 确认，可选 `StrictDom` 严格 DOM 模式防止注入。
 
 ### 升级说明
 

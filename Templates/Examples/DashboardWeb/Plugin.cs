@@ -26,14 +26,15 @@ public sealed class WebDemo : PluginBase
         {
             var form = await request.ReadFormAsync(ct);
             if (form.Files.GetFile("file") is not { } file)
-                return Results.BadRequest(new { error = "请选择文件。" });
+                return DashboardWebJson.Json(new JsonObject { ["error"] = "请选择文件。" }, StatusCodes.Status400BadRequest);
             // ASP.NET buffers multipart uploads to disk above its memory threshold.
             // The result stream is sent and disposed before the upload buffer is cleaned up.
             return Results.Stream(file.OpenReadStream(), file.ContentType, fileDownloadName: Path.GetFileName(file.FileName));
         }
         if (request.Method is "GET" or "HEAD" && request.Path == "/sample.bin")
             return Results.File(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 }, "application/octet-stream", enableRangeProcessing: true);
-        return Results.NotFound(new { error = "路由不存在。" });
+        // JSON 用 DashboardWebJson：JsonNode 或标了 [PluginJson] 的类型，不经过反射序列化，插件可以正常热重载。
+        return DashboardWebJson.Json(new JsonObject { ["error"] = "路由不存在。" }, StatusCodes.Status404NotFound);
     }
 
     private static Task<JsonNode?> HandleAsync(string action, JsonNode? args, CancellationToken ct)

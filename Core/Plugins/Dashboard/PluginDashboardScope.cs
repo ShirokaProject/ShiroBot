@@ -13,7 +13,8 @@ internal sealed record DashboardPageRegistration(
     int Order,
     Func<DashboardContext, CancellationToken, Task<UiNode>> Render,
     Func<string, CancellationToken, Task<DashboardFile?>>? Files,
-    DashboardWebPage? Web = null);
+    DashboardWebPage? Web = null,
+    IReadOnlyDictionary<string, string>? WebConfirmations = null);
 
 /// <summary>
 /// 一个插件的 <see cref="IPluginDashboard"/>：页面登记在插件的生命周期上，卸载时注销；
@@ -29,7 +30,31 @@ internal sealed class PluginDashboardScope(PluginInvoker invoke, PluginLifetimeS
     {
         ArgumentNullException.ThrowIfNull(page);
         return Register(new DashboardPageRegistration(id, title, page.Icon, page.Description, page.Order,
-            (_, _) => Task.FromResult<UiNode>(Ui.Column()), null, page));
+            (_, _) => Task.FromResult<UiNode>(Ui.Column()), null, page, ValidateConfirmations(page.Confirmations)));
+    }
+
+    private static readonly string[] WebMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+
+    /// <summary>检查并复制需要确认的操作；注册后插件再修改原字典不影响宿主。</summary>
+    private static Dictionary<string, string> ValidateConfirmations(IReadOnlyDictionary<string, string>? confirmations)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (confirmations is null) return result;
+        if (confirmations.Count > 64) throw new ArgumentException("一个网页最多声明 64 个需要确认的操作。", nameof(confirmations));
+        foreach (var (key, message) in confirmations)
+        {
+            if (string.IsNullOrWhiteSpace(message) || message.Length > 200 || message.Any(char.IsControl))
+                throw new ArgumentException($"操作 {key} 的确认提示应为 1 到 200 个字符。", nameof(confirmations));
+            var space = key.IndexOf(' ');
+            var valid = space < 0
+                ? key.Length is > 0 and <= 100 && !key.Any(c => char.IsControl(c) || char.IsWhiteSpace(c))
+                : WebMethods.Contains(key[..space]) && key[(space + 1)..] is { Length: > 0 and <= 512 } path &&
+                  path.StartsWith('/') && PluginDashboard.TryWebTarget(path, out _, out var query) && !query.HasValue;
+            if (!valid)
+                throw new ArgumentException($"需要确认的操作 {key} 无效：应为 action 名，或 \"DELETE /路径\" 这样的大写 HTTP 方法加页面内路径。", nameof(confirmations));
+            result[key] = message;
+        }
+        return result;
     }
 
     public IDisposable AddPage(string id, string title, Func<DashboardContext, CancellationToken, Task<UiNode>> render,
@@ -39,7 +64,7 @@ internal sealed class PluginDashboardScope(PluginInvoker invoke, PluginLifetimeS
 
     private IDisposable Register(DashboardPageRegistration page)
     {
-        var (id, title, _, _, _, render, _, _) = page;
+        var (id, title, _, _, _, render, _, _, _) = page;
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentNullException.ThrowIfNull(render);

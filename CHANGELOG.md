@@ -43,6 +43,8 @@
 - 新增 `AddWebPage` 与 `DashboardWebPage`，从插件 DLL 的嵌入资源加载自包含 HTML。
 - Dashboard 使用独立来源的沙箱 iframe，通过页面专用桥接调用处理函数和读取资源；所有请求经宿主 Bearer 鉴权，API 密钥保留在父页面。
 - 资源路径、请求与响应大小受限；页面刷新和插件卸载会取消请求。提供可运行示例及集成测试。
+- `DashboardWebJson` 用 `[PluginJson]` 生成的读写代码或 `JsonNode` 读写请求和响应，不经过反射，插件可以正常热重载；宿主每次请求为插件新建 ASP.NET JSON 选项，`ReadFromJsonAsync`、`Results.Json` 不再让插件程序集一直无法释放。
+- `Confirmations` 声明需要确认的操作，由 Dashboard 在网页之外弹出确认框，网页脚本无法跳过；`StrictDom` 启用 Trusted Types，阻止字符串写入 HTML 注入点。桥接脚本启动后移除自身，网页脚本读不到会话 nonce。
 
 #### Docker 中直接更新主程序
 

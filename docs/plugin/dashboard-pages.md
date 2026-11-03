@@ -296,7 +296,7 @@ Context.Dashboard.AddWebPage("editor", "编辑器",
     });
 ```
 
-`DashboardWebPage` 的 `EntryPoint` 默认为 `index.html`，还可设置 `Icon`、`Description`、`Order`、JSON 操作 `HandleAsync` 和通用 HTTP 入口 `RequestAsync`。页面 ID 与组件页面共用唯一性规则；返回的注册对象可提前 `Dispose`，插件卸载时自动注销。
+`DashboardWebPage` 的 `EntryPoint` 默认为 `index.html`，还可设置 `Icon`、`Description`、`Order`、JSON 操作 `HandleAsync`、通用 HTTP 入口 `RequestAsync`，以及防注入用的 `Confirmations` 和 `StrictDom`（见[防止注入](#防止注入)）。页面 ID 与组件页面共用唯一性规则；返回的注册对象可提前 `Dispose`，插件卸载时自动注销。
 
 ### 网页桥接
 
@@ -339,6 +339,7 @@ window.ShiroBotDashboard.revokeAssetUrl(url);
 插件通过 `RequestAsync` 接收页面内的 HTTP 请求。使用标准 ASP.NET `HttpRequest` 读取路径、方法、查询参数、请求头和请求体，返回 `IResult`：
 
 ```csharp
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http;
 
 Context.Dashboard.AddWebPage("files", "文件管理",
@@ -350,10 +351,10 @@ Context.Dashboard.AddWebPage("files", "文件管理",
             {
                 var form = await request.ReadFormAsync(ct);
                 if (form.Files.GetFile("image") is not { } file)
-                    return Results.BadRequest(new { error = "缺少图片。" });
+                    return DashboardWebJson.Json(new JsonObject { ["error"] = "缺少图片。" }, StatusCodes.Status400BadRequest);
                 // 检查文件内容和业务权限后保存；文件名仅用于显示。
                 await SaveImageAsync(file, ct);
-                return Results.Json(new { saved = true });
+                return DashboardWebJson.Json(new JsonObject { ["saved"] = true });
             }
             if (request.Method is "GET" or "HEAD" && request.Path == "/video")
                 return Results.File(videoPath, "video/mp4", enableRangeProcessing: true);
@@ -363,6 +364,22 @@ Context.Dashboard.AddWebPage("files", "文件管理",
         MaxResponseBytes = 256 * 1024 * 1024
     });
 ```
+
+#### JSON
+
+用 `DashboardWebJson` 读写 JSON。类型标上 `[PluginJson]`，读写代码在构建时生成到插件自己的程序集里，不经过反射，插件可以随时卸载和热重载；不想定义类型时用 `JsonNode`：
+
+```csharp
+[PluginJson] public sealed record RenameRequest(string Id, string Name);
+[PluginJson] public sealed record RenameResult(bool Renamed);
+
+var input = await request.ReadPluginJsonAsync<RenameRequest>(ct);   // 或 ReadJsonNodeAsync
+return DashboardWebJson.Json(new RenameResult(true));                // 或 Json(new JsonObject { ... })
+```
+
+`[PluginJson]` 支持 record、类、列表、字典、枚举和可空类型，字段名为 snake_case。ASP.NET 自带的 `ReadFromJsonAsync`、`Results.Json` 也能用：宿主每次请求给插件新建 JSON 选项，不会一直缓存插件类型，但 System.Text.Json 内部的反射缓存会在使用后几秒内仍引用插件程序集，这时卸载插件，宿主会提示程序集未释放、建议重启。
+
+#### 网页端
 
 网页以类似 `fetch` 的方式调用，路径始终相对于当前插件页面：
 
@@ -419,5 +436,29 @@ sequenceDiagram
 iframe 仅允许脚本执行，使用独立来源。API 密钥由 Dashboard 保存，网页通过绑定当前插件和页面的桥接通信。资源读取和函数调用均经过宿主 Bearer 鉴权；网页不能指定其他插件、页面或任意 API 地址。宿主只读取指定程序集资源前缀下的文件，拒绝路径穿越。
 
 网页 CSP 限制直接联网、子框架和表单提交。刷新、切换页面或卸载插件时，桥接请求会取消；iframe 导航后关闭桥接，需要用户刷新页面重新打开。第三方脚本、样式和字体应在构建时打包，远程业务数据通过插件处理函数获取。
+
+### 防止注入
+
+沙箱保护的是 Dashboard：网页拿不到 API 密钥，也访问不了其他插件和页面。但它不保护网页自己：如果网页把聊天记录、文件名、表情说明这类不可信内容当作 HTML 插入页面，混进去的脚本就能以这个页面的身份调用 `call` 和 `request`，也能通过页面跳转把页面上的数据带出去。
+
+- **显示不可信内容时转义**：用 `textContent`、`setAttribute` 或框架的默认插值（Vue 的 <code v-pre>{{ }}</code>、React 的 `{}`），不要用 `innerHTML`、`v-html`、`dangerouslySetInnerHTML` 拼接这类内容。
+- **危险操作让 Dashboard 确认**：在 `Confirmations` 里声明。网页发出这些调用时，Dashboard 先在网页之外弹出确认框，用户取消则调用失败；网页里的脚本既不能伪造也不能跳过这个确认。
+
+  ```csharp
+  new DashboardWebPage(typeof(Plugin).Assembly, "dashboard/")
+  {
+      HandleAsync = HandleAsync,
+      RequestAsync = RequestAsync,
+      Confirmations = new Dictionary<string, string>
+      {
+          ["clear"] = "清空全部表情？此操作不能撤销。",   // call("clear", …)
+          ["DELETE /memes"] = "删除这个表情？"           // DELETE /memes 和 /memes/…
+      }
+  }
+  ```
+
+  键是 `call` 的 action 名，或大写 HTTP 方法加页面内路径前缀；路径按插件收到的方式比较，即解码后不区分大小写。提示最多 200 字，一个页面最多 64 项，格式不对时注册会抛出异常。
+- **严格 DOM 模式**：`StrictDom = true` 时网页启用 Trusted Types，浏览器拒绝把字符串写进 `innerHTML`、`document.write`、`<script src>` 等位置，即使漏了转义，内容也不会变成脚本。Vue、Svelte 等框架的运行时和动态加载的 Blob 脚本会用到这些写法，确认网页在这个模式下能正常工作后再开启。Trusted Types 目前在 Chromium 系浏览器中生效。
+- 处理函数里照常校验参数和业务权限，不要假定请求一定来自自己写的页面代码。
 
 完整可运行示例位于 `Templates/Examples/DashboardWeb`。现有 `AddPage` 组件页面继续使用原有接口。
