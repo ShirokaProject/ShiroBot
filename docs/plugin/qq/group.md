@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQGroupApi>();
 if (api is null) return;
 ```
 
-取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 先检查 `Capabilities`。官方与 Milky 的 ID 都为字符串，但各自只在来源实例内有意义。入群审批传原申请对象，分页持续使用 NextCursor，即使当前页 Requests 为空。
 
@@ -256,7 +256,7 @@ Task MuteMemberAsync(
 | --- | --- | --- | --- |
 | `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
 | `userId` | `string` | `必传` | 当前实例内的用户 ID。 |
-| `duration` | `TimeSpan` | `必传` | 禁言或输入状态的持续时间；零禁言时长表示解除禁言。 |
+| `duration` | `TimeSpan` | `必传` | 禁言时长；零表示解除禁言。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回
@@ -450,7 +450,7 @@ Task SendAnnouncementAsync(
 | 参数 | C# 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
-| `content` | `string` | `必传` | 待发送的文本、Markdown 或可读媒体流，具体类型见签名。 |
+| `content` | `string` | `必传` | 公告正文。 |
 | `imageUri` | `string?` | `null` | 图片 URI，由适配器解析。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 

@@ -66,7 +66,15 @@ internal sealed class MyUserService : IUserService;
 
 ## 启动顺序
 
-宿主读取 `BotAdapterAttribute` 和 Model 依赖，实例化适配器，注入 `Config`、`Logger`，订阅 `Event.EventReceived`，然后调用 `StartAsync()`。因此可以在 `StartAsync()` 建立连接并开始接收事件。连接、鉴权或必要的初始化失败时应抛出异常；后台循环需要在 `StopAsync()` 中结束。
+```mermaid
+flowchart LR
+    M["读取元数据与 Model 依赖"] --> A["实例化适配器"]
+    A --> C["注入 Config、Logger"]
+    C --> E["订阅 EventReceived"]
+    E --> S["StartAsync：连接并接收事件"]
+```
+
+在 `StartAsync()` 中建立连接并开始接收事件。连接、鉴权或必要初始化失败时抛出异常；后台循环在 `StopAsync()` 中结束。
 
 `StartAsync()` 和 `StopAsync()` 是宿主管理的生命周期入口。适配器作者按需**重写实现**它们，插件或其他业务代码通常不应主动调用，否则可能重复建立连接或绕过宿主的加载与卸载顺序。插件通过 `PluginBase.LoadAsync()` 初始化。
 
@@ -97,7 +105,14 @@ public sealed class ExampleAdapter : IBotAdapter, ILifetimeAwareAdapter
 }
 ```
 
-停止顺序：`Lifetime.Stopping` 取消 → 适配器的 `StopAsync()` → 等待 `Run`、`SetInterval`、`SetTimeout` 结束 → 按登记的相反顺序释放 `Track` 的资源。整个过程受宿主的停止超时限制。不实现该接口的适配器行为不变。
+```mermaid
+flowchart LR
+    C["取消 Lifetime.Stopping"] --> S["调用 StopAsync"]
+    S --> W["等待后台任务和计时器结束"]
+    W --> R["逆序释放 Track 资源"]
+```
+
+宿主等待 `Run`、`SetInterval`、`SetTimeout` 结束，整个过程受停止超时限制。此作用域清理流程适用于实现 `ILifetimeAwareAdapter` 的适配器。
 
 自检能否干净卸载（不使用已有配置，以默认配置启动，并执行一次配置热重载）：
 

@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQSystemApi>();
 if (api is null) return;
 ```
 
-取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## GetUserProfileAsync
 
@@ -168,7 +168,7 @@ Task<string> GetCookiesAsync(string domain, CancellationToken cancellationToken 
 
 ### 返回
 
-`Task<string>`。返回查询到的字符串。
+`Task<string>`。返回指定域名的 Cookie。
 
 ## GetCsrfTokenAsync
 
@@ -186,7 +186,7 @@ Task<string> GetCsrfTokenAsync(CancellationToken cancellationToken = default);
 
 ### 返回
 
-`Task<string>`。返回查询到的字符串。
+`Task<string>`。返回账号 CSRF Token。
 
 ## GetLoginInfoAsync
 

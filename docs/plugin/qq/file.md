@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQFileApi>();
 if (api is null) return;
 ```
 
-取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## UploadPrivateFileAsync
 
@@ -321,7 +321,7 @@ Task DeleteGroupFolderAsync(
 
 ## PersistGroupFileAsync
 
-把群文件转存为永久文件(阻止过期)。
+将群文件转存为永久文件。
 
 ```csharp
 Task PersistGroupFileAsync(

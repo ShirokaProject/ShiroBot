@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQGroupApprovalStrategyApi>();
 if (api is null) return;
 ```
 
-取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## GetApprovalStrategiesAsync
 
@@ -53,7 +53,7 @@ Task<QApprovalStrategy> CreateApprovalStrategyAsync(
 
 ### 返回
 
-`Task<QApprovalStrategy>`。返回创建或修改后的审批策略。
+`Task<QApprovalStrategy>`。返回新建的审批策略。
 
 ## UpdateApprovalStrategyAsync
 
@@ -77,7 +77,7 @@ Task<QApprovalStrategy> UpdateApprovalStrategyAsync(
 
 ### 返回
 
-`Task<QApprovalStrategy>`。返回创建或修改后的审批策略。
+`Task<QApprovalStrategy>`。返回修改后的审批策略。
 
 ## DeleteApprovalStrategyAsync
 

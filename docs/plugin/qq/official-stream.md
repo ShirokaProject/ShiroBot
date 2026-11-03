@@ -6,7 +6,7 @@
 
 ## HasStarted
 
-当前服务状态或实现能力。
+流式回复是否已开始。
 
 ```csharp
 bool HasStarted { get; }

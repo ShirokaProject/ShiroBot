@@ -207,11 +207,11 @@ if (reactions is not null)
 
 ## 事件
 
-所有事件继承 `BotEvent`，包含 `Platform`、`SelfId` 和可选 `Raw`和 `InstanceId`：
+所有事件继承 `BotEvent`，包含 `Platform`，以及可选的 `SelfId`、`Raw` 和 `InstanceId`：
 
 | 字段 | 含义 |
 | --- | --- |
-| `Platform` | 平台类型，例如 Milky 的 qq、官方 QQ 的 qq-official |
+| `Platform` | 适配器声明的平台 ID，用于识别事件所属平台 |
 | `SelfId` | 平台机器人账号 ID，相同平台可以存在同账号的多个连接实例 |
 | `InstanceId` | 宿主运行实例 ID，由宿主转发入站事件时填写；区分相同 Platform/SelfId 的实例 |
 

@@ -7,11 +7,11 @@ var api = Context.GetAdapterExtension<IQMessageApi>();
 if (api is null) return;
 ```
 
-取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## SendMessageAsync
 
-用 QQ 原生段发送消息(LightApp、合并转发等核心模型未覆盖的内容)。
+用 QQ 原生段发送 LightApp、合并转发等消息。
 
 ```csharp
 Task<string> SendMessageAsync(

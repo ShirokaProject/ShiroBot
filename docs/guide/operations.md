@@ -38,13 +38,13 @@
 把插件 DLL 放入插件目录后，可以执行：
 
 ```text
-load HelloPlugin
+plugin load HelloPlugin
 ```
 
 使用插件 ID 卸载：
 
 ```text
-unload HelloPlugin
+plugin unload HelloPlugin
 ```
 
 宿主会先停止为插件路由新事件，等待正在执行的事件结束，再调用插件清理逻辑并尝试回收程序集加载上下文。

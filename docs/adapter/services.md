@@ -13,7 +13,7 @@
 
 ## 消息服务的输入和输出
 
-`SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments)` 接收平台无关的会话和消息段。适配器应按原顺序转换文本、@、引用、图片等段，再把协议返回的消息 ID 包装成 `SentMessage`：
+`SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken)` 接收平台无关的会话和消息段。适配器应按原顺序转换文本、@、引用、图片等段，再把协议返回的消息 ID 包装成 `SentMessage`：
 
 ```csharp
 using ShiroBot.SDK.Adapter;
@@ -22,9 +22,10 @@ using ShiroBot.SDK.Models;
 public sealed class MyMessageService : IMessageService
 {
     public async Task<SentMessage> SendMessageAsync(
-        Channel channel, IReadOnlyList<MessageSegment> segments)
+        Channel channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default)
     {
-        // 按 channel.Type 选择协议目标，按顺序转换 segments。
+        cancellationToken.ThrowIfCancellationRequested();
+        // 按 channel.Type 选择协议目标，按顺序转换 segments；协议调用应传递取消令牌。
         var protocolMessageId = await SendToProtocolAsync(channel, segments);
         return new SentMessage(protocolMessageId.ToString());
     }

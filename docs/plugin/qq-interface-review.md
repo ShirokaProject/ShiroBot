@@ -23,7 +23,7 @@ if ((groups.Capabilities & QGroupCapabilities.JoinRequests) != 0)
 
 ## 主要签名
 
-以下为审阅摘要，完整定义位于 `Models/QQ/IQExtensions.cs`。
+常用签名如下，完整定义位于 `Models/QQ/IQExtensions.cs`。
 
 ```csharp
 QGroupCapabilities Capabilities { get; }
@@ -62,7 +62,7 @@ Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QM
 `Capabilities` 描述适配器实现情况，不能替代 QQ 平台授权。
 自动审批策略使用可选的 `IQGroupApprovalStrategyApi`；策略 `GroupIds` 为适配器 ID，
 `GroupNumbers` 为 QQ 群号字符串，两者按平台规则择一。
-官方 Markdown、媒体及流式消息仍保留各自扩展接口，因为它们表达额外平台能力。
+官方 Markdown、媒体和流式消息使用各自的扩展接口。
 
 ## 当前契约语义
 

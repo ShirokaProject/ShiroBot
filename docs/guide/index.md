@@ -8,18 +8,21 @@ ShiroBot 是基于 C# 和 .NET 10 的机器人宿主，通过适配器接入协�
 
 ## 运行结构
 
-```text
-机器人协议 / 实现端
-        │
-        ▼
-     适配器 DLL
-        │  统一 SDK 服务与事件
-        ▼
-   ShiroBot 宿主进程
-        │
-        ├── 插件 ALC: PluginA
-        ├── 插件 ALC: PluginB
-        └── 插件 ALC: PluginC
+```mermaid
+flowchart LR
+    P["机器人协议 / 实现端"]
+    subgraph H["ShiroBot 宿主进程"]
+        A["适配器 DLL"]
+        R["SDK 服务与事件路由"]
+        ALC1["PluginA · 独立 ALC"]
+        ALC2["PluginB · 独立 ALC"]
+        ALC3["PluginC · 独立 ALC"]
+        R <--> ALC1
+        R <--> ALC2
+        R <--> ALC3
+    end
+    P <--> A
+    A <--> R
 ```
 
 每个插件使用独立、可回收的 `AssemblyLoadContext`，便于隔离程序集版本和热卸载。所有插件仍运行在同一个宿主进程内，因此共享进程级 GC 堆、JIT 和 native 内存。

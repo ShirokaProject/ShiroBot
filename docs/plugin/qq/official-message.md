@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQOfficialMessageApi>();
 if (api is null) return;
 ```
 
-取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## SendAsync
 
@@ -53,7 +53,7 @@ Task<string> SendTextAsync(
 | 参数 | C# 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `target` | `QOfficialMessageTarget` | `必传` | 官方消息目标，含场景与 ID。 |
-| `content` | `string` | `必传` | 待发送的文本、Markdown 或可读媒体流，具体类型见签名。 |
+| `content` | `string` | `必传` | 待发送的纯文本。 |
 | `reply` | `QOfficialMessageReply?` | `null` | 被动回复的消息或事件凭据；null 表示未指定。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 

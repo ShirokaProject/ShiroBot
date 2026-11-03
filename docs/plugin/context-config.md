@@ -6,7 +6,7 @@
 
 | 属性 | 用途 |
 | --- | --- |
-| `Context.Platform` | 当前实例的平台类型，例如 qq 或 qq-official |
+| `Context.Platform` | 当前实例的平台 ID，由适配器声明 |
 | `Context.InstanceId` | 当前适配器运行实例 ID |
 | `Context.UseInstance(id)` | 临时选择指定实例，作用域结束后恢复 |
 | `Context.AdapterInstance` / `Context.GetAdapterInstances()` | 当前实例与全部运行实例的信息 |
@@ -26,7 +26,7 @@
 | `Context.OwnerList` | 宿主所有者身份列表（`UserReference`） |
 | `Context.AdminList` | 宿主管理员身份列表（`UserReference`） |
 
-权限判断由 SDK 的 `Context.IsOwner` / `Context.IsAdmin` 接口完成。宿主中 owner 自动拥有 admin 权限：`IsAdmin(id)` 对 `owner_list` 或 `admin_list` 中的账号均返回 `true`，无需将 owner 重复加入 `admin_list`。两份列表热重载后，后续检查使用新配置。`Context.AdminList` 返回显式配置的管理员列表，不包含自动授予权限的 owner；插件应调用 `IsAdmin`，不要直接用 `AdminList.Contains` 判断权限，也不需要自行维护管理员名单。
+权限判断由 SDK 的 `Context.IsOwner` / `Context.IsAdmin` 接口完成。宿主中 owner 自动拥有 admin 权限：`IsAdmin(id)` 对 `owner_list` 或 `admin_list` 中的账号均返回 `true`，无需将 owner 重复加入 `admin_list`。两份列表热重载后，后续检查使用新配置。`Context.AdminList` 返回显式配置的管理员列表，不包含自动授予权限的 owner。插件应调用 `IsAdmin` 判断权限；`AdminList.Contains` 只检查显式列表。
 
 权限判断：
 
@@ -110,7 +110,7 @@ Context.Config.SetValue("timeout_seconds", 30);
 
 ## 数据文件
 
-不要把运行时数据写到当前工作目录。使用插件数据目录：
+运行时数据写入插件数据目录：
 
 ```csharp
 var databasePath = Path.Combine(Context.PluginDirectory, "data.db");
@@ -120,7 +120,7 @@ Directory.CreateDirectory(cacheDirectory);
 
 即使单 DLL 位于 `plugins` 根目录，宿主也会为它提供稳定的 `plugins/<插件 ID>` 数据目录。
 
-SDK 没有单独的 `CacheDirectory` API。插件可在 `Context.PluginDirectory` 下创建并清理 `cache` 子目录，仅存放可重建数据；数据库、订阅和用户配置等持久数据应另行保存。宿主的 `cache/adapters` 仅用于适配器包元数据。
+插件可在 `Context.PluginDirectory` 下创建并清理 `cache` 子目录，仅存放可重建数据；数据库、订阅和用户配置等持久数据应另行保存。宿主的 `cache/adapters` 仅用于适配器包元数据。
 
 ## 日志
 
@@ -221,7 +221,16 @@ protected override Task LoadAsync()
 }
 ```
 
-卸载顺序：`Lifetime.Stopping` 取消、停止接收其他插件的调用和事件 → 等待正在处理的事件和调用 → 等待 `Run`、`SetInterval`、`SetTimeout` 结束（此时 `Context` 仍可用）→ 插件的 `OnUnloadAsync` → 按登记的相反顺序释放 `Track` 的资源和执行 `Defer` 回调。超过卸载超时仍未结束的任务会让插件保持驻留，并提示重启。
+```mermaid
+flowchart LR
+    S["取消 Lifetime.Stopping，停止接收新调用和事件"]
+    S --> D["等待正在处理的事件和调用"]
+    D --> W["等待 Run、SetInterval、SetTimeout 结束"]
+    W --> U["调用 OnUnloadAsync"]
+    U --> R["逆序释放 Track 资源、执行 Defer 回调"]
+```
+
+等待后台任务期间 `Context` 仍可用。任务超过卸载超时仍未结束时，插件保持驻留，宿主提示重启。
 
 随配置开关重建的功能可以放进子作用域，关闭时单独释放：`var feature = Context.Lifetime.CreateScope(); … await feature.DisposeAsync();`。
 

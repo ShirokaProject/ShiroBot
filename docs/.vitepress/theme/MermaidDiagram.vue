@@ -34,7 +34,7 @@ async function draw() {
       securityLevel: 'strict',
       theme: isDark.value ? 'dark' : 'default',
       fontFamily: 'var(--vp-font-family-base)',
-      flowchart: { useMaxWidth: true, htmlLabels: false },
+      flowchart: { useMaxWidth: true, htmlLabels: true },
       sequence: {
         useMaxWidth: true,
         actorMargin: 32,

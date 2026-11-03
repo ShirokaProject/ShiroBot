@@ -99,21 +99,35 @@ WeatherApi.Updated.On(Context, (e, ct) => RefreshAsync(e.City, ct));
 
 ## 契约是怎么工作的
 
-```text
-构建时                                              运行时
-──────────────────────────────────────────────     ────────────────────────────────────────
-WeatherPlugin.dll ──读取 [PluginContract]──┐        WeatherPlugin            MyPlugin
-                                          ↓         （自己的 WeatherApi）     （生成的 WeatherApi）
-MyPlugin 编译 ← obj/PluginContracts/Weather.g.cs          │                       │
-          ↓                                               └──── JSON（宿主转发）───┘
-MyPlugin.dll（不含也不引用 WeatherPlugin.dll）
+构建时：
+
+```mermaid
+flowchart LR
+    P["WeatherPlugin.dll"] --> G["SDK 读取 PluginContract"]
+    G --> O["生成 obj/PluginContracts"]
+    O --> C["编译 MyPlugin.dll"]
 ```
 
-- **双方各有一份契约类型**：提供方用自己声明的，调用方用生成的副本。运行时它们是两个不相关的类型，宿主只转发 JSON，所以谁都可以单独卸载。
-- **生成的代码是 `internal` 的**：不会成为调用方的公开 API，多个插件引用同一份契约也不会冲突。
+运行时：
+
+```mermaid
+sequenceDiagram
+    participant C as MyPlugin
+    participant H as 宿主
+    participant P as WeatherPlugin
+    Note over C: 使用生成的契约副本
+    Note over P: 使用自己声明的契约
+    C->>H: UTF-8 JSON 请求
+    H->>P: 复制请求
+    P-->>H: JSON 响应
+    H-->>C: 复制响应
+```
+
+- **契约副本**：提供方使用自己声明的类型，调用方使用生成的副本，各自独立卸载。
+- **可见性**：生成的代码为 `internal`，仅供调用方内部使用。
 - **序列化代码在各自的程序集里**：SDK 在编译时为契约类型生成 JSON 读写代码，不使用反射序列化。宿主的序列化器如果用反射处理插件里的类型，会缓存这些类型，插件卸载后程序集也无法释放，热更新会失效。
 - **宿主内部只传 UTF-8 字节**：调用方把请求直接写成 JSON 字节，宿主复制后交给提供方，提供方直接读成自己的类型，中间不经过 `JsonNode`。
-- **生成的文件可以直接看**：在 `obj/<配置>/<框架>/PluginContracts/` 下，跳转到 `WeatherApi` 的定义也会打开它。
+- **查看生成代码**：位于 `obj/<配置>/<框架>/PluginContracts/`，也可跳转到 `WeatherApi` 的定义。
 
 ::: warning 不要把契约当成共享程序集
 不要把提供方的 DLL 加进 `SharedAssemblies`，也不要用 `<Reference>` 直接引用它。那会让调用方在运行时依赖提供方的程序集，提供方就无法单独卸载和更新。
@@ -134,7 +148,7 @@ MyPlugin.dll（不含也不引用 WeatherPlugin.dll）
 
 不支持接口、委托、带逻辑的类型或提供方插件中契约以外的类型；提供方构建时会报错并指出不支持的类型。
 
-字段名在线上统一用 snake_case，例如 `Temperature` 是 `temperature`。
+传输字段名统一用 snake_case，例如 `Temperature` 对应 `temperature`。
 
 ### 契约变化时
 
@@ -147,7 +161,7 @@ MyPlugin.dll（不含也不引用 WeatherPlugin.dll）
 
 ## 描述和发现
 
-提供方可附带服务描述，其他插件按名称前缀查找可用服务。调用方通过前缀发现扩展点的各个实现。
+提供方可附带服务描述，调用方按名称前缀发现扩展点的各个实现。
 
 例如天气聚合插件定义扩展点 `weather.source.*`，并在自己的契约里给出描述格式：
 

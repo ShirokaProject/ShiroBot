@@ -132,15 +132,7 @@ protected override Task OnUnloadAsync()
 dotnet build -c Release
 ```
 
-SDK 会识别带有 `BotPluginAttribute` 的程序集并自动处理依赖。将以下文件复制到宿主：
-
-```text
-bin/Release/net10.0/HelloPlugin.dll
-    ↓
-ShiroBot/plugins/HelloPlugin.dll
-```
-
-将插件 DLL 复制到 plugins 目录后启动宿主。
+SDK 识别带有 `BotPluginAttribute` 的程序集并自动处理依赖。将 `bin/Release/net10.0/HelloPlugin.dll` 复制为宿主目录中的 `plugins/HelloPlugin.dll`，然后启动宿主。
 
 ### 本地调试
 

@@ -10,9 +10,9 @@
 
 | 名称 | 类型 | 必填字段 | 描述 |
 | --- | --- | --- | --- |
-| `QFriend` | 实体 | `UserId`、`Nickname` | 好友资料；QQ ID 使用 `string` |
-| `QGroup` | 实体 | `GroupId`、`GroupName` | 群资料 |
-| `QGroupMember` | 实体 | `UserId`、`GroupId`、`Nickname` | 群成员资料和角色 |
+| `QFriend` | 实体 | `UserId` | 好友资料；QQ ID 使用 `string` |
+| `QGroup` | 实体 | `GroupId` | 群资料 |
+| `QGroupMember` | 实体 | `UserId`、`GroupId` | 群成员资料和角色 |
 | `QFriendMessage` / `QGroupMessage` / `QTempMessage` | 入站消息 | `PeerId`、`MessageId`、`SenderId`；好友消息还需 `Friend`，群消息还需 `Group`、`GroupMember` | 好友、群和临时会话消息 |
 | `QIncomingSegment` / `QOutgoingSegment` | 消息段基类 | 由具体子类型决定 | QQ 原生入站、出站消息段 |
 | `QEventPayload` | 事件负载基类 | 由具体子类型决定 | 放在 `PlatformEvent.Raw` 中 |

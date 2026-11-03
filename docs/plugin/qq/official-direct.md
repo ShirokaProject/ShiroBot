@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQOfficialDirectMessageApi>();
 if (api is null) return;
 ```
 
-取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## SendTypingAsync
 
@@ -28,7 +28,7 @@ Task SendTypingAsync(
 | --- | --- | --- | --- |
 | `target` | `QOfficialMessageTarget` | `必传` | 官方消息目标，含场景与 ID。 |
 | `reply` | `QOfficialMessageReply` | `必传` | 必传的被动回复凭据，来自消息或事件。 |
-| `duration` | `TimeSpan` | `必传` | 禁言或输入状态的持续时间；零禁言时长表示解除禁言。 |
+| `duration` | `TimeSpan` | `必传` | 输入状态的持续时间。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回

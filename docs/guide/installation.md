@@ -76,7 +76,7 @@ ShiroBot/
 
 单 DLL 插件也可以手动放在 `plugins/HelloPlugin.dll`，宿主仍为其提供 `plugins/<插件 ID>/` 数据目录。带私有依赖或静态资源的组件可以包含其他文件，不需要另行放入宿主共享的 SDK / Model DLL 或发布用 PDB。
 
-上述结构不要求存在 `backup/` 或 `diagnostics/`；自行保存的备份和诊断文件应单独保管。Docker 的主程序和缓存位于 `/app`，配置、适配器与插件持久数据位于挂载的数据卷 `/data`，详见[Docker 部署](#docker-部署)。
+备份和诊断文件可单独存入 `backup/`、`diagnostics/` 等目录。Docker 的主程序和缓存位于 `/app`，配置、适配器与插件持久数据位于挂载的数据卷 `/data`，详见[Docker 部署](#docker-部署)。
 
 ## 安装适配器
 
@@ -196,8 +196,6 @@ docker compose -f container/compose.yaml logs -f shirobot
 docker run --rm -v shirobot_data:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/shirobot-data.tgz -C /data .
 ```
-
-
 
 
 不使用 compose 时：
