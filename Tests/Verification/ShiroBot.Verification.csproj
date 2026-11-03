@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../../Templates/Examples/DashboardWeb/Web/index.html" LogicalName="test-web/index.html" />
     <ProjectReference Include="..\..\Core\ShiroBot.csproj" />
     <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" />
     <ProjectReference Include="..\SharedContractPluginProbe\ShiroBot.SharedContractPluginProbe.csproj" />

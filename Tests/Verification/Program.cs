@@ -96,6 +96,12 @@ if (args is ["--plugin-actions"])
     return;
 }
 
+if (args is ["--plugin-web-pages"])
+{
+    await PluginWebPageVerification.RunAsync();
+    return;
+}
+
 // Interactive: the prompt's floating completion menu and notices, for checking in a real terminal (or a pty).
 // Type to see completions; "notice" shows a long notice; "quit" exits.
 if (args is ["--console-demo"] or ["--console-demo", "quiet"])
@@ -196,6 +202,7 @@ TomlFormattingVerification.Run();
 await PluginPriorityVerification.RunAsync();
 await PluginActionsVerification.RunAsync();
 await PluginDashboardVerification.RunAsync();
+await PluginWebPageVerification.RunAsync();
 await ContactDirectoryVerification.RunAsync();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();

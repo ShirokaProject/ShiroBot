@@ -5,12 +5,15 @@ using ShiroBot.SDK.Plugin;
 namespace ShiroBot.SDK.Dashboard;
 
 /// <summary>
-/// 插件在 Dashboard 里的页面。插件用 <see cref="Ui"/> 描述页面由哪些组件组成，Dashboard 用自己的组件渲染，
-/// 不运行插件的 HTML 或脚本；按钮、表单、翻页和上传都由宿主转给插件的处理函数，插件不需要开放网页路由，
-/// 也不需要自己做鉴权。通过 <see cref="IBotContext.Dashboard"/> 使用。
+/// 插件在 Dashboard 里的页面。AddPage 使用 Ui 组件树；AddWebPage 使用隔离的自定义网页。
+/// 资源读取和处理函数调用均经宿主鉴权。通过 <see cref="IBotContext.Dashboard"/> 使用。
 /// </summary>
 public interface IPluginDashboard
 {
+    /// <summary>注册自定义沙箱网页；入口和资源嵌入插件 DLL，桥接调用由宿主鉴权并绑定当前页面。</summary>
+    IDisposable AddWebPage(string id, string title, DashboardWebPage page) =>
+        throw new NotSupportedException("当前宿主不支持 Dashboard 自定义网页。");
+
     /// <summary>
     /// 添加一个页面。<paramref name="render"/> 按当前状态（筛选值、页码、标签页）生成组件树；
     /// 事件到来时宿主用同样的状态再渲染一次，按元素找到处理函数，所以渲染只应依赖状态和插件的数据。

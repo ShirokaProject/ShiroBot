@@ -12,7 +12,8 @@ internal sealed record DashboardPageRegistration(
     string? Description,
     int Order,
     Func<DashboardContext, CancellationToken, Task<UiNode>> Render,
-    Func<string, CancellationToken, Task<DashboardFile?>>? Files);
+    Func<string, CancellationToken, Task<DashboardFile?>>? Files,
+    DashboardWebPage? Web = null);
 
 /// <summary>
 /// 一个插件的 <see cref="IPluginDashboard"/>：页面登记在插件的生命周期上，卸载时注销；
@@ -22,17 +23,29 @@ internal sealed class PluginDashboardScope(PluginInvoker invoke, PluginLifetimeS
 {
     private readonly ConcurrentDictionary<string, DashboardPageRegistration> _pages = new(StringComparer.OrdinalIgnoreCase);
 
+    public CancellationToken Stopping => lifetime.Stopping;
+
+    public IDisposable AddWebPage(string id, string title, DashboardWebPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        return Register(new DashboardPageRegistration(id, title, page.Icon, page.Description, page.Order,
+            (_, _) => Task.FromResult<UiNode>(Ui.Column()), null, page));
+    }
+
     public IDisposable AddPage(string id, string title, Func<DashboardContext, CancellationToken, Task<UiNode>> render,
         string? icon = null, string? description = null, int order = 100,
         Func<string, CancellationToken, Task<DashboardFile?>>? files = null)
+        => Register(new DashboardPageRegistration(id, title, icon, description, order, render, files));
+
+    private IDisposable Register(DashboardPageRegistration page)
     {
+        var (id, title, _, _, _, render, _, _) = page;
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentNullException.ThrowIfNull(render);
         if (id.Length > 64 || id.Any(ch => !(char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.')))
             throw new ArgumentException("页面 ID 只能用字母、数字、-、_ 和 .，最长 64 个字符。", nameof(id));
 
-        var page = new DashboardPageRegistration(id, title, icon, description, order, render, files);
         if (!_pages.TryAdd(id, page)) throw new InvalidOperationException($"页面 {id} 已经注册过。");
         return lifetime.Track(new Registration(() => _pages.TryRemove(new KeyValuePair<string, DashboardPageRegistration>(id, page))));
     }

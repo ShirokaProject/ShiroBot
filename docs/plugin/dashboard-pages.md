@@ -254,6 +254,99 @@ Ui.Form("notify")
 - 插件正在卸载时，页面提示稍后再试。
 - 事件找不到对应的元素或条目（页面已经变化）时，Dashboard 提示刷新。
 
-## 以后：自定义网页
+## 自定义网页
 
-拖拽排版、画布编辑器、实时预览等界面，未来可考虑通过 `AddWebPage` 支持：前端文件打包进插件 DLL，由宿主经鉴权接口提供，在禁止同源访问的沙箱 iframe 中运行，通过桥接脚本调用插件处理函数。该方案尚未提供，待有实际需求时再实现。
+画布编辑器、拖拽排版等界面可以用 `AddWebPage` 注册。前端以自包含 HTML 嵌入插件 DLL，Dashboard 在沙箱 iframe 中打开。Vue 等框架需打包成单 HTML，将脚本和样式内联；相对路径的 JS 模块、动态分包和直接网络请求暂不支持。额外资源通过桥接读取。
+
+### 注册页面
+
+项目文件中嵌入资源，并保留相对路径：
+
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="Web/**/*"
+      LogicalName="dashboard/%(RecursiveDir)%(Filename)%(Extension)" />
+</ItemGroup>
+```
+
+`Web/index.html` 为入口，注册时指定同一资源前缀：
+
+```csharp
+using System.Text.Json.Nodes;
+using ShiroBot.SDK.Dashboard;
+
+Context.Dashboard.AddWebPage("editor", "编辑器",
+    new DashboardWebPage(typeof(Plugin).Assembly, "dashboard/")
+    {
+        Icon = "edit",
+        EntryPoint = "index.html",
+        HandleAsync = async (action, arguments, ct) =>
+        {
+            if (action != "save") throw new ArgumentException("未知操作。");
+            var text = arguments?["text"]?.GetValue<string>();
+            if (text is null || text.Length > 2000)
+                throw new ArgumentException("内容不能为空且最多 2000 字符。");
+            await SaveAsync(text, ct);
+            return new JsonObject { ["saved"] = true };
+        }
+    });
+```
+
+`DashboardWebPage` 的 `EntryPoint` 默认为 `index.html`，还可设置 `Icon`、`Description`、`Order` 和 `HandleAsync`。页面 ID 与组件页面共用唯一性规则；返回的注册对象可提前 `Dispose`，插件卸载时自动注销。
+
+### 网页桥接
+
+宿主在插件脚本之前提供 `window.ShiroBotDashboard`。调用会等待桥接连接，返回 Promise：
+
+```html
+<button id="save">保存</button>
+<script>
+  document.querySelector('#save').onclick = async () => {
+    try {
+      const result = await window.ShiroBotDashboard.call('save', { text: '你好' });
+      console.log(result.saved);
+    } catch (error) {
+      console.error(error.message);
+    }
+  };
+</script>
+```
+
+| 方法 | 返回 | 用途 |
+| --- | --- | --- |
+| `ready` | `Promise<void>` | 桥接连接完成 |
+| `call(action, arguments)` | `Promise<unknown>` | 调用当前页面的 `HandleAsync`，参数和结果为 JSON |
+| `asset(path)` | `Promise<Blob>` | 读取资源前缀下的嵌入文件，例如 `images/cat.png` |
+| `assetUrl(path)` | `Promise<string>` | 为资源创建本页可用的 Blob URL，可用于图片、字体和媒体 |
+| `revokeAssetUrl(url)` | `void` | 释放不再使用的 Blob URL；离开页面时也会统一清理 |
+
+```javascript
+const url = await window.ShiroBotDashboard.assetUrl('images/cat.png');
+document.querySelector('img').src = url;
+// 替换图片、不再使用时释放。
+window.ShiroBotDashboard.revokeAssetUrl(url);
+```
+
+处理函数应校验操作名、参数格式和业务权限，并响应 `CancellationToken`。`call` 的成功表示函数正常返回，业务失败可用自己的 JSON 结构表示或抛出异常；异常会让 Promise 拒绝。请求及结果上限为 1 MB，入口 HTML 上限为 2 MB，单个资源上限为 20 MB，同时最多处理 32 个桥接请求。
+
+### 鉴权与隔离
+
+```mermaid
+sequenceDiagram
+    participant W as 沙箱网页
+    participant D as Dashboard
+    participant H as 宿主
+    participant P as 插件
+    W->>D: 通过专用 MessagePort 调用当前页面
+    D->>H: Bearer 鉴权 API
+    H->>P: 校验页面并执行处理函数
+    P-->>H: JSON 结果
+    H-->>D: 响应
+    D-->>W: 桥接结果
+```
+
+iframe 仅允许脚本执行，使用独立来源。API 密钥由 Dashboard 保存，网页通过绑定当前插件和页面的桥接通信。资源读取和函数调用均经过宿主 Bearer 鉴权；网页不能指定其他插件、页面或任意 API 地址。宿主只读取指定程序集资源前缀下的文件，拒绝路径穿越。
+
+网页 CSP 限制直接联网、子框架和表单提交。刷新、切换页面或卸载插件时，桥接请求会取消；iframe 导航后关闭桥接，需要用户刷新页面重新打开。第三方脚本、样式和字体应在构建时打包，远程业务数据通过插件处理函数获取。
+
+完整可运行示例位于 `Templates/Examples/DashboardWeb`。现有 `AddPage` 组件页面继续使用原有接口。

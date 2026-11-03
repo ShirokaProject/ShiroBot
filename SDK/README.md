@@ -422,3 +422,5 @@ retries locked directories, cleans on shutdown, and removes all previous-process
 loading plugins at the next startup (even if their retention has not expired). This is disposable
 working storage, not a persistent cache. Store subscriptions, credentials and other durable state
 in plugin data/config instead. Other folders under host cache are not purged by this service.
+
+Custom sandbox pages use `Context.Dashboard.AddWebPage(id, title, new DashboardWebPage(assembly, resourcePrefix))`. Embed a self-contained HTML entry and read extra assets through the page-scoped bridge. See `Templates/Examples/DashboardWeb` and the Dashboard pages documentation.

@@ -26,7 +26,7 @@ internal sealed record PluginPageEvent(string Kind, string Element, string? Acti
 /// 插件页面的渲染和事件。渲染、数据组件的行和处理函数都在插件内执行；事件到来时用同样的状态重新渲染，
 /// 按元素 ID 找到处理函数，条目、表单值和上传文件都先由宿主检查。插件抛出的异常变成失败结果和原因。
 /// </summary>
-internal static class PluginDashboard
+internal static partial class PluginDashboard
 {
     internal const long MaxUploadBytes = 20_000_000;
     private const int MaxStateKeys = 64;
@@ -45,6 +45,7 @@ internal static class PluginDashboard
         Dictionary<string, string> state, CancellationToken cancellationToken) =>
         RunAsync(plugin, pageId, "渲染页面", async page =>
         {
+            if (page.Web is not null) return NotFound<PluginPageView>("请通过自定义网页接口打开这个页面。");
             var (view, _) = UiTreeWriter.Write(await page.Render(new DashboardContext(page.Id, state), cancellationToken).ConfigureAwait(false));
             return Done(new PluginPageView(view, state));
         });

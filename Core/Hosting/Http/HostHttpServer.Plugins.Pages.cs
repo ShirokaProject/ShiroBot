@@ -28,10 +28,13 @@ internal sealed partial class HostHttpServer
             {
                 pages = PluginDashboard.List(plugin).Select(page => new
                 {
-                    id = page.Id, title = page.Title, icon = page.Icon, description = page.Description
+                    id = page.Id, title = page.Title, icon = page.Icon, description = page.Description,
+                    kind = page.Web is null ? null : "web"
                 })
             });
         });
+
+        MapPluginWebPageEndpoints(api, config, pluginManager);
 
         api.MapPost("/plugins/{id}/pages/{pageId}/render", async (string id, string pageId, HttpContext context) =>
         {

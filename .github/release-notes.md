@@ -34,6 +34,8 @@
 - Avalonia 相关依赖统一升级至 `12.1.4`，ILRepack 升级至 `2.0.48`。
 - 模板的 `dev.ps1` 在 macOS 和 Linux 上下载对应平台的主程序。
 
+- 新增插件自定义网页 `AddWebPage`：插件 DLL 内嵌自包含 HTML，Dashboard 用沙箱 iframe 展示，通过已鉴权、限定当前页面的桥接调用插件和读取资源。
+
 ### 升级说明
 
 - 当前 SDK ABI 为 `1.4.0.0`，QQ、Discord、Telegram Model ABI 均为 `1.0.0.0`。本次包含 typed 服务删除这一破坏性变更，使用这些接口的组件需要迁移与重新构建；其他组件仍需按实际引用及运行行为验证。
