@@ -1,6 +1,6 @@
 # Dashboard 页面
 
-需要宿主 1.0.3（SDK ABI 1.4.0.0）。
+需要同批开发版 SDK、宿主和 Dashboard（当前版本号 1.0.3，SDK ABI 1.4.0.0）。此组件契约尚未发布，旧的 `IPluginDashboardProvider` 页面需要迁移后重新编译。
 
 插件配置适合开关、数字和列表这类设置。浏览和管理数据（表情库、订阅列表）、按群编辑规则、看统计这类界面放不进配置，可以给插件加 **Dashboard 页面**。
 
@@ -61,8 +61,8 @@ Context.Dashboard.AddPage("rules", "群规则", async (page, ct) =>
             Ui.Metric("关闭采集", rules.Count(rule => !rule.Collect).ToString(), hint: "这些群不会自动收表情")),
         Ui.Tabs("view",
             Ui.Tab("list", "规则",
-                Ui.Table(rules, rule => rule.Id)
-                    .Column("群", rule => rule.GroupName)
+                Ui.Table(rules, rule => rule.GroupId)
+                    .Column("群", rule => rule.GroupId)
                     .Column("自动采集", rule => rule.Collect ? "开" : "关")
                     .Column("冷却", rule => $"{rule.Cooldown} 秒")
                     .Action("edit", "编辑", (rule, e, ct) => Task.FromResult(DashboardResult.OpenForm("edit", rule)))
@@ -176,7 +176,7 @@ Dashboard                           宿主                              插件
 | `Ui.Table(items, key)` | 表格；`.Column(title, value)` 声明列 |
 | `Ui.Gallery(items, card)` | 卡片网格，适合图片；`UiCard` 有标题、描述、图片、标签和次要信息 |
 | `Ui.List(items, card)` | 纵向列表，卡片字段同上 |
-| `.Action(id, label, handler, confirm, danger)` | 条目上的操作；`.When(item => …)` 只对部分条目显示 |
+| `.Action(id, label, handler, confirm, danger, when)` | 条目上的操作；`when: item => …` 只对部分条目显示 |
 | `Ui.Filters(...)` | 筛选栏：`Ui.Input`、`Ui.Select`、`Ui.Switch`，值记在状态里 |
 | `Ui.Pager(total, pageSize)` | 分页，页码记在状态里；不知道总数时用 `hasMore:` |
 
@@ -208,7 +208,7 @@ Ui.Form("notify")
 
 | 字段 | 说明 |
 | --- | --- |
-| `Text` / `TextArea` / `Secret` | 文本、多行文本、密码；可选 `required`、`maxLength`、`pattern` |
+| `Text` / `TextArea` / `Secret` | 文本、多行文本、密码；均支持 `required`，前两者支持 `maxLength`，`Text` 还支持 `pattern` |
 | `Number` | 数字；可选 `min`、`max` |
 | `Switch` | 开关 |
 | `Select` / `MultiSelect` | 单选、多选，值必须在选项里 |
