@@ -310,4 +310,4 @@ var reply = result.As<WeatherReply>();
 
 ## 示例
 
-仓库 `samples/PluginInterop` 有一对可运行的示例：`Greeter` 声明契约、提供 `greeter.greet` 服务并发布 `greeter.greeted` 事件；`GreeterClient` 放入 `Greeter` 的 DLL 后调用服务、订阅事件，并演示提供方热更新时调用方不受影响。
+仓库 `Templates/Examples/PluginInterop` 有一对可运行的示例：`Greeter` 声明契约、提供 `greeter.greet` 服务并发布 `greeter.greeted` 事件；`GreeterClient` 放入 `Greeter` 的 DLL 后调用服务、订阅事件，并演示提供方热更新时调用方不受影响。

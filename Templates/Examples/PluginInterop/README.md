@@ -12,8 +12,8 @@
 ## 试一试
 
 ```sh
-dotnet build samples/PluginInterop/Greeter/ShiroBot.Samples.Greeter.csproj
-dotnet build samples/PluginInterop/GreeterClient/ShiroBot.Samples.GreeterClient.csproj
+dotnet build Templates/Examples/PluginInterop/Greeter/ShiroBot.Samples.Greeter.csproj
+dotnet build Templates/Examples/PluginInterop/GreeterClient/ShiroBot.Samples.GreeterClient.csproj
 ```
 
 把两个 `bin/Debug/net10.0/*.dll` 放进宿主的 `plugins` 目录后，在群里发 `#greet 小白`，会回复“你好，小白！”。

@@ -169,15 +169,15 @@ jobs:
           arch=amd64
           if [ "$runtime" = linux-musl-arm64 ]; then arch=arm64; fi
           # The image ships the release asset's binary, so Dashboard self-updates replace it with the same kind.
-          mkdir -p "artifacts/docker/$arch"
-          cp "artifacts/host/${runtime}-framework-dependent/ShiroBot" "artifacts/docker/$arch/ShiroBot"
+          mkdir -p "artifacts/container/$arch"
+          cp "artifacts/host/${runtime}-framework-dependent/ShiroBot" "artifacts/container/$arch/ShiroBot"
 
       - name: Upload container files
         if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
         uses: actions/upload-artifact@v7.0.2
         with:
           name: shirobot-container-${{ matrix.runtime }}
-          path: artifacts/docker/
+          path: artifacts/container/
           if-no-files-found: error
 
   verify-container:
@@ -202,7 +202,7 @@ jobs:
         uses: actions/download-artifact@v8.0.2
         with:
           pattern: shirobot-container-linux-musl-*64
-          path: artifacts/docker
+          path: artifacts/container
           merge-multiple: true
 
       - name: Normalize downloaded container files
@@ -210,8 +210,8 @@ jobs:
           set -euo pipefail
 
           for arch in amd64 arm64; do
-            test -f "artifacts/docker/$arch/ShiroBot"
-            chmod 755 "artifacts/docker/$arch/ShiroBot"
+            test -f "artifacts/container/$arch/ShiroBot"
+            chmod 755 "artifacts/container/$arch/ShiroBot"
           done
 
       - name: Resolve image name
@@ -245,7 +245,7 @@ jobs:
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
-          file: Containerfile
+          file: container/Containerfile
           target: prebuilt
           platforms: linux/amd64,linux/arm64
           pull: true

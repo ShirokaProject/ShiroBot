@@ -16,7 +16,7 @@ start_and_verify() {
     docker run -d --name "$name" --platform "$platform" \
         -v "$volume:/data" "$image" >/dev/null
     ready=false
-    for attempt in $(seq 1 60); do
+    for _attempt in $(seq 1 60); do
         if docker logs "$name" 2>&1 | grep -q '宿主 API 服务已启动'; then
             ready=true
             break

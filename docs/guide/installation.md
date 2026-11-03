@@ -153,12 +153,12 @@ framework-dependent 发布包仍然直接运行 `ShiroBot` / `ShiroBot.exe`，�
 
 每个版本都会发布 `linux/amd64` 与 `linux/arm64` 镜像：`ghcr.io/shirokaproject/shirobot:<版本>`、`:<主.次>` 与 `:latest`。镜像已包含渲染所需的 fontconfig 与中文字体。
 
-使用仓库根目录的 [`compose.yaml`](https://github.com/ShirokaProject/ShiroBot/blob/master/compose.yaml)：
+使用仓库 [`container/compose.yaml`](https://github.com/ShirokaProject/ShiroBot/blob/master/container/compose.yaml)，在仓库根目录运行：
 
 ```bash
-docker compose pull
-docker compose up -d
-docker compose logs -f shirobot
+docker compose -f container/compose.yaml pull
+docker compose -f container/compose.yaml up -d
+docker compose -f container/compose.yaml logs -f shirobot
 ```
 
 - 数据保存在命名卷 `shirobot_data` 中，挂载到容器的 `/data`：`config.toml`、`plugins/`、`adapters/` 都在这里，重建或升级容器不会删除。`compose.yaml` 显式指定卷名 `shirobot_data`，在哪个目录启动都使用同一个卷。
@@ -182,13 +182,13 @@ docker compose logs -f shirobot
 - 插件和适配器建议在 Dashboard 中安装、配置。需要手动修改配置文件时，在容器内编辑（以容器用户身份写入，宿主保存配置时不会遇到权限问题）：
 
   ```bash
-  docker compose exec shirobot vi /data/config.toml
+  docker compose -f container/compose.yaml exec shirobot vi /data/config.toml
   ```
 
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
-- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=1.0.0` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=1.0.0` 后再执行 `docker compose -f container/compose.yaml pull` 和 `docker compose -f container/compose.yaml up -d`。
 - 容器默认使用 UTC 时区，自动更新时间（默认 `02:00`）也按 UTC 计算。需要按本地时间执行时，在 `compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`（文件中有注释示例）。
-- 可以直接在 Dashboard 中更新主程序：新版本下载到数据目录的 `host/`（默认 `/data/host`），先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose pull && docker compose up -d` 更新镜像。启动时如果镜像中的主程序不旧于 `host/` 中的版本，会删除该目录并使用镜像版本。
+- 可以直接在 Dashboard 中更新主程序：新版本下载到数据目录的 `host/`（默认 `/data/host`），先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 更新镜像。启动时如果镜像中的主程序不旧于 `host/` 中的版本，会删除该目录并使用镜像版本。
 
 备份数据卷：
 

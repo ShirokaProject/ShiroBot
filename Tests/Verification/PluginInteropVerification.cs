@@ -17,7 +17,7 @@ using ShiroBot.SDK.Plugin;
 
 /// <summary>
 /// 插件生命周期作用域、按名称调用的服务和事件总线：
-/// 用 samples/PluginInterop 的两个示例插件在真实的可回收 ALC 里加载、互相调用、单独热替换提供方，
+/// 用 Templates/Examples/PluginInterop 的两个示例插件在真实的可回收 ALC 里加载、互相调用、单独热替换提供方，
 /// 最后卸载并确认两个 ALC 都能被回收。
 /// </summary>
 internal static class PluginInteropVerification

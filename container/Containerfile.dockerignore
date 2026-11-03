@@ -5,11 +5,12 @@
 **/bin/
 **/obj/
 artifacts/*
-!artifacts/docker/
-artifacts/docker/*
-!artifacts/docker/amd64/
-!artifacts/docker/arm64/
+!artifacts/container/
+artifacts/container/*
+!artifacts/container/amd64/
+!artifacts/container/arm64/
 docker-data/
+container-data/
 *.binlog
 *.user
 config.toml

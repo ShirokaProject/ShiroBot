@@ -12,7 +12,7 @@ dotnet run --project Tests/Verification -- --adapter-unload-check path/to/Adapte
 
 The plugin check copies the DLL's whole directory. The adapter check copies only the DLL, starts it
 with a default config (never your real credentials), applies one config reload and stops it.
-`--plugin-interop` runs the lifetime, named service and event bus checks with `samples/PluginInterop`.
+`--plugin-interop` runs the lifetime, named service and event bus checks with `Templates/Examples/PluginInterop`.
 
 For system-font selection and actual Avalonia headless rendering checks:
 

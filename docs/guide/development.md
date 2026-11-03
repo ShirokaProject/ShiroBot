@@ -5,10 +5,10 @@
 ## 仓库结构
 
 - `Core`：ShiroBot 宿主本体，内置 Avalonia Headless 渲染集成。
-- `SDK`：插件与适配器 SDK，内置 Avalonia 控件渲染契约和编译支持。
+- `SDK`：插件与适配器 SDK；`Generators` 为源生成器，`Packaging` 为 NuGet 打包项目。
 - `Models`：Discord、QQ、Telegram 平台契约，随宿主内置。
-- `Templates`：`dotnet new` 插件与适配器项目模板。
-- `Packaging`：`ShiroBot.SDK` NuGet 包。
+- `Templates`：`dotnet new` 插件与适配器项目模板，以及 `Examples` 中可运行的互调示例。
+- `container`：镜像构建、Compose、入口脚本、默认配置和启动验证脚本。
 - `Tests`：主仓库验证与共享契约探针。
 - `docs`：本文档站（VitePress）。
 - Dashboard：宿主 Web 面板前端，位于独立仓库 [Shirobot.Dashboard](https://github.com/ShirokaProject/Shirobot.Dashboard)。
@@ -33,10 +33,10 @@ dotnet run --project Tests/Verification/ShiroBot.Verification.csproj
 ## 本地构建镜像
 
 ```bash
-podman build -f Containerfile -t shirobot:local .
+podman build --ignorefile container/Containerfile.dockerignore -f container/Containerfile -t shirobot:local .
 ```
 
-Docker 也可使用 `docker build -f Containerfile -t shirobot:local .`。容器版与 Release 中的 `linux-musl` framework-dependent 包使用同一个单文件主程序，Dashboard 自更新下载的也是它；镜像通过 `SHIROBOT_HOME=/app` 固定宿主目录，自更新的主程序放在数据卷的 `/data/host`。
+Docker 也可使用 `docker build -f container/Containerfile -t shirobot:local .`。容器版与 Release 中的 `linux-musl` framework-dependent 包使用同一个单文件主程序，Dashboard 自更新下载的也是它；镜像通过 `SHIROBOT_HOME=/app` 固定宿主目录，自更新的主程序放在数据卷的 `/data/host`。
 
 ## 文档
 

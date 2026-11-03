@@ -60,7 +60,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ needs.resolve.outputs.run_id }}
           pattern: shirobot-container-linux-musl-*64
-          path: artifacts/docker
+          path: artifacts/container
           merge-multiple: true
 
       - uses: docker/setup-qemu-action@v4.4.0
@@ -75,7 +75,7 @@ jobs:
       - uses: docker/build-push-action@v7.4.0
         with:
           context: .
-          file: Containerfile
+          file: container/Containerfile
           target: prebuilt
           platforms: linux/amd64,linux/arm64
           pull: true

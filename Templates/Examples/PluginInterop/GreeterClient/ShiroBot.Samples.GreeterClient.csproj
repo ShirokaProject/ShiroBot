@@ -8,8 +8,8 @@
 
   <!-- 只引用 SDK；在仓库里构建时直接用 SDK 的源生成器项目，NuGet 包会自带它。 -->
   <ItemGroup>
-    <ProjectReference Include="..\..\..\SDK\ShiroBot.SDK.csproj" Private="false" />
-    <ProjectReference Include="..\..\..\SDK\Generators\ShiroBot.SDK.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\..\..\SDK\ShiroBot.SDK.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\SDK\Generators\ShiroBot.SDK.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!--
@@ -21,6 +21,6 @@
     <PluginContract Include="..\Greeter\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Samples.Greeter.dll" />
   </ItemGroup>
 
-  <Import Project="..\..\..\SDK\buildTransitive\ShiroBot.SDK.props" />
-  <Import Project="..\..\..\SDK\buildTransitive\ShiroBot.SDK.targets" />
+  <Import Project="..\..\..\..\SDK\buildTransitive\ShiroBot.SDK.props" />
+  <Import Project="..\..\..\..\SDK\buildTransitive\ShiroBot.SDK.targets" />
 </Project>
