@@ -2,9 +2,9 @@
 
 需要宿主 1.0.2（SDK ABI 1.4.0.0）。调用方和提供方都要引用 `ShiroBot.SDK` 1.0.2 或更新版本。
 
-插件之间可以按**名称**提供和调用服务、发布和订阅事件。提供方在自己的插件里声明一份**契约**，调用方把提供方的插件 DLL 放进项目，SDK 在构建时生成契约代码，然后就能像调用普通方法一样调用对方。
+插件按名称提供和调用服务、发布和订阅事件。提供方在插件内声明契约，调用方将提供方的 DLL 放进项目，SDK 在构建时生成契约代码，调用方式与普通方法相同。
 
-运行时双方不共享任何程序集和对象，消息按 JSON 复制，所以任何一方都可以单独卸载、更新和重新加载，另一方不用跟着动。
+运行时双方不共享程序集或对象，消息按 JSON 复制，任一方都可独立卸载、更新和重新加载。
 
 ## 快速上手
 
@@ -35,7 +35,7 @@ public static partial class WeatherApi
 }
 ```
 
-属性的实现和 JSON 读写代码由 SDK 在编译时生成，不需要自己写任何序列化代码。
+SDK 在编译时生成属性实现和 JSON 读写代码，无需手写序列化代码。
 
 ### 2. 提供方实现服务
 
@@ -95,7 +95,7 @@ await ReplyAsync($"{reply.Text}，{reply.Temperature}°C");
 WeatherApi.Updated.On(Context, (e, ct) => RefreshAsync(e.City, ct));
 ```
 
-`TryCallAsync` 在没有插件提供这个服务时返回 `null`。插件的加载顺序不固定，提供方也可能随时被卸载或更新，所以调用方总要考虑对方不在的情况。
+`TryCallAsync` 在没有插件提供这个服务时返回 `null`。提供方可能尚未加载、已卸载或正在更新，调用方需处理服务不可用的情况。
 
 ## 契约是怎么工作的
 
@@ -132,7 +132,7 @@ MyPlugin.dll（不含也不引用 WeatherPlugin.dll）
 | 可空类型、默认值 | 保留 |
 | `[Description]`、`[JsonPropertyName]` | 保留，前者用于[生成参数格式](#描述和发现) |
 
-不能放接口、委托、带逻辑的类型，也不能引用提供方插件里契约以外的类型；违反时提供方构建就会报错，指出是哪个类型。
+不支持接口、委托、带逻辑的类型或提供方插件中契约以外的类型；提供方构建时会报错并指出不支持的类型。
 
 字段名在线上统一用 snake_case，例如 `Temperature` 是 `temperature`。
 
@@ -147,7 +147,7 @@ MyPlugin.dll（不含也不引用 WeatherPlugin.dll）
 
 ## 描述和发现
 
-提供方可以附带一段描述，其他插件按名称前缀找到当前可调用的服务。适合做“任何插件都可以来接入”的扩展点：调用方只认一个前缀，不写死某个插件的服务名。
+提供方可附带服务描述，其他插件按名称前缀查找可用服务。这样可定义开放的扩展点，无需在调用方写死某个插件的服务名。
 
 例如天气聚合插件定义扩展点 `weather.source.*`，并在自己的契约里给出描述格式：
 
@@ -271,9 +271,9 @@ foreach (var source in WeatherSources.Sources.Find(Context))
 | 提供方的处理函数抛出异常 | 抛出 `PluginServiceException` | 同左 |
 | 调用方取消 `ct` | 抛出 `OperationCanceledException` | 同左 |
 
-`PluginServiceException` 只带异常类型名 `RemoteType` 和消息 `RemoteMessage`，不带原始异常对象。提供方出错通常是 bug，所以 `TryCallAsync` 也不会把它吞掉。
+`PluginServiceException` 仅携带异常类型名 `RemoteType` 和消息 `RemoteMessage`，不保留原始异常对象。提供方异常通常表示 bug，`TryCallAsync` 也会将其抛出。
 
-提供方收到的 `ct` 同时连着调用方的取消和提供方自己的卸载：任何一方取消，处理函数都应尽快结束。宿主不设调用超时，需要时由调用方自己传带超时的 `ct`。
+提供方的 `ct` 同时关联调用方取消和提供方卸载，任一方取消时处理函数都应尽快结束。宿主不设调用超时，需要时由调用方传入带超时的 `ct`。
 
 ### 事件
 
@@ -306,7 +306,7 @@ public sealed record WeatherReply(string Text);
 var reply = result.As<WeatherReply>();
 ```
 
-这几种写法在线上完全一样，可以混用。直接用 JSON 接口时只放字符串、数字、布尔、数组和 `JsonObject`，不要用 `JsonValue.Create(自定义对象)`，原因见[契约是怎么工作的](#契约是怎么工作的)。
+这些写法使用相同的传输格式，可以混用。直接用 JSON 接口时只放字符串、数字、布尔、数组和 `JsonObject`，不要用 `JsonValue.Create(自定义对象)`，原因见[契约是怎么工作的](#契约是怎么工作的)。
 
 ## 示例
 

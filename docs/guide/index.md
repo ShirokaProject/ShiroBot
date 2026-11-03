@@ -1,6 +1,6 @@
 # 认识 ShiroBot
 
-ShiroBot 是一个基于 C# 和 .NET 10 的机器人宿主。宿主不直接绑定某一种协议，而是通过“适配器 + 插件”组合工作：
+ShiroBot 是基于 C# 和 .NET 10 的机器人宿主，通过适配器接入协议、用插件实现业务：
 
 - **适配器**连接实际机器人协议，负责收发消息、调用协议 API 和上报事件。
 - **插件**实现业务功能，只依赖统一 SDK，不需要了解底层使用 Milky、OneBot 或其他协议。
@@ -28,7 +28,7 @@ ShiroBot 是一个基于 C# 和 .NET 10 的机器人宿主。宿主不直接绑�
 
 所有发布包都内置 Avalonia、Skia 和 HarfBuzz Headless 渲染。发布文件名只区分 RID 与运行时类型。
 
-插件仍应检查 `Context.Render`，因为渲染初始化可能因平台 native 依赖或环境问题失败，但不存在人为关闭 Avalonia 的宿主构建。
+所有宿主构建都启用 Avalonia，但渲染初始化仍可能因平台 native 依赖或环境问题失败。插件应检查 `Context.Render`。
 
 ## 开发技术栈
 

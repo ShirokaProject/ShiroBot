@@ -1,6 +1,6 @@
 # 创建第一个插件
 
-本章创建一个可以响应群聊和私聊消息的单 DLL 插件。后续按用途阅读 [接收消息与事件](/plugin/routes-events)、[调用 API](/plugin/apis)、[插件操作与控制台](/plugin/actions) 和 [Model](/plugin/models)。
+本章创建响应群聊和私聊消息的单 DLL 插件。其他功能见 [接收消息与事件](/plugin/routes-events)、[调用 API](/plugin/apis)、[插件操作与控制台](/plugin/actions) 和 [Model](/plugin/models)。
 
 ## 环境要求
 
@@ -16,7 +16,7 @@ dotnet new shirobot-plugin -n HelloPlugin --creator "Your Name" --allow-scripts 
 cd HelloPlugin
 ```
 
-已安装过模板的用户可以用以下命令更新到最新版本：
+更新已安装的模板：
 
 ```bash
 dotnet new update --check-only  # 检查是否有更新
@@ -81,7 +81,7 @@ public sealed class Plugin : PluginBase
 }
 ```
 
-`BotPlugin` 的第一个参数是稳定插件 ID，宿主使用它去重、热卸载、匹配群路由和创建数据目录。发布新版本时不要随意修改 ID。
+`BotPlugin` 的第一个参数是稳定插件 ID，宿主用它去重、热卸载、匹配群路由和创建数据目录。发布新版本时不要随意修改 ID。
 
 ### 元数据字段
 
@@ -100,7 +100,7 @@ public sealed class Plugin : PluginBase
 
 大部分插件只需要 `ConfigureRoutes()`。宿主为插件设置 `Context` 后同步调用它，然后才读取并注册路由。
 
-只有确实存在异步初始化时才重写 `LoadAsync()`：
+需要异步初始化时重写 `LoadAsync()`：
 
 ```csharp
 protected override async Task LoadAsync()
@@ -140,7 +140,7 @@ bin/Release/net10.0/HelloPlugin.dll
 ShiroBot/plugins/HelloPlugin.dll
 ```
 
-启动宿主,将插件dll复制到plugins目录中加载。
+将插件 DLL 复制到 plugins 目录后启动宿主。
 
 ### 本地调试
 

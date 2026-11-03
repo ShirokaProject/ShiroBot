@@ -27,8 +27,7 @@
 | `clear` | 清空控制台 |
 | `exit` / `quit` | 正常退出 |
 
-进程退出会停止宿主 HTTP 服务、适配器和 Avalonia dispatcher，但不会逐个热卸载插件。
-插件程序集和剩余资源由操作系统随进程直接回收。
+进程退出时停止宿主 HTTP 服务、适配器和 Avalonia dispatcher；插件不会逐个热卸载，其程序集和剩余资源由操作系统回收。
 
 宿主命令只能从交互式控制台输入；好友私聊消息会交给插件的消息路由，不会被解释为宿主命令。`disable_console_input = true` 或 `--no-console` 会关闭交互式控制台输入。
 
@@ -115,7 +114,7 @@ plugins/<插件数据目录>/.shirobot/native/<包名>/<版本>/<RID>/
 - GC 堆、JIT 代码和线程栈。
 - Avalonia、Skia、HarfBuzz 等 native 内存。
 
-插件使用独立 ALC，但不使用独立 GC 堆或独立进程，因此宿主无法通过普通运行时 API 精确拆分每个插件的完整工作集。
+插件的 ALC 独立，但共享进程和 GC 堆，宿主无法通过普通运行时 API 精确拆分各插件的完整工作集。
 
 ## 更新前备份
 

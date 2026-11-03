@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQGroupApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
 
 先检查 `Capabilities`。官方与 Milky 的 ID 都为字符串，但各自只在来源实例内有意义。入群审批传原申请对象，分页持续使用 NextCursor，即使当前页 Requests 为空。
 
@@ -39,7 +39,7 @@ Task<IReadOnlyList<QGroup>> GetGroupListAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QGroup>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QGroup>>`。返回群列表。
 
 ## GetGroupInfoAsync
 
@@ -63,7 +63,7 @@ Task<QGroup> GetGroupInfoAsync(
 
 ### 返回
 
-`Task<QGroup>`。等待异步完成后取得签名所列模型或列表。
+`Task<QGroup>`。返回群资料。
 
 ## GetGroupMemberListAsync
 
@@ -87,7 +87,7 @@ Task<IReadOnlyList<QGroupMember>> GetGroupMemberListAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QGroupMember>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QGroupMember>>`。返回成员列表。
 
 ## GetGroupMemberInfoAsync
 
@@ -113,7 +113,7 @@ Task<QGroupMember> GetGroupMemberInfoAsync(
 
 ### 返回
 
-`Task<QGroupMember>`。等待异步完成后取得签名所列模型或列表。
+`Task<QGroupMember>`。返回成员资料。
 
 ## SetGroupNameAsync
 
@@ -133,7 +133,7 @@ Task SetGroupNameAsync(string groupId, string name, CancellationToken cancellati
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetGroupAvatarAsync
 
@@ -157,7 +157,7 @@ Task SetGroupAvatarAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetMemberCardAsync
 
@@ -183,7 +183,7 @@ Task SetMemberCardAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetMemberSpecialTitleAsync
 
@@ -209,7 +209,7 @@ Task SetMemberSpecialTitleAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetMemberAdminAsync
 
@@ -235,7 +235,7 @@ Task SetMemberAdminAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## MuteMemberAsync
 
@@ -261,7 +261,7 @@ Task MuteMemberAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetWholeMuteAsync
 
@@ -285,7 +285,7 @@ Task SetWholeMuteAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## KickMemberAsync
 
@@ -311,7 +311,7 @@ Task KickMemberAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## QuitGroupAsync
 
@@ -330,7 +330,7 @@ Task QuitGroupAsync(string groupId, CancellationToken cancellationToken = defaul
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SendNudgeAsync
 
@@ -350,7 +350,7 @@ Task SendNudgeAsync(string groupId, string userId, CancellationToken cancellatio
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SendMessageReactionAsync
 
@@ -378,7 +378,7 @@ Task SendMessageReactionAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SendMessageReactionAsync
 
@@ -408,7 +408,7 @@ Task SendMessageReactionAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetAnnouncementsAsync
 
@@ -430,7 +430,7 @@ Task<IReadOnlyList<QGroupAnnouncement>> GetAnnouncementsAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QGroupAnnouncement>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QGroupAnnouncement>>`。返回群公告列表。
 
 ## SendAnnouncementAsync
 
@@ -456,7 +456,7 @@ Task SendAnnouncementAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## DeleteAnnouncementAsync
 
@@ -480,7 +480,7 @@ Task DeleteAnnouncementAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetEssenceMessagesAsync
 
@@ -506,7 +506,7 @@ Task<IReadOnlyList<QEssenceMessage>> GetEssenceMessagesAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QEssenceMessage>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QEssenceMessage>>`。返回本页精华消息。
 
 ## GetEssenceMessagesPageAsync
 
@@ -558,7 +558,7 @@ Task SetEssenceMessageAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## AcceptJoinRequestAsync
 
@@ -580,7 +580,7 @@ Task AcceptJoinRequestAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## RejectJoinRequestAsync
 
@@ -606,7 +606,7 @@ Task RejectJoinRequestAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetJoinRequestsAsync
 
@@ -654,7 +654,7 @@ Task<QGroupMuteState> GetMuteStateAsync(
 
 ### 返回
 
-`Task<QGroupMuteState>`。等待异步完成后取得签名所列模型或列表。
+`Task<QGroupMuteState>`。返回群禁言状态及定时、周期规则。
 
 ## SetMemberMutesAsync
 
@@ -728,7 +728,7 @@ Task AcceptInvitationAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## RejectInvitationAsync
 
@@ -752,7 +752,7 @@ Task RejectInvitationAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## 入群审批示例
 

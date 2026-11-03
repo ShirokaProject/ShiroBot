@@ -1,6 +1,6 @@
 # QQ C# 接口参考
 
-这里按插件调用方式记录 QQ Model 扩展接口，包含 C# 方法签名、参数、默认值与返回类型。
+本页按插件调用方式列出 QQ Model 扩展接口的 C# 签名、参数、默认值与返回类型。
 无需构造 HTTP 请求。插件通过 `Context.GetAdapterExtension<T>()` 获取当前实例的服务。
 
 版本要求与兼容规则见 [ABI 兼容性与版本](./api-compatibility)。

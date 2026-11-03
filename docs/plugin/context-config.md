@@ -120,7 +120,7 @@ Directory.CreateDirectory(cacheDirectory);
 
 即使单 DLL 位于 `plugins` 根目录，宿主也会为它提供稳定的 `plugins/<插件 ID>` 数据目录。
 
-当前 SDK 没有单独的 `CacheDirectory` API，插件使用上述 `Context.PluginDirectory` 下的 `cache` 子目录。该目录由插件创建和清理，只存放可重建数据；数据库、订阅和用户配置等持久数据不要放入缓存。宿主自身的 `cache/adapters` 用于适配器包元数据，不供插件存储数据。
+SDK 没有单独的 `CacheDirectory` API。插件可在 `Context.PluginDirectory` 下创建并清理 `cache` 子目录，仅存放可重建数据；数据库、订阅和用户配置等持久数据应另行保存。宿主的 `cache/adapters` 仅用于适配器包元数据。
 
 ## 日志
 
@@ -205,7 +205,7 @@ Ctrl+C/正常退出时尝试清理；强制终止时遗留的文件，下次启�
 
 需要宿主 1.0.2（SDK ABI 1.4.0.0）。
 
-插件自己创建的计时器、后台循环、`HttpClient` 等，如果卸载时没有停掉和释放，旧程序集就无法回收，只能重启宿主。登记到 `Context.Lifetime` 后由宿主统一收尾，插件不需要在 `OnUnloadAsync` 里逐个处理：
+计时器、后台循环、`HttpClient` 等资源若未在卸载时停止和释放，旧程序集就无法回收，需要重启宿主。将资源登记到 `Context.Lifetime` 后，宿主会统一清理，无需在 `OnUnloadAsync` 中逐个处理：
 
 ```csharp
 protected override Task LoadAsync()
@@ -225,7 +225,7 @@ protected override Task LoadAsync()
 
 随配置开关重建的功能可以放进子作用域，关闭时单独释放：`var feature = Context.Lifetime.CreateScope(); … await feature.DisposeAsync();`。
 
-不要直接订阅 `AppDomain`、`Console`、`TaskScheduler` 等静态事件，也不要把插件对象存进宿主或其他插件的静态集合。这些引用宿主无法替你解除，会让插件程序集一直留在内存中。
+不要直接订阅 `AppDomain`、`Console`、`TaskScheduler` 等静态事件，也不要把插件对象存进宿主或其他插件的静态集合。宿主无法解除这些引用，会导致插件程序集常驻内存。
 
 ## 插件之间互相调用
 

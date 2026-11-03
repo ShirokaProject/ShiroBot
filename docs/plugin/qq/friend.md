@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQFriendApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
 
 ## SendNudgeAsync
 
@@ -31,7 +31,7 @@ Task SendNudgeAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SendProfileLikeAsync
 
@@ -55,7 +55,7 @@ Task SendProfileLikeAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## DeleteFriendAsync
 
@@ -74,7 +74,7 @@ Task DeleteFriendAsync(string userId, CancellationToken cancellationToken = defa
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetFriendRequestsAsync
 
@@ -98,7 +98,7 @@ Task<IReadOnlyList<QFriendRequest>> GetFriendRequestsAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QFriendRequest>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QFriendRequest>>`。返回好友请求列表。
 
 ## AcceptFriendRequestAsync
 
@@ -122,7 +122,7 @@ Task AcceptFriendRequestAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## RejectFriendRequestAsync
 
@@ -148,7 +148,7 @@ Task RejectFriendRequestAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## 相关类型
 

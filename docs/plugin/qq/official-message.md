@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQOfficialMessageApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
 
 ## SendAsync
 
@@ -117,7 +117,7 @@ Task<string> SendEmbedAsync(
 
 ## CanSendMarkdown
 
- 探测此目标和按钮形式是否被适配器支持。平台权限可能变化， 返回 true 不保证后续发送一定成功。 
+探测适配器是否支持目标和按钮形式；平台权限可能变化，返回 true 不保证发送成功。
 
 ```csharp
 bool CanSendMarkdown(
@@ -141,7 +141,7 @@ bool CanSendMarkdown(
 
 ## SendMarkdownAsync
 
- 发送 Markdown，可附带底部按钮。返回官方消息 ID。 自定义按钮是否可用取决于机器人开放平台权限和发送场景。 
+发送 Markdown，可附带底部按钮。自定义按钮是否可用取决于开放平台权限和发送场景。
 
 ```csharp
 Task<string> SendMarkdownAsync(
@@ -169,7 +169,7 @@ Task<string> SendMarkdownAsync(
 
 ## AcknowledgeInteractionAsync
 
- 回应消息按钮互动。每个 InteractionId 仅能回应一次且会过期； 适配器应及时调用，避免等待耗时的插件处理使客户端一直显示加载。 
+回应按钮互动。每个 InteractionId 只能回应一次且会过期；适配器应及时确认，避免耗时的插件处理让客户端持续显示加载。
 
 ```csharp
 Task AcknowledgeInteractionAsync(
@@ -189,7 +189,7 @@ Task AcknowledgeInteractionAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## 相关类型
 

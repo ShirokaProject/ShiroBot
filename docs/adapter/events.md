@@ -1,6 +1,6 @@
 # 上报事件
 
-适配器通过 `IEventService.EventReceived` 向宿主上报 `ShiroBot.SDK.Models.BotEvent`。宿主在调用 `StartAsync()` 前订阅此事件，因此适配器启动连接后即可发布最早收到的事件。
+适配器通过 `IEventService.EventReceived` 上报 `ShiroBot.SDK.Models.BotEvent`。宿主在调用 `StartAsync()` 前完成订阅，适配器连接后即可上报事件。
 
 ## 实现事件服务
 
@@ -56,4 +56,4 @@ await _events.PublishAsync(new MessageEvent
 
 ## 接收循环
 
-宿主接收适配器事件后使用有界队列分发，适配器仍需处理协议客户端自己的流控、取消、断线重连和去重。`PublishAsync` 应等待事件订阅者完成入队；不要在协议回调中悄悄丢弃异常。`StopAsync()` 应停止接收循环并释放连接。
+宿主使用有界队列分发事件；协议客户端的流控、取消、断线重连和去重仍由适配器处理。`PublishAsync` 应等待事件订阅者完成入队；不要在协议回调中悄悄丢弃异常。`StopAsync()` 应停止接收循环并释放连接。

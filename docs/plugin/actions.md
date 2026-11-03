@@ -1,6 +1,6 @@
 # 插件操作与控制台
 
-插件实现 `IPluginActionProvider` 后，同一组操作会出现在宿主控制台和已鉴权的 Dashboard 中。插件不需要注册独立的控制台解析器，也不需要直接接触 `HttpContext`。
+实现 `IPluginActionProvider` 即可向宿主控制台和已鉴权的 Dashboard 提供同一组操作，无需单独注册控制台解析器或处理 `HttpContext`。
 
 ## 定义操作
 
@@ -29,7 +29,7 @@ public sealed class Main : PluginBase, IPluginActionProvider
 
 ## 显示详细结果
 
-`Message` 是一句简短结果，Dashboard 用顶部提示、控制台用一行输出显示。需要用户认真阅读的内容（报告、生成的值、检查结果）放在 `Details`，可选 `Title` 作为标题（默认用操作的 `Label`）：
+`Message` 显示简短结果：Dashboard 用顶部提示，控制台用单行输出。报告、生成的值或检查结果等详细内容放在 `Details`；标题用可选的 `Title`，默认取操作的 `Label`：
 
 ```csharp
 "report" => Task.FromResult(new PluginActionResult(true, "报告已生成")

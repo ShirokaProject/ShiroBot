@@ -4,7 +4,7 @@
 
 ## 创建项目
 
-推荐从当前适配器模板开始，并选择平台：
+使用适配器模板创建项目并选择平台：
 
 ```bash
 dotnet new install ShiroBot.Templates
@@ -76,7 +76,7 @@ internal sealed class MyUserService : IUserService;
 
 需要宿主 1.0.2（SDK ABI 1.4.0.0）。
 
-接收循环、心跳计时器、`ClientWebSocket` 这类对象如果停止后还在运行或没有释放，旧程序集就无法回收，热重载和卸载会要求重启宿主。适配器实现 `ILifetimeAwareAdapter` 后，宿主在**每次** `StartAsync()` 之前注入一个新的 `Lifetime`，启动期间登记的东西在停止时统一收尾，配置触发的重启也会换成新的作用域：
+接收循环、心跳计时器、`ClientWebSocket` 等资源停止后若未结束或释放，旧程序集就无法回收，热重载和卸载时需要重启宿主。实现 `ILifetimeAwareAdapter` 后，宿主在每次 `StartAsync()` 前注入新的 `Lifetime`，停止时统一清理已登记的资源；配置触发的重启也使用新作用域：
 
 ```csharp
 [BotAdapter("example")]

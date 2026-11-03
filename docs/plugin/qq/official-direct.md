@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQOfficialDirectMessageApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
 
 ## SendTypingAsync
 
@@ -33,7 +33,7 @@ Task SendTypingAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## BeginStream
 

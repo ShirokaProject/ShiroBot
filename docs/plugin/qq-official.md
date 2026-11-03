@@ -30,7 +30,7 @@ if (official is not null)
 
 ## 发送 Markdown 和按钮
 
-下面的示例展示群聊发送。先探测具体目标、Markdown 和按钮形式，再调用发送接口；探测失败时走普通文本消息。
+群聊发送示例：先探测目标、Markdown 和按钮形式，再发送；探测失败时改发普通文本。
 
 ```csharp
 using ShiroBot.Model.QQ;

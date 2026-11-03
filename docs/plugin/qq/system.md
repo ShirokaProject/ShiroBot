@@ -7,7 +7,7 @@ var api = Context.GetAdapterExtension<IQSystemApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+取得接口不代表所有方法都可用；未实现的方法抛出 `NotSupportedException`。调用仍可能因平台权限或参数错误而失败。
 
 ## GetUserProfileAsync
 
@@ -26,7 +26,7 @@ Task<QUserProfile> GetUserProfileAsync(string userId, CancellationToken cancella
 
 ### 返回
 
-`Task<QUserProfile>`。等待异步完成后取得签名所列模型或列表。
+`Task<QUserProfile>`。返回用户资料。
 
 ## GetFriendListAsync
 
@@ -48,7 +48,7 @@ Task<IReadOnlyList<QFriend>> GetFriendListAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QFriend>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QFriend>>`。返回好友列表。
 
 ## GetFriendInfoAsync
 
@@ -72,7 +72,7 @@ Task<QFriend> GetFriendInfoAsync(
 
 ### 返回
 
-`Task<QFriend>`。等待异步完成后取得签名所列模型或列表。
+`Task<QFriend>`。返回好友资料。
 
 ## GetPeerPinsAsync
 
@@ -111,7 +111,7 @@ Task SetAvatarAsync(string imageUri, CancellationToken cancellationToken = defau
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetNicknameAsync
 
@@ -130,7 +130,7 @@ Task SetNicknameAsync(string nickname, CancellationToken cancellationToken = def
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetBioAsync
 
@@ -149,7 +149,7 @@ Task SetBioAsync(string bio, CancellationToken cancellationToken = default);
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetCookiesAsync
 
@@ -168,7 +168,7 @@ Task<string> GetCookiesAsync(string domain, CancellationToken cancellationToken 
 
 ### 返回
 
-`Task<string>`。等待异步完成后取得签名所列模型或列表。
+`Task<string>`。返回查询到的字符串。
 
 ## GetCsrfTokenAsync
 
@@ -186,7 +186,7 @@ Task<string> GetCsrfTokenAsync(CancellationToken cancellationToken = default);
 
 ### 返回
 
-`Task<string>`。等待异步完成后取得签名所列模型或列表。
+`Task<string>`。返回查询到的字符串。
 
 ## GetLoginInfoAsync
 
@@ -204,7 +204,7 @@ Task<QLoginInfo> GetLoginInfoAsync(CancellationToken cancellationToken = default
 
 ### 返回
 
-`Task<QLoginInfo>`。等待异步完成后取得签名所列模型或列表。
+`Task<QLoginInfo>`。返回登录账号信息。
 
 ## GetImplInfoAsync
 
@@ -222,7 +222,7 @@ Task<QImplInfo> GetImplInfoAsync(CancellationToken cancellationToken = default);
 
 ### 返回
 
-`Task<QImplInfo>`。等待异步完成后取得签名所列模型或列表。
+`Task<QImplInfo>`。返回协议实现端信息。
 
 ## GetCustomFaceUrlListAsync
 
@@ -240,7 +240,7 @@ Task<IReadOnlyList<string>> GetCustomFaceUrlListAsync(CancellationToken cancella
 
 ### 返回
 
-`Task<IReadOnlyList<string>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<string>>`。返回收藏表情 URL 列表。
 
 ## SetPeerPinAsync
 
@@ -266,7 +266,7 @@ Task SetPeerPinAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## 相关类型
 

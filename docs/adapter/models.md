@@ -48,7 +48,7 @@
 
 ## 功能实现对照
 
-下表的“适配器实现”描述开发适配器时应做什么。当前仓库提供 SDK 和 Model 契约，没有 Milky、OneBot、Discord 或 Telegram 协议适配器的实现代码，所以不能据此判断某个已安装适配器支持哪些方法。
+下表列出适配器需要实现的功能。本仓库只提供 SDK 和 Model 契约，不包含 Milky、OneBot、Discord 或 Telegram 协议适配器实现；已安装适配器支持哪些方法，需另行确认。
 
 | 功能 | Model / 接口 | 适配器实现 | 必需 |
 | --- | --- | --- | --- |
@@ -65,7 +65,7 @@
 | QQ 官方私聊 | `IQOfficialDirectMessageApi` | 输入状态与流式回复 | 可选扩展 |
 | Discord / Telegram 平台扩展 | 当前无专有扩展接口 | 通过通用服务实现；原生用户字段使用对应用户 Model | 无额外接口 |
 
-通用接口的方法清单见[实现服务接口](/adapter/services)，QQ 扩展的功能清单见[QQ Model](/plugin/qq-model)。扩展接口是否存在与某个方法是否真的可用是两回事：未实现的方法默认抛 `NotSupportedException`。
+通用接口的方法清单见[实现服务接口](/adapter/services)，QQ 扩展的功能清单见[QQ Model](/plugin/qq-model)。取得扩展接口不代表所有方法都可用；未实现的方法默认抛 `NotSupportedException`。
 
 选择模板的 `--platform qq`、`discord` 或 `telegram` 后，会生成对应的 `RequiresShiroBotPackage` 声明。宿主内置这三个 Model，并在加载适配器前校验最低版本。自己创建项目时也应声明所依赖的 Model，例如 QQ：
 

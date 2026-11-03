@@ -21,7 +21,7 @@
 
 ## 目前提供的功能
 
-以下列出 `ShiroBot.Model.QQ` 当前定义的功能。**Model 提供的是数据类型和可选接口，不代表每个 QQ 适配器都实现了全部功能。**插件通过 `Context.GetAdapterExtension<T>()` 获取扩展；返回 `null` 表示适配器未实现该接口。即使拿到了接口，具体方法仍可能抛出 `NotSupportedException`。
+`ShiroBot.Model.QQ` 定义下列数据类型和可选接口，实际支持范围取决于适配器。插件通过 `Context.GetAdapterExtension<T>()` 获取扩展；返回 `null` 表示未实现该接口，取得接口后，未实现的方法仍可能抛出 `NotSupportedException`。
 
 | 功能 | Model 接口 | 适配器实现内容 | 必需 |
 | --- | --- | --- | --- |
@@ -76,7 +76,6 @@ Events.MapPlatform(QEventKinds.GroupNudge, evt =>
 });
 ```
 
-上述模型只定义数据和调用方式；实际支持情况取决于当前 QQ 适配器。
 
 
 通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](./models#富消息、按钮与表情回应)。

@@ -1,6 +1,6 @@
 # 实现服务接口
 
-适配器固定提供三组通用服务和一组事件服务。通用服务的方法有默认实现；只实现协议端真正支持的方法，其他方法调用时会抛 `NotSupportedException`。`IEventService.EventReceived` 是必须声明的事件。
+适配器提供三组通用服务和一组事件服务。通用方法只需实现协议端支持的部分，其余默认抛 `NotSupportedException`；事件服务必须声明 `IEventService.EventReceived`。
 
 | 接口 | 当前方法 | 映射目标 |
 | --- | --- | --- |

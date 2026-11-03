@@ -47,7 +47,7 @@ sudo apk add libstdc++ libgcc icu-libs fontconfig font-noto-cjk
 
 ## 准备目录
 
-解压后，安装组件并运行宿主时，常见目录结构如下。主程序按平台选择 `ShiroBot` 或 `ShiroBot.exe`，并非同时包含两者；运行时目录会按需生成。
+安装组件并运行宿主后的常见目录结构如下。主程序按平台提供 `ShiroBot` 或 `ShiroBot.exe`；运行时目录按需生成。
 
 ```text
 ShiroBot/
@@ -119,7 +119,7 @@ chmod +x ./ShiroBot
 ./ShiroBot
 ```
 
-framework-dependent 发布包仍然直接运行 `ShiroBot` / `ShiroBot.exe`，只是启动时会使用系统已经安装的 .NET 10 Runtime。
+framework-dependent 发布包也直接运行 `ShiroBot` / `ShiroBot.exe`，启动时使用系统安装的 .NET 10 Runtime。
 
 首次启动后检查以下内容：
 

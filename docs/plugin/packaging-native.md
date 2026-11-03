@@ -1,6 +1,6 @@
 # 单 DLL 与 native 依赖
 
-`ShiroBot.SDK` NuGet 包内置 `buildTransitive` 构建目标。插件不需要在自己的项目中复制 ILRepack 配置或生成 `.deps.json`。
+`ShiroBot.SDK` NuGet 包通过 `buildTransitive` 提供构建目标，无需在插件项目中复制 ILRepack 配置或生成 `.deps.json`。
 
 ## 自动处理流程
 

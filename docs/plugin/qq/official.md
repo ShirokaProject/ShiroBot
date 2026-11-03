@@ -1,6 +1,6 @@
 # QQ 官方机器人
 
-本节集中介绍 QQ 官方开放平台的消息、媒体、私聊和流式回复能力，以及 Markdown 与按钮的使用方式。相关契约都位于 `ShiroBot.Model.QQ`。
+QQ 官方开放平台的消息、媒体、私聊、流式回复、Markdown 和按钮契约均位于 `ShiroBot.Model.QQ`。
 
 ## 使用示例
 

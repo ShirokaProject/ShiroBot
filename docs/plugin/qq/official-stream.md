@@ -29,7 +29,7 @@ Task AppendAsync(string cumulativeText, CancellationToken cancellationToken = de
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## CompleteAsync
 
