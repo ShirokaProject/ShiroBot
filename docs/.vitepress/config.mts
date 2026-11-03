@@ -59,14 +59,7 @@ export default defineConfig({
         {
           text: 'Model',
           items: [
-            {
-              text: '通用 Model',
-              link: '/plugin/models',
-              collapsed: false,
-              items: [
-                { text: '富消息、按钮与表情回应', link: '/plugin/rich-messages' }
-              ]
-            },
+            { text: '通用 Model', link: '/plugin/models' },
             {
               text: 'QQ Model',
               items: [

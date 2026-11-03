@@ -199,7 +199,7 @@ GroupCommands.MapExact("#status", async message =>
 
 ## 通用富消息与互动
 
-普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/rich-messages)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。
+普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/models#富消息、按钮与表情回应)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。
 
 ## 通用文件上传与发送
 

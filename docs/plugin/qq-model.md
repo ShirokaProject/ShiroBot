@@ -79,4 +79,4 @@ Events.MapPlatform(QEventKinds.GroupNudge, evt =>
 上述模型只定义数据和调用方式；实际支持情况取决于当前 QQ 适配器。
 
 
-通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](./rich-messages.md)。
+通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](./models#富消息、按钮与表情回应)。

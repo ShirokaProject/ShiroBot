@@ -4,7 +4,7 @@
 
 ## 使用示例
 
-[Markdown 与按钮](../qq-official)介绍类型化消息发送、Markdown、键盘按钮、Embed、Ark 和按钮互动事件。需要 QQ 专属参数时使用这些扩展；普通文本和跨平台富消息优先使用[通用富消息与互动](../rich-messages)。
+[Markdown 与按钮](../qq-official)介绍类型化消息发送、Markdown、键盘按钮、Embed、Ark 和按钮互动事件。需要 QQ 专属参数时使用这些扩展；普通文本和跨平台富消息优先使用[通用富消息与互动](../models#富消息、按钮与表情回应)。
 
 ## C# 接口参考
 
