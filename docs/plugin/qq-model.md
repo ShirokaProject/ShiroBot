@@ -4,7 +4,7 @@
 
 以下示例使用 `ShiroBot.Model.QQ`；记录日志时还需要 `ShiroBot.SDK.Abstractions`。
 
-全部方法、参数与返回类型见 [C# 接口参考](/plugin/qq-reference)，完整模型声明见 [C# 类型参考](/plugin/qq/types)。
+全部方法、参数与返回类型见 [C# 接口参考](/plugin/qq-reference)，完整模型声明见 [C# 类型参考](/plugin/qq/types)。QQ 官方开放平台相关文档集中在 [QQ 官方机器人](/plugin/qq/official)。
 
 ## 常用 Model 类型
 

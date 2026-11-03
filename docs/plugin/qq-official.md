@@ -1,5 +1,7 @@
 # QQ 官方机器人富消息
 
+本文提供 Markdown、按钮和互动事件示例。完整接口入口见 [QQ 官方机器人](./qq/official)。
+
 `ShiroBot.Model.QQ` 提供 QQ 官方开放平台的 Markdown、消息按钮和按钮点击事件模型。它们是可选的平台能力：官方适配器实现 `IQOfficialMessageApi` 后，插件才能使用它实际支持的方法；Milky 等不实现该接口的适配器会在探测时返回 `null`。
 
 普通 Markdown、卡片和基础按钮优先使用[通用富消息与互动](/plugin/rich-messages)；需要模板键盘、Ark 或 QQ 专属参数时，再使用本文的平台扩展。
