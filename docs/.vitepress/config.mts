@@ -46,15 +46,15 @@ export default defineConfig({
           ]
         },
         {
-          text: 'SDK',
+          text: '插件SDK方法',
           items: [
             { text: '接收消息与事件', link: '/plugin/routes-events' },
             { text: '调用 API', link: '/plugin/apis' },
-            { text: '插件操作与控制台', link: '/plugin/actions' },
-            { text: 'Dashboard 页面', link: '/plugin/dashboard-pages' },
-            { text: '插件之间互相调用', link: '/plugin/interop' },
+            { text: '插件互调用', link: '/plugin/interop' },
+            { text: '自定义配置页面', link: '/plugin/dashboard-pages' },
             { text: '上下文、配置与日志', link: '/plugin/context-config' },
-            { text: 'ABI 兼容性与版本', link: '/plugin/api-compatibility' }
+            { text: 'ABI 兼容性与版本', link: '/plugin/api-compatibility' },
+            { text: '插件操作与控制台', link: '/plugin/actions' },
           ]
         },
         {
@@ -66,7 +66,7 @@ export default defineConfig({
               items: [
                 { text: 'QQ 特有能力', link: '/plugin/qq-model' },
                 {
-                  text: 'C# 接口参考',
+                  text: '接口参考',
                   link: '/plugin/qq-reference',
                   collapsed: true,
                   items: [
@@ -79,7 +79,7 @@ export default defineConfig({
                   ]
                 },
                 {
-                  text: 'QQ 官方机器人',
+                  text: '官方机器人接口',
                   link: '/plugin/qq/official',
                   collapsed: false,
                   items: [
