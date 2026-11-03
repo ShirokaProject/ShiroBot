@@ -7,45 +7,22 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="1.0.0" />
+<PackageReference Include="ShiroBot.SDK" Version="1.0.3" />
 ```
 
 ## Version and ABI
 
-The package version follows the ShiroBot host release. Each contract assembly in the package has its
-own ABI version, which only increases when its public contracts change. A plugin built against this
-package requires compatible ABI major versions and the same or newer ABI within each major series.
-SDK 1.0.0 adds host-managed temporary directories (SDK ABI 1.2.0.0). QQ, Discord and
-Telegram Model ABI versions are 1.0.0.0. Components using CreateTempDirectory require host 1.0.0.
-SDK 1.0.2 adds route descriptions for the Dashboard (SDK ABI 1.3.0.0); components using the
-MapWhen description overloads require host 1.0.2.
-SDK 1.0.3 adds plugin lifetimes, named JSON services, the plugin event bus and lifetime-aware adapters
-(SDK ABI 1.4.0.0); components using them require host 1.0.3.
-Package versions follow the 1.0 release series; ABI numbers track each assembly's contracts.
+The current source product version is **1.0.3**. Package versions follow the host product version;
+shared assemblies maintain their own ABI versions.
 
 | ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
 | 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
-| 1.0.2 | 1.3.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
-| 1.0.1 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
-| 1.0.0 | 1.2.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
-<details>
-<summary>Pre-1.0 version history (migration reference)</summary>
-
-| ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
-| --- | --- | --- | --- | --- |
-| 0.9.9 | 1.1.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.8 | 1.0.0.0 | 1.0.0.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.7 | 0.9.3.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.6 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.5 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.4 | 0.9.2.0 | 0.9.2.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.3 | 0.9.1.0 | 0.9.1.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.2 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
-| 0.9.1 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 | 0.9.0.0 |
-
-</details>
+For each SDK or built-in Model assembly a component references, the ABI major version must match
+and the host-provided assembly version must be at least the referenced version. The host checks
+actual DLL references when loading plugins and adapters. Package versions do not replace these
+assembly-level checks.
 
 `ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build
 support. Plugins only need this single package, including plugins that render Avalonia controls.

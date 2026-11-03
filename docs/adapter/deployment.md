@@ -47,7 +47,7 @@ adapters/milky/ShiroBot.Adapter.Milky.dll
 adapters/milky/config.toml
 ```
 
-包 ID、入口 DLL、名称和版本由程序集元数据识别，扫描结果缓存在宿主 `cache/adapters/` 下。缓存可删除；缺失、损坏或 DLL 变化时会重新扫描，不影响配置和实例开关。旧的包目录 `adapter.json` 在成功识别后自动清理。
+包 ID、入口 DLL、名称和版本由程序集元数据识别，扫描结果缓存在宿主 `cache/adapters/` 下。缓存可删除；缺失、损坏或 DLL 变化时会重新扫描，不影响配置和实例开关。
 
 ```toml
 [[instances]]
@@ -69,13 +69,13 @@ enabled = false
 
 ID 在所有适配器包之间唯一，忽略大小写，最多 64 个字符，允许英文字母、数字、点、横线和下划线。name 可省略，enabled 默认 false。`instances = []` 表示只安装程序集，不启动实例。手动修改清单或启用状态后重启生效；运行实例的连接配置支持 SDK 配置监听。WebUI 和 CLI 写回同一份文件。ZIP 入口在子目录时，配置仍保存在适配器包根目录，不随入口 DLL 路径变化。
 
-适配器总开关只保存在宿主主配置的 `protocols`，实例开关只保存在适配器 `config.toml` 的 `[[instances]]` 中。旧 `.shirobot-adapter-state.json`、根配置实例清单和 `.instances/` 注册表不再读取或迁移。单实例平铺配置的开关使用该文件根级 `enabled`；添加第二个实例时才展开为 `[[instances]]`。备份时保留宿主主配置和整个 `adapters/`。
+适配器总开关只保存在宿主主配置的 `protocols`，实例开关只保存在适配器 `config.toml` 的 `[[instances]]` 中。单实例平铺配置的开关使用该文件根级 `enabled`；添加第二个实例时才展开为 `[[instances]]`。备份时保留宿主主配置和整个 `adapters/`。
 
 更新程序集处理该包下全部运行实例，保留所有实例的配置和启用状态；无法热替换时暂存到下次重启。删除实例只删除该条实例及连接配置，最后一个实例删除后仍保留包；「删除适配器包」才删除程序集和全部实例。
 
-适配器应通过 `Config.Load<T>()`、`Config.Save()`、`Config.SetValue()` 和 `Config.Watch<T>()` 访问配置，宿主自动限定到当前实例的 config 表。`Config.ConfigPath` 是共享文件路径，直接反序列化整份文件的旧适配器需要改用上述 SDK 方法。连接、取消令牌、监听器等资源应属于实例，每个监听实例使用不同端口。
+适配器应通过 `Config.Load<T>()`、`Config.Save()`、`Config.SetValue()` 和 `Config.Watch<T>()` 访问配置，宿主自动限定到当前实例的 config 表。`Config.ConfigPath` 是共享文件路径，组件应通过上述 SDK 方法访问实例配置，避免直接反序列化整份共享文件。连接、取消令牌、监听器等资源应属于实例，每个监听实例使用不同端口。
 
-`BotAdapterAttribute.Id` 仍是包 ID。宿主为上报事件写入实际实例 ID，插件自动回复按来源实例路由，详见[实例路由与后台发送](/plugin/apis#适配器实例与后台发送)。
+`BotAdapterAttribute.Id` 表示包 ID。宿主为上报事件写入实际实例 ID，插件自动回复按来源实例路由，详见[实例路由与后台发送](/plugin/apis#适配器实例与后台发送)。
 
 ### 没有 WebUI 时
 

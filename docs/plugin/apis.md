@@ -134,7 +134,7 @@ using (Context.UseInstance(savedMessage.InstanceId!))
 
 `ReplyAsync`、`QuoteReplyAsync`、`DeleteMessageAsync(message)` 和接收 `MessageReference` 的查询、撤回接口按来源实例路由；保存后台目标时可以使用 `ChannelReference` / `MessageReference`。仅有 groupId、userId、Channel 或 MessageId 不能自行推断适配器。
 
-只能按实例 ID 选择实例，`UsePlatform` 已移除；需要按平台或协议挑选时，从 `Context.GetAdapterInstances()` 中筛选后传其 `Id`。独立后台任务、加载钩子及 Dashboard Action 没有来源事件时，未显式选择就使用第一个已加载适配器；给指定账号发消息不要依赖加载顺序。
+使用实例 ID 选择实例；需要按平台或协议挑选时，从 `Context.GetAdapterInstances()` 中筛选后传其 `Id`。独立后台任务、加载钩子及 Dashboard Action 没有来源事件时，未显式选择就使用第一个已加载适配器；给指定账号发消息不要依赖加载顺序。
 
 ### 回复订阅
 
@@ -155,13 +155,13 @@ using (Context.UseInstance("qq-work"))
 
 需要按机器人隔离的缓存、任务或去重记录，用 `(InstanceId, ChannelId)`、`(InstanceId, Channel, MessageId)` 等键。只用 Platform、SelfId 或群号不能区分同平台同账号的多个实例；`(Platform, SelfId)` 表示平台账号，InstanceId 表示运行来源。
 
-当前 SDK 使用 `UseInstance` 选择实例。旧组件迁移与 ABI 加载规则见[ABI 兼容性与版本](/plugin/api-compatibility)。
+当前 SDK 使用 `UseInstance` 选择实例。程序集 ABI 加载规则见[ABI 兼容性与版本](/plugin/api-compatibility)。
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。
 
 ## 读取宿主状态
 
-`Context.GetHostStatus()` 返回宿主运行状态的快照，内容与 Dashboard 概览相同（SDK ABI 1.3.0.0 起，宿主 1.0.2）：
+`Context.GetHostStatus()` 返回宿主运行状态的快照，内容与 Dashboard 概览相同：
 
 ```csharp
 GroupCommands.MapExact("#status", async message =>

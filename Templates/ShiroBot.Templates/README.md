@@ -41,9 +41,9 @@ Both generated projects include `.github/workflows/release.yml`. It builds on pu
 requests and publishes the DLL plus a ZIP of the full Release build output when a matching `v*` tag is
 pushed. Update the component's `Version` metadata before tagging.
 
-ShiroBot.SDK and ShiroBot.Templates 1.0.0 are published. Use the 1.0.0 templates
-for new projects; generated projects reference SDK 1.0.0. Template-only fixes may
-use a different patch version while retaining the matching SDK reference.
+The current source product version is 1.0.3. Packing the templates injects that version
+from `Directory.Build.props` into generated SDK references. Template-only releases may use
+a separate patch version while retaining the selected SDK reference.
 
 ## NuGet release gate
 
@@ -74,9 +74,6 @@ with the current product `version`, leave `template_version` empty, and enable `
 (the manual-run default). This runs host CI, SDK/template packaging and generated consumer
 verification, and uploads test artifacts to Actions only. The publish job, NuGet login,
 NuGet upload, tags and GitHub Releases are not executed.
-
-The coordinated host, SDK and template release is 1.0.0. Generated projects pin
-SDK 1.0.0; upgrade existing projects explicitly when adopting newer SDK APIs.
 
 ## Generated project layout
 

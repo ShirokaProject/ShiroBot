@@ -23,10 +23,10 @@
 
 官方开放平台的消息、媒体、私聊、流式会话，以及 Markdown 与按钮示例，集中在 [QQ 官方机器人](./qq/official)。
 
-## 模型与迁移
+## 模型与契约
 
 - [完整 C# 类型：实体、消息、消息段、事件、按钮和策略](./qq/types)
-- [ABI 变更及迁移表](./qq-interface-review)
+- [QQ 契约语义](./qq-interface-review)
 
 ## 适配器支持
 

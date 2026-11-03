@@ -153,7 +153,7 @@ var request = new OutgoingMessage
 | IsAutomaticallyAcknowledged | bool | 适配器是否自动确认 |
 | ExpiresAt | DateTimeOffset? | 平台未提供时为 null |
 
-`InstanceId`、`Platform`、`Channel`、`Kind`、`Raw` 沿用平台事件字段。同一个点击只发布一次事件；通用处理器和原来的平台处理器均可订阅，业务应避免重复执行。回调数据不代表授权，处理敏感操作时仍需核对点击用户权限。
+`InstanceId`、`Platform`、`Channel`、`Kind`、`Raw` 沿用平台事件字段。同一个点击只发布一次事件；通用处理器和平台事件处理器均可订阅，业务应避免重复执行。回调数据不代表授权，处理敏感操作时仍需核对点击用户权限。
 
 ```csharp
 public interface IMessageInteractionService
@@ -231,7 +231,7 @@ if (reactions is not null)
 
 ### QQ 群管理与事件
 
-QQ Model ABI 1.0.0.0 统一使用字符串 ID；引用 QQ Model 0.x ABI 的插件和适配器需迁移并重新编译。
+QQ Model 的用户、群和消息 ID 使用字符串。
 群信息、成员查询、禁言、踢人和入群审批统一通过 `GetAdapterExtension<IQGroupApi>()` 获取。
 使用 `Capabilities` 检查适配器实现的操作；平台权限仍由 QQ 控制。
 自动审批策略和白名单通过 `IQGroupApprovalStrategyApi` 探测。
@@ -242,4 +242,4 @@ QQ Model ABI 1.0.0.0 统一使用字符串 ID；引用 QQ Model 0.x ABI 的插�
 QQPlatform 可用 `GlobalUserId` 保留额外的 `user_openid`。
 官方事件需订阅 `GROUP_MEMBER_EVENT`（`1 << 24`）；管理接口仍需平台权限。
 
-完整签名见 [QQ C# 接口参考](/plugin/qq-reference)，迁移说明见 [QQ 接口审阅](/plugin/qq-interface-review)。
+完整签名见 [QQ C# 接口参考](/plugin/qq-reference)，契约语义见 [QQ 接口审阅](/plugin/qq-interface-review)。

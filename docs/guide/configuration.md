@@ -107,7 +107,7 @@ groups = [10001, 10002]
 
 ### 开发时加载独立适配器 DLL
 
-已安装包的总开关只由主配置 `protocols` 管理，例如 `protocols = ["qq-official", "milky"]`。Dashboard 打开包时添加其 ID，关闭时移除；包内实例的 `enabled` 与连接配置保存在适配器自己的 `config.toml`。只有包 ID 已列入且实例启用时才启动。旧总开关文件和旧实例注册表不读取、不迁移。手工修改总开关在重启时应用，Dashboard 开关立即操作运行状态。
+已安装包的总开关只由主配置 `protocols` 管理，例如 `protocols = ["qq-official", "milky"]`。Dashboard 打开包时添加其 ID，关闭时移除；包内实例的 `enabled` 与连接配置保存在适配器自己的 `config.toml`。只有包 ID 已列入且实例启用时才启动。手工修改总开关在重启时应用，Dashboard 开关立即操作运行状态。
 
 开发适配器时，可以不打包安装，直接加载一个 DLL：
 
@@ -120,7 +120,7 @@ protocols = ["MyAdapter"]
 
 ## 适配器实例清单
 
-把实例清单和连接配置放在各适配器自己的 `config.toml` 中，主配置不再保存实例。安装包后，在 Dashboard 展开适配器并添加唯一 ID，或直接编辑文件：
+把实例清单和连接配置放在各适配器自己的 `config.toml` 中，主配置只管理适配器包的总开关。安装包后，在 Dashboard 展开适配器并添加唯一 ID，或直接编辑文件：
 
 ```toml
 [[instances]]
@@ -139,7 +139,7 @@ enabled = false
 # 另一个账号的连接配置。
 ```
 
-实例 ID 全局唯一，enabled 默认 false，不再自动创建包 ID 对应的实例。`instances = []` 保留已安装包但不加载机器人。WebUI/CLI 创建、启停、删除写回同一份文件；修改实例清单后重启生效。没有 `[[instances]]` 的旧配置按单实例处理（实例 ID 为包 ID，根配置即连接配置），文件保持原样；新增实例、重命名或删除该实例时才改写为 `[[instances]]`，并保留 ID、启用状态和连接配置。
+实例 ID 全局唯一，enabled 默认 false，实例需显式创建。`instances = []` 保留已安装包但不加载机器人。WebUI/CLI 创建、启停、删除写回同一份文件；修改实例清单后重启生效。单实例也可使用根级连接配置，此时实例 ID 为包 ID；添加实例或编辑实例清单时，宿主写入 `[[instances]]` 结构，并保留实例 ID、启用状态和连接配置。
 
 完整部署、备份和无需 WebUI 的管理方法见[配置与部署](/adapter/deployment#没有-webui-时)。
 
@@ -200,8 +200,8 @@ token = ""
 
 - `enable_dashboard` 默认为 `true`。设为 `false` 后不提供宿主 `/dashboard` 页面及其静态资源；HTTP API 和插件 Web 路由仍可使用，适合使用独立部署的 Dashboard。修改后重启宿主生效。`api.enable = false` 则关闭整个 HTTP 服务。
 - `listen_urls` 是监听地址列表；只监听一个地址时也写成单元素数组，默认为 `["http://127.0.0.1:7001"]`。
-- `public_base_url` 是反向代理后的外部地址数组，插件 `Context.WebHost` 生成链接使用第一个非空地址；空数组使用第一个监听地址。只接受数组，不兼容旧字符串格式。额外的公开地址需要自行配置 DNS、反向代理，数组本身不会新增监听或执行负载均衡。
-- API 始终要求鉴权，配置使用 `[api].token`，不再提供 `[api.auth]` 或关闭鉴权的开关。`token` 为空时，宿主启动会自动生成随机令牌并写回配置；运行时不能通过配置 API 将令牌设为空。旧 `api.auth.key` 不再读取，需要将原值手动填入 `api.token`。
+- `public_base_url` 是反向代理后的外部地址数组，插件 `Context.WebHost` 生成链接使用第一个非空地址；空数组使用第一个监听地址。该字段使用数组格式。额外的公开地址需要自行配置 DNS、反向代理，数组本身不会新增监听或执行负载均衡。
+- API 始终要求鉴权，令牌由 `[api].token` 配置。`token` 为空时，宿主启动会自动生成随机令牌并写回配置；运行时不能通过配置 API 将令牌设为空。
 
 使用 Nginx、Caddy 等反向代理时，应同时配置 TLS 和访问控制。
 
@@ -223,7 +223,7 @@ token = ""
 timeout_seconds = 15
 ```
 
-新插件可继承 `PluginBase<TConfig>`，由宿主在 `LoadAsync()` 前加载 `TConfig`。新 Adapter 实现 `IConfigurableAdapter` 和 `IConfigurableComponent<TConfig>`；宿主在调用 `StartAsync()` 前加载配置，并负责文件监听和热更新派发。组件只需在 `OnConfigChangedAsync` 中更新它缓存的运行资源。未迁移的旧组件仍可使用 `IConfigContext.Load<T>()` 和 `Watch<T>()`。
+插件可继承 `PluginBase<TConfig>`，由宿主在 `LoadAsync()` 前加载 `TConfig`。Adapter 实现 `IConfigurableAdapter` 和 `IConfigurableComponent<TConfig>`；宿主在调用 `StartAsync()` 前加载配置，并负责文件监听和热更新派发。组件只需在 `OnConfigChangedAsync` 中更新它缓存的运行资源。组件也可通过 `IConfigContext.Load<T>()` 和 `Watch<T>()` 显式加载与监听配置。
 
 配置字段可通过 `ConfigFieldAttribute` 声明分类和顺序：`Group` 是稳定分类 ID，`GroupLabel` 是界面显示名称，`GroupIcon` 和 `GroupDescription` 提供分类图标与说明；Dashboard Schema 会返回这些分类元数据。Core、Plugin 和 Adapter 共用 TOML 读写器，但由宿主按各自生命周期加载：Core 在启动早期读取，Plugin/Adapter 在组件加载时读取。
 
@@ -239,9 +239,9 @@ timeout_seconds = 15
 
 配置 API：`GET/PATCH /api/v1/config` 管理宿主配置。GET 返回 `{ schema, config }`：`config` 使用 CoreConfig 对应的 snake_case 嵌套结构，`schema` 提供可编辑字段、默认值和分类元数据（稳定 ID、名称、图标、说明与顺序）。PATCH 请求使用 `{ "config": { ... } }`，字段键与 Schema 一致；Dashboard 按该 Schema 展示和生成更新内容，不维护另一份宿主配置字段表。由适配器总开关 API 管理的 `protocols` 和由专门路由 API 管理的 `plugin_routes` 不包含在可编辑 Schema 中。
 
-`GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和旧组件仅保存文件的情况。
+`GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和仅保存文件的情况。
 
 权限配置不接受裸用户 ID。冒号等保留字符按 URI 组件编码，例如用户 ID 内的 `:` 写成 `%3A`。
-相同用户在两个实例共享权限时，分别配置两个条目；不同平台的相同 ID 不再互相授予权限。
+相同用户在两个实例共享权限时，分别配置两个条目；权限按实例隔离，不同平台的相同 ID 不会互相授予权限。
 
-1.0 仅支持当前宿主配置格式，不迁移旧字段、不修复旧版重复配置段。`protocols`、`listen_urls`、`public_base_url` 均使用数组，鉴权令牌使用 `api.token`。新生成配置将 `[api]` 放在 `[plugin_routes]` 之前；保存已有配置仍保留用户的段落顺序和注释。
+`protocols`、`listen_urls`、`public_base_url` 均使用数组，鉴权令牌使用 `api.token`。生成配置时将 `[api]` 放在 `[plugin_routes]` 之前；保存已有配置仍保留用户的段落顺序和注释。

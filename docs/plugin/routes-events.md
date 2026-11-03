@@ -58,7 +58,7 @@ Events.MapWhen<MemberLeftEvent>(
 
 重写 `OnGroupMessageAsync` / `OnDirectMessageAsync` 或订阅 `Events.Map<MessageEvent>` 的插件会显示为接收全部群聊或私聊消息。宿主接口 `GET /api/v1/plugins/{id}` 的 `listeners` 字段返回这些信息，插件未加载时为 `null`。
 
-旧 SDK 编译的插件无需重新编译：`MapMention`、`MapReply`、`MapPlatform` 等由宿主的 SDK 执行，升级宿主后即可显示具体类型。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
+`MapMention`、`MapReply`、`MapPlatform` 等由宿主的 SDK 执行，Dashboard 显示对应的监听类型。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
 
 ## 接收通用事件
 
@@ -114,7 +114,7 @@ public sealed class AiChatPlugin : PluginBase { }
 
 一个优先级的插件超过 5 秒仍未处理完时，宿主记录警告并继续分发给后面的优先级。Owner 可以在 Dashboard 插件路由或 `plugin_routes.priorities` 中覆盖插件声明的优先级，见[宿主配置](/guide/configuration#插件优先级)。
 
-`Priority` 只是 attribute 参数，旧宿主读取时会忽略；调用 `MarkHandled()` / `IsHandled()` 的插件需要宿主 1.0.2。
+`Priority` 在插件 attribute 中声明；使用 `MarkHandled()` / `IsHandled()` 标记和查询事件的处理状态。
 
 ## 并发与范围
 

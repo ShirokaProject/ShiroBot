@@ -1,6 +1,6 @@
 # Dashboard 页面
 
-需要同批开发版 SDK、宿主和 Dashboard（当前版本号 1.0.3，SDK ABI 1.4.0.0）。此组件契约尚未发布，旧的 `IPluginDashboardProvider` 页面需要迁移后重新编译。
+本文对应当前宿主与 SDK 1.0.3（SDK ABI 1.4.0.0），Dashboard 需支持组件页面契约。
 
 插件配置适合开关、数字和列表这类设置。浏览和管理数据（表情库、订阅列表）、按群编辑规则、看统计这类界面放不进配置，可以给插件加 **Dashboard 页面**。
 

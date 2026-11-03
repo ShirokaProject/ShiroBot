@@ -102,6 +102,6 @@ index=['# QQ C# 接口参考','','这里按插件调用方式记录 QQ Model 扩
 for interface,slug,label in services:
  if not interface.startswith('IQOfficial'):
   index.append(f'| {label} | `{interface}` | [{label}](./qq/{slug}) |')
-index+=['','## QQ 官方机器人','','官方开放平台的消息、媒体、私聊、流式会话，以及 Markdown 与按钮示例，集中在 [QQ 官方机器人](./qq/official)。','','## 模型与迁移','','- [完整 C# 类型：实体、消息、消息段、事件、按钮和策略](./qq/types)','- [ABI 变更及迁移表](./qq-interface-review)','','## 适配器支持','','群管理通过 `IQGroupApi.Capabilities` 检查具体操作。其他扩展先检查服务是否为 null；','拿到服务后，未实现的方法仍可能抛出 `NotSupportedException`。','官方平台的入群自动审批策略使用独立的 `IQGroupApprovalStrategyApi`；平台权限由 QQ 管理。','']
+index+=['','## QQ 官方机器人','','官方开放平台的消息、媒体、私聊、流式会话，以及 Markdown 与按钮示例，集中在 [QQ 官方机器人](./qq/official)。','','## 模型与契约','','- [完整 C# 类型：实体、消息、消息段、事件、按钮和策略](./qq/types)','- [QQ 契约语义](./qq-interface-review)','','## 适配器支持','','群管理通过 `IQGroupApi.Capabilities` 检查具体操作。其他扩展先检查服务是否为 null；','拿到服务后，未实现的方法仍可能抛出 `NotSupportedException`。','官方平台的入群自动审批策略使用独立的 `IQGroupApprovalStrategyApi`；平台权限由 QQ 管理。','']
 (root/'docs/plugin/qq-reference.md').write_text('\n'.join(index))
 print(f'Generated {len(services)} interface pages, {count} methods and complete model declarations.')

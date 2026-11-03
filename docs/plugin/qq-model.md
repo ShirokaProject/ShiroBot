@@ -30,7 +30,7 @@
 | 文件 | `IQFileApi` | 私聊和群文件上传、下载链接；群文件与文件夹查询、移动、重命名、删除和永久转存 | 否，按协议能力实现 |
 | 账号与资料 | `IQSystemApi` | 用户、好友、置顶会话、登录账号和协议实现信息查询；头像、昵称、简介、置顶设置 | 否，按协议能力实现 |
 | 原生消息 | `IQMessageApi` | QQ 原生段收发、单条与历史查询、撤回、已读、资源链接和合并转发 | 否，按协议能力实现 |
-| QQ 官方消息 | `IQOfficialMessageApi` | Markdown 与按钮能力探测、发送和互动回应；另定义文本与 Ark 发送方法，旧适配器可能不支持 | 否，仅官方平台适配器按需实现 |
+| QQ 官方消息 | `IQOfficialMessageApi` | Markdown 与按钮能力探测、发送和互动回应；另定义文本与 Ark 发送方法，具体支持情况需探测适配器能力 | 否，仅官方平台适配器按需实现 |
 | QQ 官方私聊 | `IQOfficialDirectMessageApi` | 输入状态与流式回复；参见[官方消息](/plugin/qq-official) | 否，适配器单独实现 |
 
 `IQSystemApi` 还定义了 Cookie、CSRF Token 和收藏表情 URL 查询；`IQGroupApi` 还支持查询和处理群通知、入群申请与邀请。表中是功能概览，具体方法以接口签名为准。

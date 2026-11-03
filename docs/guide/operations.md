@@ -27,8 +27,6 @@
 | `clear` | 清空控制台 |
 | `exit` / `quit` | 正常退出 |
 
-旧命令 `plugins`、`load`、`unload`、`actions`、`action`、`adapters` 和 `help` 已移除，输入时会提示新的写法。
-
 进程退出会停止宿主 HTTP 服务、适配器和 Avalonia dispatcher，但不会逐个热卸载插件。
 插件程序集和剩余资源由操作系统随进程直接回收。
 
@@ -78,7 +76,7 @@ Dashboard 的插件 actions 也使用同一套 active-dispatch 计数。执行�
 
 支持一个适配器包创建多个配置实例。在 Dashboard 展开适配器包并点击「添加实例」，填写唯一 ID，配置后启动。各适配器 config.toml 的 instances 包含统一实例清单和各自连接配置，WebUI/CLI 管理都会写回；手动编辑后重启生效。每个实例独立启停、重载和删除；重新上传同一包用于更新 DLL，增加账号请使用「添加实例」。更新会覆盖该包下所有实例使用的版本。
 
-宿主为每个运行实例创建独立的程序集副本，从副本加载适配器，配置仍使用安装目录中的 `config.toml`。替换安装目录里的 DLL 不会改写运行实例的程序集；重载失败时使用旧副本恢复，成功卸载后清理副本。如果旧宿主直接加载的 DLL 已被覆盖并出现 `Bad IL range`，需要重启一次，再由新版宿主加载独立副本。
+宿主为每个运行实例创建独立的程序集副本，从副本加载适配器，配置仍使用安装目录中的 `config.toml`。替换安装目录里的 DLL 不会改写运行实例的程序集；重载失败时使用运行前的副本恢复，成功卸载后清理副本。
 
 HTTP API 均需要宿主鉴权：
 
@@ -94,7 +92,7 @@ HTTP API 均需要宿主鉴权：
 | `POST /api/v1/adapters/<实例 ID>/reload` | 重载指定运行实例 |
 | `DELETE /api/v1/adapters/<实例 ID>` | 删除实例及连接配置，保留适配器包 |
 
-新安装不创建默认实例；旧实例迁移保留原 ID。实例 ID 不能重复或包含路径字符，新增配置不复制凭据。目录、备份和生命周期见[配置与部署](/adapter/deployment#同一个-dll-配置多个实例)，自动回复、后台发送和兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。
+安装包后需显式创建实例。实例 ID 不能重复或包含路径字符，新增配置不复制凭据。目录、备份和生命周期见[配置与部署](/adapter/deployment#同一个-dll-配置多个实例)，自动回复、后台发送和兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。
 
 离线管理支持 `adapter create <包 ID> <实例 ID>`、`adapter config <实例 ID>`、`adapter enable|disable <实例 ID>` 和 `adapter remove <实例 ID>`。离线命令在宿主停止时使用，运行中的控制台用 start/stop 即时启停。完整示例见[无 WebUI 管理](/adapter/deployment#没有-webui-时)。
 

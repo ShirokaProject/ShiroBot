@@ -186,9 +186,9 @@ docker compose -f container/compose.yaml logs -f shirobot
   ```
 
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
-- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=1.0.0` 后再执行 `docker compose -f container/compose.yaml pull` 和 `docker compose -f container/compose.yaml up -d`。
+- 固定镜像版本：将 `SHIROBOT_IMAGE_TAG` 设置为需要部署的镜像标签，再执行 `docker compose -f container/compose.yaml pull` 和 `docker compose -f container/compose.yaml up -d`。
 - 容器默认使用 UTC 时区，自动更新时间（默认 `02:00`）也按 UTC 计算。需要按本地时间执行时，在 `compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`（文件中有注释示例）。
-- 可以直接在 Dashboard 中更新主程序：新版本下载到数据目录的 `host/`（默认 `/data/host`），先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 更新镜像。启动时如果镜像中的主程序不旧于 `host/` 中的版本，会删除该目录并使用镜像版本。
+- 可以直接在 Dashboard 中更新主程序：新版本下载到数据目录的 `host/`（默认 `/data/host`），先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 更新镜像。启动时如果镜像中的主程序版本不低于 `host/` 中的版本，会删除该目录并使用镜像版本。
 
 备份数据卷：
 

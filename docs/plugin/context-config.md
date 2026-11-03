@@ -40,7 +40,7 @@ if (!Context.IsAdmin(message.Sender.Id))
 
 适配器可以只实现自己支持的服务方法。调用不支持的方法时会抛出 `NotSupportedException`，插件应按需要捕获并提供友好提示。
 
-事件处理期间这些服务绑定来源实例，跨 await 保留。后台发送、自动回复、回复订阅和旧 DLL 兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。平台、账号和实例的区别见[通用 Model](/plugin/models#事件)。
+事件处理期间这些服务绑定来源实例，跨 await 保留。后台发送、自动回复、回复订阅和程序集兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。平台、账号和实例的区别见[通用 Model](/plugin/models#事件)。
 
 ## 插件配置
 
@@ -96,7 +96,7 @@ public List<string> AllowedUsers { get; set; } = [];   // 保存为 实例ID:用
 public List<string> Groups { get; set; } = [];         // 保存为群号
 ```
 
-列表来自适配器的 `GetFriendsAsync` / `GetChannelsAsync`；不支持的适配器（如 QQ 官方机器人）只能手动输入。旧版 Dashboard 不认识这两种类型时按普通列表编辑。
+列表来自适配器的 `GetFriendsAsync` / `GetChannelsAsync`；不支持的适配器（如 QQ 官方机器人）只能手动输入。
 
 需要自行管理额外配置时，可使用 `Context.Config.Load<T>()`、`Save<T>()` 和 `Watch<T>()`。手动创建的订阅应在卸载时释放；普通配置无需另建监听器。
 
@@ -180,14 +180,13 @@ SDK 的 `IMessageService`、`IChannelService`、`IUserService` 异步操作均�
 
 ## 更新时保护用户文件
 
-宿主更新插件包时，已有 `config.toml` 和插件根目录 `cookies/`、`data/`、`cache/`、`tmp/`、`logs/` 内的文件不会被新包覆盖或按旧安装清单删除。即使早期发布包将 Cookie 文件记录为程序资源，更新后也会保留，并从程序文件清单中移除。立即更新与重启后应用的暂存更新遵循同一规则。
+宿主更新插件包时，已有 `config.toml` 和插件根目录 `cookies/`、`data/`、`cache/`、`tmp/`、`logs/` 内的文件会保留，不被包内同名文件覆盖。立即更新与重启后应用的暂存更新遵循同一规则。
 
-插件发布包应仅包含程序和必要的静态资源，不要打包空 Cookie 文件。新插件应把可编辑的 Cookie 放在配置中（字段使用 `ConfigField(Type = "password")`），并明确配置文件中的值仍为明文。已有非空 Cookie 文件应进行一次性、不删除原文件的迁移；主动清空配置后不能再次自动导入旧凭据。迁移完成标记属于持久数据，不应放进可清理的缓存目录。
+插件发布包应仅包含程序和必要的静态资源，不要打包空 Cookie 文件。可编辑的 Cookie 可放在配置中，字段使用 `ConfigField(Type = "password")`；配置文件中的值仍为明文。凭据导入应保留原文件；主动清空配置后，不能自动从其他来源恢复凭据，导入状态应保存在持久数据中。
 
-未被旧安装清单登记的同名用户文件也不会被新包覆盖或认领；旧版无清单安装的 DLL 仍可更新。程序静态资源请放在独立的资源目录，避免使用上述运行数据目录。
+未列入程序安装清单的用户文件不会被覆盖或认领。程序静态资源请放在独立的资源目录，避免使用上述运行数据目录。
 
-
-## 宿主管理的临时目录（SDK 1.0.0）
+## 宿主管理的临时目录
 
 ```csharp
 var temp = Context.CreateTempDirectory(TimeSpan.FromMinutes(10));
@@ -200,7 +199,7 @@ var path = Path.Combine(temp.Path, "video.mp4");
 保留时长必须大于零，从创建时开始计算；宿主每 30 秒扫描到期目录，文件被占用时后续重试。
 Ctrl+C/正常退出时尝试清理；强制终止时遗留的文件，下次启动会在加载插件之前全部清理，未到期也不续存。
 清理只针对专用临时区，不影响 `cache/adapters`、Cookie 或插件持久数据。订阅记录、登录凭据等不要保存在临时目录。
-新接口要求宿主 1.0.0；不需要升级适配器才能使用宿主提供的此服务。
+临时目录由宿主管理，与适配器的文件上传能力独立。
 
 ## 生命周期作用域
 
