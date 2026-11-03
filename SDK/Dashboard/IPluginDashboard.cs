@@ -167,8 +167,25 @@ public sealed record DashboardResult
     public DashboardResult NoRefresh() => this with { Refresh = false };
 }
 
-/// <summary>上传文件的内容；文件名仅用于显示，不应作为磁盘路径。</summary>
-public sealed record DashboardUploadFile(string FileName, string ContentType, ReadOnlyMemory<byte> Content);
+/// <summary>
+/// 上传文件的内容；文件名仅用于显示，不应作为磁盘路径。由宿主创建；
+/// 构造函数公开是为了让插件测试上传处理函数，以后新增的信息会以可选属性提供。
+/// </summary>
+public sealed record DashboardUploadFile
+{
+    public DashboardUploadFile(string fileName, string contentType, ReadOnlyMemory<byte> content)
+    {
+        FileName = fileName;
+        ContentType = contentType;
+        Content = content;
+    }
+
+    public string FileName { get; }
+
+    public string ContentType { get; }
+
+    public ReadOnlyMemory<byte> Content { get; }
+}
 
 /// <summary>
 /// 交给 Dashboard 的文件：磁盘上的文件或内存中的内容。宿主在插件调用结束前打开独立的文件流或复制字节，不保留插件的对象。

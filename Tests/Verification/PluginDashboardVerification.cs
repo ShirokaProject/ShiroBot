@@ -122,7 +122,7 @@ internal static class PluginDashboardVerification
         {
             LastContext = page;
             return Task.FromResult<UiNode>(Ui.Column(
-                Ui.Gallery(new[] { "m1", "protected" }, id => new UiCard(id, "猫猫", Image: id))
+                Ui.Gallery(new[] { "m1", "protected" }, id => new UiCard(id, "猫猫") { Image = id })
                     .Action("delete", "删除", (id, _, _) => { DeleteCalls++; Deleted = id; return Task.FromResult(DashboardResult.Done("已删除")); }, when: id => id == "m1"),
                 Ui.Upload("import", "上传图片", (file, _, _) => { UploadCalls++; LastUpload = file; return Task.FromResult(DashboardResult.Done("已上传")); }, ["image/png"], 4),
                 Ui.Form("edit").Text("name", "名称", required: true, maxLength: 10).Number("count", "数量", min: 1, max: 5, integer: true).Select("choice", "选择", [("a", "A")])

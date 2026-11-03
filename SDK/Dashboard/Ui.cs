@@ -220,19 +220,77 @@ public sealed class UiEmpty : UiNode
     public string Text { get; }
 }
 
-/// <summary>卡片：图片网格和列表里的一项。<paramref name="Image"/> 是文件 ID，通过 AddPage 的 files 读取。</summary>
-public sealed record UiCard(
-    string Id,
-    string Title,
-    string? Description = null,
-    string? Image = null,
-    IReadOnlyList<string>? Tags = null,
-    string? Meta = null);
+/// <summary>
+/// 卡片：图片网格和列表里的一项。构造函数只接收 ID 和标题，其余内容用属性设置：
+/// <c>new UiCard(meme.Id, meme.Caption) { Image = meme.Id, Tags = meme.Tags }</c>。
+/// </summary>
+public sealed record UiCard
+{
+    public UiCard(string id, string title)
+    {
+        Id = id;
+        Title = title;
+    }
 
-/// <summary>数据组件里一行（或一张卡片）的显示内容和可用的操作。</summary>
-public sealed record UiRow(string Key, IReadOnlyList<string> Cells, UiCard? Card, IReadOnlyList<string> Actions);
+    /// <summary>条目的 key，操作按它找回条目。</summary>
+    public string Id { get; init; }
 
-public sealed record UiActionInfo(string Id, string Label, string? Confirm, bool Danger);
+    public string Title { get; init; }
+
+    public string? Description { get; init; }
+
+    /// <summary>图片的文件 ID，通过 AddPage 的 files 读取。</summary>
+    public string? Image { get; init; }
+
+    public IReadOnlyList<string>? Tags { get; init; }
+
+    /// <summary>次要信息，例如日期或大小。</summary>
+    public string? Meta { get; init; }
+}
+
+/// <summary>数据组件里一行（或一张卡片）的显示内容和可用的操作。由 SDK 生成，插件只读取。</summary>
+public sealed record UiRow
+{
+    internal UiRow(string key, IReadOnlyList<string> cells, UiCard? card, IReadOnlyList<string> actions)
+    {
+        Key = key;
+        Cells = cells;
+        Card = card;
+        Actions = actions;
+    }
+
+    public string Key { get; }
+
+    /// <summary>表格各列的文本；图片网格和列表为空。</summary>
+    public IReadOnlyList<string> Cells { get; }
+
+    /// <summary>图片网格和列表的卡片；表格为 null。</summary>
+    public UiCard? Card { get; }
+
+    /// <summary>这一行可用的操作 ID。</summary>
+    public IReadOnlyList<string> Actions { get; }
+}
+
+/// <summary>数据组件声明的一个操作。由 SDK 根据 <c>.Action(...)</c> 生成，插件只读取。</summary>
+public sealed record UiActionInfo
+{
+    internal UiActionInfo(string id, string label, string? confirm, bool danger)
+    {
+        Id = id;
+        Label = label;
+        Confirm = confirm;
+        Danger = danger;
+    }
+
+    public string Id { get; }
+
+    public string Label { get; }
+
+    /// <summary>执行前的确认提示；为 null 时不确认。</summary>
+    public string? Confirm { get; }
+
+    public bool Danger { get; }
+}
 
 /// <summary>表格、图片网格和列表的共同部分。</summary>
 public abstract class UiCollection : UiNode

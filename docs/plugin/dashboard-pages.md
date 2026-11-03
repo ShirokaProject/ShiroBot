@@ -33,8 +33,12 @@ private async Task<UiNode> RenderLibraryAsync(DashboardContext page, Cancellatio
         Ui.Filters(
             Ui.Input("q", "搜索"),
             Ui.Select("emotion", "情绪", [("happy", "开心"), ("sad", "难过"), ("daily", "日常")])),
-        Ui.Gallery(memes, meme => new UiCard(meme.Id, meme.Caption,
-                Image: meme.Id, Description: string.Join(" · ", meme.Emotions), Tags: meme.Tags))
+        Ui.Gallery(memes, meme => new UiCard(meme.Id, meme.Caption)
+            {
+                Image = meme.Id,
+                Description = string.Join(" · ", meme.Emotions),
+                Tags = meme.Tags
+            })
             .Action("delete", "删除", DeleteAsync, confirm: "确定删除这个表情？", danger: true),
         Ui.Pager(total, pageSize: 24),
         Ui.Upload("import", "上传表情", ImportAsync, accept: ["image/*"], maxBytes: 5_000_000));
@@ -179,7 +183,7 @@ sequenceDiagram
 | 组件 | 说明 |
 | --- | --- |
 | `Ui.Table(items, key)` | 表格；`.Column(title, value)` 声明列 |
-| `Ui.Gallery(items, card)` | 卡片网格，适合图片；`UiCard` 有标题、描述、图片、标签和次要信息 |
+| `Ui.Gallery(items, card)` | 卡片网格，适合图片；`new UiCard(id, title)` 再用属性设置 `Description`、`Image`、`Tags`、`Meta` |
 | `Ui.List(items, card)` | 纵向列表，卡片字段同上 |
 | `.Action(id, label, handler, confirm, danger, when)` | 条目上的操作；`when: item => …` 只对部分条目显示 |
 | `Ui.Filters(...)` | 筛选栏：`Ui.Input`、`Ui.Select`、`Ui.Switch`，值记在状态里 |
