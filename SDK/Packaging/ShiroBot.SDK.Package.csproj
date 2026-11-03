@@ -20,8 +20,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
-    <ProjectReference Include="..\..\SDK.Generators\ShiroBot.SDK.Generators.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <ProjectReference Include="..\ShiroBot.SDK.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <ProjectReference Include="..\Generators\ShiroBot.SDK.Generators.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
     <ProjectReference Include="..\..\Models\Discord\ShiroBot.Model.Discord.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
     <ProjectReference Include="..\..\Models\QQ\ShiroBot.Model.QQ.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
     <ProjectReference Include="..\..\Models\Telegram\ShiroBot.Model.Telegram.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
@@ -33,12 +33,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\SDK\README.md" Pack="true" PackagePath="\" />
-    <None Include="..\..\SDK\buildTransitive\ShiroBot.SDK.props" Pack="true" PackagePath="buildTransitive\ShiroBot.SDK.props" />
-    <None Include="..\..\SDK\buildTransitive\ShiroBot.SDK.targets" Pack="true" PackagePath="buildTransitive\ShiroBot.SDK.targets" />
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\buildTransitive\ShiroBot.SDK.props" Pack="true" PackagePath="buildTransitive\ShiroBot.SDK.props" />
+    <None Include="..\buildTransitive\ShiroBot.SDK.targets" Pack="true" PackagePath="buildTransitive\ShiroBot.SDK.targets" />
     <None Include="$(PkgILRepack_Lib_MSBuild_Task)\build\ILRepack.Lib.MSBuild.Task.dll" Pack="true" PackagePath="tools\ILRepack.Lib.MSBuild.Task.dll" Visible="false" />
-    <None Include="..\..\SDK\bin\$(Configuration)\$(TargetFramework)\ShiroBot.SDK.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
-    <None Include="..\..\SDK.Generators\bin\$(Configuration)\netstandard2.0\ShiroBot.SDK.Generators.dll" Pack="true" PackagePath="analyzers\dotnet\cs" Visible="false" />
+    <None Include="..\bin\$(Configuration)\$(TargetFramework)\ShiroBot.SDK.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
+    <None Include="..\Generators\bin\$(Configuration)\netstandard2.0\ShiroBot.SDK.Generators.dll" Pack="true" PackagePath="analyzers\dotnet\cs" Visible="false" />
     <None Include="..\..\Models\Discord\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Model.Discord.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
     <None Include="..\..\Models\QQ\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Model.QQ.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />
     <None Include="..\..\Models\Telegram\bin\$(Configuration)\$(TargetFramework)\ShiroBot.Model.Telegram.dll" Pack="true" PackagePath="lib\$(TargetFramework)" />

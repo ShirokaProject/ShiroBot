@@ -114,7 +114,7 @@ jobs:
 
       - name: Pack SDK packages
         if: inputs.template_version == ''
-        run: dotnet pack .\Packaging\ShiroBot.SDK.Package\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
+        run: dotnet pack .\SDK\Packaging\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
 
       - name: Pack template package
         run: dotnet pack .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release -o artifacts\nuget --no-build --no-restore -p:Version=${{ steps.version.outputs.template }}

@@ -1,4 +1,4 @@
-using ShiroBot.TerminalUI;
+using ShiroBot.Terminal;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
@@ -13,7 +13,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
-using CH = ShiroBot.TerminalUI.ConsoleOutput;
+using CH = ShiroBot.Terminal.ConsoleOutput;
 using ShiroBot.Components.Updates;
 
 namespace ShiroBot.Plugins;

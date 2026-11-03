@@ -6,7 +6,7 @@ using ShiroBot.Hosting.Http;
 using ShiroBot.Plugins.Marketplace;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Update;
-using CH = ShiroBot.TerminalUI.ConsoleOutput;
+using CH = ShiroBot.Terminal.ConsoleOutput;
 
 namespace ShiroBot.Hosting.Commands;
 

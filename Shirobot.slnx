@@ -4,12 +4,10 @@
     <Project Path="Models/QQ/ShiroBot.Model.QQ.csproj" />
     <Project Path="Models/Telegram/ShiroBot.Model.Telegram.csproj" />
   </Folder>
-  <Folder Name="/Packaging/">
-    <Project Path="Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj" />
-  </Folder>
   <Folder Name="/SDK/">
+    <Project Path="SDK/Packaging/ShiroBot.SDK.Package.csproj" />
     <Project Path="SDK/ShiroBot.SDK.csproj" />
-    <Project Path="SDK.Generators/ShiroBot.SDK.Generators.csproj" />
+    <Project Path="SDK/Generators/ShiroBot.SDK.Generators.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/InteropContractProbe/ShiroBot.InteropContractProbe.csproj" />

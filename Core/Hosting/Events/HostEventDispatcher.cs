@@ -2,7 +2,7 @@ using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Plugins;
-using ShiroBot.TerminalUI;
+using ShiroBot.Terminal;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;

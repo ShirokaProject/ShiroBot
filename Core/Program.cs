@@ -23,7 +23,7 @@ using ShiroBot.Model.Discord;
 using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
 using ShiroBot.SDK.Abstractions;
-using CH = ShiroBot.TerminalUI.ConsoleOutput;
+using CH = ShiroBot.Terminal.ConsoleOutput;
 using ShiroBot.Components.Updates;
 
 namespace ShiroBot;

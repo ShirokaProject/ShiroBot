@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/nuget "$RUNNER_TEMP/package-smoke"
-          dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
+          dotnet pack SDK/Packaging/ShiroBot.SDK.Package.csproj -c Release -o artifacts/nuget --no-build
           dotnet pack Templates/ShiroBot.Templates/ShiroBot.Templates.csproj -c Release -o artifacts/nuget --no-build
           avalonia_version="$(sed -n 's/.*<PackageVersion Include="Avalonia" Version="\([^"]*\)".*/\1/p' Directory.Packages.props)"
           test -n "$avalonia_version"

@@ -42,7 +42,7 @@ jobs:
 
           dotnet restore "${{ env.SOLUTION_FILE }}" --property:Configuration="${{ env.CONFIGURATION }}"
 
-          dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj \
+          dotnet pack SDK/Packaging/ShiroBot.SDK.Package.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore \
             --output artifacts/nuget \

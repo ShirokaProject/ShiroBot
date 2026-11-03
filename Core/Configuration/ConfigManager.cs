@@ -1,7 +1,7 @@
 using System.Text.Json;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Config;
-using ShiroBot.TerminalUI;
+using ShiroBot.Terminal;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Update;
 using Tomlyn;

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using ShiroBot.Configuration;
-using ShiroBot.TerminalUI;
+using ShiroBot.Terminal;
 using ShiroBot.Update;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Plugins;
@@ -13,7 +13,7 @@ using ShiroBot.Components.Reloading;
 using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
-using CH = ShiroBot.TerminalUI.ConsoleOutput;
+using CH = ShiroBot.Terminal.ConsoleOutput;
 using ShiroBot.Hosting.Runtime;
 
 namespace ShiroBot.Hosting.Commands;

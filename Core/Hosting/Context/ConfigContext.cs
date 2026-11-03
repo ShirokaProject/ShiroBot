@@ -1,6 +1,6 @@
 using ShiroBot.Configuration;
 using ShiroBot.Adapters;
-using ShiroBot.TerminalUI;
+using ShiroBot.Terminal;
 using ShiroBot.SDK.Config;
 using System.Reflection;
 namespace ShiroBot.Hosting.Context;

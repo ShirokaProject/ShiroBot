@@ -1,7 +1,7 @@
 using System.Text;
 using System.Runtime.Versioning;
 
-namespace ShiroBot.TerminalUI;
+namespace ShiroBot.Terminal;
 
 public static class ConsoleOutput
 {

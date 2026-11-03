@@ -2,6 +2,8 @@
 
     <PropertyGroup>
         <IsPackable>false</IsPackable>
+        <!-- These are separate projects, not SDK runtime sources or resources. -->
+        <DefaultItemExcludes>$(DefaultItemExcludes);Generators/**;Packaging/**</DefaultItemExcludes>
         <Version>$(ShiroBotProductVersion)</Version>
         <AssemblyVersion>$(ShiroBotSdkAbiVersion)</AssemblyVersion>
         <FileVersion>$(ShiroBotFileVersion)</FileVersion>

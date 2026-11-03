@@ -100,7 +100,7 @@ if (args is ["--plugin-actions"])
 // Type to see completions; "notice" shows a long notice; "quit" exits.
 if (args is ["--console-demo"] or ["--console-demo", "quiet"])
 {
-    ShiroBot.TerminalUI.ConsoleOutput.ConsoleCommandOption[] completions =
+    ShiroBot.Terminal.ConsoleOutput.ConsoleCommandOption[] completions =
     [
         new("plugin", "插件: list|market|install|load|unload|update|actions|action"),
         new("adapter", "适配器: list|market|install|create|start|stop|reload|config|remove"),
@@ -112,23 +112,23 @@ if (args is ["--console-demo"] or ["--console-demo", "quiet"])
         new("adapter list", "列出适配器实例"), new("adapter start", "启动已停止的实例"), new("adapter start qq-main", "启动 QQ 主号"),
         new("notice", "演示浮动提示"), new("quit", "退出演示")
     ];
-    ShiroBot.TerminalUI.ConsoleOutput.Info("控制台已就绪");
+    ShiroBot.Terminal.ConsoleOutput.Info("控制台已就绪");
     // "quiet" leaves out the background logs, to see the prompt on a nearly empty screen.
     if (args.Length == 1) _ = Task.Run(async () =>
     {
         for (var i = 1; i <= 40; i++)
         {
             await Task.Delay(i <= 3 ? 400 : 60);
-            ShiroBot.TerminalUI.ConsoleOutput.Log($"后台日志 {i}");
+            ShiroBot.Terminal.ConsoleOutput.Log($"后台日志 {i}");
         }
     });
-    while (ShiroBot.TerminalUI.ConsoleOutput.ReadPrompt("> ", completions) is var input && input != "quit")
+    while (ShiroBot.Terminal.ConsoleOutput.ReadPrompt("> ", completions) is var input && input != "quit")
     {
         if (input == "notice")
-            ShiroBot.TerminalUI.ConsoleOutput.Notice("会出错", "插件操作执行失败。",
+            ShiroBot.Terminal.ConsoleOutput.Notice("会出错", "插件操作执行失败。",
                 string.Join('\n', Enumerable.Range(1, 40).Select(i => $"第 {i} 行：很长的中文内容用来检查换行是否按照两列宽度计算而不会超出终端右边界")), error: true);
         else
-            ShiroBot.TerminalUI.ConsoleOutput.Info("执行: " + input);
+            ShiroBot.Terminal.ConsoleOutput.Info("执行: " + input);
     }
     return;
 }
