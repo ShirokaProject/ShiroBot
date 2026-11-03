@@ -41,7 +41,7 @@ Both generated projects include `.github/workflows/release.yml`. It builds on pu
 requests and publishes the DLL plus a ZIP of the full Release build output when a matching `v*` tag is
 pushed. Update the component's `Version` metadata before tagging.
 
-The current source product version is 1.0.3. Packing the templates injects that version
+The current source product version is 1.0.2. Packing the templates injects that version
 from `Directory.Build.props` into generated SDK references. Template-only releases may use
 a separate patch version while retaining the selected SDK reference.
 

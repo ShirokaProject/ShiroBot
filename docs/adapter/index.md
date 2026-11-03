@@ -74,7 +74,7 @@ internal sealed class MyUserService : IUserService;
 
 ## 生命周期作用域（可选）
 
-需要宿主 1.0.3（SDK ABI 1.4.0.0）。
+需要宿主 1.0.2（SDK ABI 1.4.0.0）。
 
 接收循环、心跳计时器、`ClientWebSocket` 这类对象如果停止后还在运行或没有释放，旧程序集就无法回收，热重载和卸载会要求重启宿主。适配器实现 `ILifetimeAwareAdapter` 后，宿主在**每次** `StartAsync()` 之前注入一个新的 `Lifetime`，启动期间登记的东西在停止时统一收尾，配置触发的重启也会换成新的作用域：
 

@@ -6,7 +6,7 @@ ShiroBot 在宿主默认加载上下文中统一提供 Avalonia 12.1、SkiaSharp
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="1.0.3" />
+  <PackageReference Include="ShiroBot.SDK" Version="1.0.2" />
 </ItemGroup>
 ```
 

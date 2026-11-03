@@ -2,14 +2,44 @@
 
 ## 1.0.2
 
-对比 1.0.1。宿主、`ShiroBot.SDK` / `ShiroBot.Templates` 包和内嵌 Dashboard 均为 1.0.2；SDK ABI 升至 `1.3.0.0`，只新增接口，QQ、Discord、Telegram Model ABI 仍为 `1.0.0.0`。
+对比 1.0.1。宿主、`ShiroBot.SDK` / `ShiroBot.Templates` 包和内嵌 Dashboard 均为 1.0.2；SDK ABI 为 `1.4.0.0`，包含下述 typed 服务移除这一破坏性变更，QQ、Discord、Telegram Model ABI 仍为 `1.0.0.0`。
+
+### 破坏性变更
+
+- 移除 `IPluginServices.RegisterSingleton<TService>()`、`GetService<TService>()`、`GetRequiredService<TService>()`，并移除 `IServiceProvider` 基接口；插件互调不再共享运行时服务对象。
+- 使用上述 typed 服务的插件需要迁移到按名称调用的 JSON 服务或 SDK 生成的契约，并重新构建。这是二进制破坏性变更，仅升级宿主不能继续使用依赖这些成员的 DLL。
+- 插件 Dashboard 使用 `Context.Dashboard.AddPage(...)` 和 `Ui` 组件树注册页面；测试过未发布的 `IPluginDashboardProvider` 或 route-backed 标签页方案的插件需适配当前契约。
 
 ### 新功能
+
+#### 插件与适配器生命周期
+
+- `IBotContext.Lifetime` 统一管理后台任务、循环、定时器和可释放资源；插件卸载时由宿主取消并收尾。
+- 实现 `ILifetimeAwareAdapter` 的适配器在每次启动时获得新的作用域，实例停止或配置重启时清理该次启动登记的资源。
+
+#### 插件互调与事件总线
+
+- `Context.Services.Provide` / `CallAsync` 按服务名交换 JSON；`Find` 可按前缀发现带描述的服务，`IsAvailable` 检查可用性。
+- `Context.Bus` 发布与订阅插件事件；服务和订阅随提供实例的生命周期注销。提供方与调用方可独立卸载、更新和重新加载。
+- 参数、返回值、描述和事件负载经过 JSON 字节边界，不在插件间共享服务对象或程序集。
+
+#### SDK 契约与 JSON 源生成器
+
+- `[PluginContract]` 声明服务与事件契约；调用方将提供方 DLL 放入 `contracts/`，SDK 自动读取并生成本地契约类型及调用代码，DLL 仅作构建输入。
+- `[PluginJson]` 生成消息类型的 JSON 读写与 Schema；生成器随 `ShiroBot.SDK` NuGet 包分发，无需单独安装契约程序集。
+- 提供单服务、服务族、强类型事件和描述读取封装；生成的 JSON 读写保留字段默认值并处理枚举名称。
+
+#### 插件 Dashboard 组件页面
+
+- 插件通过 `Context.Dashboard.AddPage(...)` 返回 `Ui` 组件树，支持表格、图片网格、列表、统计、筛选、分页、标签页、按钮和表单。
+- 表单可逐字段声明或按 record 生成；宿主在执行操作前检查组件、条目、字段类型和约束。页面随插件卸载注销。
+- 上传和图片读取统一通过宿主 Bearer 鉴权 API，按声明检查 MIME 与文件大小，单文件上限 20 MB。插件无需公开网页路由，Dashboard 不执行插件的 HTML 或脚本。
+- 页面位于配置窗口独立的“插件页面”区块，配置、插件页面和路由/监听分区显示，页面操作不依赖配置保存按钮。
 
 #### Docker 中直接更新主程序
 
 - 镜像改为使用与 Release 相同的 `linux-musl` 不自带运行时单文件主程序，Dashboard「关于」页的主程序更新在 Docker 中也可使用。
-- 新版本先下载到数据目录的 `host/`（默认 `/data/host`），在当前容器中执行 `--self-check` 试运行，能正常启动才会安装并重启。需要新的 .NET 运行时或系统依赖时不会替换，并提示执行 `docker compose pull && docker compose up -d`。
+- 新版本先下载到数据目录的 `host/`（默认 `/data/host`），在当前容器中执行 `--self-check` 试运行，能正常启动才会安装并重启。需要新的 .NET 运行时或系统依赖时不会替换，并提示执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d`。
 - 容器启动时比较镜像与 `host/` 中的版本：面板更新的版本更新且能运行时使用它，否则删除 `host/` 并使用镜像版本，因此拉取更新的镜像总是生效。
 - 非 Docker 环境的主程序更新同样先试运行再替换，新版本无法在当前运行时启动时不会替换。
 
@@ -80,7 +110,7 @@
 
 #### Docker 宿主机上的协议端
 
-- 设置 `SHIROBOT_DATA_DIR` 并以相同路径挂载宿主目录后，配置、适配器、插件、缓存和插件临时文件都放在该目录，插件交给协议端的文件路径在宿主机上可以直接访问。`compose.yaml` 中有注释示例。
+- 设置 `SHIROBOT_DATA_DIR` 并以相同路径挂载宿主目录后，配置、适配器、插件、缓存和插件临时文件都放在该目录，插件交给协议端的文件路径在宿主机上可以直接访问。`container/compose.yaml` 中有注释示例。
 
 ### 改进
 
@@ -97,6 +127,9 @@
 
 ### 修复
 
+- 插件互调的服务和事件订阅按运行实例清理，超时卸载实例的延迟清理不会注销同 ID 替换实例的注册。
+- 对服务描述、参数、事件和返回值检查 UTF-8 JSON；提供方返回无效数据时报告 `PluginServiceException`，正在卸载的提供方不再报告为可用。
+- 插件生成的 JSON codec 不为不可回收的宿主或 SDK 类型留下静态注册，避免阻止插件卸载；枚举读写正确处理含下划线的名称。
 - 核心配置和适配器接口的错误响应补充可读的 `message`，Dashboard 可显示具体失败原因；权限条目格式错误时指出出错条目和要求的 `实例ID:用户ID` 格式，核心配置错误保留 `msg` 兼容旧版 Dashboard。
 - 模板的 `dev.ps1` 在 macOS 和 Linux 上下载对应平台的主程序，并恢复可执行权限。
 
@@ -113,8 +146,12 @@
 
 以上设置均可在 Dashboard 配置中心修改，保存后立即生效。另新增 `[plugin_routes.priorities]`，按插件 ID 覆盖插件优先级，在 Dashboard 插件路由中修改。
 
-### SDK 新增接口（ABI 1.3.0.0）
+### SDK 接口（ABI 1.4.0.0）
 
+- `IBotContext.Lifetime`、`IPluginLifetime`、`ILifetimeAwareAdapter`，以及插件事件总线 `IBotContext.Bus`。
+- 按名称调用的 `IPluginServices`、UTF-8 JSON 服务与事件边界、服务发现及描述。
+- `[PluginContract]`、`[PluginJson]`、生成的服务/事件调用代码和 JSON Schema。
+- `IBotContext.Dashboard`、`IPluginDashboard`、`DashboardContext`、`DashboardResult`、`Ui` 组件和表单。
 - `IBotContext.GetHostStatus()`，以及 `HostStatus`、`HostRuntimeInfo`、`MessageFrequencyBucket`。
 - `MessageRouteDescriptor.Condition` / `ConditionArgument` / `Description`，`MessageRouteCondition` 枚举。
 - `EventRouteDescriptor`、`EventRouter.Routes`、`PluginBase.GetEventRoutes()`。
@@ -124,6 +161,7 @@
 
 ### HTTP API
 
+- 插件页面统一使用 `GET /api/v1/plugins/{id}/pages`、`POST /api/v1/plugins/{id}/pages/{page}/render`、`POST .../events`、`POST .../upload` 和 `GET .../files`；全部要求 Bearer 鉴权。
 - `GET /api/v1/adapter-packages` 和 `GET /api/v1/adapters` 的列表项新增 `models` 字符串数组，表示适配器引用的聊天平台 Model。
 - 新增 `GET /api/v1/directory/users` 与 `GET /api/v1/directory/groups`，返回各运行中实例的好友或群列表（`entries`）以及无法读取的实例和原因（`unavailable`）；缓存 1 分钟，`?refresh=1` 强制重新读取。
 - `GET /api/v1/plugins/{id}` 新增 `listeners` 字段，插件未加载时为 `null`。
@@ -133,8 +171,8 @@
 
 ### 升级说明
 
-- 已有插件和适配器无需重新编译。使用 `GetHostStatus()`、带说明的 `MapWhen`、`MarkHandled()` / `IsHandled()` 或 `PluginActionResult.Details` 的组件需要宿主 1.0.2；`BotPlugin.Priority` 在旧宿主上会被忽略。
-- Docker 用户需要手动执行一次 `docker compose pull && docker compose up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
-- 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`。
+- 使用已移除 typed 服务 API 的插件必须迁移并重新构建；使用生命周期、JSON 互调、生成契约或 Dashboard 组件页面的组件需要本次宿主与 SDK。其他组件仍按其实际 SDK / Model 引用检查，并应验证运行行为。
+- Docker 用户需要手动执行一次 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
+- 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `container/compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`。
 - `rebuild-container` 工作流只能重建 1.0.2 及之后的版本：更早版本的构建产物仍是多文件结构，与新的镜像构建方式不兼容。
 - 使用非自包含版时需安装 ASP.NET Core 10 Runtime 10.0.13 或更新补丁。

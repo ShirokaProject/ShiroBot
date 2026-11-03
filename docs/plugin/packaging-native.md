@@ -26,7 +26,7 @@
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="1.0.3" />
+  <PackageReference Include="ShiroBot.SDK" Version="1.0.2" />
   <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
 </ItemGroup>
 ```

@@ -1,5 +1,15 @@
+### 破坏性变更
+
+- `IPluginServices` 删除 `RegisterSingleton<T>`、`GetService<T>`、`GetRequiredService<T>`，并移除 `IServiceProvider` 基接口。使用这些 typed 服务的插件需要迁移到 JSON 服务或生成契约并重新构建；这是二进制破坏性变更。
+- 插件页面统一使用 `Context.Dashboard.AddPage` / `Ui` 组件树；试用过未发布的 provider 接口或路由标签页方案的插件需适配当前契约。
+
 ### 主要更新
 
+- 生命周期作用域：宿主管理插件的后台任务、定时器和资源；支持生命周期感知的适配器在每次启动时获得独立作用域。
+- JSON 插件互调与事件总线：服务按名称提供和调用，支持服务族发现与描述；参数和结果复制传递，插件可独立卸载与更新。
+- SDK 自带契约生成器：提供方通过 `[PluginContract]` 声明契约，调用方导入提供方 DLL，由 SDK 生成类型与调用代码；`[PluginJson]` 生成 JSON 读写与 Schema，无需运行时共享契约程序集。
+- Dashboard 组件页面：表格、图片网格、列表、统计、筛选、分页、标签页、表单及上传，通过宿主 Bearer 鉴权 API 交互；宿主检查声明、条目与表单值，不执行插件 HTML 或脚本。
+- 互调清理按运行实例隔离，JSON 字节边界严格校验，避免替换实例的注册被延迟清理误删；修正 codec 注册造成的程序集引用和枚举名称处理。
 - Docker 镜像改为与 Release 相同的单文件主程序，支持在 Dashboard 中更新主程序。新版本先下载到数据卷的 `host/` 目录并在当前容器中试运行，能正常启动才会安装并重启；需要新的 .NET 运行时或系统依赖时，提示执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d`。镜像版本更新时自动改用镜像中的主程序。
 - 新增每日自动更新：插件、适配器和主程序分别开关（默认关闭），执行时间默认 02:00。插件或适配器无法热替换时，默认自动重启宿主完成更新（可关闭）。
 - 新增 Owner 通知（默认开启）：私聊推送自动更新结果、失败和重启等重要信息；待确认的更新可直接引用回复「确认」或「取消」，不再需要控制台命令。
@@ -26,7 +36,7 @@
 
 ### 升级说明
 
-- SDK ABI 升至 `1.3.0.0`，只新增接口，已有插件和适配器无需重新编译。使用带描述的 `MapWhen` 重载、`GetHostStatus()` 或 `MarkHandled()` / `IsHandled()` 的组件需要宿主 1.0.2；`BotPlugin.Priority` 在旧宿主上会被忽略。
+- 当前 SDK ABI 为 `1.4.0.0`，QQ、Discord、Telegram Model ABI 均为 `1.0.0.0`。本次包含 typed 服务删除这一破坏性变更，使用这些接口的组件需要迁移与重新构建；其他组件仍需按实际引用及运行行为验证。
 - `ShiroBot.SDK` 与 `ShiroBot.Templates` 包版本同步为 1.0.2。
 - Docker 用户需要手动执行一次 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
 - 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `container/compose.yaml` 中设置 `TZ`（文件中有注释示例）。

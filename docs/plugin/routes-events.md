@@ -42,7 +42,7 @@ GroupCommands.MapWhen(
 
 ## 在 Dashboard 中显示监听内容
 
-Dashboard 的插件详情会列出插件注册的监听：前缀、完整命令、`MapMention`（及指定用户）、`MapMentionAll`、`MapReply`、`MapAll`、通用事件类型和 `MapPlatform` 的 Kind。`MapWhen` 的条件是代码，默认只显示为“自定义条件”；需要说明时，传入描述文字（SDK ABI 1.3.0.0 起）：
+Dashboard 的插件详情会列出插件注册的监听：前缀、完整命令、`MapMention`（及指定用户）、`MapMentionAll`、`MapReply`、`MapAll`、通用事件类型和 `MapPlatform` 的 Kind。`MapWhen` 的条件是代码，默认只显示为“自定义条件”；需要说明时，传入描述文字：
 
 ```csharp
 GroupCommands.MapWhen(

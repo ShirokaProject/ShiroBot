@@ -240,7 +240,7 @@
                 count++;
             }
             if (count == 0)
-                Log.LogWarning("{0} 里没有插件契约；提供方需要用 [PluginContract] 声明契约，并用 ShiroBot.SDK 1.0.3 或更新版本构建。", Path.GetFileName(path));
+                Log.LogWarning("{0} 里没有插件契约；提供方需要用 [PluginContract] 声明契约，并用 ShiroBot.SDK 1.0.2 或更新版本构建。", Path.GetFileName(path));
         }
         foreach (var stale in Directory.GetFiles(OutputDirectory, "*.g.cs"))
             if (!expected.Contains(Path.GetFullPath(stale))) File.Delete(stale);

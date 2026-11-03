@@ -7,17 +7,17 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="1.0.3" />
+<PackageReference Include="ShiroBot.SDK" Version="1.0.2" />
 ```
 
 ## Version and ABI
 
-The current source product version is **1.0.3**. Package versions follow the host product version;
+The current source product version is **1.0.2**. Package versions follow the host product version;
 shared assemblies maintain their own ABI versions.
 
 | ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
-| 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
+| 1.0.2 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
 For each SDK or built-in Model assembly a component references, the ABI major version must match
 and the host-provided assembly version must be at least the referenced version. The host checks
@@ -26,6 +26,18 @@ assembly-level checks.
 
 `ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build
 support. Plugins only need this single package, including plugins that render Avalonia controls.
+
+## Current release features
+
+Version 1.0.2 includes plugin and adapter lifetime scopes, named JSON services, the plugin event bus,
+and the `[PluginContract]` / `[PluginJson]` source generator. Consumers import provider DLLs as build
+inputs; generated contracts exchange JSON without sharing plugin assemblies at runtime.
+Plugins register authenticated Dashboard component pages with `Context.Dashboard.AddPage` and `Ui`.
+
+**Breaking change:** `IPluginServices` no longer inherits `IServiceProvider` and removes
+`RegisterSingleton<T>`, `GetService<T>` and `GetRequiredService<T>`. Components using those methods
+must migrate to named JSON services or generated contracts and rebuild. Assembly-version checks
+alone do not establish compatibility with removed members.
 
 ## Plugin Usage
 
