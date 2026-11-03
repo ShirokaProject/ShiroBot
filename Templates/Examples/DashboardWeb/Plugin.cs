@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Http;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Dashboard;
 using ShiroBot.SDK.Plugin;
@@ -11,9 +12,28 @@ public sealed class WebDemo : PluginBase
         Context.Dashboard.AddWebPage("editor", "自定义编辑器", new DashboardWebPage(typeof(WebDemo).Assembly, "dashboard/")
         {
             Icon = "edit",
-            HandleAsync = HandleAsync
+            HandleAsync = HandleAsync,
+            RequestAsync = RequestAsync,
+            MaxRequestBytes = 32 * 1024 * 1024,
+            MaxResponseBytes = 32 * 1024 * 1024
         });
         return Task.CompletedTask;
+    }
+
+    private static async Task<IResult> RequestAsync(HttpRequest request, CancellationToken ct)
+    {
+        if (request.Method == "POST" && request.Path == "/files/echo")
+        {
+            var form = await request.ReadFormAsync(ct);
+            if (form.Files.GetFile("file") is not { } file)
+                return Results.BadRequest(new { error = "请选择文件。" });
+            // ASP.NET buffers multipart uploads to disk above its memory threshold.
+            // The result stream is sent and disposed before the upload buffer is cleaned up.
+            return Results.Stream(file.OpenReadStream(), file.ContentType, fileDownloadName: Path.GetFileName(file.FileName));
+        }
+        if (request.Method is "GET" or "HEAD" && request.Path == "/sample.bin")
+            return Results.File(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 }, "application/octet-stream", enableRangeProcessing: true);
+        return Results.NotFound(new { error = "路由不存在。" });
     }
 
     private static Task<JsonNode?> HandleAsync(string action, JsonNode? args, CancellationToken ct)

@@ -11,6 +11,24 @@ internal sealed partial class HostHttpServer
 {
     private static void MapPluginWebPageEndpoints(RouteGroupBuilder api, ApiHostConfig config, PluginManager pluginManager)
     {
+        api.MapMethods("/plugins/{id}/pages/{pageId}/web/request", ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            async (string id, string pageId, HttpContext context) =>
+            {
+                if (Unauthorized(context, config) is { } denied) return denied;
+                if (FindLoadedPlugin(pluginManager, id) is not { } plugin) return Results.NotFound();
+                PluginPageOutcome<bool> outcome;
+                try { outcome = await PluginDashboard.WebRequestAsync(plugin, pageId, context.Request.Query["path"].ToString(), context).ConfigureAwait(false); }
+                catch (OperationCanceledException)
+                {
+                    if (context.Response.HasStarted || context.RequestAborted.IsCancellationRequested) { context.Abort(); return Results.Empty; }
+                    return Results.Conflict(new { error = "request_canceled", message = "页面请求已取消。" });
+                }
+                if (outcome.Status == PluginPageStatus.Done) return Results.Empty;
+                if (context.Response.HasStarted) { context.Abort(); return Results.Empty; }
+                context.Response.Headers.Clear();
+                return PageFailure(outcome.Status, outcome.Message, outcome.Errors);
+            });
+
         api.MapGet("/plugins/{id}/pages/{pageId}/web", async (string id, string pageId, HttpContext context) =>
         {
             if (Unauthorized(context, config) is { } denied) return denied;

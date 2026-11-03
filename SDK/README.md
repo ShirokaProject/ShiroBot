@@ -424,3 +424,5 @@ working storage, not a persistent cache. Store subscriptions, credentials and ot
 in plugin data/config instead. Other folders under host cache are not purged by this service.
 
 Custom sandbox pages use `Context.Dashboard.AddWebPage(id, title, new DashboardWebPage(assembly, resourcePrefix))`. Embed a self-contained HTML entry and read extra assets through the page-scoped bridge. See `Templates/Examples/DashboardWeb` and the Dashboard pages documentation.
+
+`DashboardWebPage.RequestAsync` accepts a page-scoped ASP.NET `HttpRequest` and returns `IResult`, supporting multipart uploads, raw binary bodies, HTTP status codes and streamed/Range responses. The browser uses `ShiroBotDashboard.request(path, init)` to obtain a standard `Response`; `call()` remains available for small JSON operations.

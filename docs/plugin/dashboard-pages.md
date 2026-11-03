@@ -292,7 +292,7 @@ Context.Dashboard.AddWebPage("editor", "编辑器",
     });
 ```
 
-`DashboardWebPage` 的 `EntryPoint` 默认为 `index.html`，还可设置 `Icon`、`Description`、`Order` 和 `HandleAsync`。页面 ID 与组件页面共用唯一性规则；返回的注册对象可提前 `Dispose`，插件卸载时自动注销。
+`DashboardWebPage` 的 `EntryPoint` 默认为 `index.html`，还可设置 `Icon`、`Description`、`Order`、JSON 操作 `HandleAsync` 和通用 HTTP 入口 `RequestAsync`。页面 ID 与组件页面共用唯一性规则；返回的注册对象可提前 `Dispose`，插件卸载时自动注销。
 
 ### 网页桥接
 
@@ -315,6 +315,7 @@ Context.Dashboard.AddWebPage("editor", "编辑器",
 | 方法 | 返回 | 用途 |
 | --- | --- | --- |
 | `ready` | `Promise<void>` | 桥接连接完成 |
+| `request(path, init)` | `Promise<Response>` | 请求当前页面的业务 HTTP 入口，支持文本、JSON、表单、文件和二进制响应 |
 | `call(action, arguments)` | `Promise<unknown>` | 调用当前页面的 `HandleAsync`，参数和结果为 JSON |
 | `asset(path)` | `Promise<Blob>` | 读取资源前缀下的嵌入文件，例如 `images/cat.png` |
 | `assetUrl(path)` | `Promise<string>` | 为资源创建本页可用的 Blob URL，可用于图片、字体和媒体 |
@@ -329,6 +330,72 @@ window.ShiroBotDashboard.revokeAssetUrl(url);
 
 处理函数应校验操作名、参数格式和业务权限，并响应 `CancellationToken`。`call` 的成功表示函数正常返回，业务失败可用自己的 JSON 结构表示或抛出异常；异常会让 Promise 拒绝。请求及结果上限为 1 MB，入口 HTML 上限为 2 MB，单个资源上限为 20 MB，同时最多处理 32 个桥接请求。
 
+### 通用 HTTP 请求与文件传输
+
+插件通过 `RequestAsync` 接收页面内的 HTTP 请求。使用标准 ASP.NET `HttpRequest` 读取路径、方法、查询参数、请求头和请求体，返回 `IResult`：
+
+```csharp
+using Microsoft.AspNetCore.Http;
+
+Context.Dashboard.AddWebPage("files", "文件管理",
+    new DashboardWebPage(typeof(Plugin).Assembly, "dashboard/")
+    {
+        RequestAsync = async (request, ct) =>
+        {
+            if (request.Method == "POST" && request.Path == "/images/upload")
+            {
+                var form = await request.ReadFormAsync(ct);
+                if (form.Files.GetFile("image") is not { } file)
+                    return Results.BadRequest(new { error = "缺少图片。" });
+                // 检查文件内容和业务权限后保存；文件名仅用于显示。
+                await SaveImageAsync(file, ct);
+                return Results.Json(new { saved = true });
+            }
+            if (request.Method is "GET" or "HEAD" && request.Path == "/video")
+                return Results.File(videoPath, "video/mp4", enableRangeProcessing: true);
+            return Results.NotFound();
+        },
+        MaxRequestBytes = 256 * 1024 * 1024,
+        MaxResponseBytes = 256 * 1024 * 1024
+    });
+```
+
+网页以类似 `fetch` 的方式调用，路径始终相对于当前插件页面：
+
+```javascript
+const dashboard = window.ShiroBotDashboard;
+const form = new FormData();
+form.append('image', fileInput.files[0]);
+const response = await dashboard.request('/images/upload', {
+  method: 'POST', body: form
+});
+if (!response.ok) throw new Error(await response.text());
+console.log(await response.json());
+```
+
+请求体支持字符串、`Blob`、`File`、`FormData`、`URLSearchParams`、`ArrayBuffer` 和二进制数组。JSON 使用 `JSON.stringify` 并设置 `Content-Type: application/json`。FormData 的 multipart 边界由浏览器生成。
+
+返回值为 `Response`，保留业务状态码及内容类型。用 `json()`、`text()`、`blob()`、`arrayBuffer()` 读取，也可逐块消费 `response.body`。HTTP 4xx/5xx 通过 `response.ok` 检查；网络故障和取消会使请求或响应流失败。
+
+```javascript
+const controller = new AbortController();
+const response = await dashboard.request('/video', {
+  headers: { Range: 'bytes=0-1048575' },
+  signal: controller.signal
+});
+console.log(response.status, response.headers.get('Content-Range'));
+const data = await response.arrayBuffer();
+// 取消尚未完成的请求或读取：controller.abort();
+```
+
+完整下载后，可用 `URL.createObjectURL(await response.blob())` 给图片、视频或下载链接设置地址，使用完调用 `URL.revokeObjectURL`。直接把业务 API 地址赋给 `<video src>` 或 `<img src>` 无法经过桥接鉴权；分段读取通过 `request()` 的 Range 请求完成。
+
+请求和响应体默认各限 256 MiB，可用 `MaxRequestBytes`、`MaxResponseBytes` 调整，宿主硬上限为 1 GiB。上传保留 Blob/File 和表单中的二进制内容；响应通过专用 MessagePort 按需拉取分块，避免父页面一次读入整段文件。调用 `blob()` 或 `arrayBuffer()` 会在网页中收集完整响应，长数据可用 `response.body` 流式读取。放弃读取时调用 `response.body.cancel()`，释放上游传输。
+
+常用内容、条件请求、Range 请求头及业务 `X-*` 头可传递；Authorization、Cookie、Host、转发身份头和鉴权类头由宿主管理。响应保留 Content-Type、Content-Length、Content-Disposition、Content-Range、Accept-Ranges、ETag、Last-Modified 和业务 `X-*` 头。重定向、Set-Cookie、CSP 等控制头由宿主隔离。
+
+处理函数和响应发送都计入插件活动调用。刷新页面、切换页面、显式取消或插件卸载会取消传输；响应流发送完毕后释放，multipart 临时文件随后清理。插件应将收到的取消令牌继续传给文件和网络操作。
+
 ### 鉴权与隔离
 
 ```mermaid
@@ -340,9 +407,9 @@ sequenceDiagram
     W->>D: 通过专用 MessagePort 调用当前页面
     D->>H: Bearer 鉴权 API
     H->>P: 校验页面并执行处理函数
-    P-->>H: JSON 结果
+    P-->>H: 状态码、响应头、JSON 或二进制流
     H-->>D: 响应
-    D-->>W: 桥接结果
+    D-->>W: 桥接结果或按需分块响应
 ```
 
 iframe 仅允许脚本执行，使用独立来源。API 密钥由 Dashboard 保存，网页通过绑定当前插件和页面的桥接通信。资源读取和函数调用均经过宿主 Bearer 鉴权；网页不能指定其他插件、页面或任意 API 地址。宿主只读取指定程序集资源前缀下的文件，拒绝路径穿越。

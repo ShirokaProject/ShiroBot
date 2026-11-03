@@ -38,6 +38,8 @@
 
 #### 插件 Dashboard 自定义网页
 
+- `DashboardWebPage.RequestAsync` 提供页面内通用 HTTP 入口，支持 JSON、文本、multipart 和二进制请求，返回业务状态码、响应头、文件流及 Range 响应。网页使用 `request(path, init)`，响应按需分块传输，支持取消和卸载清理。
+
 - 新增 `AddWebPage` 与 `DashboardWebPage`，从插件 DLL 的嵌入资源加载自包含 HTML。
 - Dashboard 使用独立来源的沙箱 iframe，通过页面专用桥接调用处理函数和读取资源；所有请求经宿主 Bearer 鉴权，API 密钥保留在父页面。
 - 资源路径、请求与响应大小受限；页面刷新和插件卸载会取消请求。提供可运行示例及集成测试。
