@@ -7,6 +7,17 @@ export default defineConfig({
   base: process.env.DOCS_BASE ?? '/',
   cleanUrls: true,
   vite: { server: { allowedHosts: true } },
+  markdown: {
+    config(md) {
+      const fence = md.renderer.rules.fence!
+      md.renderer.rules.fence = (tokens, index, options, env, renderer) => {
+        const token = tokens[index]
+        if (token.info.trim() === 'mermaid')
+          return `<MermaidDiagram code="${md.utils.escapeHtml(token.content)}" />\n`
+        return fence(tokens, index, options, env, renderer)
+      }
+    }
+  },
   lastUpdated: true,
   head: [
     ['meta', { name: 'theme-color', content: '#6750a4' }],
