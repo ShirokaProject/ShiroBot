@@ -11,6 +11,15 @@ namespace ShiroBot.Plugins.Services;
 internal delegate Task<bool> PluginInvoker(Func<Task> work);
 
 /// <summary>
+/// 一个插件实例在注册表里的身份。注销按实例匹配而不是按插件 ID：
+/// 旧实例卸载超时后在后台收尾时，不能把同 ID 新实例注册的服务和订阅一起删掉。
+/// </summary>
+internal sealed class PluginInteropOwner(string pluginId)
+{
+    public string PluginId { get; } = pluginId;
+}
+
+/// <summary>
 /// 按名称的服务和事件。消息在宿主里只以 UTF-8 JSON 字节存在，进出时各复制一份，
 /// 双方都不会拿到对方创建的对象，空字节表示 JSON null。
 /// </summary>
@@ -20,16 +29,19 @@ internal sealed class PluginServiceRegistry
     private readonly Dictionary<string, NamedService> _named = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<BusSubscription>> _topics = new(StringComparer.Ordinal);
 
-    public IDisposable Provide(string ownerPluginId, string name, PluginUtf8Handler handler,
+    public IDisposable Provide(PluginInteropOwner owner, string name, PluginUtf8Handler handler,
         PluginInvoker invoke, CancellationToken ownerStopping, ReadOnlyMemory<byte> metadata = default)
     {
+        ArgumentNullException.ThrowIfNull(owner);
         ValidateName(name, nameof(name));
         ArgumentNullException.ThrowIfNull(handler);
-        var entry = new NamedService(ownerPluginId, handler, invoke, ownerStopping, metadata.ToArray());
+        if (!PluginJsonBytes.IsValid(metadata.Span))
+            throw new ArgumentException($"Metadata of plugin service '{name}' is not valid UTF-8 JSON.", nameof(metadata));
+        var entry = new NamedService(owner, handler, invoke, ownerStopping, metadata.ToArray());
         lock (_lock)
         {
             if (_named.TryGetValue(name, out var existing))
-                throw new InvalidOperationException($"Plugin service '{name}' is already provided by {existing.OwnerPluginId}.");
+                throw new InvalidOperationException($"Plugin service '{name}' is already provided by {existing.Owner.PluginId}.");
             _named.Add(name, entry);
         }
         return new Registration(() =>
@@ -43,7 +55,8 @@ internal sealed class PluginServiceRegistry
 
     public bool IsAvailable(string name)
     {
-        lock (_lock) return _named.ContainsKey(name);
+        // 和 Find、CallAsync 一致：提供方开始卸载后不再算作可用。
+        lock (_lock) return _named.TryGetValue(name, out var entry) && !entry.OwnerStopping.IsCancellationRequested;
     }
 
     public IReadOnlyList<PluginServiceInfo> Find(string prefix)
@@ -55,7 +68,7 @@ internal sealed class PluginServiceRegistry
             return _named
                 .Where(pair => pair.Key.StartsWith(prefix, StringComparison.Ordinal) && !pair.Value.OwnerStopping.IsCancellationRequested)
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                .Select(pair => new PluginServiceInfo(pair.Key, pair.Value.OwnerPluginId, PluginJsonBytes.ToNode(pair.Value.Metadata))
+                .Select(pair => new PluginServiceInfo(pair.Key, pair.Value.Owner.PluginId, PluginJsonBytes.ToNode(pair.Value.Metadata))
                 {
                     MetadataUtf8 = pair.Value.Metadata.ToArray()
                 })
@@ -68,6 +81,8 @@ internal sealed class PluginServiceRegistry
         NamedService? entry;
         lock (_lock) _named.TryGetValue(name, out entry);
         if (entry is null) throw new PluginServiceUnavailableException(name);
+        if (!PluginJsonBytes.IsValid(request.Span))
+            throw new ArgumentException($"Arguments for plugin service '{name}' are not valid UTF-8 JSON.", nameof(request));
 
         var input = request.ToArray();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, entry.OwnerStopping);
@@ -87,15 +102,19 @@ internal sealed class PluginServiceRegistry
         }
         // 只传异常类型名和消息：调用方保存提供方的异常对象会拉住提供方的程序集。
         if (failure is not null) throw new PluginServiceException(name, failure.GetType().FullName ?? failure.GetType().Name, failure.Message);
+        // 提供方的字节处理器可能返回任意字节，在这里拦下，调用方只会看到 PluginServiceException。
+        if (!PluginJsonBytes.IsValid(result))
+            throw new PluginServiceException(name, typeof(System.Text.Json.JsonException).FullName!, "The provider returned invalid UTF-8 JSON.");
         return result;
     }
 
-    public IDisposable Subscribe(string ownerPluginId, string topic, PluginUtf8EventHandler handler,
+    public IDisposable Subscribe(PluginInteropOwner owner, string topic, PluginUtf8EventHandler handler,
         PluginInvoker invoke, CancellationToken ownerStopping)
     {
+        ArgumentNullException.ThrowIfNull(owner);
         ValidateName(topic, nameof(topic));
         ArgumentNullException.ThrowIfNull(handler);
-        var subscription = new BusSubscription(ownerPluginId, handler, invoke, ownerStopping);
+        var subscription = new BusSubscription(owner, handler, invoke, ownerStopping);
         lock (_lock)
         {
             if (!_topics.TryGetValue(topic, out var subscribers)) _topics[topic] = subscribers = [];
@@ -110,6 +129,8 @@ internal sealed class PluginServiceRegistry
     public async Task<int> EmitAsync(string topic, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
         ValidateName(topic, nameof(topic));
+        if (!PluginJsonBytes.IsValid(payload.Span))
+            throw new ArgumentException($"Payload of plugin event '{topic}' is not valid UTF-8 JSON.", nameof(payload));
         BusSubscription[] subscribers;
         lock (_lock) subscribers = _topics.TryGetValue(topic, out var list) ? [.. list] : [];
         if (subscribers.Length == 0) return 0;
@@ -132,32 +153,32 @@ internal sealed class PluginServiceRegistry
         return delivered.Count(ran => ran);
     }
 
-    /// <summary>插件开始卸载：立即停止接收按名称的调用和事件，正在执行的调用由插件的调用计数等待。</summary>
-    public void DetachInterop(string pluginId)
+    /// <summary>
+    /// 插件实例开始卸载：立即停止接收按名称的调用和事件，正在执行的调用由插件的调用计数等待。
+    /// 只移除这个实例注册的内容，同 ID 的新实例不受影响。
+    /// </summary>
+    public void DetachInterop(PluginInteropOwner owner)
     {
+        ArgumentNullException.ThrowIfNull(owner);
         lock (_lock)
         {
-            foreach (var name in _named.Where(pair => SameOwner(pair.Value.OwnerPluginId, pluginId)).Select(pair => pair.Key).ToArray())
+            foreach (var name in _named.Where(pair => ReferenceEquals(pair.Value.Owner, owner)).Select(pair => pair.Key).ToArray())
                 _named.Remove(name);
             foreach (var (topic, subscribers) in _topics.ToArray())
             {
-                subscribers.RemoveAll(subscription => SameOwner(subscription.OwnerPluginId, pluginId));
+                subscribers.RemoveAll(subscription => ReferenceEquals(subscription.Owner, owner));
                 if (subscribers.Count == 0) _topics.Remove(topic);
             }
         }
     }
 
-    public void UnregisterPlugin(string pluginId) => DetachInterop(pluginId);
-
     private void RemoveSubscription(string topic, BusSubscription subscription)
     {
         if (!_topics.TryGetValue(topic, out var subscribers)) return;
-        subscribers.Remove(subscription);
+        var index = subscribers.FindIndex(item => ReferenceEquals(item, subscription));
+        if (index >= 0) subscribers.RemoveAt(index);
         if (subscribers.Count == 0) _topics.Remove(topic);
     }
-
-    private static bool SameOwner(string owner, string pluginId) =>
-        string.Equals(owner, pluginId, StringComparison.OrdinalIgnoreCase);
 
     private static void ValidateName(string name, string parameter)
     {
@@ -166,11 +187,24 @@ internal sealed class PluginServiceRegistry
             throw new ArgumentException("Names must be at most 200 characters without whitespace, e.g. \"weather.query\".", parameter);
     }
 
-    private sealed record NamedService(string OwnerPluginId, PluginUtf8Handler Handler,
-        PluginInvoker Invoke, CancellationToken OwnerStopping, byte[] Metadata);
+    private sealed class NamedService(PluginInteropOwner owner, PluginUtf8Handler handler,
+        PluginInvoker invoke, CancellationToken ownerStopping, byte[] metadata)
+    {
+        public PluginInteropOwner Owner { get; } = owner;
+        public PluginUtf8Handler Handler { get; } = handler;
+        public PluginInvoker Invoke { get; } = invoke;
+        public CancellationToken OwnerStopping { get; } = ownerStopping;
+        public byte[] Metadata { get; } = metadata;
+    }
 
-    private sealed record BusSubscription(string OwnerPluginId, PluginUtf8EventHandler Handler,
-        PluginInvoker Invoke, CancellationToken OwnerStopping);
+    private sealed class BusSubscription(PluginInteropOwner owner, PluginUtf8EventHandler handler,
+        PluginInvoker invoke, CancellationToken ownerStopping)
+    {
+        public PluginInteropOwner Owner { get; } = owner;
+        public PluginUtf8EventHandler Handler { get; } = handler;
+        public PluginInvoker Invoke { get; } = invoke;
+        public CancellationToken OwnerStopping { get; } = ownerStopping;
+    }
 
     private sealed class Registration(Action remove) : IDisposable
     {
@@ -183,13 +217,22 @@ internal sealed class PluginServiceRegistry
     }
 }
 
+/// <param name="owner">本插件实例在注册表里的身份，和同一实例的 <see cref="PluginEventBusScope"/> 共用。</param>
 /// <param name="invoke">在本插件内执行按名称调用和事件处理；为 null 时直接执行（测试或旧用法）。</param>
 /// <param name="lifetime">按名称提供的服务登记到插件生命周期，随卸载注销。</param>
-internal sealed class PluginServiceScope(PluginServiceRegistry registry, string pluginId,
+internal sealed class PluginServiceScope(PluginServiceRegistry registry, PluginInteropOwner owner,
     PluginInvoker? invoke = null, PluginLifetimeScope? lifetime = null) : IPluginServices, IDisposable
 {
     private int _disposed;
     private readonly PluginInvoker _invoke = invoke ?? (async work => { await work().ConfigureAwait(false); return true; });
+
+    public PluginServiceScope(PluginServiceRegistry registry, string pluginId,
+        PluginInvoker? invoke = null, PluginLifetimeScope? lifetime = null)
+        : this(registry, new PluginInteropOwner(pluginId), invoke, lifetime)
+    {
+    }
+
+    public PluginInteropOwner Owner => owner;
 
     public IDisposable Provide(string name, Func<JsonNode?, CancellationToken, Task<JsonNode?>> handler) =>
         Provide(name, handler, null);
@@ -205,7 +248,7 @@ internal sealed class PluginServiceScope(PluginServiceRegistry registry, string 
     public IDisposable ProvideUtf8(string name, PluginUtf8Handler handler, ReadOnlyMemory<byte> metadata = default)
     {
         ThrowIfDisposed();
-        var registration = registry.Provide(pluginId, name, handler, _invoke, lifetime?.Stopping ?? CancellationToken.None, metadata);
+        var registration = registry.Provide(owner, name, handler, _invoke, lifetime?.Stopping ?? CancellationToken.None, metadata);
         lifetime?.Track(registration);
         return registration;
     }
@@ -227,16 +270,24 @@ internal sealed class PluginServiceScope(PluginServiceRegistry registry, string 
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            registry.UnregisterPlugin(pluginId);
+            registry.DetachInterop(owner);
         }
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed != 0, this);
 }
 
-internal sealed class PluginEventBusScope(PluginServiceRegistry registry, string pluginId,
+internal sealed class PluginEventBusScope(PluginServiceRegistry registry, PluginInteropOwner owner,
     PluginInvoker invoke, PluginLifetimeScope lifetime) : IPluginEventBus
 {
+    public PluginEventBusScope(PluginServiceRegistry registry, string pluginId,
+        PluginInvoker invoke, PluginLifetimeScope lifetime)
+        : this(registry, new PluginInteropOwner(pluginId), invoke, lifetime)
+    {
+    }
+
+    public PluginInteropOwner Owner => owner;
+
     public IDisposable On(string topic, Func<JsonNode?, CancellationToken, Task> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -244,7 +295,7 @@ internal sealed class PluginEventBusScope(PluginServiceRegistry registry, string
     }
 
     public IDisposable OnUtf8(string topic, PluginUtf8EventHandler handler) =>
-        lifetime.Track(registry.Subscribe(pluginId, topic, handler, invoke, lifetime.Stopping));
+        lifetime.Track(registry.Subscribe(owner, topic, handler, invoke, lifetime.Stopping));
 
     public Task<int> EmitAsync(string topic, JsonNode? payload = null, CancellationToken cancellationToken = default) =>
         EmitUtf8Async(topic, PluginJsonBytes.FromNode(payload), cancellationToken);

@@ -202,7 +202,9 @@ internal static class PluginInteropVerification
 
         // 提供方开始卸载：立即停止接收调用。
         providerLifetime.Cancel();
-        registry.DetachInterop("provider");
+        if (consumer.IsAvailable("math.add"))
+            throw new InvalidOperationException("A stopping provider must not be reported as available.");
+        registry.DetachInterop(provider.Owner);
         if (consumer.IsAvailable("math.add") || consumer.Find("math.").Count != 0)
             throw new InvalidOperationException("A detached provider must stop serving and stop being listed.");
         try { await consumer.CallAsync("math.add", input); throw new InvalidOperationException("A detached service was called."); }
@@ -218,11 +220,75 @@ internal static class PluginInteropVerification
         var delivered = await bus.EmitAsync("demo.topic", payload);
         if (delivered != 2 || (int?)first?["value"] != 1 || ReferenceEquals(first, payload))
             throw new InvalidOperationException("The plugin event bus must deliver copies to every subscriber.");
-        registry.DetachInterop("listener");
-        registry.DetachInterop("failing");
+        registry.DetachInterop(bus.Owner);
+        registry.DetachInterop(failing.Owner);
         if (await bus.EmitAsync("demo.topic", payload) != 0)
             throw new InvalidOperationException("Detached subscribers must not receive events.");
+        await VerifyReloadedOwnerIsolationAsync();
+        await VerifyInvalidJsonBytesAsync();
+        VerifyEnumUnderscoreRoundTrip();
         Console.WriteLine("Named plugin services and event bus verification passed.");
+    }
+
+    /// <summary>旧实例在新实例加载后才收尾（卸载超时）时，只能注销自己的服务和订阅。</summary>
+    private static async Task VerifyReloadedOwnerIsolationAsync()
+    {
+        var registry = new PluginServiceRegistry();
+        PluginInvoker direct = async work => { await work(); return true; };
+        var oldServices = new PluginServiceScope(registry, "reloaded", lifetime: new PluginLifetimeScope());
+        var oldBus = new PluginEventBusScope(registry, oldServices.Owner, direct, new PluginLifetimeScope());
+        oldServices.Provide("reload.old", (_, _) => Task.FromResult<JsonNode?>(null));
+        oldBus.On("reload.topic", (_, _) => Task.CompletedTask);
+        registry.DetachInterop(oldServices.Owner);
+
+        using var newServices = new PluginServiceScope(registry, "reloaded", lifetime: new PluginLifetimeScope());
+        var newBus = new PluginEventBusScope(registry, newServices.Owner, direct, new PluginLifetimeScope());
+        newServices.Provide("reload.ping", (_, _) => Task.FromResult<JsonNode?>(JsonValue.Create("pong")));
+        newBus.On("reload.topic", (_, _) => Task.CompletedTask);
+
+        // 旧实例晚到的收尾。
+        oldServices.Dispose();
+        registry.DetachInterop(oldServices.Owner);
+        if (!newServices.IsAvailable("reload.ping") || (string?)await newServices.CallAsync("reload.ping") != "pong" ||
+            await newBus.EmitAsync("reload.topic") != 1)
+            throw new InvalidOperationException("Late cleanup of an old plugin instance removed the reloaded instance's services.");
+    }
+
+    private static async Task VerifyInvalidJsonBytesAsync()
+    {
+        var registry = new PluginServiceRegistry();
+        using var provider = new PluginServiceScope(registry, "bytes");
+        using var consumer = new PluginServiceScope(registry, "caller");
+        try
+        {
+            provider.ProvideUtf8("bytes.bad-metadata", (_, _) => Task.FromResult(ReadOnlyMemory<byte>.Empty), "{"u8.ToArray());
+            throw new InvalidOperationException("Invalid service metadata was accepted.");
+        }
+        catch (ArgumentException) { }
+        if (consumer.Find("bytes.").Count != 0)
+            throw new InvalidOperationException("A rejected service must not be listed.");
+
+        provider.ProvideUtf8("bytes.bad-result", (_, _) => Task.FromResult<ReadOnlyMemory<byte>>("not json"u8.ToArray()));
+        try { await consumer.CallAsync("bytes.bad-result"); throw new InvalidOperationException("An invalid result was returned."); }
+        catch (PluginServiceException ex) when (ex.RemoteType == typeof(System.Text.Json.JsonException).FullName) { }
+
+        try { await consumer.CallUtf8Async("bytes.bad-result", "[1,"u8.ToArray()); throw new InvalidOperationException("Invalid arguments were sent."); }
+        catch (ArgumentException) { }
+    }
+
+    private enum UnderscoreMode { Plain, Foo_Bar, HTTPServer }
+
+    private static void VerifyEnumUnderscoreRoundTrip()
+    {
+        foreach (var mode in Enum.GetValues<UnderscoreMode>())
+        {
+            var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+            using (var writer = new System.Text.Json.Utf8JsonWriter(buffer)) PluginJsonIO.WriteEnum(writer, mode);
+            var reader = new System.Text.Json.Utf8JsonReader(buffer.WrittenSpan);
+            reader.Read();
+            if (PluginJsonIO.ReadEnum<UnderscoreMode>(ref reader, "mode") != mode)
+                throw new InvalidOperationException($"Enum member {mode} did not survive a JSON round trip.");
+        }
     }
 
     /// <summary>

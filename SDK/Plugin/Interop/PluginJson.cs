@@ -36,8 +36,18 @@ public static class PluginJson
     private static readonly JsonReaderOptions ReaderOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     /// <summary>由生成的模块初始化器调用，登记契约类型的读写代码。</summary>
+    /// <remarks>
+    /// 类型不在可回收程序集里（例如宿主或 SDK 的共享类型）时不登记插件生成的读写代码：
+    /// <see cref="PluginJson{T}"/> 的静态字段属于默认上下文，引用插件的对象会让插件卸载后程序集无法释放，
+    /// 多个插件也会互相覆盖。契约服务和事件直接使用生成的实例，不依赖这里的登记。
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static void Register<T>(PluginJsonType<T> type) => PluginJson<T>.Type = type;
+    public static void Register<T>(PluginJsonType<T> type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        if (!IsCollectible(typeof(T)) && type.GetType().Assembly.IsCollectible) return;
+        PluginJson<T>.Type = type;
+    }
 
     /// <summary>把契约类型序列化成 UTF-8 JSON；<c>null</c> 得到空字节。</summary>
     public static byte[] Serialize<T>(T value) => Write(TypeOf<T>(), value);
@@ -62,7 +72,16 @@ public static class PluginJson
         // 读写代码由类型所在程序集的模块初始化器登记；还没执行过该程序集的代码时先运行它。
         System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(T).Module.ModuleHandle);
         return PluginJson<T>.Type ?? throw new InvalidOperationException(
-            $"{typeof(T).FullName} 没有生成 JSON 读写代码。把它用在 [PluginContract] 的服务或事件里，或给它标上 [PluginJson]。");
+            $"{typeof(T).FullName} 没有生成 JSON 读写代码。把它用在 [PluginContract] 的服务或事件里，或给它标上 [PluginJson]。" +
+            (IsCollectible(typeof(T)) ? "" : "宿主和 SDK 的共享类型不能在插件里登记读写代码，请改用插件自己的契约类型。"));
+    }
+
+    /// <summary>类型或它的元素、泛型参数是否来自可回收程序集。</summary>
+    private static bool IsCollectible(Type type)
+    {
+        if (type.Assembly.IsCollectible) return true;
+        if (type.HasElementType) return IsCollectible(type.GetElementType()!);
+        return type.IsGenericType && type.GetGenericArguments().Any(IsCollectible);
     }
 
     internal static byte[] Write<T>(PluginJsonType<T> type, T value)
@@ -129,8 +148,16 @@ public static class PluginJsonIO
     {
         if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt64(out var number))
             return (T)Enum.ToObject(typeof(T), number);
-        var text = ReadString(ref reader, field)?.Replace("_", "", StringComparison.Ordinal);
-        if (text is not null && Enum.TryParse<T>(text, ignoreCase: true, out var value)) return value;
+        var text = ReadString(ref reader, field);
+        if (text is not null)
+        {
+            // 先按写出时的 snake_case 精确匹配，成员名本身带下划线（Foo_Bar）也能读回。
+            foreach (var name in Enum.GetNames<T>())
+                if (string.Equals(SnakeCase(name), text, StringComparison.Ordinal) ||
+                    string.Equals(name, text, StringComparison.OrdinalIgnoreCase))
+                    return Enum.Parse<T>(name);
+            if (Enum.TryParse<T>(text.Replace("_", "", StringComparison.Ordinal), ignoreCase: true, out var value)) return value;
+        }
         throw new JsonException($"字段 {field} 的值 \"{text}\" 不是 {typeof(T).Name} 的成员。");
     }
 

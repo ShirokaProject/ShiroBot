@@ -9,4 +9,21 @@ internal static class PluginJsonBytes
 
     public static ReadOnlyMemory<byte> FromNode(JsonNode? node) =>
         node is null ? ReadOnlyMemory<byte>.Empty : System.Text.Encoding.UTF8.GetBytes(node.ToJsonString());
+
+    /// <summary>是否是一个完整的 JSON 值；空字节表示 JSON null，也算有效。</summary>
+    public static bool IsValid(ReadOnlySpan<byte> json)
+    {
+        if (json.IsEmpty) return true;
+        try
+        {
+            var reader = new System.Text.Json.Utf8JsonReader(json);
+            if (!reader.Read()) return false;
+            reader.Skip();
+            return !reader.Read();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
 }

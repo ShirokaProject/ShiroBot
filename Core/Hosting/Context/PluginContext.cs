@@ -16,6 +16,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
     private readonly object _configWatchLock = new();
     private readonly HashSet<ConfigWatchSubscription> _configWatches = [];
     private readonly PluginServiceRegistry _serviceRegistry;
+    private readonly PluginInteropOwner _interopOwner;
     private readonly PluginLifetimeScope _lifetime = new();
     private Func<Func<Task>, Task<bool>>? _dispatchGuard;
     private int _externalCallbacksDetached;
@@ -73,8 +74,9 @@ internal sealed class PluginContext : IBotContext, IDisposable
         Message = botContext.CreatePluginMessageContext(pluginName);
         Logger = new ConsoleLogger($"[Plugin:{pluginName}]", logHub);
         _serviceRegistry = serviceRegistry;
-        Services = new PluginServiceScope(serviceRegistry, pluginName, InvokeAsync, _lifetime);
-        Bus = new PluginEventBusScope(serviceRegistry, pluginName, InvokeAsync, _lifetime);
+        _interopOwner = new PluginInteropOwner(pluginName);
+        Services = new PluginServiceScope(serviceRegistry, _interopOwner, InvokeAsync, _lifetime);
+        Bus = new PluginEventBusScope(serviceRegistry, _interopOwner, InvokeAsync, _lifetime);
         DashboardScope = new PluginDashboardScope(InvokeAsync, _lifetime);
         PluginDirectory = Path.GetFullPath(pluginDirectory);
         Directory.CreateDirectory(PluginDirectory);
@@ -130,7 +132,7 @@ internal sealed class PluginContext : IBotContext, IDisposable
         DisposeConfigWatches();
         // 先发出停止信号并停止接收其他插件的调用和事件；等待和释放在卸载流程后面进行。
         _lifetime.Cancel();
-        _serviceRegistry.DetachInterop(_pluginName);
+        _serviceRegistry.DetachInterop(_interopOwner);
         BotContext.ReplySubscriptions.UnregisterOwner(_pluginName);
         BotContext.WebHost.UnregisterOwner(_pluginName);
     }
