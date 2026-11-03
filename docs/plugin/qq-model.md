@@ -35,7 +35,7 @@
 
 `IQSystemApi` 还定义了 Cookie、CSRF Token 和收藏表情 URL 查询；`IQGroupApi` 还支持查询和处理群通知、入群申请与邀请。表中是功能概览，具体方法以接口签名为准。
 
-这些接口互相独立。实现了 `IQMessageApi` 不代表能发送官方 Markdown；插件必须单独探测 `IQOfficialMessageApi`。
+QQ 原生消息使用 `IQMessageApi`，官方 Markdown 使用独立的 `IQOfficialMessageApi`，插件分别探测。
 
 ## QQ 原生消息与段
 

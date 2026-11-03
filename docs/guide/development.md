@@ -1,6 +1,6 @@
 # 从源码构建
 
-本页面向宿主开发者。只开发插件或适配器无需构建宿主，参见[创建第一个插件](/plugin/)与[创建适配器](/adapter/)。
+本页面向宿主开发者。插件与适配器开发分别参见[创建第一个插件](/plugin/)与[创建适配器](/adapter/)。
 
 ## 仓库结构
 
@@ -26,7 +26,7 @@ dotnet build Shirobot.slnx
 dotnet run --project Tests/Verification/ShiroBot.Verification.csproj
 ```
 
-构建宿主时会从 Shirobot.Dashboard 的 Release 下载 `ShirobotDashboardVersion` 对应的前端成品并嵌入程序集，不需要 Node.js。离线或该版本尚未发布时构建仍会成功，但 `/dashboard` 不可用；发布流程使用 `-p:RequireDashboard=true` 强制校验。联调未发布的前端改动时使用 `-p:DashboardDistPath=<本地 dist 目录>`。
+构建宿主时会从 Shirobot.Dashboard 的 Release 下载 `ShirobotDashboardVersion` 对应的前端成品并嵌入程序集。离线或该版本尚未发布时构建仍会成功，但 `/dashboard` 不可用；发布流程使用 `-p:RequireDashboard=true` 强制校验。联调未发布的前端改动时使用 `-p:DashboardDistPath=<本地 dist 目录>`。
 
 宿主保持 `PublishTrimmed=false`：插件发现、配置 schema 和程序集加载依赖反射与 metadata，目前不具备安全裁剪条件。镜像与发布包也因此没有启用 NativeAOT。
 
@@ -49,4 +49,4 @@ npm run build   # 构建静态站点
 
 ## 发布
 
-推送 `v*` tag 后，GitHub Actions 会发布各平台安装包、NuGet 包与 Docker 镜像。直接修改固定文件 `.github/release-notes.md`，其中内容会作为下次 Release 的更新日志，无需按 tag 新建文件。
+推送 `v*` tag 后，GitHub Actions 会发布各平台安装包、NuGet 包与 Docker 镜像。下次 Release 的更新日志统一在 `.github/release-notes.md` 中维护。

@@ -160,10 +160,10 @@ static User ToCommonUser(TelegramUser source) =>
     };
 ```
 
-Discord 文本频道可映射为 `ChannelType.Group`，Thread 映射为 `Thread`；Telegram 私聊映射为 `Direct`，群聊映射为 `Group`，话题映射为 `Thread`。具体协议字段由适配器负责转换，Model 不会自动完成映射。
+Discord 文本频道可映射为 `ChannelType.Group`，Thread 映射为 `Thread`；Telegram 私聊映射为 `Direct`，群聊映射为 `Group`，话题映射为 `Thread`。具体协议字段由适配器转换。
 
 ## 自定义平台契约
 
 若通用 `Raw` 负载和服务不足以表达插件要调用的能力，可把扩展接口与负载类型放在独立的共享契约 DLL。例如程序集名为 `MyPlatform.Contracts` 时，在适配器的 `BotAdapterAttribute.SharedAssemblies` 和插件的 `BotPluginAttribute.SharedAssemblies` 中都写入该名称；共享 DLL 放在适配器入口 DLL 旁。宿主会先把它加载为共享程序集，让插件和适配器看到相同的类型。
 
-不要把协议客户端内部 DTO 直接作为插件 API。若只需要标准消息与事件，无需自定义契约或 Model 包。
+不要把协议客户端内部 DTO 直接作为插件 API。标准消息与事件使用通用 SDK 契约。

@@ -1,6 +1,6 @@
 # 插件操作与控制台
 
-实现 `IPluginActionProvider` 即可向宿主控制台和已鉴权的 Dashboard 提供同一组操作，无需单独注册控制台解析器或处理 `HttpContext`。
+实现 `IPluginActionProvider`，向宿主控制台和已鉴权的 Dashboard 提供同一组操作。
 
 ## 定义操作
 

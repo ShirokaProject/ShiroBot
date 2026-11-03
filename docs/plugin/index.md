@@ -149,7 +149,7 @@ ShiroBot/plugins/HelloPlugin.dll
 1. 打开生成的项目或解决方案。通过 Rider 的新建项目窗口选择 **ShiroBot Plugin** 也可以；是否将解决方案和项目放在同一目录不影响运行。
 2. 将构建配置设为 **Debug**，保留运行配置中的“启动前构建”步骤。
 3. 首次使用先构建项目。如果创建项目时没有执行准备脚本，Debug 构建会自动下载与 `Directory.Packages.props` 中 SDK 版本匹配的宿主，并复制插件及调试符号。
-4. 选择唯一的 **ShiroBot** 运行配置，点击三角形运行，或点击小虫子调试。该配置直接启动 .NET 宿主，Run 与 Debug 共用，不需要再选择单独的 Debug 配置。
+4. 选择唯一的 **ShiroBot** 运行配置，点击三角形运行，或点击小虫子调试。该配置直接启动 .NET 宿主，供 Run 与 Debug 共用。
 5. 在 `src/Plugin.cs` 的 `ping` 处理方法中设置断点。到开发宿主的 Dashboard 添加并启用适配器实例，连接机器人后发送 `#ping`；插件会回复 `pong`，调试时会命中断点。
 
 创建项目时自动选择当前操作系统，宿主架构由当前 .NET SDK 的 RID 决定，例如 `osx-arm64`。`Properties/launchSettings.json` 定义启动入口；开发宿主位于项目目录下的 `.shirobot-dev/host/<RID>/`。
@@ -187,7 +187,7 @@ Run、Debug 和脚本启动默认允许控制台交互；需要关闭输入时�
 
 #### 测试尚未发布的宿主 / SDK
 
-这只适用于开发版本测试，正式发布的版本不需要手动准备：
+测试尚未发布的开发版本时，按以下步骤准备：
 
 1. 从同一份源码构建 SDK 和 Templates NuGet 包，将模板包用 `dotnet new install <模板包路径>` 安装；给生成项目配置本地 NuGet 源，确保 SDK 从该目录还原。已有同版本本地 SDK 缓存时，确认没有继续使用旧构建。
 2. 从对应源码发布当前系统/架构的宿主，将发布目录中的文件放入项目的 `.shirobot-dev/host/<RID>/`，保留可执行权限。

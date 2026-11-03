@@ -41,7 +41,7 @@
 load HelloPlugin
 ```
 
-卸载时使用插件 ID，而不是显示名称：
+使用插件 ID 卸载：
 
 ```text
 unload HelloPlugin

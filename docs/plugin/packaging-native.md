@@ -1,6 +1,6 @@
 # 单 DLL 与 native 依赖
 
-`ShiroBot.SDK` NuGet 包通过 `buildTransitive` 提供构建目标，无需在插件项目中复制 ILRepack 配置或生成 `.deps.json`。
+`ShiroBot.SDK` NuGet 包通过 `buildTransitive` 提供依赖合并和 native 清单生成的构建目标。
 
 ## 自动处理流程
 
@@ -20,7 +20,7 @@
 6. 从插件输出中移除已合并 DLL 和延迟下载的 native 文件。
 7. 删除插件 `.deps.json`。
 
-因此部署时以插件主 DLL 为准。SDK、Model、Avalonia 等共享程序集由宿主提供，不会被合并进插件。
+部署插件主 DLL；SDK、Model、Avalonia 等共享程序集由宿主提供。
 
 ## managed 依赖示例
 
@@ -70,7 +70,7 @@ runtimes/osx-arm64/native/libexample.dylib
 <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.11" />
 ```
 
-构建产物不会包含所有平台 native 文件。插件 DLL 内只嵌入类似以下信息：
+插件 DLL 嵌入 native 依赖清单，运行时按平台下载所需文件。清单示例：
 
 ```json
 {

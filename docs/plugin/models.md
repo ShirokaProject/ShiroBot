@@ -42,7 +42,7 @@ await Context.Message.SendMessageAsync(
 
 ## 富消息、按钮与表情回应
 
-这些契约位于 `ShiroBot.SDK.Models`、`ShiroBot.SDK.Adapter`，普通插件无需引用 QQ Model。能力按目标会话查询，表示适配器已经实现的映射；账号权限、平台审核和请求是否成功仍由实际调用决定。
+这些契约位于 `ShiroBot.SDK.Models`、`ShiroBot.SDK.Adapter`。能力按目标会话查询，表示适配器已经实现的映射；账号权限、平台审核和请求是否成功仍由实际调用决定。
 
 ### 发送与能力检查
 
