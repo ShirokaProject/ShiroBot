@@ -6,6 +6,7 @@ export default defineConfig({
   description: 'ShiroBot 安装、插件开发与适配器开发文档',
   base: process.env.DOCS_BASE ?? '/',
   cleanUrls: true,
+  vite: { server: { allowedHosts: true } },
   lastUpdated: true,
   head: [
     ['meta', { name: 'theme-color', content: '#6750a4' }],
