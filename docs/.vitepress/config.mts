@@ -1,4 +1,34 @@
+import { readdirSync, readFileSync } from 'node:fs'
 import { defineConfig } from 'vitepress'
+
+// 更新日志侧边栏：按 docs/changelog/v*.md 自动生成，新版本只需新增一页。
+function changelogSidebar() {
+  const dir = new URL('../changelog/', import.meta.url)
+  const versions = readdirSync(dir)
+    .filter(file => /^v\d+-\d+-\d+\.md$/.test(file))
+    .map(file => {
+      const source = readFileSync(new URL(file, dir), 'utf8')
+      const version = source.match(/^version:\s*(\S+)/m)?.[1] ?? file.slice(1, -3).replaceAll('-', '.')
+      const unreleased = /^unreleased:\s*true/m.test(source)
+      return { version, unreleased, link: `/changelog/${file.slice(0, -3)}` }
+    })
+    .sort((a, b) => {
+      const pa = a.version.split('.').map(Number)
+      const pb = b.version.split('.').map(Number)
+      for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pb[i] - pa[i]
+      return 0
+    })
+  return [
+    {
+      text: '更新日志',
+      items: [
+        { text: '全部版本', link: '/changelog/' },
+        ...versions.map(v => ({ text: v.unreleased ? `${v.version}（待发布）` : v.version, link: v.link }))
+      ]
+    }
+  ]
+}
+
 
 export default defineConfig({
   lang: 'zh-CN',
@@ -28,6 +58,7 @@ export default defineConfig({
       { text: '开始使用', link: '/guide/' },
       { text: '插件开发', link: '/plugin/' },
       { text: '适配器开发', link: '/adapter/' },
+      { text: '更新日志', link: '/changelog/' },
       {
         text: '生态',
         items: [
@@ -37,6 +68,7 @@ export default defineConfig({
       }
     ],
     sidebar: {
+      '/changelog/': changelogSidebar(),
       '/guide/': [
         {
           text: '开始使用',
