@@ -11,7 +11,7 @@
 - Dashboard 组件页面：表格、图片网格、列表、统计、筛选、分页、标签页、表单及上传，通过宿主 Bearer 鉴权 API 交互；宿主检查声明、条目与表单值，不执行插件 HTML 或脚本。
 - 互调清理按运行实例隔离，JSON 字节边界严格校验，避免替换实例的注册被延迟清理误删；修正 codec 注册造成的程序集引用和枚举名称处理。
 - Docker 镜像改为与 Release 相同的单文件主程序，支持在 Dashboard 中更新主程序。新版本先下载到数据卷的 `host/` 目录并在当前容器中试运行，能正常启动才会安装并重启；需要新的 .NET 运行时或系统依赖时，提示执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d`。镜像版本更新时自动改用镜像中的主程序。
-- 新增每日自动更新：插件、适配器和主程序分别开关（默认关闭），执行时间默认 02:00。插件或适配器无法热替换时，默认自动重启宿主完成更新（可关闭）。
+- 新增每日自动更新（`config.toml` 的 `[update]` 表）：主程序、插件和适配器分别开关（默认关闭），执行时间默认 02:00，插件页和适配器页也有快捷开关。可以把单个插件或适配器设为不自动更新；大版本更新默认不自动安装，只通知 Owner。插件或适配器无法热替换时，默认自动重启宿主完成更新（可关闭）。
 - 新增 Owner 通知（默认开启）：私聊推送自动更新结果、失败和重启等重要信息；待确认的更新可直接引用回复「确认」或「取消」，不再需要控制台命令。
 - 新增插件优先级：数字越小越先收到事件，默认 `2`，旧插件无需修改。命令匹配或插件调用 `MarkHandled()` 后，数字更大的插件不再收到，可把 AI 聊天等兜底插件设为更大的数字，避免命令同时触发 AI 回复。插件在 `[BotPlugin(Priority = …)]` 中声明，Owner 可在 Dashboard 插件路由或 `plugin_routes.priorities` 中覆盖。
 - 控制台命令按对象分组：`plugin list|market|install|load|unload|update|actions|action`、`adapter list|market|install|…`，`update` 只负责主程序；可从市场直接安装插件和适配器，`plugin refresh`、`adapter refresh` 重新拉取市场。控制台、Dashboard 和自动更新共用安装、更新流程。旧命令和 `help` 已移除，输入 `/` 列出全部命令。
