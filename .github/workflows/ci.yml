@@ -74,6 +74,13 @@ jobs:
         run: |
           set -euo pipefail
           dotnet build Shirobot.slnx -c Release
+          # Building with a newer SDK must not raise the minimum installed .NET 10 patch.
+          jq -e '
+            .runtimeOptions.rollForward == "LatestMinor" and
+            (.runtimeOptions.frameworks | length == 2 and
+              all(.[]; .version == "10.0.0") and
+              (map(.name) | sort) == ["Microsoft.AspNetCore.App", "Microsoft.NETCore.App"])
+          ' Core/bin/Release/net10.0/ShiroBot.runtimeconfig.json
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build -- --memory-retention
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build -- --avalonia-lazy

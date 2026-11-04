@@ -10,8 +10,12 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Configurations>Debug;Release</Configurations>
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
-        <!-- Publish with the latest runtime patch supplied by the selected .NET 10 SDK. -->
-        <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+        <!-- Framework-dependent hosts accept every .NET 10 patch, regardless of the build SDK. -->
+        <TargetLatestRuntimePatch Condition="'$(SelfContained)' != 'true'">false</TargetLatestRuntimePatch>
+        <RuntimeFrameworkVersion Condition="'$(SelfContained)' != 'true'">10.0.0</RuntimeFrameworkVersion>
+        <RollForward>LatestMinor</RollForward>
+        <!-- Self-contained hosts still bundle the latest runtime patch supplied by the SDK. -->
+        <TargetLatestRuntimePatch Condition="'$(SelfContained)' == 'true'">true</TargetLatestRuntimePatch>
         <!-- Prefer Workstation GC for typical bot workloads and lower idle memory use. -->
         <ServerGarbageCollection Condition="'$(ServerGarbageCollection)' == ''">false</ServerGarbageCollection>
     </PropertyGroup>
