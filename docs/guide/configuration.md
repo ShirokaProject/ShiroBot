@@ -30,6 +30,18 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 
 插件或适配器当前版本无法热替换时，新版本会暂存到下次启动。`auto_update_restart_on_pending` 默认开启，此时自动更新结束后会重启宿主完成替换；关闭后只记录日志并在 Dashboard 中提示需要重启。主程序已更新并重启时会一并完成暂存的替换。
 
+### 排除和跳过大版本
+
+不想自动更新的插件或适配器写进排除列表，填插件 ID 或适配器包 ID，不区分大小写；也可以在 Dashboard 的插件或适配器详情中关掉“自动更新”。新安装的插件和适配器默认参与自动更新。
+
+```toml
+auto_update_exclude_plugins = ["AiChatPlugin", "MyPatchedPlugin"]
+auto_update_exclude_adapters = ["qq-official"]
+auto_update_skip_major = true
+```
+
+`auto_update_skip_major` 默认开启：新版本的主版本号变大（如 `1.4.3` → `2.0.0`）时不自动安装，只通知 Owner 手动更新，同一个版本只通知一次。插件、适配器和主程序都适用。版本号读不出主版本号（如日期或 commit hash）时照常更新。
+
 执行时间使用宿主所在系统的本地时区。到点后一小时内宿主未运行时当天跳过；每天只执行一次，执行日期记录在 `cache/auto-update-last-run`，更新导致的重启不会在当天再次执行。单个插件或适配器更新失败只记录警告，不影响其他项目。
 
 ## Owner 通知
@@ -60,6 +72,9 @@ auto_update_adapters = false
 auto_update_host = false
 auto_update_time = "02:00"
 auto_update_restart_on_pending = true
+auto_update_exclude_plugins = []
+auto_update_exclude_adapters = []
+auto_update_skip_major = true
 avalonia_theme = "Auto"
 
 owner_list = ["qq-work:123456789"]
@@ -96,6 +111,9 @@ groups = [10001, 10002]
 | `auto_update_host` | `false` | 每天自动更新主程序 |
 | `auto_update_time` | `02:00` | 自动更新时间，`HH:mm`，宿主本地时区 |
 | `auto_update_restart_on_pending` | `true` | 自动更新中有插件或适配器无法热替换时，自动重启宿主完成更新 |
+| `auto_update_exclude_plugins` | `[]` | 不自动更新的插件 ID，见[排除和跳过大版本](#排除和跳过大版本) |
+| `auto_update_exclude_adapters` | `[]` | 不自动更新的适配器包 ID |
+| `auto_update_skip_major` | `true` | 主版本号变化时不自动更新，只通知 Owner |
 | `avalonia_theme` | `Auto` | `Light`、`Dark` 或 `Auto`（按时间切换，18:00–6:00 为深色） |
 | `owner_list` | `[]` | 所有者身份列表（`instanceId:userId`）；自动拥有管理员权限，`Context.IsOwner` 和 `Context.IsAdmin` 均返回 `true` |
 | `admin_list` | `[]` | 管理员身份列表（`instanceId:userId`）；owner 无需重复填写，插件通过 `Context.IsAdmin` 判断 |
