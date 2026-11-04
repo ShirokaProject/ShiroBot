@@ -2146,6 +2146,19 @@ try
         AutoUpdateSchedule.IsDue(scheduledDay.AddHours(2), parsedTime, DateOnly.FromDateTime(scheduledDay.DateTime)))
         throw new InvalidOperationException("Auto-update schedule window is wrong.");
 
+    if (!AutoUpdatePolicy.IsMajorUpgrade("1.4.3", "2.0.0") || !AutoUpdatePolicy.IsMajorUpgrade("v0.9.9", "v1.0.0") ||
+        AutoUpdatePolicy.IsMajorUpgrade("1.4.3", "1.5.0") || AutoUpdatePolicy.IsMajorUpgrade("2.0.0", "1.9.0") ||
+        AutoUpdatePolicy.IsMajorUpgrade("20261001", "20261101") || AutoUpdatePolicy.IsMajorUpgrade("1.0.0", "nightly"))
+        throw new InvalidOperationException("Auto-update major version detection is wrong.");
+    if (!AutoUpdatePolicy.IsExcluded([" Echo "], "echo") || AutoUpdatePolicy.IsExcluded(["echo"], "echo2"))
+        throw new InvalidOperationException("Auto-update exclusion matching is wrong.");
+    var skippedMajorPath = Path.Combine(tempRoot, "auto-update", "skipped-major.json");
+    if (!new SkippedMajorNotices(skippedMajorPath).ShouldNotify("plugin:echo", "2.0.0") ||
+        new SkippedMajorNotices(skippedMajorPath).ShouldNotify("plugin:echo", "2.0.0") ||
+        !new SkippedMajorNotices(skippedMajorPath).ShouldNotify("plugin:echo", "3.0.0"))
+        throw new InvalidOperationException("Skipped major versions are not notified exactly once per version.");
+    Console.WriteLine("Auto-update exclusion and major version policy verification passed.");
+
     var autoUpdateState = Path.Combine(tempRoot, "auto-update", "last-run");
     var autoUpdateConfig = new CoreConfig { AutoUpdateAdapters = true, AutoUpdateTime = "02:00" };
     var autoUpdateClock = new AutoUpdateTestClock(scheduledDay.AddHours(2).AddMinutes(5));

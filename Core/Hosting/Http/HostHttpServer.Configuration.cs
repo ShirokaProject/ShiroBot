@@ -225,6 +225,14 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "auto_update_time", autoUpdateTime);
         if (TryGetBool(patch, "auto_update_restart_on_pending", out var restartOnPending))
             configManager.SetConfigValue(configPath, "auto_update_restart_on_pending", restartOnPending);
+        if (TryGetBool(patch, "auto_update_skip_major", out var skipMajor))
+            configManager.SetConfigValue(configPath, "auto_update_skip_major", skipMajor);
+        foreach (var key in (string[])["auto_update_exclude_plugins", "auto_update_exclude_adapters"])
+        {
+            if (TryGetStringArray(patch, key, out var ids))
+                configManager.SetConfigValue(configPath, key,
+                    ids.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        }
 
         if (avaloniaTheme is not null)
         {

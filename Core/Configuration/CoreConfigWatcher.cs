@@ -96,13 +96,19 @@ internal sealed class CoreConfigWatcher : IDisposable
             active.AutoUpdateAdapters != updated.AutoUpdateAdapters ||
             active.AutoUpdateHost != updated.AutoUpdateHost ||
             !string.Equals(active.AutoUpdateTime, updated.AutoUpdateTime, StringComparison.Ordinal) ||
-            active.AutoUpdateRestartOnPending != updated.AutoUpdateRestartOnPending)
+            active.AutoUpdateRestartOnPending != updated.AutoUpdateRestartOnPending ||
+            active.AutoUpdateSkipMajor != updated.AutoUpdateSkipMajor ||
+            !active.AutoUpdateExcludePlugins.SequenceEqual(updated.AutoUpdateExcludePlugins, StringComparer.Ordinal) ||
+            !active.AutoUpdateExcludeAdapters.SequenceEqual(updated.AutoUpdateExcludeAdapters, StringComparer.Ordinal))
         {
             active.AutoUpdatePlugins = updated.AutoUpdatePlugins;
             active.AutoUpdateAdapters = updated.AutoUpdateAdapters;
             active.AutoUpdateHost = updated.AutoUpdateHost;
             active.AutoUpdateTime = updated.AutoUpdateTime;
             active.AutoUpdateRestartOnPending = updated.AutoUpdateRestartOnPending;
+            active.AutoUpdateSkipMajor = updated.AutoUpdateSkipMajor;
+            active.AutoUpdateExcludePlugins = updated.AutoUpdateExcludePlugins;
+            active.AutoUpdateExcludeAdapters = updated.AutoUpdateExcludeAdapters;
             changes.Add("auto_update");
         }
 

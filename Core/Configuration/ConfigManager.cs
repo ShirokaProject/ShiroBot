@@ -42,6 +42,15 @@ public class CoreConfig
     [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序", Default = "false", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 30)]
     public bool AutoUpdateHost { get; set; } = false;
 
+    [ConfigField("不参与自动更新的插件 ID，例如自己修改过、想停留在当前版本的插件。", Label = "不自动更新的插件", Type = "array", Default = "[]", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 12)]
+    public string[] AutoUpdateExcludePlugins { get; set; } = [];
+
+    [ConfigField("不参与自动更新的适配器包 ID。", Label = "不自动更新的适配器", Type = "array", Default = "[]", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 22)]
+    public string[] AutoUpdateExcludeAdapters { get; set; } = [];
+
+    [ConfigField("主版本号变化（如 1.x → 2.0）时不自动更新，只通知 Owner 手动更新；无法识别版本号时照常更新。", Label = "跳过大版本更新", Default = "true", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 35)]
+    public bool AutoUpdateSkipMajor { get; set; } = true;
+
     /// <summary>Whether any automatic update is on.</summary>
     [Tomlyn.Serialization.TomlIgnore, System.Text.Json.Serialization.JsonIgnore]
     public bool AnyAutoUpdate => AutoUpdatePlugins || AutoUpdateAdapters || AutoUpdateHost;

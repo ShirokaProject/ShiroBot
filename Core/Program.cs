@@ -312,7 +312,8 @@ public static class Program
                 adapterPackages,
                 powerControl);
             var autoUpdateRunner = new AutoUpdateRunner(coreConfig, pluginManager, hostEventDispatcher, groupRoutePolicy,
-                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl, ownerNotifier.NotifyAsync);
+                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl, ownerNotifier.NotifyAsync,
+                new SkippedMajorNotices(Path.Combine(BasePath, "cache", "auto-update-skipped-major.json")));
             autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
                 Path.Combine(BasePath, "cache", "auto-update-last-run"));
             if (coreConfig.AnyAutoUpdate)

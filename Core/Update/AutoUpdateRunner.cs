@@ -15,7 +15,8 @@ namespace ShiroBot.Update;
 /// One automatic update pass over the enabled kinds: plugins, then adapters, then the host. A host update restarts the process
 /// itself; otherwise updates that could only be staged restart the host when
 /// <see cref="CoreConfig.AutoUpdateRestartOnPending"/> is on. What happened is sent to the owners as one
-/// summary, before any restart; a run with nothing to update sends nothing.
+/// summary, before any restart; a run with nothing to update sends nothing. Excluded plugins and adapters are left
+/// alone, and with <see cref="CoreConfig.AutoUpdateSkipMajor"/> a new major version is reported once instead of applied.
 /// </summary>
 internal sealed class AutoUpdateRunner(
     CoreConfig config,
@@ -27,7 +28,8 @@ internal sealed class AutoUpdateRunner(
     ComponentReloadCoordinator reloadCoordinator,
     HostRuntimeState runtimeState,
     HostPowerControl powerControl,
-    OwnerNotify notifyOwners)
+    OwnerNotify notifyOwners,
+    SkippedMajorNotices skippedMajors)
 {
     // Runs never overlap: the scheduler starts the next one only after this one returns.
     private readonly List<string> _report = [];
@@ -72,6 +74,19 @@ internal sealed class AutoUpdateRunner(
         }
     }
 
+    /// <summary>
+    /// True when this update is a major upgrade that must be applied by hand. The owners hear about each skipped
+    /// version once; later runs only log it.
+    /// </summary>
+    private bool SkipMajor(string key, string label, string current, string latest)
+    {
+        if (!config.AutoUpdateSkipMajor || !AutoUpdatePolicy.IsMajorUpgrade(current, latest)) return false;
+        var message = $"{label} 有新的大版本 {current} → {latest}，可能包含不兼容的变化，未自动更新，请确认后手动更新。";
+        if (skippedMajors.ShouldNotify(key, latest)) Report(message, warning: true);
+        else BotLog.Info(message);
+        return true;
+    }
+
     private void Report(string message, bool warning = false)
     {
         if (warning) BotLog.Warning(message);
@@ -93,11 +108,17 @@ internal sealed class AutoUpdateRunner(
         foreach (var plugin in pluginManager.GetLoadedPluginSnapshot().Where(plugin => !string.IsNullOrWhiteSpace(plugin.GithubRepo)))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (AutoUpdatePolicy.IsExcluded(config.AutoUpdateExcludePlugins, plugin.Name))
+            {
+                BotLog.Info($"插件 {plugin.Name} 已设为不自动更新，跳过。");
+                continue;
+            }
             try
             {
                 var update = await Updater.CheckGitHubPluginPackageUpdateAsync(plugin.GithubRepo!, plugin.Version,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
                 if (update is null) continue;
+                if (SkipMajor("plugin:" + plugin.Name, "插件 " + plugin.Name, plugin.Version, update.LatestVersion)) continue;
                 if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) || string.IsNullOrWhiteSpace(update.AssetName))
                 {
                     Report($"插件 {plugin.Name} 有新版本 {update.LatestVersion}，但 release 中没有可用的 zip 或 dll 插件包，已跳过。", warning: true);
@@ -126,12 +147,19 @@ internal sealed class AutoUpdateRunner(
         foreach (var package in installed)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (AutoUpdatePolicy.IsExcluded(config.AutoUpdateExcludeAdapters, package.Id))
+            {
+                BotLog.Info($"适配器 {package.Id} 已设为不自动更新，跳过。");
+                continue;
+            }
             var entry = entries.OfType<JsonObject>().FirstOrDefault(entry =>
                 string.Equals(entry["id"]?.GetValue<string>(), package.Id, StringComparison.OrdinalIgnoreCase));
             var hasRelease = entry?["release"]?["version"]?.GetValue<string>() is { Length: > 0 } version &&
                              entry["release"]?["prerelease"]?.GetValue<bool>() != true &&
                              Updater.IsNewerVersion(version, package.Version);
             if (!hasRelease) continue;
+            var latest = entry!["release"]!["version"]!.GetValue<string>();
+            if (SkipMajor("adapter:" + package.Id, "适配器 " + package.Id, package.Version, latest)) continue;
             if (MarketRelease.From(entry!) is not { } release)
             {
                 Report($"适配器 {package.Id} 有新版本 {entry!["release"]!["version"]}，但市场中没有可下载的包，已跳过。", warning: true);
@@ -167,6 +195,7 @@ internal sealed class AutoUpdateRunner(
         {
             var check = await HostSelfUpdater.CheckAsync(config.HostUpdateRepository, cancellationToken).ConfigureAwait(false);
             if (!check.UpdateAvailable) return false;
+            if (SkipMajor("host", "主程序", check.CurrentVersion, check.LatestVersion ?? "")) return false;
             if (!check.CanApply)
             {
                 Report($"主程序有新版本 {check.LatestVersion}，但无法自动更新: {check.Reason}", warning: true);
