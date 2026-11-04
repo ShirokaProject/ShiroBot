@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { defineConfig } from 'vitepress'
 
+const docsBase = (process.env.DOCS_BASE ?? '/').replace(/\/?$/, '/')
+
 // 更新日志侧边栏：按 docs/changelog/v*.md 自动生成，新版本只需新增一页。
 function changelogSidebar() {
   const dir = new URL('../changelog/', import.meta.url)
@@ -34,7 +36,7 @@ export default defineConfig({
   lang: 'zh-CN',
   title: 'ShiroBot',
   description: 'ShiroBot 安装、插件开发与适配器开发文档',
-  base: process.env.DOCS_BASE ?? '/',
+  base: docsBase,
   cleanUrls: true,
   vite: { server: { allowedHosts: true } },
   markdown: {
@@ -50,6 +52,8 @@ export default defineConfig({
   },
   lastUpdated: true,
   head: [
+    ['link', { rel: 'icon', type: 'image/png', sizes: '200x200', href: `${docsBase}favicon.png` }],
+    ['link', { rel: 'apple-touch-icon', sizes: '200x200', href: `${docsBase}favicon.png` }],
     ['meta', { name: 'theme-color', content: '#6750a4' }],
     ['meta', { name: 'color-scheme', content: 'light dark' }]
   ],
