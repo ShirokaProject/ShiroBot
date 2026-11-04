@@ -30,11 +30,11 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 
 ```toml
 [update]
+host = false
 plugins = true
 exclude_plugins = ["AiChatPlugin", "MyPatchedPlugin"]
 adapters = true
 exclude_adapters = ["qq-official"]
-host = false
 skip_major = true
 time = "02:00"
 restart_on_pending = true
@@ -42,11 +42,11 @@ restart_on_pending = true
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
+| `host` | `false` | 每天自动更新主程序 |
 | `plugins` | `false` | 每天自动更新插件 |
 | `exclude_plugins` | `[]` | 不自动更新的插件 ID |
 | `adapters` | `false` | 每天自动更新适配器包 |
 | `exclude_adapters` | `[]` | 不自动更新的适配器包 ID |
-| `host` | `false` | 每天自动更新主程序 |
 | `skip_major` | `true` | 主版本号变化时不自动更新，只通知 Owner |
 | `time` | `"02:00"` | 执行时间，`HH:mm`，宿主本地时区 |
 | `restart_on_pending` | `true` | 有插件或适配器无法热替换时，自动重启宿主完成更新 |
@@ -94,11 +94,11 @@ owner_list = ["qq-work:123456789"]
 admin_list = ["qq-official:06E88C1E2090950724B8D9E8A4E097E3"]
 
 [update]
+host = false
 plugins = false
 exclude_plugins = []
 adapters = false
 exclude_adapters = []
-host = false
 skip_major = true
 time = "02:00"
 restart_on_pending = true

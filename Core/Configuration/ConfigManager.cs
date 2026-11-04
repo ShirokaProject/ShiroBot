@@ -66,6 +66,9 @@ public class CoreConfig
 /// <summary>The <c>[update]</c> table: daily automatic updates.</summary>
 public class UpdateConfig
 {
+    [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序")]
+    public bool Host { get; set; } = false;
+
     [ConfigField("每天在设定时间自动更新配置了 GitHub 仓库的已加载插件。", Label = "自动更新插件")]
     public bool Plugins { get; set; } = false;
 
@@ -77,9 +80,6 @@ public class UpdateConfig
 
     [ConfigField("不参与自动更新的适配器包 ID。", Label = "不自动更新的适配器", Type = "array")]
     public string[] ExcludeAdapters { get; set; } = [];
-
-    [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序")]
-    public bool Host { get; set; } = false;
 
     [ConfigField("主版本号变化（如 1.x → 2.0）时不自动更新，只通知 Owner 手动更新；无法识别版本号时照常更新。", Label = "跳过大版本更新")]
     public bool SkipMajor { get; set; } = true;
