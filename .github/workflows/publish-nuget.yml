@@ -3,6 +3,11 @@ name: Publish NuGet packages
 on:
   workflow_call:
     inputs:
+      source_ref:
+        description: Exact release source ref; defaults to the calling workflow ref
+        required: false
+        default: ''
+        type: string
       version:
         description: SDK package version; defaults to the calling release tag
         required: false
@@ -40,6 +45,8 @@ permissions:
 jobs:
   verify-core:
     uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ inputs.source_ref }}
 
   validate:
     runs-on: windows-latest
@@ -58,6 +65,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
@@ -73,11 +82,11 @@ jobs:
         env:
           VERSION_INPUT: ${{ inputs.version }}
           TEMPLATE_VERSION_INPUT: ${{ inputs.template_version }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.source_ref || github.ref_name }}
         shell: pwsh
         run: |
           $version = $env:VERSION_INPUT
-          if ([string]::IsNullOrWhiteSpace($version)) { $version = $env:RELEASE_TAG.TrimStart('v') }
+          if ([string]::IsNullOrWhiteSpace($version)) { $version = $env:RELEASE_TAG -replace '^refs/tags/', '' -replace '^v', '' }
           $templateVersion = $env:TEMPLATE_VERSION_INPUT
           if ([string]::IsNullOrWhiteSpace($templateVersion)) { $templateVersion = $version }
           foreach ($value in @($version, $templateVersion)) {
@@ -147,6 +156,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
 
       - uses: actions/setup-dotnet@v6.0.0
         with:

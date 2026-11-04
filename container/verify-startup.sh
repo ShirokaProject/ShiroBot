@@ -17,7 +17,9 @@ start_and_verify() {
         -v "$volume:/data" "$image" >/dev/null
     ready=false
     for _attempt in $(seq 1 60); do
-        if docker logs "$name" 2>&1 | grep -q '宿主 API 服务已启动'; then
+        # Console rendering can wrap startup messages even when the server is ready.
+        # Check the real HTTP listener and bundled Dashboard without publishing a host port.
+        if docker exec "$name" wget -q -T 2 -O /dev/null http://127.0.0.1:7001/dashboard/; then
             ready=true
             break
         fi
