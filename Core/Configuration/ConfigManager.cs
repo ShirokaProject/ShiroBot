@@ -33,34 +33,6 @@ public class CoreConfig
     [ConfigField("宿主更新仓库，格式为 owner/repository。", Label = "宿主更新仓库", Default = "ShirokaProject/ShiroBot", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 20)]
     public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
 
-    [ConfigField("每天在设定时间自动更新配置了 GitHub 仓库的已加载插件。", Label = "自动更新插件", Default = "false", Group = "auto_update", GroupLabel = "自动更新", GroupIcon = "refresh", GroupDescription = "每天定时更新插件、适配器和主程序。", GroupOrder = 25, Order = 10)]
-    public bool AutoUpdatePlugins { get; set; } = false;
-
-    [ConfigField("每天在设定时间从适配器市场更新已安装的适配器包。", Label = "自动更新适配器", Default = "false", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 20)]
-    public bool AutoUpdateAdapters { get; set; } = false;
-
-    [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序", Default = "false", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 30)]
-    public bool AutoUpdateHost { get; set; } = false;
-
-    [ConfigField("不参与自动更新的插件 ID，例如自己修改过、想停留在当前版本的插件。", Label = "不自动更新的插件", Type = "array", Default = "[]", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 12)]
-    public string[] AutoUpdateExcludePlugins { get; set; } = [];
-
-    [ConfigField("不参与自动更新的适配器包 ID。", Label = "不自动更新的适配器", Type = "array", Default = "[]", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 22)]
-    public string[] AutoUpdateExcludeAdapters { get; set; } = [];
-
-    [ConfigField("主版本号变化（如 1.x → 2.0）时不自动更新，只通知 Owner 手动更新；无法识别版本号时照常更新。", Label = "跳过大版本更新", Default = "true", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 35)]
-    public bool AutoUpdateSkipMajor { get; set; } = true;
-
-    /// <summary>Whether any automatic update is on.</summary>
-    [Tomlyn.Serialization.TomlIgnore, System.Text.Json.Serialization.JsonIgnore]
-    public bool AnyAutoUpdate => AutoUpdatePlugins || AutoUpdateAdapters || AutoUpdateHost;
-
-    [ConfigField("自动更新的执行时间，格式 HH:mm，使用宿主所在系统的本地时区；到点后一小时内未运行的宿主当天跳过。", Label = "自动更新时间", Default = "02:00", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 40)]
-    public string AutoUpdateTime { get; set; } = AutoUpdateSchedule.DefaultTime;
-
-    [ConfigField("自动更新时插件或适配器无法热替换（新版本已暂存，等待重启）时，自动重启宿主完成更新。", Label = "热更新失败时自动重启", Default = "true", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 50)]
-    public bool AutoUpdateRestartOnPending { get; set; } = true;
-
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
     [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Auto", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
     public string AvaloniaTheme { get; set; } = "Auto";
@@ -74,6 +46,9 @@ public class CoreConfig
     [ConfigField("管理员身份列表，格式 instanceId:userId；Owner 已自动拥有管理员权限。", Label = "Admin 列表", Type = "users", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
     public string[] AdminList { get; set; } = [];
 
+    [ConfigField("每天定时更新插件、适配器和主程序。", Label = "自动更新", Type = "section", Group = "auto_update", GroupLabel = "自动更新", GroupIcon = "refresh", GroupDescription = "每天定时更新插件、适配器和主程序。", GroupOrder = 25, Order = 10)]
+    public UpdateConfig Update { get; set; } = new();
+
     [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupIcon = "code", GroupDescription = "Dashboard 和外部工具访问主程序的 HTTP API。", GroupOrder = 40, Order = 10)]
     public ApiHostConfig Api { get; set; } = new();
 
@@ -86,6 +61,44 @@ public class CoreConfig
             Groups = []
         }
     };
+}
+
+/// <summary>The <c>[update]</c> table: daily automatic updates.</summary>
+public class UpdateConfig
+{
+    [ConfigField("每天在设定时间自动更新配置了 GitHub 仓库的已加载插件。", Label = "自动更新插件")]
+    public bool Plugins { get; set; } = false;
+
+    [ConfigField("不参与自动更新的插件 ID，例如自己修改过、想停留在当前版本的插件。", Label = "不自动更新的插件", Type = "array")]
+    public string[] ExcludePlugins { get; set; } = [];
+
+    [ConfigField("每天在设定时间从适配器市场更新已安装的适配器包。", Label = "自动更新适配器")]
+    public bool Adapters { get; set; } = false;
+
+    [ConfigField("不参与自动更新的适配器包 ID。", Label = "不自动更新的适配器", Type = "array")]
+    public string[] ExcludeAdapters { get; set; } = [];
+
+    [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序")]
+    public bool Host { get; set; } = false;
+
+    [ConfigField("主版本号变化（如 1.x → 2.0）时不自动更新，只通知 Owner 手动更新；无法识别版本号时照常更新。", Label = "跳过大版本更新")]
+    public bool SkipMajor { get; set; } = true;
+
+    [ConfigField("自动更新的执行时间，格式 HH:mm，使用宿主所在系统的本地时区；到点后一小时内未运行的宿主当天跳过。", Label = "自动更新时间")]
+    public string Time { get; set; } = AutoUpdateSchedule.DefaultTime;
+
+    [ConfigField("自动更新时插件或适配器无法热替换（新版本已暂存，等待重启）时，自动重启宿主完成更新。", Label = "热更新失败时自动重启")]
+    public bool RestartOnPending { get; set; } = true;
+
+    /// <summary>Whether any automatic update is on.</summary>
+    [Tomlyn.Serialization.TomlIgnore, System.Text.Json.Serialization.JsonIgnore]
+    public bool Any => Plugins || Adapters || Host;
+
+    public bool SameAs(UpdateConfig other) =>
+        Plugins == other.Plugins && Adapters == other.Adapters && Host == other.Host && SkipMajor == other.SkipMajor &&
+        RestartOnPending == other.RestartOnPending && string.Equals(Time, other.Time, StringComparison.Ordinal) &&
+        ExcludePlugins.SequenceEqual(other.ExcludePlugins, StringComparer.Ordinal) &&
+        ExcludeAdapters.SequenceEqual(other.ExcludeAdapters, StringComparer.Ordinal);
 }
 
 public class ApiHostConfig

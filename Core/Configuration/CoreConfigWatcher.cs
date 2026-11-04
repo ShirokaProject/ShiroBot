@@ -92,24 +92,10 @@ internal sealed class CoreConfigWatcher : IDisposable
             changes.Add("owner_notifications");
         }
 
-        if (active.AutoUpdatePlugins != updated.AutoUpdatePlugins ||
-            active.AutoUpdateAdapters != updated.AutoUpdateAdapters ||
-            active.AutoUpdateHost != updated.AutoUpdateHost ||
-            !string.Equals(active.AutoUpdateTime, updated.AutoUpdateTime, StringComparison.Ordinal) ||
-            active.AutoUpdateRestartOnPending != updated.AutoUpdateRestartOnPending ||
-            active.AutoUpdateSkipMajor != updated.AutoUpdateSkipMajor ||
-            !active.AutoUpdateExcludePlugins.SequenceEqual(updated.AutoUpdateExcludePlugins, StringComparer.Ordinal) ||
-            !active.AutoUpdateExcludeAdapters.SequenceEqual(updated.AutoUpdateExcludeAdapters, StringComparer.Ordinal))
+        if (!active.Update.SameAs(updated.Update))
         {
-            active.AutoUpdatePlugins = updated.AutoUpdatePlugins;
-            active.AutoUpdateAdapters = updated.AutoUpdateAdapters;
-            active.AutoUpdateHost = updated.AutoUpdateHost;
-            active.AutoUpdateTime = updated.AutoUpdateTime;
-            active.AutoUpdateRestartOnPending = updated.AutoUpdateRestartOnPending;
-            active.AutoUpdateSkipMajor = updated.AutoUpdateSkipMajor;
-            active.AutoUpdateExcludePlugins = updated.AutoUpdateExcludePlugins;
-            active.AutoUpdateExcludeAdapters = updated.AutoUpdateExcludeAdapters;
-            changes.Add("auto_update");
+            active.Update = updated.Update;
+            changes.Add("update");
         }
 
         if (!string.Equals(active.Api.Token, updated.Api.Token, StringComparison.Ordinal))

@@ -14,9 +14,9 @@ namespace ShiroBot.Update;
 /// <summary>
 /// One automatic update pass over the enabled kinds: plugins, then adapters, then the host. A host update restarts the process
 /// itself; otherwise updates that could only be staged restart the host when
-/// <see cref="CoreConfig.AutoUpdateRestartOnPending"/> is on. What happened is sent to the owners as one
+/// <see cref="UpdateConfig.RestartOnPending"/> is on. What happened is sent to the owners as one
 /// summary, before any restart; a run with nothing to update sends nothing. Excluded plugins and adapters are left
-/// alone, and with <see cref="CoreConfig.AutoUpdateSkipMajor"/> a new major version is reported once instead of applied.
+/// alone, and with <see cref="UpdateConfig.SkipMajor"/> a new major version is reported once instead of applied.
 /// </summary>
 internal sealed class AutoUpdateRunner(
     CoreConfig config,
@@ -40,9 +40,9 @@ internal sealed class AutoUpdateRunner(
         try
         {
             var pending = new List<string>();
-            if (config.AutoUpdatePlugins) await UpdatePluginsAsync(pending, cancellationToken).ConfigureAwait(false);
-            if (config.AutoUpdateAdapters) await UpdateAdaptersAsync(pending, cancellationToken).ConfigureAwait(false);
-            if (config.AutoUpdateHost && await UpdateHostAsync(cancellationToken).ConfigureAwait(false)) return;
+            if (config.Update.Plugins) await UpdatePluginsAsync(pending, cancellationToken).ConfigureAwait(false);
+            if (config.Update.Adapters) await UpdateAdaptersAsync(pending, cancellationToken).ConfigureAwait(false);
+            if (config.Update.Host && await UpdateHostAsync(cancellationToken).ConfigureAwait(false)) return;
 
             if (pending.Count == 0)
             {
@@ -52,7 +52,7 @@ internal sealed class AutoUpdateRunner(
             }
 
             var names = string.Join("、", pending);
-            if (!config.AutoUpdateRestartOnPending)
+            if (!config.Update.RestartOnPending)
             {
                 Report($"{names} 无法热替换，新版本已暂存，需要重启宿主完成更新。", warning: true);
                 await SendReportAsync(cancellationToken).ConfigureAwait(false);
@@ -80,7 +80,7 @@ internal sealed class AutoUpdateRunner(
     /// </summary>
     private bool SkipMajor(string key, string label, string current, string latest)
     {
-        if (!config.AutoUpdateSkipMajor || !AutoUpdatePolicy.IsMajorUpgrade(current, latest)) return false;
+        if (!config.Update.SkipMajor || !AutoUpdatePolicy.IsMajorUpgrade(current, latest)) return false;
         var message = $"{label} 有新的大版本 {current} → {latest}，可能包含不兼容的变化，未自动更新，请确认后手动更新。";
         if (skippedMajors.ShouldNotify(key, latest)) Report(message, warning: true);
         else BotLog.Info(message);
@@ -108,7 +108,7 @@ internal sealed class AutoUpdateRunner(
         foreach (var plugin in pluginManager.GetLoadedPluginSnapshot().Where(plugin => !string.IsNullOrWhiteSpace(plugin.GithubRepo)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (AutoUpdatePolicy.IsExcluded(config.AutoUpdateExcludePlugins, plugin.Name))
+            if (AutoUpdatePolicy.IsExcluded(config.Update.ExcludePlugins, plugin.Name))
             {
                 BotLog.Info($"插件 {plugin.Name} 已设为不自动更新，跳过。");
                 continue;
@@ -147,7 +147,7 @@ internal sealed class AutoUpdateRunner(
         foreach (var package in installed)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (AutoUpdatePolicy.IsExcluded(config.AutoUpdateExcludeAdapters, package.Id))
+            if (AutoUpdatePolicy.IsExcluded(config.Update.ExcludeAdapters, package.Id))
             {
                 BotLog.Info($"适配器 {package.Id} 已设为不自动更新，跳过。");
                 continue;

@@ -2160,7 +2160,7 @@ try
     Console.WriteLine("Auto-update exclusion and major version policy verification passed.");
 
     var autoUpdateState = Path.Combine(tempRoot, "auto-update", "last-run");
-    var autoUpdateConfig = new CoreConfig { AutoUpdateAdapters = true, AutoUpdateTime = "02:00" };
+    var autoUpdateConfig = new CoreConfig { Update = new UpdateConfig { Adapters = true, Time = "02:00" } };
     var autoUpdateClock = new AutoUpdateTestClock(scheduledDay.AddHours(2).AddMinutes(5));
     var autoUpdateRuns = 0;
     Task CountAutoUpdate(CancellationToken _) { autoUpdateRuns++; return Task.CompletedTask; }
@@ -2176,18 +2176,20 @@ try
         if (autoUpdateRuns != 1 || File.ReadAllText(autoUpdateState) != "2026-10-10")
             throw new InvalidOperationException("Auto-update ran more than once a day or did not record its run.");
         autoUpdateClock.Advance(TimeSpan.FromDays(1));
-        autoUpdateConfig.AutoUpdateAdapters = false;
+        autoUpdateConfig.Update.Adapters = false;
         await restarted.TickAsync();
-        autoUpdateConfig.AutoUpdateAdapters = true;
+        autoUpdateConfig.Update.Adapters = true;
         await restarted.TickAsync();
         if (autoUpdateRuns != 2) throw new InvalidOperationException("Auto-update ignored its switch or skipped the next day.");
     }
     var autoUpdateDefaultsPath = Path.Combine(tempRoot, "auto-update-defaults.toml");
     var autoUpdateDefaults = await new ConfigManager(autoUpdateDefaultsPath).LoadCoreConfig();
     var autoUpdateToml = File.ReadAllText(autoUpdateDefaultsPath);
-    if (autoUpdateDefaults.AnyAutoUpdate || !autoUpdateDefaults.AutoUpdateRestartOnPending || autoUpdateDefaults.AutoUpdateTime != "02:00" ||
-        !autoUpdateToml.Contains("auto_update_plugins") || autoUpdateToml.Contains("any_auto_update"))
-        throw new InvalidOperationException("Auto-update defaults are wrong or the derived switch was written to config.toml.");
+    if (autoUpdateDefaults.Update.Any || !autoUpdateDefaults.Update.RestartOnPending || autoUpdateDefaults.Update.Time != "02:00" ||
+        !autoUpdateToml.Contains("[update]") || !autoUpdateToml.Contains("skip_major = true") ||
+        autoUpdateToml.Contains("auto_update_") || autoUpdateToml.Contains("any =") ||
+        autoUpdateToml.IndexOf("avalonia_theme", StringComparison.Ordinal) > autoUpdateToml.IndexOf("[update]", StringComparison.Ordinal))
+        throw new InvalidOperationException("Auto-update defaults are wrong, or the [update] table is not written as expected.");
     Console.WriteLine("Daily auto-update schedule verification passed.");
 
     var listenerCommands = new CommandRouter<MessageEvent>();

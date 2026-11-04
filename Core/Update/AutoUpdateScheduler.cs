@@ -25,7 +25,7 @@ internal static class AutoUpdateSchedule
 }
 
 /// <summary>
-/// Runs <see cref="AutoUpdateRunner"/> once a day at <see cref="CoreConfig.AutoUpdateTime"/>, reading the live
+/// Runs <see cref="AutoUpdateRunner"/> once a day at <see cref="UpdateConfig.Time"/>, reading the live
 /// core config so Dashboard changes apply without a restart. The run date is saved before updating, so the
 /// restart an update causes does not run it again the same day.
 /// </summary>
@@ -52,13 +52,13 @@ internal sealed class AutoUpdateScheduler : IDisposable
 
     internal async Task TickAsync()
     {
-        if (!_config.AnyAutoUpdate || _stopping.IsCancellationRequested) return;
-        if (!AutoUpdateSchedule.TryParseTime(_config.AutoUpdateTime, out var time))
+        if (!_config.Update.Any || _stopping.IsCancellationRequested) return;
+        if (!AutoUpdateSchedule.TryParseTime(_config.Update.Time, out var time))
         {
-            if (_invalidTimeWarned != _config.AutoUpdateTime)
+            if (_invalidTimeWarned != _config.Update.Time)
             {
-                _invalidTimeWarned = _config.AutoUpdateTime;
-                BotLog.Warning($"自动更新时间 {_config.AutoUpdateTime} 不是 HH:mm 格式，改用默认的 {AutoUpdateSchedule.DefaultTime}。");
+                _invalidTimeWarned = _config.Update.Time;
+                BotLog.Warning($"自动更新时间 {_config.Update.Time} 不是 HH:mm 格式，改用默认的 {AutoUpdateSchedule.DefaultTime}。");
             }
             time = TimeOnly.ParseExact(AutoUpdateSchedule.DefaultTime, "HH:mm", CultureInfo.InvariantCulture);
         }

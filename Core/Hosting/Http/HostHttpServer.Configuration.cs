@@ -174,12 +174,19 @@ internal sealed partial class HostHttpServer
             }
             : null;
 
+        // [update]: validated up front like the rest, written below
+        JsonElement updatePatch = default;
         string? autoUpdateTime = null;
-        if (TryGetString(patch, "auto_update_time", out var requestedUpdateTime))
+        if (patch.TryGetProperty("update", out updatePatch))
         {
-            autoUpdateTime = AutoUpdateSchedule.TryParseTime(requestedUpdateTime, out var parsedUpdateTime)
-                ? parsedUpdateTime.ToString("HH:mm", CultureInfo.InvariantCulture)
-                : throw new InvalidOperationException("auto_update_time 必须是 HH:mm 格式的时间，例如 02:00。");
+            if (updatePatch.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("update 配置必须是对象。");
+            if (TryGetString(updatePatch, "time", out var requestedUpdateTime))
+            {
+                autoUpdateTime = AutoUpdateSchedule.TryParseTime(requestedUpdateTime, out var parsedUpdateTime)
+                    ? parsedUpdateTime.ToString("HH:mm", CultureInfo.InvariantCulture)
+                    : throw new InvalidOperationException("update.time 必须是 HH:mm 格式的时间，例如 02:00。");
+            }
         }
 
         if (defaultRouteMode is not null)
@@ -216,22 +223,24 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "host_update_repository", hostUpdateRepository);
         }
 
-        foreach (var key in (string[])["auto_update_plugins", "auto_update_adapters", "auto_update_host", "owner_notifications"])
+        if (TryGetBool(patch, "owner_notifications", out var ownerNotifications))
+            configManager.SetConfigValue(configPath, "owner_notifications", ownerNotifications);
+
+        if (updatePatch.ValueKind == JsonValueKind.Object)
         {
-            if (TryGetBool(patch, key, out var enabled))
-                configManager.SetConfigValue(configPath, key, enabled);
-        }
-        if (autoUpdateTime is not null)
-            configManager.SetConfigValue(configPath, "auto_update_time", autoUpdateTime);
-        if (TryGetBool(patch, "auto_update_restart_on_pending", out var restartOnPending))
-            configManager.SetConfigValue(configPath, "auto_update_restart_on_pending", restartOnPending);
-        if (TryGetBool(patch, "auto_update_skip_major", out var skipMajor))
-            configManager.SetConfigValue(configPath, "auto_update_skip_major", skipMajor);
-        foreach (var key in (string[])["auto_update_exclude_plugins", "auto_update_exclude_adapters"])
-        {
-            if (TryGetStringArray(patch, key, out var ids))
-                configManager.SetConfigValue(configPath, key,
-                    ids.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            foreach (var key in (string[])["plugins", "adapters", "host", "skip_major", "restart_on_pending"])
+            {
+                if (TryGetBool(updatePatch, key, out var enabled))
+                    configManager.SetConfigValue(configPath, "update." + key, enabled);
+            }
+            if (autoUpdateTime is not null)
+                configManager.SetConfigValue(configPath, "update.time", autoUpdateTime);
+            foreach (var key in (string[])["exclude_plugins", "exclude_adapters"])
+            {
+                if (TryGetStringArray(updatePatch, key, out var ids))
+                    configManager.SetConfigValue(configPath, "update." + key,
+                        ids.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            }
         }
 
         if (avaloniaTheme is not null)

@@ -316,8 +316,8 @@ public static class Program
                 new SkippedMajorNotices(Path.Combine(BasePath, "cache", "auto-update-skipped-major.json")));
             autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
                 Path.Combine(BasePath, "cache", "auto-update-last-run"));
-            if (coreConfig.AnyAutoUpdate)
-                CH.Info($"已开启自动更新，每天 {coreConfig.AutoUpdateTime} 检查更新。");
+            if (coreConfig.Update.Any)
+                CH.Info($"已开启自动更新，每天 {coreConfig.Update.Time} 检查更新。");
 
             if (coreConfig.Api.Enable)
             {
