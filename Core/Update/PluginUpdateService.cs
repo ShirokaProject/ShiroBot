@@ -116,6 +116,7 @@ internal static class PluginUpdateService
         {
             var info = pluginManager.TryProbePluginInfoFile(packagePath)
                        ?? throw new InvalidOperationException("未找到 BotPluginAttribute，文件不是有效插件。");
+            pluginManager.ValidateInstallCompatibility(packagePath);
             return new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, packagePath, "dll", info);
         }
 
@@ -146,6 +147,7 @@ internal static class PluginUpdateService
             throw new InvalidOperationException("压缩包的插件入口 DLL 必须位于包根目录或唯一的顶层文件夹中。");
         }
 
+        pluginManager.ValidateInstallCompatibility(package.EntryAssemblyPath);
         return package;
     }
 
@@ -164,6 +166,7 @@ internal static class PluginUpdateService
         InstalledPluginInfo installed,
         LoadedPluginHandle? loaded)
     {
+        pluginManager.ValidateInstallCompatibility(package.EntryAssemblyPath);
         var root = pluginManager.PluginRootPath;
         var id = package.Info.Id;
         if (StagedComponentUpdates.HasStagedDeletion(root, id))
@@ -237,6 +240,7 @@ internal static class PluginUpdateService
     /// <param name="targetRootOverride">Install somewhere else than the plugin's directory, e.g. a staging folder.</param>
     internal static string InstallUploadedPlugin(PluginManager pluginManager, PluginUploadPackage package, string? targetRootOverride = null)
     {
+        pluginManager.ValidateInstallCompatibility(package.EntryAssemblyPath);
         var pluginRootPath = pluginManager.PluginRootPath;
         Directory.CreateDirectory(pluginRootPath);
         var targetRoot = targetRootOverride ?? GetPluginInstallDirectory(pluginRootPath, package.Info.Id);

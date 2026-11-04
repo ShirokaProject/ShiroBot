@@ -55,6 +55,15 @@ internal sealed class PluginManager(
     private HostEventDispatcher? _hotReloadEventDispatcher;
     private PluginRouteConfig? _hotReloadRoutePolicy;
 
+    internal void ValidateInstallCompatibility(string entryPath) =>
+        ContractReferencePreflight.Validate(entryPath, SharedAssemblies);
+
+    internal IReadOnlyDictionary<string, string> GetContractAbiVersions() =>
+        System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies
+            .Select(assembly => assembly.GetName())
+            .Where(name => name.Name == "ShiroBot.SDK" || name.Name?.StartsWith("ShiroBot.Model.", StringComparison.Ordinal) == true)
+            .ToDictionary(name => name.Name!, name => name.Version!.ToString(), StringComparer.OrdinalIgnoreCase);
+
     public string PluginRootPath { get; set; } = string.Empty;
 
     public void EnableFileHotReload(HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy)

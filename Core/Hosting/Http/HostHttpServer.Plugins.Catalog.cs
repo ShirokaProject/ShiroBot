@@ -38,6 +38,7 @@ internal sealed partial class HostHttpServer
 {
     private static void MapPluginCatalogEndpoints(RouteGroupBuilder api, PluginManager pluginManager)
     {
+        api.MapGet("/plugins/contract-abi", () => Results.Ok(pluginManager.GetContractAbiVersions()));
         api.MapGet("/plugins/list", () => Results.Ok(GetPluginListItems(pluginManager)));
 
         api.MapGet("/plugin-market/plugins", async (HttpContext context) =>

@@ -845,6 +845,32 @@ foreach (var legacyProbe in new[] { Environment.GetEnvironmentVariable("SHIROBOT
         try { loader.Load(legacyProbe, "LegacyFixture.Probe"); throw new Exception("Old ABI fixture was accepted."); }
         catch (InvalidOperationException error) when (error.Message.Contains("preflight") && error.Message.Contains("ShiroBot.SDK")) { }
         if (loader.Alc is not null || File.Exists(sentinel)) throw new InvalidOperationException("Legacy component activated before ABI rejection.");
+        var installRoot = Path.Combine(Path.GetTempPath(), "abi-install-rejection-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(installRoot);
+        var resolver = new SharedAssemblyResolver();
+        var manager = new PluginManager(botContext, resolver, new ModelPackageRegistry(resolver),
+            new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub()) { PluginRootPath = installRoot };
+        var info = manager.TryProbePluginInfoFile(typeof(SharedContractPluginProbe).Assembly.Location)!;
+        var package = new PluginUpdateService.PluginUploadPackage(Path.GetDirectoryName(legacyProbe)!, legacyProbe, "dll", info);
+        try
+        {
+            AssertThrows<InvalidOperationException>(() => manager.ValidateInstallCompatibility(legacyProbe));
+            AssertThrows<InvalidOperationException>(() => PluginUpdateService.InstallUploadedPlugin(manager, package));
+            var oldPath = Path.Combine(installRoot, "old.dll");
+            File.WriteAllText(oldPath, "old-version-must-survive");
+            var dispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions,
+                new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
+            try
+            {
+                await PluginUpdateService.ReplaceInstalledPluginAsync(manager, dispatcher, new PluginRouteConfig(), package,
+                    new PluginUpdateService.InstalledPluginInfo(oldPath, "1.0.0"), null);
+                throw new Exception("Incompatible update was accepted.");
+            }
+            catch (InvalidOperationException error) when (error.Message.Contains("preflight")) { }
+            if (File.ReadAllText(oldPath) != "old-version-must-survive" || Directory.GetFiles(installRoot, "*", SearchOption.AllDirectories).Length != 1)
+                throw new Exception("Rejected ABI update changed the installed files or staging area.");
+        }
+        finally { Directory.Delete(installRoot, true); }
         Console.WriteLine("Real legacy SDK DLL metadata preflight rejection before activation verification passed.");
     }
     finally { Environment.SetEnvironmentVariable("SHIROBOT_ABI_FIXTURE_SENTINEL", null); loader.Unload(); if (File.Exists(sentinel)) File.Delete(sentinel); }
