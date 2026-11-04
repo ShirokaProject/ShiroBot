@@ -33,23 +33,23 @@ public class CoreConfig
     [ConfigField("宿主更新仓库，格式为 owner/repository。", Label = "宿主更新仓库", Default = "ShirokaProject/ShiroBot", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 20)]
     public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
 
-    [ConfigField("每天在设定时间自动更新配置了 GitHub 仓库的已加载插件。", Label = "自动更新插件", Default = "false", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 21)]
+    [ConfigField("每天在设定时间自动更新配置了 GitHub 仓库的已加载插件。", Label = "自动更新插件", Default = "false", Group = "auto_update", GroupLabel = "自动更新", GroupIcon = "refresh", GroupDescription = "每天定时更新插件、适配器和主程序。", GroupOrder = 25, Order = 10)]
     public bool AutoUpdatePlugins { get; set; } = false;
 
-    [ConfigField("每天在设定时间从适配器市场更新已安装的适配器包。", Label = "自动更新适配器", Default = "false", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 22)]
+    [ConfigField("每天在设定时间从适配器市场更新已安装的适配器包。", Label = "自动更新适配器", Default = "false", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 20)]
     public bool AutoUpdateAdapters { get; set; } = false;
 
-    [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序", Default = "false", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 23)]
+    [ConfigField("每天在设定时间更新主程序；新版本先试运行，替换后自动重启。", Label = "自动更新主程序", Default = "false", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 30)]
     public bool AutoUpdateHost { get; set; } = false;
 
     /// <summary>Whether any automatic update is on.</summary>
     [Tomlyn.Serialization.TomlIgnore, System.Text.Json.Serialization.JsonIgnore]
     public bool AnyAutoUpdate => AutoUpdatePlugins || AutoUpdateAdapters || AutoUpdateHost;
 
-    [ConfigField("自动更新的执行时间，格式 HH:mm，使用宿主所在系统的本地时区；到点后一小时内未运行的宿主当天跳过。", Label = "自动更新时间", Default = "02:00", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 24)]
+    [ConfigField("自动更新的执行时间，格式 HH:mm，使用宿主所在系统的本地时区；到点后一小时内未运行的宿主当天跳过。", Label = "自动更新时间", Default = "02:00", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 40)]
     public string AutoUpdateTime { get; set; } = AutoUpdateSchedule.DefaultTime;
 
-    [ConfigField("自动更新时插件或适配器无法热替换（新版本已暂存，等待重启）时，自动重启宿主完成更新。", Label = "热更新失败时自动重启", Default = "true", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 26)]
+    [ConfigField("自动更新时插件或适配器无法热替换（新版本已暂存，等待重启）时，自动重启宿主完成更新。", Label = "热更新失败时自动重启", Default = "true", Group = "auto_update", GroupLabel = "自动更新", GroupOrder = 25, Order = 50)]
     public bool AutoUpdateRestartOnPending { get; set; } = true;
 
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
