@@ -185,4 +185,4 @@
 - Docker 用户需要手动执行一次 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
 - 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `container/compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`。
 - `rebuild-container` 工作流只能重建 1.0.2 及之后的版本：更早版本的构建产物仍是多文件结构，与新的镜像构建方式不兼容。
-- 使用非自包含版时需安装 ASP.NET Core 10 Runtime 10.0.13 或更新补丁。
+- 使用非自包含版时需安装 ASP.NET Core 10 Runtime，补丁版本不得低于发布产物要求；建议安装最新的 10.0.x 补丁。

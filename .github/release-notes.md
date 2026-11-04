@@ -46,4 +46,4 @@
 - Docker 用户需要手动执行一次 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 升级到 1.0.2，之后可以在 Dashboard 中更新主程序。
 - 容器默认使用 UTC 时区，自动更新时间也按 UTC 计算；需要本地时间时在 `container/compose.yaml` 中设置 `TZ`（文件中有注释示例）。
 - 协议端运行在 Docker 宿主机上时，可通过 `SHIROBOT_DATA_DIR` 把宿主目录以相同路径挂载为数据目录，插件交给协议端的文件路径在宿主机上可以直接访问，见安装文档。
-- 使用非自包含版时需安装 ASP.NET Core 10 Runtime 10.0.13 或更新补丁。
+- 使用非自包含版时需安装 ASP.NET Core 10 Runtime，补丁版本不得低于发布产物要求；建议安装最新的 10.0.x 补丁。
