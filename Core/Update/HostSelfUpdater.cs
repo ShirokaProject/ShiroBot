@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using ShiroBot.Hosting.Runtime;
+using ShiroBot.SDK.Abstractions;
 
 namespace ShiroBot.Update;
 
@@ -103,7 +104,9 @@ internal static class HostSelfUpdater
         try
         {
             if (powerControl.IsRequested) return HostPowerResult.Busy;
-            return await ApplyCoreAsync(assetDownloadUrl, powerControl, cancellationToken).ConfigureAwait(false);
+            var result = await ApplyCoreAsync(assetDownloadUrl, powerControl, cancellationToken).ConfigureAwait(false);
+            if (!result.Ok) BotLog.Error(result.Message);
+            return result;
         }
         finally { ApplyGate.Release(); }
     }
@@ -125,10 +128,7 @@ internal static class HostSelfUpdater
             await Updater.DownloadFileAsync(assetDownloadUrl, packagePath, cancellationToken).ConfigureAwait(false);
             var extractRoot = Path.Combine(workRoot, "extract");
             ZipFile.ExtractToDirectory(packagePath, extractRoot, overwriteFiles: true);
-            var replacement = Directory.EnumerateFiles(extractRoot, Path.GetFileName(processPath), SearchOption.AllDirectories)
-                .OrderBy(path => path.Count(ch => ch == Path.DirectorySeparatorChar))
-                .FirstOrDefault()
-                ?? throw new InvalidOperationException($"更新包中没有主程序文件 {Path.GetFileName(processPath)}。");
+            var replacement = FindReplacementExecutable(extractRoot);
 
             if (!OperatingSystem.IsWindows())
                 File.SetUnixFileMode(replacement, File.GetUnixFileMode(replacement) | UnixFileMode.UserRead | UnixFileMode.UserExecute);
@@ -160,6 +160,16 @@ internal static class HostSelfUpdater
         return restart.Ok
             ? new HostPowerResult(true, "新版本已安装，" + restart.Message)
             : new HostPowerResult(false, "新版本已安装，但自动重启失败，请手动重启主程序: " + restart.Message);
+    }
+
+    internal static string FindReplacementExecutable(string extractRoot)
+    {
+        // Release packages use the canonical name; the installed executable may have been renamed.
+        var name = OperatingSystem.IsWindows() ? "ShiroBot.exe" : "ShiroBot";
+        return Directory.EnumerateFiles(extractRoot, name, SearchOption.AllDirectories)
+            .OrderBy(path => path.Count(ch => ch == Path.DirectorySeparatorChar))
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"更新包中没有主程序文件 {name}。");
     }
 
     /// <summary>Runs <paramref name="executable"/> with <c>--self-check</c>; returns why it failed, or null.</summary>

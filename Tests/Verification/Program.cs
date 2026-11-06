@@ -670,12 +670,14 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     Directory.CreateDirectory(updateRoot);
     try
     {
-        var executable = Path.Combine(updateRoot, "ShiroBot");
-        var replacement = Path.Combine(updateRoot, "replacement");
+        var executable = Path.Combine(updateRoot, OperatingSystem.IsWindows() ? "custom-bot.exe" : "custom-bot");
+        var extractRoot = Path.Combine(updateRoot, "extract");
+        Directory.CreateDirectory(extractRoot);
+        var replacement = Path.Combine(extractRoot, OperatingSystem.IsWindows() ? "ShiroBot.exe" : "ShiroBot");
         File.WriteAllText(executable, "old-host");
         File.WriteAllText(replacement, "new-host");
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
-        HostSelfUpdater.ReplaceExecutable(replacement, executable);
+        HostSelfUpdater.ReplaceExecutable(HostSelfUpdater.FindReplacementExecutable(extractRoot), executable);
         if (File.ReadAllText(executable) != "new-host" || File.ReadAllText(executable + ".old") != "old-host" ||
             (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(executable) & UnixFileMode.UserExecute) == 0))
             throw new InvalidOperationException("Host executable replacement lost the backup or execute permission.");
