@@ -2,6 +2,7 @@ using ShiroBot.Hosting.Context;
 using CH = ShiroBot.Terminal.ConsoleOutput;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.Update;
+using ShiroBot.Hosting.Logging;
 
 namespace ShiroBot.Configuration;
 
@@ -9,11 +10,15 @@ internal sealed class CoreConfigWatcher : IDisposable
 {
     private readonly BotContext _botContext;
     private readonly IDisposable _watcherSubscription;
+    private readonly HostLogHub? _logs;
+    private readonly string? _hostDirectory;
 
-    public CoreConfigWatcher(string coreConfigPath, CoreConfig initialConfig, BotContext botContext)
+    public CoreConfigWatcher(string coreConfigPath, CoreConfig initialConfig, BotContext botContext, HostLogHub? logs = null, string? hostDirectory = null)
     {
         var activeConfig = initialConfig;
         _botContext = botContext;
+        _logs = logs;
+        _hostDirectory = hostDirectory;
 
         _watcherSubscription = ConfigContext.ForCore(coreConfigPath).Watch<CoreConfig>(updated =>
         {
@@ -24,6 +29,7 @@ internal sealed class CoreConfigWatcher : IDisposable
     private void ApplyCoreConfigChange(CoreConfig? active, CoreConfig? updated)
     {
         if (active is null || updated is null) return;
+        updated.Logs.Validate();
 
         // Validate both lists before applying either permission or any runtime settings.
         foreach (var entry in updated.OwnerList.Concat(updated.AdminList).Where(entry => !string.IsNullOrWhiteSpace(entry)))
@@ -31,6 +37,12 @@ internal sealed class CoreConfigWatcher : IDisposable
         if (!string.IsNullOrWhiteSpace(active.Api.Token) && string.IsNullOrWhiteSpace(updated.Api.Token))
             throw new InvalidOperationException("运行中的 API 令牌不能设为空；修改未应用。");
         var changes = new List<string>();
+        if (active.Logs.SaveToFile != updated.Logs.SaveToFile || active.Logs.RetentionDays != updated.Logs.RetentionDays)
+        {
+            if (_hostDirectory is not null) _logs?.Configure(updated.Logs, _hostDirectory);
+            active.Logs = updated.Logs;
+            changes.Add("logs");
+        }
 
         if (!ArrayEquals(active.OwnerList, updated.OwnerList))
         {

@@ -940,6 +940,26 @@ internal sealed partial class HostHttpServer
         var current = routePolicy.Plugins.TryGetValue(pluginId, out var existing) ? existing : routePolicy.Default;
         var mode = current.Mode;
         var groups = current.Groups;
+        string? prefixMode = null;
+        string? customPrefix = null;
+        if (patch.TryGetProperty("custom_prefix", out var customPrefixSetting))
+        {
+            if (customPrefixSetting.ValueKind != JsonValueKind.String)
+                throw new InvalidOperationException("routes.custom_prefix 必须是字符串；留空使用全局前缀。");
+            customPrefix = customPrefixSetting.GetString()!;
+        }
+        if (patch.TryGetProperty("prefix_mode", out var prefixSetting))
+        {
+            if (prefixSetting.ValueKind != JsonValueKind.String)
+                throw new InvalidOperationException("routes.prefix_mode 必须是字符串。");
+            prefixMode = prefixSetting.GetString()?.Trim().ToLowerInvariant() switch
+            {
+                "default" => "default",
+                "required" => "required",
+                "disabled" => "disabled",
+                _ => throw new InvalidOperationException("routes.prefix_mode 只能是 default、required 或 disabled。")
+            };
+        }
 
         if (TryGetString(patch, "mode", out var patchedMode))
         {
@@ -954,6 +974,40 @@ internal sealed partial class HostHttpServer
         if (patch.TryGetProperty("priority", out var priority))
         {
             ApplyPluginPriorityPatch(configManager, coreConfigPath, routePolicy, pluginId, priority);
+        }
+
+        if (prefixMode is not null)
+        {
+            var modes = new Dictionary<string, string>(routePolicy.PrefixModes, StringComparer.OrdinalIgnoreCase);
+            var key = $"plugin_routes.prefix_modes.{pluginId}";
+            if (prefixMode == "default")
+            {
+                modes.Remove(pluginId);
+                configManager.RemoveConfigValue(coreConfigPath, key);
+            }
+            else
+            {
+                modes[pluginId] = prefixMode;
+                configManager.SetConfigValue(coreConfigPath, key, prefixMode);
+            }
+            routePolicy.PrefixModes = modes;
+        }
+
+        if (customPrefix is not null)
+        {
+            var prefixes = new Dictionary<string, string>(routePolicy.Prefixes, StringComparer.OrdinalIgnoreCase);
+            var key = $"plugin_routes.prefixes.{pluginId}";
+            if (string.IsNullOrWhiteSpace(customPrefix))
+            {
+                prefixes.Remove(pluginId);
+                configManager.RemoveConfigValue(coreConfigPath, key);
+            }
+            else
+            {
+                prefixes[pluginId] = customPrefix;
+                configManager.SetConfigValue(coreConfigPath, key, customPrefix);
+            }
+            routePolicy.Prefixes = prefixes;
         }
 
         if (!patch.TryGetProperty("mode", out _) && !patch.TryGetProperty("groups", out _))
@@ -1018,7 +1072,13 @@ internal sealed partial class HostHttpServer
             default_groups = routePolicy.Default.Groups,
             priority = configuredPriority ?? declaredPriority,
             priority_configured = configuredPriority is not null,
-            declared_priority = declaredPriority
+            declared_priority = declaredPriority,
+            prefix_mode = routePolicy.GetPrefixMode(pluginId),
+            custom_prefix = routePolicy.Prefixes.TryGetValue(pluginId, out var custom) ? custom : string.Empty,
+            effective_prefix = routePolicy.GetMessagePrefix(pluginId),
+            message_prefix = routePolicy.MessagePrefix,
+            default_require_prefix = routePolicy.RequireMessagePrefix,
+            effective_require_prefix = !string.IsNullOrWhiteSpace(routePolicy.GetMessagePrefix(pluginId)) && routePolicy.RequiresMessagePrefix(pluginId)
         };
     }
 

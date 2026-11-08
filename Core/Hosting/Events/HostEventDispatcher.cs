@@ -2,6 +2,7 @@ using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Plugins;
+using ShiroBot.Configuration;
 using ShiroBot.Terminal;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
@@ -14,7 +15,8 @@ internal sealed class HostEventDispatcher(
     ReplySubscriptionManager replySubscriptions,
     HostRuntimeState runtimeState,
     HostLogHub logHub,
-    Func<bool>? showIds = null)
+    Func<bool>? showIds = null,
+    PluginRouteConfig? routePolicy = null)
 {
     private readonly Dictionary<string, List<LoadedPluginHandle>> _groupMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<LoadedPluginHandle>> _directMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
@@ -75,9 +77,9 @@ internal sealed class HostEventDispatcher(
         await _initialPluginsReady.Task.ConfigureAwait(false);
         await (message switch
         {
-            MessageEvent { IsDirect: false } groupMessage => PublishMessageAsync("群消息", groupMessage, MatchMessageHandlers(groupMessage, direct: false), handler => handler.OnEventAsync(groupMessage)),
-            MessageEvent directMessage => PublishMessageAsync("私聊消息", directMessage, MatchMessageHandlers(directMessage, direct: true), handler => handler.OnEventAsync(directMessage)),
-            _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()), handler => handler.OnEventAsync(message))
+            MessageEvent { IsDirect: false } groupMessage => PublishMessageAsync("群消息", groupMessage),
+            MessageEvent directMessage => PublishMessageAsync("私聊消息", directMessage),
+            _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()), (_, handler) => handler.OnEventAsync(message))
         }).ConfigureAwait(false);
     }
 
@@ -85,16 +87,43 @@ internal sealed class HostEventDispatcher(
 
     private async Task PublishMessageAsync(
         string eventName,
-        MessageEvent message,
-        IReadOnlyList<LoadedPluginHandle> handlers,
-        Func<IBotEventSubscriber, Task> dispatch)
+        MessageEvent message)
     {
         runtimeState.RecordIncomingMessage();
         // A reply that answered a subscription (e.g. confirming an owner notification) counts as handled at the
         // default priority: ordinary plugins still see it, fallbacks such as AI chat do not.
         var replied = await replySubscriptions.PublishAsync(message).ConfigureAwait(false);
-        await DispatchAsync(eventName, message, handlers, dispatch,
-            replied ? BotPluginAttribute.DefaultPriority : int.MaxValue).ConfigureAwait(false);
+        var handledAbove = replied ? BotPluginAttribute.DefaultPriority : int.MaxValue;
+        if (routePolicy is null || !routePolicy.HasMessagePrefixRequirements())
+        {
+            await DispatchAsync(eventName, message, MatchMessageHandlers(message, message.IsDirect),
+                (_, handler) => handler.OnEventAsync(message), handledAbove).ConfigureAwait(false);
+            return;
+        }
+
+        var deliveries = new Dictionary<LoadedPluginHandle, MessageEvent>();
+        var mentionsSelf = !string.IsNullOrWhiteSpace(message.SelfId) && message.HasMention(message.SelfId);
+        var commandViews = new Dictionary<string, (MessageEvent? Command, MessageEvent Dispatch)>(StringComparer.Ordinal);
+        foreach (var prefix in new HashSet<string>(routePolicy.GetMessagePrefixes(), StringComparer.Ordinal))
+        {
+            var command = MessageTriggerPrefix.Strip(message, prefix) ?? (mentionsSelf ? message : null);
+            commandViews[prefix] = (command, MessageCommandPrefix.CreateDispatchView(message, command));
+        }
+        foreach (var plugin in MatchMessageHandlers(message, message.IsDirect))
+        {
+            var prefix = routePolicy.GetMessagePrefix(plugin.Name);
+            deliveries[plugin] = routePolicy.RequiresMessagePrefix(plugin.Name) && commandViews.TryGetValue(prefix, out var view)
+                ? view.Dispatch : message;
+        }
+        foreach (var (prefix, view) in commandViews)
+        {
+            if (view.Command is null) continue;
+            foreach (var plugin in MatchMessageHandlers(view.Command, view.Command.IsDirect))
+                if (routePolicy.RequiresMessagePrefix(plugin.Name) && string.Equals(routePolicy.GetMessagePrefix(plugin.Name), prefix, StringComparison.Ordinal))
+                    deliveries[plugin] = view.Dispatch;
+        }
+        await DispatchAsync(eventName, message, deliveries.Keys.ToArray(),
+            (plugin, handler) => handler.OnEventAsync(deliveries[plugin]), handledAbove).ConfigureAwait(false);
     }
 
     private void RegisterEventHandlers(LoadedPluginHandle pluginHandle)
@@ -259,7 +288,7 @@ internal sealed class HostEventDispatcher(
         string eventName,
         BotEvent message,
         IReadOnlyList<LoadedPluginHandle> handlers,
-        Func<IBotEventSubscriber, Task> dispatch,
+        Func<LoadedPluginHandle, IBotEventSubscriber, Task> dispatch,
         int handledAbove = int.MaxValue)
     {
         var text = $"收到{eventName} {Describe(message, showIds?.Invoke() ?? false)}";
@@ -286,7 +315,7 @@ internal sealed class HostEventDispatcher(
             var level = levels[i];
             if (level.Key > handledAbove) break;
 
-            var tasks = level.Select(plugin => DispatchToPluginAsync(plugin, dispatch)).ToArray();
+            var tasks = level.Select(plugin => DispatchToPluginAsync(plugin, handler => dispatch(plugin, handler))).ToArray();
             running.AddRange(tasks);
             if (i == levels.Length - 1) break;
 

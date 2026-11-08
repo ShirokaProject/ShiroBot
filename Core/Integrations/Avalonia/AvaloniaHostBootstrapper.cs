@@ -17,6 +17,7 @@ internal sealed class AvaloniaHostBootstrapper : IDisposable
     private readonly CancellationTokenSource _shutdownCts = new();
     private readonly TaskCompletionSource<bool> _readySignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _disposed;
+    private IdleFontCache? _fontCache;
 
     private AvaloniaHostBootstrapper()
     {
@@ -70,6 +71,10 @@ internal sealed class AvaloniaHostBootstrapper : IDisposable
                 })
                 .SetupWithoutStarting();
 
+            _fontCache = new IdleFontCache(IdleFontCache.ConfiguredTimeout(),
+                log: global::ShiroBot.Terminal.ConsoleOutput.Info);
+            _fontCache.Start();
+
             _readySignal.TrySetResult(true);
 
             Dispatcher.UIThread.MainLoop(_shutdownCts.Token);
@@ -82,7 +87,13 @@ internal sealed class AvaloniaHostBootstrapper : IDisposable
         {
             _readySignal.TrySetException(ex);
         }
+        finally
+        {
+            _fontCache?.Dispose();
+        }
     }
+
+    internal static void MarkRendering() => _current?._fontCache?.MarkUsed();
 
     public void Dispose()
     {

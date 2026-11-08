@@ -18,11 +18,14 @@ public class CoreConfig
     [ConfigField("适配器包总开关：列出的包 ID 才允许启动，空列表全部关闭；也可填写开发用独立 DLL 路径。Dashboard 适配器页开关保存到此列表。", Label = "启用的适配器包", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
-    [ConfigField("是否输出普通运行日志。", Label = "启用日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupIcon = "settings", GroupDescription = "运行时行为与日志设置。", GroupOrder = 10, Order = 20)]
+    [ConfigField("是否在终端输出普通运行日志；Dashboard 日志和本地保存单独工作。", Label = "输出日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupIcon = "settings", GroupDescription = "运行时行为与日志设置。", GroupOrder = 10, Order = 20)]
     public bool EnableLog { get; set; } = true;
 
     [ConfigField("在消息日志中显示群 ID 和用户 ID；修改后即时生效。", Label = "显示群与用户 ID", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 25)]
     public bool Showid { get; set; } = false;
+
+    [ConfigField("保存系统、插件和适配器日志。", Label = "本地日志", Type = "section", Group = "logs", GroupLabel = "日志", GroupIcon = "folder", GroupDescription = "本地日志保存与自动清理。", GroupOrder = 15, Order = 30)]
+    public LocalLogConfig Logs { get; set; } = new();
 
     [ConfigField("是否关闭交互式控制台输入；修改后重启生效。", Label = "禁用控制台输入", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 30)]
     public bool DisableConsoleInput { get; set; } = false;
@@ -52,7 +55,7 @@ public class CoreConfig
     [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupIcon = "code", GroupDescription = "Dashboard 和外部工具访问主程序的 HTTP API。", GroupOrder = 40, Order = 10)]
     public ApiHostConfig Api { get; set; } = new();
 
-    [ConfigField("插件群消息路由策略。", Label = "插件路由", Type = "section", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 30)]
+    [ConfigField("插件群组范围、消息触发前缀和优先级设置。", Label = "插件路由", Type = "section", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 30)]
     public PluginRouteConfig PluginRoutes { get; set; } = new()
     {
         Default = new PluginRouteRuleConfig
@@ -61,6 +64,20 @@ public class CoreConfig
             Groups = []
         }
     };
+}
+
+public sealed class LocalLogConfig
+{
+    [ConfigField("默认开启。写入运行目录的 logs 文件夹，Dashboard 历史按需从文件读取，不再保留内存历史副本。修改即时生效。", Label = "保存日志到本地", Default = "true", Order = 30)]
+    public bool SaveToFile { get; set; } = true;
+
+    [ConfigField("默认保留最近 3 个自然日的本地日志（含今天）；自动清理过期文件。关闭本地保存不会删除已有文件。", Label = "日志保留天数", Default = "3", Min = 1, Max = 3650, Order = 40)]
+    public int RetentionDays { get; set; } = 3;
+
+    public void Validate()
+    {
+        if (RetentionDays is < 1 or > 3650) throw new InvalidOperationException("日志保留天数必须是 1–3650 的整数。");
+    }
 }
 
 /// <summary>The <c>[update]</c> table: daily automatic updates.</summary>
@@ -137,6 +154,12 @@ public class ApiHostConfig
 
 public class PluginRouteConfig
 {
+    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；留空不限制。命令匹配前去掉前缀；@ 机器人、整条消息监听和插件自定义判断不受限制。", Label = "消息触发前缀", Default = "", Order = 11)]
+    public string MessagePrefix { get; set; } = string.Empty;
+
+    [ConfigField("默认关闭。开启后，精确／前缀命令路由要求触发前缀；@ 机器人、整条消息监听和自定义判断照常接收原文。可按插件覆盖；前缀为空时不限制。", Label = "默认要求触发前缀", Default = "false", Order = 10)]
+    public bool RequireMessagePrefix { get; set; }
+
     [ConfigField("未单独配置路由的插件使用此规则。", Label = "默认插件路由", Type = "section", Order = 30)]
     public PluginRouteRuleConfig Default { get; set; } = new();
 
@@ -145,8 +168,58 @@ public class PluginRouteConfig
     /// <summary>Owner overrides of the dispatch priority plugins declare in their attribute, by plugin ID.</summary>
     public Dictionary<string, int> Priorities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    private Dictionary<string, string> _prefixModes = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> PrefixModes
+    {
+        get => _prefixModes;
+        set => _prefixModes = new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private Dictionary<string, string> _prefixes = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> Prefixes
+    {
+        get => _prefixes;
+        set => _prefixes = new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public string GetMessagePrefix(string pluginName) =>
+        GetPrefixMode(pluginName) == "required" && Prefixes.TryGetValue(pluginName, out var prefix) && !string.IsNullOrWhiteSpace(prefix)
+            ? prefix : MessagePrefix;
+
+    public string GetPrefixMode(string pluginName) =>
+        PrefixModes.TryGetValue(pluginName, out var mode) ? mode?.Trim().ToLowerInvariant() switch
+        {
+            "required" => "required",
+            "disabled" => "disabled",
+            _ => "default"
+        } : "default";
+
     public int? GetPriority(string pluginName) =>
         Priorities.TryGetValue(pluginName, out var priority) ? priority : null;
+
+    public bool RequiresMessagePrefix(string pluginName) =>
+        GetPrefixMode(pluginName) switch
+        {
+            "required" => true,
+            "disabled" => false,
+            _ => RequireMessagePrefix
+        };
+
+    public bool HasMessagePrefixRequirements()
+    {
+        if (RequireMessagePrefix && !string.IsNullOrWhiteSpace(MessagePrefix)) return true;
+        foreach (var entry in PrefixModes)
+            if (GetPrefixMode(entry.Key) == "required" && !string.IsNullOrWhiteSpace(GetMessagePrefix(entry.Key))) return true;
+        return false;
+    }
+
+    public IEnumerable<string> GetMessagePrefixes()
+    {
+        if (!string.IsNullOrWhiteSpace(MessagePrefix)) yield return MessagePrefix;
+        foreach (var entry in PrefixModes)
+            if (GetPrefixMode(entry.Key) == "required" && Prefixes.TryGetValue(entry.Key, out var prefix) && !string.IsNullOrWhiteSpace(prefix))
+                yield return prefix;
+    }
 
     public bool AllowsGroup(string pluginName, string groupId)
     {
@@ -163,11 +236,15 @@ public class PluginRouteConfig
     public void CopyFrom(PluginRouteConfig other)
     {
         ArgumentNullException.ThrowIfNull(other);
+        MessagePrefix = other.MessagePrefix;
+        RequireMessagePrefix = other.RequireMessagePrefix;
         Default = other.Default;
         Plugins = new Dictionary<string, PluginRouteRuleConfig>(
             other.Plugins,
             StringComparer.OrdinalIgnoreCase);
         Priorities = new Dictionary<string, int>(other.Priorities, StringComparer.OrdinalIgnoreCase);
+        PrefixModes = new Dictionary<string, string>(other.PrefixModes, StringComparer.OrdinalIgnoreCase);
+        Prefixes = new Dictionary<string, string>(other.Prefixes, StringComparer.OrdinalIgnoreCase);
     }
 }
 

@@ -79,10 +79,22 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
     /// <param name="onMatch">Called with the matched route before its handler runs.</param>
     internal async Task<bool> DispatchAsync(string text, TMessage message, Action<MessageRouteDescriptor>? onMatch)
     {
-        foreach (var route in _routes.Where(route => Matches(route, text, message)))
+        foreach (var route in _routes)
         {
+            var effectiveMessage = message;
+            var effectiveText = text;
+            if (route.Descriptor.MatchType != MessageRouteMatchType.All && message is Models.MessageEvent original)
+            {
+                if (!MessageCommandPrefix.TryGetCommand(original, out var command)) continue;
+                if (!ReferenceEquals(command, original))
+                {
+                    effectiveMessage = (TMessage)(object)command;
+                    effectiveText = command.GetPlainText().Trim();
+                }
+            }
+            if (!Matches(route, effectiveText, effectiveMessage)) continue;
             onMatch?.Invoke(route.Descriptor);
-            await route.Handler(message);
+            await route.Handler(effectiveMessage);
             return true;
         }
 

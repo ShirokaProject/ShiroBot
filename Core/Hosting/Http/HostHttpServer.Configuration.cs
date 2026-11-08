@@ -93,7 +93,7 @@ internal sealed partial class HostHttpServer
         .OfType<ConfigSchemaItem>()
         .Where(item => item.Key is not "protocols")
         .Select(item => item.Key == "plugin_routes"
-            ? item with { Fields = item.Fields?.Where(field => field.Key == "default").ToArray() }
+            ? item with { Fields = item.Fields?.Where(field => field.Key is "default" or "message_prefix" or "require_message_prefix").ToArray() }
             : item)
         .Cast<object>()
         .ToArray();
@@ -139,10 +139,33 @@ internal sealed partial class HostHttpServer
             throw new InvalidOperationException("运行中的 API 令牌不能设为空；可在控制台执行 api token 生成新令牌。");
         string? defaultRouteMode = null;
         string[]? defaultRouteGroups = null;
+        string? messagePrefix = null;
+        bool? requireMessagePrefix = null;
+        bool? saveLogs = null;
+        int? logRetention = null;
+        if (patch.TryGetProperty("logs", out var logsPatch))
+        {
+            if (logsPatch.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("logs 必须是对象。");
+            if (logsPatch.TryGetProperty("save_to_file", out var savePatch))
+                saveLogs = savePatch.ValueKind is JsonValueKind.True or JsonValueKind.False ? savePatch.GetBoolean()
+                    : throw new InvalidOperationException("logs.save_to_file 必须是布尔值。");
+            if (logsPatch.TryGetProperty("retention_days", out var retentionPatch))
+            {
+                if (retentionPatch.ValueKind != JsonValueKind.Number || !retentionPatch.TryGetInt32(out var days) || days is < 1 or > 3650)
+                    throw new InvalidOperationException("日志保留天数必须是 1–3650 的整数。");
+                logRetention = days;
+            }
+        }
         if (patch.TryGetProperty("plugin_routes", out var routesPatch))
         {
             if (routesPatch.ValueKind != JsonValueKind.Object)
                 throw new InvalidOperationException("plugin_routes 必须是对象。");
+            if (routesPatch.TryGetProperty("message_prefix", out var prefixPatch))
+                messagePrefix = prefixPatch.ValueKind == JsonValueKind.String ? prefixPatch.GetString()!
+                    : throw new InvalidOperationException("plugin_routes.message_prefix 必须是字符串。");
+            if (routesPatch.TryGetProperty("require_message_prefix", out var requirePatch))
+                requireMessagePrefix = requirePatch.ValueKind is JsonValueKind.True or JsonValueKind.False ? requirePatch.GetBoolean()
+                    : throw new InvalidOperationException("plugin_routes.require_message_prefix 必须是布尔值。");
             if (routesPatch.TryGetProperty("default", out var defaultPatch))
             {
                 if (defaultPatch.ValueKind != JsonValueKind.Object)
@@ -193,6 +216,14 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "plugin_routes.default.mode", defaultRouteMode);
         if (defaultRouteGroups is not null)
             configManager.SetConfigValue(configPath, "plugin_routes.default.groups", defaultRouteGroups);
+        if (messagePrefix is not null)
+            configManager.SetConfigValue(configPath, "plugin_routes.message_prefix", messagePrefix);
+        if (requireMessagePrefix is { } requirePrefix)
+            configManager.SetConfigValue(configPath, "plugin_routes.require_message_prefix", requirePrefix);
+        if (saveLogs is { } saveToFile)
+            configManager.SetConfigValue(configPath, "logs.save_to_file", saveToFile);
+        if (logRetention is { } retentionDays)
+            configManager.SetConfigValue(configPath, "logs.retention_days", retentionDays);
 
         if (hasShowid) configManager.SetConfigValue(configPath, "showid", showid);
 

@@ -144,6 +144,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         return Dispatcher.UIThread.InvokeAsync(
             () =>
             {
+                AvaloniaHostBootstrapper.MarkRendering();
                 ct.ThrowIfCancellationRequested();
                 global::ShiroBot.Integrations.Avalonia.AvaloniaIntegration.ApplyRenderTheme(theme);
 
@@ -231,6 +232,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     renderRoot.Child = null;
                     window.Content = null;
                     window.Close();
+                    AvaloniaHostBootstrapper.MarkRendering();
                 }
             },
             DispatcherPriority.Render).GetTask();

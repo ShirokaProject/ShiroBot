@@ -15,6 +15,7 @@ services:
     #   TZ: Asia/Shanghai
     #   SHIROBOT_DATA_DIR: /srv/shirobot
     volumes:
+      # 配置、插件和本地 logs 日志均保存在此持久化数据卷。
       - shirobot_data:/data
       # - /srv/shirobot:/srv/shirobot
 

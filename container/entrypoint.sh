@@ -10,7 +10,7 @@ if [ "$data" != /data ]; then
     export SHIROBOT_HOST_UPDATE_DIR="$data/host"
 fi
 
-mkdir -p "$data/adapters" "$data/plugins"
+mkdir -p "$data/adapters" "$data/plugins" "$data/logs"
 if [ ! -e "$data/config.toml" ]; then
     cp /app/config.container.toml "$data/config.toml"
 fi

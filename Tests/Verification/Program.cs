@@ -164,6 +164,42 @@ if (args is ["--avalonia-fonts"])
     return;
 }
 
+if (args is ["--idle-font-cache"])
+{
+    await IdleFontCacheVerification.RunAsync();
+    return;
+}
+
+if (args is ["--message-prefix"])
+{
+    await MessagePrefixVerification.RunAsync();
+    return;
+}
+
+if (args is ["--console-output-probe"])
+{
+    ConsoleOutputVerification.Probe();
+    return;
+}
+
+if (args is ["--console-output"])
+{
+    await ConsoleOutputVerification.RunAsync();
+    return;
+}
+
+if (args is ["--local-logs"])
+{
+    await LocalLogVerification.RunAsync();
+    return;
+}
+
+if (args is ["--idle-font-timer", var enabled])
+{
+    await IdleFontCacheVerification.RunTimerAsync(bool.Parse(enabled));
+    return;
+}
+
 if (args is ["--plugin-migration", var migrationManifest])
 {
     PluginMigrationVerification.Run(migrationManifest);
@@ -201,6 +237,9 @@ DeferredShadowCleanupVerification.Run();
 await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
 await PluginPriorityVerification.RunAsync();
+await MessagePrefixVerification.RunAsync();
+await ConsoleOutputVerification.RunAsync();
+await LocalLogVerification.RunAsync();
 await PluginActionsVerification.RunAsync();
 await PluginDashboardVerification.RunAsync();
 await PluginWebPageVerification.RunAsync();

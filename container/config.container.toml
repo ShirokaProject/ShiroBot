@@ -1,6 +1,10 @@
 protocols = []
 disable_console_input = true
 
+[logs]
+save_to_file = true
+retention_days = 3
+
 [api]
 enable = true
 listen_urls = ["http://0.0.0.0:7001"]

@@ -73,7 +73,7 @@ public static class Program
         using var directoryLock = acquiredLock;
         HostSelfUpdater.CleanupPrevious();
 
-        var logHub = new HostLogHub();
+        using var logHub = new HostLogHub();
         BotLog.SetDefault(new ConsoleLogger(logHub: logHub));
 
         var configOption = new Option<string?>("--config", "-c") { Description = "指定配置文件路径" };
@@ -156,6 +156,8 @@ public static class Program
 
             var coreConfigManager = new ConfigManager(coreConfigPath);
             var coreConfig = await coreConfigManager.LoadCoreConfig();
+            coreConfig.Logs.Validate();
+            logHub.Configure(coreConfig.Logs, BasePath);
             EnsureApiAuthKey(coreConfig, coreConfigManager, coreConfigPath);
             CH.IsEnabled = coreConfig.EnableLog;
             var groupRoutePolicy = coreConfig.PluginRoutes;
@@ -220,7 +222,7 @@ public static class Program
             Updater.Initialize(ownerNotifier.NotifyAsync, coreConfig.GithubProxy);
 
             var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub,
-                () => coreConfig.Showid);
+                () => coreConfig.Showid, groupRoutePolicy);
             pluginManager = new PluginManager(botContext, sharedAssemblies, modelPackages, runtimeState, logHub);
             Updater.PluginUpdateApplier = async (request, cancellationToken) =>
             {
@@ -248,7 +250,7 @@ public static class Program
             }
 
             // ─── 配置热重载 ───
-            configWatcher = new CoreConfigWatcher(coreConfigPath, coreConfig, botContext);
+            configWatcher = new CoreConfigWatcher(coreConfigPath, coreConfig, botContext, logHub, BasePath);
 
             // ─── 插件加载 ───
             pluginManager.PluginRootPath = pluginRootPath;
@@ -424,6 +426,7 @@ public static class Program
             // Unix restart uses exec rather than returning from Main. Release only after all
             // cleanup, so the replacement can acquire the same directory lock.
             directoryLock.Dispose();
+            logHub.Dispose();
             powerControl.CompleteRestart();
         }
     }

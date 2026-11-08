@@ -70,7 +70,7 @@ public static class ConsoleOutput
 
         lock (OutputLock)
         {
-            if (Console.IsOutputRedirected || Console.IsInputRedirected)
+            if (!CanRenderTerminalOutput() || Console.IsInputRedirected)
             {
                 Console.WriteLine($"{Timestamp()} {title}");
                 if (!string.IsNullOrWhiteSpace(summary)) Console.WriteLine(summary);
@@ -145,6 +145,19 @@ public static class ConsoleOutput
         const string hint = " Esc 关闭 ";
         lines.Add((new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2), ConsoleColor.DarkGray));
         return lines;
+    }
+
+    private static bool CanRenderTerminalOutput()
+    {
+        if (Console.IsOutputRedirected) return false;
+        try
+        {
+            return Console.BufferWidth > 0 && Console.WindowWidth > 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     // Windows consoles can have a buffer wider than the window; stay within what is visible.
@@ -694,6 +707,14 @@ public static class ConsoleOutput
 
         lock (OutputLock)
         {
+            // Container log drivers and redirected files have no usable terminal width. Preserve the
+            // original lines and let the viewer wrap them; cursor rendering and ScreenRows are TTY-only.
+            if (!CanRenderTerminalOutput())
+            {
+                Console.WriteLine($"{Timestamp()} {message}");
+                return;
+            }
+
             // Logs go where the prompt is; the prompt and overlay are drawn again below them.
             if (_isReadingInput)
             {
