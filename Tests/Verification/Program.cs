@@ -176,6 +176,18 @@ if (args is ["--message-prefix"])
     return;
 }
 
+if (args is ["--host-environment"])
+{
+    HostEnvironmentVerification.Run();
+    return;
+}
+
+if (args is ["--host-environment-probe"])
+{
+    Console.WriteLine(JsonSerializer.Serialize(HostEnvironmentInfo.Create()));
+    return;
+}
+
 if (args is ["--console-output-probe"])
 {
     ConsoleOutputVerification.Probe();
@@ -238,6 +250,7 @@ await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
 await PluginPriorityVerification.RunAsync();
 await MessagePrefixVerification.RunAsync();
+HostEnvironmentVerification.Run();
 await ConsoleOutputVerification.RunAsync();
 await LocalLogVerification.RunAsync();
 await PluginActionsVerification.RunAsync();

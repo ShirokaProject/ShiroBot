@@ -12,15 +12,20 @@ internal static class HostEnvironmentInfo
 {
     private static readonly Lazy<StaticFacts> Facts = new(ReadStaticFacts);
 
-    /// <summary>docker, systemd or native.</summary>
-    public static string RunMode => Facts.Value.Mode;
+    public static string RunMode => Facts.Value.Environment.Mode;
+    internal static HostExecutionEnvironment ExecutionEnvironment => Facts.Value.Environment;
 
     public static object Create()
     {
         var facts = Facts.Value;
         return new
         {
-            mode = facts.Mode,
+            mode = facts.Environment.Mode,
+            is_container = facts.Environment.IsContainer,
+            container_engine = facts.Environment.Engine,
+            container_runtime = facts.Environment.Sandbox,
+            container_host = facts.Environment.Host,
+            orchestrator = facts.Environment.Orchestrator,
             os = facts.Os,
             arch = facts.Arch,
             version_tag = facts.VersionTag,
@@ -37,7 +42,7 @@ internal static class HostEnvironmentInfo
         var facts = Facts.Value;
         return new ShiroBot.SDK.Plugin.HostRuntimeInfo
         {
-            Mode = facts.Mode,
+            Mode = facts.Environment.Mode,
             OperatingSystem = facts.Os,
             Architecture = facts.Arch,
             Framework = RuntimeInformation.FrameworkDescription,
@@ -51,10 +56,10 @@ internal static class HostEnvironmentInfo
         };
     }
 
-    private sealed record StaticFacts(string Mode, string Os, string Arch, string? VersionTag, string? BuildTime);
+    private sealed record StaticFacts(HostExecutionEnvironment Environment, string Os, string Arch, string? VersionTag, string? BuildTime);
 
     private static StaticFacts ReadStaticFacts() => new(
-        DetectRunMode(),
+        HostEnvironmentDetector.Detect(),
         DescribeOperatingSystem(),
         RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
         NonEmpty(Environment.GetEnvironmentVariable("SHIROBOT_VERSION_TAG")),
@@ -62,20 +67,6 @@ internal static class HostEnvironmentInfo
             ?? NormalizeTimestamp(typeof(HostEnvironmentInfo).Assembly
                 .GetCustomAttributes<AssemblyMetadataAttribute>()
                 .FirstOrDefault(attribute => attribute.Key == "ShiroBot.BuildTimeUtc")?.Value));
-
-    private static string DetectRunMode()
-    {
-        // The official .NET container images set DOTNET_RUNNING_IN_CONTAINER; the marker files cover others.
-        if (string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase) ||
-            File.Exists("/.dockerenv") || File.Exists("/run/.containerenv"))
-            return "docker";
-
-        // systemd sets INVOCATION_ID for every unit it starts.
-        if (OperatingSystem.IsLinux() && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("INVOCATION_ID")))
-            return "systemd";
-
-        return "native";
-    }
 
     private static string DescribeOperatingSystem()
     {

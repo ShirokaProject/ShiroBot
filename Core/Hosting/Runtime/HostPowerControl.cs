@@ -32,9 +32,11 @@ internal sealed class HostPowerControl(Action requestShutdown)
         BotLog.Warning("收到关机请求，正在安全退出...");
         ScheduleShutdown();
         // A supervisor configured to always restart brings the process back; only it can stop the host for good.
-        return new HostPowerResult(true, HostEnvironmentInfo.RunMode switch
+        var environment = HostEnvironmentInfo.ExecutionEnvironment;
+        return new HostPowerResult(true, environment.IsContainer
+            ? "ShiroBot 正在关闭。容器若配置了自动重启策略可能再次启动；彻底停止请在对应容器管理器中停止容器。"
+            : environment.Mode switch
         {
-            "docker" => "ShiroBot 正在关闭。若容器配置了 restart: always 或 unless-stopped 会被重新启动，彻底停止请使用 docker compose stop。",
             "systemd" => "ShiroBot 正在关闭。若服务配置了 Restart=always 会被重新启动，彻底停止请使用 systemctl stop。",
             _ => "ShiroBot 正在关闭。"
         });
@@ -44,15 +46,15 @@ internal sealed class HostPowerControl(Action requestShutdown)
     {
         if (!TryBegin()) return HostPowerResult.Busy;
 
-        var mode = HostEnvironmentInfo.RunMode;
-        if (mode is "docker" or "systemd")
+        var environment = HostEnvironmentInfo.ExecutionEnvironment;
+        if (environment.IsSupervised)
         {
             // A process supervised by Docker or systemd must not spawn its own successor: the
             // supervisor would kill it with the container/unit. Exit and let the supervisor restart.
             ExitCode = SupervisedRestartExitCode;
-            BotLog.Warning($"收到重启请求，进程将退出并由 {(mode == "docker" ? "Docker" : "systemd")} 重新启动...");
+            BotLog.Warning($"收到重启请求，进程将退出并由 {(environment.IsContainer ? "容器管理器" : "systemd")} 重新启动...");
             ScheduleShutdown();
-            return new HostPowerResult(true, mode == "docker"
+            return new HostPowerResult(true, environment.IsContainer
                 ? "ShiroBot 正在重启。容器需要配置重启策略（如 restart: unless-stopped）才会自动重新启动。"
                 : "ShiroBot 正在重启。服务需要配置 Restart=on-failure 或 always 才会自动重新启动。");
         }

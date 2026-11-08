@@ -39,7 +39,7 @@ public sealed record HostStatus
 /// <summary>宿主进程的运行环境。</summary>
 public sealed record HostRuntimeInfo
 {
-    /// <summary>运行方式：docker、systemd 或 native。</summary>
+    /// <summary>运行方式，例如 docker、podman、containerd、container（引擎未知）、systemd 或 native。</summary>
     public string Mode { get; init; } = string.Empty;
 
     /// <summary>操作系统描述，例如 "Alpine Linux v3.22" 或 "macOS 26.0.0"。</summary>
@@ -51,7 +51,7 @@ public sealed record HostRuntimeInfo
     /// <summary>.NET 运行时描述，例如 ".NET 10.0.0"。</summary>
     public string Framework { get; init; } = string.Empty;
 
-    /// <summary>Docker 镜像标签；不是镜像运行时为 null。</summary>
+    /// <summary>容器镜像标签；未提供时为 null。</summary>
     public string? ImageTag { get; init; }
 
     /// <summary>构建时间；未知时为 null。</summary>
