@@ -11,7 +11,9 @@ using ShiroBot.Plugins;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
-using ShiroBot.SharedContractPluginProbe;
+using ProbePlugin = ShiroBot.SharedContractPluginProbe.SharedContractPluginProbe;
+
+namespace ShiroBot.Verification;
 
 internal static class AdapterReloadIsolationVerification
 {
@@ -20,7 +22,7 @@ internal static class AdapterReloadIsolationVerification
         var root = Path.Combine(Path.GetTempPath(), "ShiroBot.ReloadIsolation", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, "Probe.dll");
-        File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, path);
+        File.Copy(typeof(ProbePlugin).Assembly.Location, path);
         var pluginRoot = Path.Combine(root, "plugins");
         var pluginDirectory = Path.Combine(pluginRoot, "Probe");
         Directory.CreateDirectory(pluginDirectory);
@@ -37,8 +39,10 @@ internal static class AdapterReloadIsolationVerification
         var plugins = new PluginManager(context, shared, models, runtime, logs) { PluginRootPath = pluginRoot };
         var coordinator = new ComponentReloadCoordinator(adapters);
         var configPath = Path.Combine(root, "config.toml");
-        AdapterInstanceStore.Write(configPath, [new PackageAdapterInstance { Id = "a", Enabled = true },
-            new PackageAdapterInstance { Id = "b", Enabled = true }], replaceLegacy: true);
+        AdapterInstanceStore.Write(configPath, [
+            new PackageAdapterInstance { Id = "a", Enabled = true },
+            new PackageAdapterInstance { Id = "b", Enabled = true }
+        ], true);
         var first = new InstalledAdapterInstance("a", "lifecycle-probe", path, configPath, true, "First");
         var second = new InstalledAdapterInstance("b", "lifecycle-probe", path, configPath, true, "Second");
         try
@@ -67,7 +71,10 @@ internal static class AdapterReloadIsolationVerification
             await AssertPlugin(2);
 
             using (context.UseInstance("a"))
+            {
                 await CallPlugin("CacheAdapter");
+            }
+
             await handle.DispatchAsync<IBotPlugin>(plugin =>
             {
                 if (!(bool)plugin.GetType().GetProperty("HasCachedAdapter")!.GetValue(plugin)!)
@@ -79,42 +86,64 @@ internal static class AdapterReloadIsolationVerification
                 await coordinator.ReloadAdapterByIdAsync("a");
                 throw new InvalidOperationException("Referenced old adapter assembly was replaced.");
             }
-            catch (ComponentUnloadPendingException) { }
-            if (adapters.LoadedIds.Contains("a") || !adapters.GetSnapshot().Any(item => item.Id == "a" && item.RestartRequired))
+            catch (ComponentUnloadPendingException)
+            {
+            }
+
+            if (adapters.LoadedIds.Contains("a") ||
+                !adapters.GetSnapshot().Any(item => item is { Id: "a", RestartRequired: true }))
                 throw new InvalidOperationException("Unload failure was not marked as requiring a restart.");
             try
             {
                 await coordinator.ExecuteAdapterStartAsync(() => adapters.LoadInstanceAsync(first));
                 throw new InvalidOperationException("Pending adapter instance was started again.");
             }
-            catch (ComponentUnloadPendingException) { }
+            catch (ComponentUnloadPendingException)
+            {
+            }
+
             await AssertPlugin(3);
             if (!ReferenceEquals(secondAssembly, adapters.GetLoadedAssembly("b")))
                 throw new InvalidOperationException("Unload failure disrupted another instance.");
             // Failure must release the coordinator gate and keep the remaining adapter operable.
             await CallPlugin("ClearAdapter");
+            // Release references held by the async state machine before collectible-assembly or memory-retention checks.
+            // ReSharper disable once RedundantAssignment
             secondAssembly = null;
             await coordinator.ReloadAdapterByIdAsync("b");
             await AssertPlugin(4);
-            Console.WriteLine("Adapter reload/stop and unload failure preserve plugin identity, lifecycle, subscriptions and independent instances verification passed.");
+            Console.WriteLine(
+                "Adapter reload/stop and unload failure preserve plugin identity, lifecycle, subscriptions and independent instances verification passed.");
 
-            async Task CallPlugin(string method) => await handle.DispatchAsync<IBotPlugin>(plugin =>
+            async Task CallPlugin(string method)
             {
-                plugin.GetType().GetMethod(method)!.Invoke(plugin, null);
-                return Task.CompletedTask;
-            });
+                await handle.DispatchAsync<IBotPlugin>(plugin =>
+                {
+                    plugin.GetType().GetMethod(method)!.Invoke(plugin, null);
+                    return Task.CompletedTask;
+                });
+            }
+
             async Task AssertPlugin(int events)
             {
                 if (!ReferenceEquals(handle, plugins.GetLoadedPluginSnapshot().Single()))
                     throw new InvalidOperationException("Adapter operation replaced a plugin handle.");
-                await dispatcher.PublishAsync(new MemberJoinedEvent { Platform = "lifecycle-probe", InstanceId = "b",
-                    Channel = Channel.Group("group"), UserId = "user" });
+                await dispatcher.PublishAsync(new MemberJoinedEvent
+                {
+                    Platform = "lifecycle-probe", InstanceId = "b",
+                    Channel = Channel.Group("group"), UserId = "user"
+                });
                 var dispatched = await handle.DispatchAsync<IBotPlugin>(plugin =>
                 {
-                    int Read(string name) => (int)plugin.GetType().GetProperty(name)!.GetValue(plugin)!;
                     if (Read("Loads") != 1 || Read("Unloads") != 0 || Read("EventsReceived") != events)
-                        throw new InvalidOperationException($"Adapter operation restarted a plugin or lost/duplicated its subscription: loads={Read("Loads")}, unloads={Read("Unloads")}, events={Read("EventsReceived")}, expected={events}.");
+                        throw new InvalidOperationException(
+                            $"Adapter operation restarted a plugin or lost/duplicated its subscription: loads={Read("Loads")}, unloads={Read("Unloads")}, events={Read("EventsReceived")}, expected={events}.");
                     return Task.CompletedTask;
+
+                    int Read(string name)
+                    {
+                        return (int)plugin.GetType().GetProperty(name)!.GetValue(plugin)!;
+                    }
                 });
                 if (!dispatched) throw new InvalidOperationException("Plugin no longer accepts dispatch.");
             }
@@ -123,7 +152,7 @@ internal static class AdapterReloadIsolationVerification
         {
             await plugins.UnloadAllAsync(dispatcher);
             await adapters.StopForShutdownAsync();
-            Directory.Delete(root, recursive: true);
+            Directory.Delete(root, true);
         }
     }
 }

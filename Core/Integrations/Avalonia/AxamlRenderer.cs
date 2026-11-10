@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -11,10 +12,9 @@ using ShiroBot.SDK.Plugin;
 namespace ShiroBot.Integrations.Avalonia;
 
 /// <summary>
-/// Avalonia headless 渲染服务实现。所有渲染都串行在 Avalonia.UI 线程上执行。
-///
-/// 实现要点：把目标控件作为 Window.Content 加进 visual tree，让 styles / fonts / DataContext 正常 cascade，
-/// 然后用 Headless 平台的 CaptureRenderedFrame 拿到位图，最后 Save 成 PNG。
+///     Avalonia headless 渲染服务实现。所有渲染都串行在 Avalonia.UI 线程上执行。
+///     实现要点：把目标控件作为 Window.Content 加进 visual tree，让 styles / fonts / DataContext 正常 cascade，
+///     然后用 Headless 平台的 CaptureRenderedFrame 拿到位图，最后 Save 成 PNG。
 /// </summary>
 internal sealed class AxamlRenderer : IAvaloniaRenderContext
 {
@@ -27,25 +27,17 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         AxamlRenderOptions? options = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(axaml))
-        {
-            throw new ArgumentException("AXAML 文本不能为空。", nameof(axaml));
-        }
+        if (string.IsNullOrWhiteSpace(axaml)) throw new ArgumentException("AXAML 文本不能为空。", nameof(axaml));
 
         var opts = options ?? AxamlRenderOptions.Default;
         return RenderInternalAsync(
             () =>
             {
                 if (AvaloniaRuntimeXamlLoader.Load(axaml) is not Control control)
-                {
                     throw new InvalidOperationException(
                         "AXAML 顶层节点必须是 Avalonia.Controls.Control 的子类。");
-                }
 
-                if (dataContext is not null)
-                {
-                    control.DataContext = dataContext;
-                }
+                if (dataContext is not null) control.DataContext = dataContext;
 
                 return control;
             },
@@ -61,10 +53,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         AxamlRenderOptions? options = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(axamlPath))
-        {
-            throw new ArgumentException("AXAML 文件路径不能为空。", nameof(axamlPath));
-        }
+        if (string.IsNullOrWhiteSpace(axamlPath)) throw new ArgumentException("AXAML 文件路径不能为空。", nameof(axamlPath));
 
         var text = await File.ReadAllTextAsync(axamlPath, ct).ConfigureAwait(false);
         return await RenderPngAsync(text, dataContext, options, ct).ConfigureAwait(false);
@@ -98,10 +87,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             () =>
             {
                 var control = new TControl();
-                if (dataContext is not null)
-                {
-                    control.DataContext = dataContext;
-                }
+                if (dataContext is not null) control.DataContext = dataContext;
 
                 return control;
             },
@@ -133,10 +119,7 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         Func<RenderTargetBitmap, TResult> save,
         CancellationToken ct)
     {
-        if (dpi <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(dpi), "DPI 必须为正数。");
-        }
+        if (dpi <= 0) throw new ArgumentOutOfRangeException(nameof(dpi), "DPI 必须为正数。");
 
         ct.ThrowIfCancellationRequested();
         AvaloniaIntegration.EnsureInitialized();
@@ -146,15 +129,15 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
             {
                 AvaloniaHostBootstrapper.MarkRendering();
                 ct.ThrowIfCancellationRequested();
-                global::ShiroBot.Integrations.Avalonia.AvaloniaIntegration.ApplyRenderTheme(theme);
+                AvaloniaIntegration.ApplyRenderTheme(theme);
 
                 var content = controlFactory()
-                    ?? throw new InvalidOperationException("控件工厂返回了 null。");
+                              ?? throw new InvalidOperationException("控件工厂返回了 null。");
 
                 var host = new Grid
                 {
-                    HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Left,
-                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Top,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Top,
                     ClipToBounds = false
                 };
                 host.Children.Add(content);
@@ -182,12 +165,13 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
                     var desired = content.DesiredSize;
                     if (double.IsNaN(desired.Width) || double.IsInfinity(desired.Width) || desired.Width <= 0 ||
                         double.IsNaN(desired.Height) || double.IsInfinity(desired.Height) || desired.Height <= 0)
-                    {
-                        throw new InvalidOperationException("无法自动确定渲染尺寸。请在 AXAML 根控件上设置有限的 Width/Height，或确保内容能计算出有限的 DesiredSize。");
-                    }
+                        throw new InvalidOperationException(
+                            "无法自动确定渲染尺寸。请在 AXAML 根控件上设置有限的 Width/Height，或确保内容能计算出有限的 DesiredSize。");
 
-                    var finalWidth = ResolveFinalAxisSize(content.Width, content.MinWidth, content.MaxWidth, desired.Width);
-                    var finalHeight = ResolveFinalAxisSize(content.Height, content.MinHeight, content.MaxHeight, desired.Height);
+                    var finalWidth =
+                        ResolveFinalAxisSize(content.Width, content.MinWidth, content.MaxWidth, desired.Width);
+                    var finalHeight = ResolveFinalAxisSize(content.Height, content.MinHeight, content.MaxHeight,
+                        desired.Height);
 
                     content.Width = finalWidth;
                     content.Height = finalHeight;
@@ -254,12 +238,13 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
     private static double ResolveHeightMeasureConstraint(double value, double max)
     {
         if (IsFinitePositive(value)) return value;
-        if (IsFinitePositive(max)) return max;
-        return double.PositiveInfinity;
+        return IsFinitePositive(max) ? max : double.PositiveInfinity;
     }
 
-    private static bool IsFinitePositive(double value) =>
-        !double.IsNaN(value) && !double.IsInfinity(value) && value > 0;
+    private static bool IsFinitePositive(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value) && value > 0;
+    }
 
     private static double ResolveFinalAxisSize(double value, double min, double max, double desired)
     {
@@ -286,7 +271,10 @@ internal sealed class AxamlRenderer : IAvaloniaRenderContext
         try
         {
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 65536))
+            {
                 frame.Save(stream, PngBitmapEncoderOptions.Default);
+            }
+
             ct.ThrowIfCancellationRequested();
             return new Uri(path).AbsoluteUri;
         }

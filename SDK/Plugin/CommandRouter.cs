@@ -1,10 +1,12 @@
+using ShiroBot.SDK.Models;
+
 namespace ShiroBot.SDK.Plugin;
 
 public sealed class CommandRouter<TMessage>(StringComparison comparison = StringComparison.OrdinalIgnoreCase)
 {
     private readonly List<RouteEntry> _routes = [];
     public bool HasRoutes => _routes.Count > 0;
-    public IReadOnlyList<MessageRouteDescriptor> Routes => _routes.Select(route => route.Descriptor).ToArray();
+    public IReadOnlyList<MessageRouteDescriptor> Routes => [.. _routes.Select(route => route.Descriptor)];
 
     public void Map(string prefix, Func<TMessage, Task> handler)
     {
@@ -32,6 +34,8 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
     }
 
     /// <param name="description">Shown in the Dashboard's plugin details, e.g. "包含关键词 天气".</param>
+    /// <param name="predicate">Selects the messages or events handled by this route.</param>
+    /// <param name="handler">Asynchronous handler invoked when the route matches.</param>
     public void MapWhen(Func<TMessage, bool> predicate, string description, Func<TMessage, Task> handler)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
@@ -60,10 +64,7 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
     {
         ArgumentNullException.ThrowIfNull(handler);
 
-        if (matchType != MessageRouteMatchType.All)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
-        }
+        if (matchType != MessageRouteMatchType.All) ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
 
         var descriptor = new MessageRouteDescriptor(matchType, pattern)
         {
@@ -74,16 +75,21 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
         _routes.Add(new RouteEntry(descriptor, handler, predicate));
     }
 
-    public Task<bool> DispatchAsync(string text, TMessage message) => DispatchAsync(text, message, null);
+    public Task<bool> DispatchAsync(string text, TMessage message)
+    {
+        return DispatchAsync(text, message, null);
+    }
 
     /// <param name="onMatch">Called with the matched route before its handler runs.</param>
+    /// <param name="text">Message text used to match command routes.</param>
+    /// <param name="message">Incoming message passed to the matching handler.</param>
     internal async Task<bool> DispatchAsync(string text, TMessage message, Action<MessageRouteDescriptor>? onMatch)
     {
         foreach (var route in _routes)
         {
             var effectiveMessage = message;
             var effectiveText = text;
-            if (route.Descriptor.MatchType != MessageRouteMatchType.All && message is Models.MessageEvent original)
+            if (route.Descriptor.MatchType != MessageRouteMatchType.All && message is MessageEvent original)
             {
                 if (!MessageCommandPrefix.TryGetCommand(original, out var command)) continue;
                 if (!ReferenceEquals(command, original))
@@ -92,6 +98,7 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
                     effectiveText = command.GetPlainText().Trim();
                 }
             }
+
             if (!Matches(route, effectiveText, effectiveMessage)) continue;
             onMatch?.Invoke(route.Descriptor);
             await route.Handler(effectiveMessage);
@@ -108,10 +115,7 @@ public sealed class CommandRouter<TMessage>(StringComparison comparison = String
 
     private bool Matches(RouteEntry route, string text, TMessage message)
     {
-        if (route.Predicate is not null && !route.Predicate(message))
-        {
-            return false;
-        }
+        if (route.Predicate is not null && !route.Predicate(message)) return false;
 
         return route.Descriptor.MatchType switch
         {

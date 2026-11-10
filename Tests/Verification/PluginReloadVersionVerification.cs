@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
-using ShiroBot.Configuration;
 using ShiroBot.Components.Updates;
+using ShiroBot.Configuration;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Logging;
@@ -10,6 +10,8 @@ using ShiroBot.Packages;
 using ShiroBot.Plugins;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Update;
+
+namespace ShiroBot.Verification;
 
 internal static class PluginReloadVersionVerification
 {
@@ -25,7 +27,10 @@ internal static class PluginReloadVersionVerification
         var runtime = new HostRuntimeState(DateTimeOffset.UtcNow);
         var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
         var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
-        var plugins = new PluginManager(context, shared, new ModelPackageRegistry(shared), runtime, logs) { PluginRootPath = pluginRoot };
+        var plugins = new PluginManager(context, shared, new ModelPackageRegistry(shared), runtime, logs)
+            { PluginRootPath = pluginRoot };
+        // Release references held by the async state machine before collectible-assembly or memory-retention checks.
+        // ReSharper disable once RedundantAssignment
         Assembly? oldAssembly = null;
         try
         {
@@ -37,9 +42,11 @@ internal static class PluginReloadVersionVerification
             var package = PluginUpdateService.PreparePluginUploadPackage(plugins,
                 Path.Combine(fixtureDirectory, "v2", "ShiroBot.UpdateProbe.dll"));
             var loaded = plugins.GetLoadedPluginSnapshot().Single();
-            var result = await PluginUpdateService.ReplaceInstalledPluginAsync(plugins, dispatcher, new PluginRouteConfig(), package,
+            var result = await PluginUpdateService.ReplaceInstalledPluginAsync(plugins, dispatcher,
+                new PluginRouteConfig(), package,
                 new PluginUpdateService.InstalledPluginInfo(path, "1.0.0"), loaded);
-            if (result.PendingReason is not null) throw new Exception("Shadow-copied v1 prevented replacement: " + result.PendingReason);
+            if (result.PendingReason is not null)
+                throw new Exception("Shadow-copied v1 prevented replacement: " + result.PendingReason);
             await plugins.ScheduleLoadPluginByName(dispatcher, new PluginRouteConfig(), "update-probe.plugin");
             AssertVersion("2.0.0");
             using (var notice = JsonDocument.Parse(JsonSerializer.Serialize(runtime.CreateRestartNotice())))
@@ -48,29 +55,37 @@ internal static class PluginReloadVersionVerification
                     !notice.RootElement.GetProperty("reasons")[0].GetString()!.Contains("update-probe.plugin"))
                     throw new Exception("An old resident assembly must also recommend restart to the Dashboard.");
             }
+
             if (ReferenceEquals(oldAssembly, plugins.GetLoadedPluginSnapshot().Single().PluginAssembly))
                 throw new Exception("Update reused the resident v1 assembly.");
             GC.KeepAlive(oldAssembly);
             oldAssembly = plugins.GetLoadedPluginSnapshot().Single().PluginAssembly;
             // Manual deployment can truncate the installed file before requesting a reload.
-            File.Copy(Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"), path, overwrite: true);
+            File.Copy(Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"), path, true);
             await plugins.UnloadAllAsync(dispatcher);
             await plugins.ScheduleLoadPluginByName(dispatcher, new PluginRouteConfig(), "update-probe.plugin");
             AssertVersion("1.0.0");
             GC.KeepAlive(oldAssembly);
+            // Release references held by the async state machine before collectible-assembly or memory-retention checks.
+            // ReSharper disable once RedundantAssignment
             oldAssembly = null;
             await plugins.UnloadAllAsync(dispatcher);
             await plugins.ScheduleLoadPluginByName(dispatcher, new PluginRouteConfig(), "update-probe.plugin");
             AssertVersion("1.0.0");
-            Console.WriteLine("PASS: PluginPackageReplacementManualOverwriteAndReloadExecuteNewVersionWithOldAssemblyResident");
+            Console.WriteLine(
+                "PASS: PluginPackageReplacementManualOverwriteAndReloadExecuteNewVersionWithOldAssemblyResident");
         }
         finally
         {
+            // Release references held by the async state machine before collectible-assembly or memory-retention checks.
+            // ReSharper disable once RedundantAssignment
             oldAssembly = null;
             await plugins.UnloadAllAsync(dispatcher);
             DeferredShadowCleanup.RetryPending(pluginRoot);
-            Directory.Delete(root, recursive: true);
+            Directory.Delete(root, true);
         }
+
+        return;
 
         void AssertVersion(string expected)
         {

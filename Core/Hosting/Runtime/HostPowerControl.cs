@@ -1,15 +1,16 @@
-using System.Diagnostics;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using ShiroBot.SDK.Abstractions;
 
 namespace ShiroBot.Hosting.Runtime;
 
 /// <summary>
-/// Restart and shutdown for the console and the Dashboard. Both end with the normal graceful
-/// shutdown (plugins unloaded, adapters stopped) instead of killing the process.
+///     Restart and shutdown for the console and the Dashboard. Both end with the normal graceful
+///     shutdown (plugins unloaded, adapters stopped) instead of killing the process.
 /// </summary>
-internal sealed class HostPowerControl(Action requestShutdown)
+internal sealed partial class HostPowerControl(Action requestShutdown)
 {
     /// <summary>Set on a replacement process: wait for this PID to exit before starting.</summary>
     internal const string WaitForPidVariable = "SHIROBOT_RESTART_WAIT_PID";
@@ -17,10 +18,11 @@ internal sealed class HostPowerControl(Action requestShutdown)
     /// <summary>EX_TEMPFAIL: lets a supervisor (systemd Restart=on-failure, Docker) start the host again.</summary>
     internal const int SupervisedRestartExitCode = 75;
 
-    private int _requested;
-    private string? _restartExecutable;
-    private string[]? _restartArguments;
     private readonly byte[]? _terminalState = CaptureTerminalState();
+
+    private int _requested;
+    private string[]? _restartArguments;
+    private string? _restartExecutable;
 
     public int ExitCode { get; private set; }
 
@@ -36,10 +38,10 @@ internal sealed class HostPowerControl(Action requestShutdown)
         return new HostPowerResult(true, environment.IsContainer
             ? "ShiroBot 正在关闭。容器若配置了自动重启策略可能再次启动；彻底停止请在对应容器管理器中停止容器。"
             : environment.Mode switch
-        {
-            "systemd" => "ShiroBot 正在关闭。若服务配置了 Restart=always 会被重新启动，彻底停止请使用 systemctl stop。",
-            _ => "ShiroBot 正在关闭。"
-        });
+            {
+                "systemd" => "ShiroBot 正在关闭。若服务配置了 Restart=always 会被重新启动，彻底停止请使用 systemctl stop。",
+                _ => "ShiroBot 正在关闭。"
+            });
     }
 
     public HostPowerResult Restart()
@@ -85,7 +87,8 @@ internal sealed class HostPowerControl(Action requestShutdown)
                     UseShellExecute = false
                 };
                 foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-                startInfo.Environment[WaitForPidVariable] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                startInfo.Environment[WaitForPidVariable] =
+                    Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
                 Process.Start(startInfo);
             }
         }
@@ -127,9 +130,10 @@ internal sealed class HostPowerControl(Action requestShutdown)
     {
         var arguments = Environment.GetCommandLineArgs();
         // dotnet needs the entry DLL too; an apphost/single-file executable does not.
-        return string.Equals(Path.GetFileNameWithoutExtension(processPath), "dotnet", StringComparison.OrdinalIgnoreCase)
+        return string.Equals(Path.GetFileNameWithoutExtension(processPath), "dotnet",
+            StringComparison.OrdinalIgnoreCase)
             ? arguments
-            : arguments.Skip(1).ToArray();
+            : [.. arguments.Skip(1)];
     }
 
     /// <summary>Run only after HTTP, adapters and rendering have stopped.</summary>
@@ -142,12 +146,17 @@ internal sealed class HostPowerControl(Action requestShutdown)
         {
             for (var i = 0; i < strings.Length; i++) Marshal.WriteIntPtr(argv, i * IntPtr.Size, strings[i]);
             Marshal.WriteIntPtr(argv, strings.Length * IntPtr.Size, IntPtr.Zero);
-            System.Console.Out.Flush();
-            System.Console.Error.Flush();
+            Console.Out.Flush();
+            Console.Error.Flush();
             // exec does not run the CLR's terminal cleanup. Restore the original terminal
             // settings so the successor (and later the shell) starts with a normal terminal.
-            if (_terminalState is not null) TcSetAttr(0, 0, _terminalState);
-            ExecV(executable, argv);
+            if (_terminalState is not null && RestoreTerminalState(_terminalState) != 0)
+            {
+                var terminalError = Marshal.GetLastPInvokeError();
+                BotLog.Warning("重启前恢复终端设置失败: " + new Win32Exception(terminalError).Message);
+            }
+
+            if (ExecV(executable, argv) == 0) return;
             var error = Marshal.GetLastPInvokeError();
             Environment.ExitCode = 1;
             BotLog.Error("重新启动主程序失败，请手动启动: " + new Win32Exception(error).Message);
@@ -159,30 +168,47 @@ internal sealed class HostPowerControl(Action requestShutdown)
         }
     }
 
-    private static byte[]? CaptureTerminalState()
+    private static unsafe byte[]? CaptureTerminalState()
     {
         if (OperatingSystem.IsWindows()) return null;
         var state = new byte[256]; // large enough for macOS and Linux struct termios
-        return TcGetAttr(0, state) == 0 ? state : null;
+        fixed (byte* buffer = state)
+        {
+            return TcGetAttr(0, buffer) == 0 ? state : null;
+        }
     }
 
-    [DllImport("libc", EntryPoint = "execv", SetLastError = true)]
-    private static extern int ExecV([MarshalAs(UnmanagedType.LPUTF8Str)] string path, IntPtr argv);
+    private static unsafe int RestoreTerminalState(byte[] state)
+    {
+        fixed (byte* buffer = state)
+        {
+            return TcSetAttr(0, 0, buffer);
+        }
+    }
 
-    [DllImport("libc", EntryPoint = "tcgetattr")]
-    private static extern int TcGetAttr(int fd, [Out] byte[] state);
+    [LibraryImport("libc", EntryPoint = "execv", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int ExecV(string path, IntPtr argv);
 
-    [DllImport("libc", EntryPoint = "tcsetattr")]
-    private static extern int TcSetAttr(int fd, int action, byte[] state);
+    [LibraryImport("libc", EntryPoint = "tcgetattr")]
+    private static unsafe partial int TcGetAttr(int fd, byte* state);
 
-    private bool TryBegin() => Interlocked.Exchange(ref _requested, 1) == 0;
+    [LibraryImport("libc", EntryPoint = "tcsetattr", SetLastError = true)]
+    private static unsafe partial int TcSetAttr(int fd, int action, byte* state);
+
+    private bool TryBegin()
+    {
+        return Interlocked.Exchange(ref _requested, 1) == 0;
+    }
 
     // Leave time for the HTTP response to reach the Dashboard before the server stops.
-    private void ScheduleShutdown() => _ = Task.Run(async () =>
+    private void ScheduleShutdown()
     {
-        await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
-        requestShutdown();
-    });
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+            requestShutdown();
+        });
+    }
 }
 
 internal sealed record HostPowerResult(bool Ok, string Message)

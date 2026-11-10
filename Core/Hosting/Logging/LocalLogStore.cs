@@ -10,11 +10,10 @@ internal sealed class LocalLogStore : IDisposable
     internal const long SegmentBytes = 8 * 1024 * 1024;
     private const int MaxLineBytes = 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly string _directory;
     private readonly TimeProvider _clock;
-    private FileStream? _stream;
+    private readonly string _directory;
     private DateTime _date;
-    internal int RetentionDays { get; set; }
+    private FileStream? _stream;
 
     internal LocalLogStore(string directory, int retentionDays, TimeProvider clock)
     {
@@ -22,15 +21,32 @@ internal sealed class LocalLogStore : IDisposable
         _clock = clock;
         RetentionDays = retentionDays;
         Directory.CreateDirectory(directory);
-        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         Cleanup();
+    }
+
+    internal int RetentionDays { get; set; }
+
+    public void Dispose()
+    {
+        try
+        {
+            _stream?.Dispose();
+        }
+        finally
+        {
+            _stream = null;
+        }
     }
 
     internal void Append(HostLogHub.LogEntry entry)
     {
         var today = _clock.GetLocalNow().Date;
-        var date = DateTime.TryParseExact(entry.Time, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var recorded)
-            ? recorded.Date : today;
+        var date = DateTime.TryParseExact(entry.Time, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var recorded)
+            ? recorded.Date
+            : today;
         if (date < today.AddDays(1 - RetentionDays)) return;
         if (_stream is null || _date != date || _stream.Length >= SegmentBytes) OpenWriter(date);
         JsonSerializer.Serialize(_stream!, entry, JsonOptions);
@@ -42,7 +58,8 @@ internal sealed class LocalLogStore : IDisposable
     {
         Dispose();
         Cleanup();
-        var latest = Files().Where(file => file.Date == today).OrderByDescending(file => file.Name, StringComparer.Ordinal).FirstOrDefault();
+        var latest = Files().Where(file => file.Date == today)
+            .OrderByDescending(file => file.Name, StringComparer.Ordinal).FirstOrDefault();
         var sequence = latest.Name is null ? 0 : latest.Sequence;
         if (latest.Name is not null && new FileInfo(latest.Path).Length >= SegmentBytes) sequence++;
         var path = Path.Combine(_directory, $"shirobot-{today:yyyyMMdd}-{sequence:D6}.jsonl");
@@ -54,8 +71,13 @@ internal sealed class LocalLogStore : IDisposable
         if (length > 0)
         {
             _stream.Seek(-1, SeekOrigin.End);
-            if (_stream.ReadByte() != '\n') { _stream.Seek(0, SeekOrigin.End); _stream.WriteByte((byte)'\n'); }
+            if (_stream.ReadByte() != '\n')
+            {
+                _stream.Seek(0, SeekOrigin.End);
+                _stream.WriteByte((byte)'\n');
+            }
         }
+
         _stream.Seek(0, SeekOrigin.End);
         _date = today;
     }
@@ -65,9 +87,11 @@ internal sealed class LocalLogStore : IDisposable
         if (tail == 0) return [];
         var result = new List<HostLogHub.LogEntry>(tail);
         var cutoff = _clock.GetLocalNow().Date.AddDays(1 - RetentionDays);
-        foreach (var file in Files().Where(file => file.Date >= cutoff).OrderByDescending(file => file.Name, StringComparer.Ordinal))
+        foreach (var file in Files().Where(file => file.Date >= cutoff)
+                     .OrderByDescending(file => file.Name, StringComparer.Ordinal))
         {
-            using var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
             var buffer = new byte[8192];
             var line = new List<byte>(256);
             var oversized = false;
@@ -79,23 +103,31 @@ internal sealed class LocalLogStore : IDisposable
                 stream.Position = position;
                 stream.ReadExactly(buffer.AsSpan(0, count));
                 for (var i = count - 1; i >= 0; i--)
-                {
                     if (buffer[i] == '\n')
                     {
                         if (!oversized && TryReadLine(line, source, out var entry)) result.Add(entry!);
-                        line.Clear(); oversized = false;
+                        line.Clear();
+                        oversized = false;
                         if (result.Count == tail) return Chronological(result);
                     }
                     else if (!oversized)
                     {
-                        if (line.Count < MaxLineBytes) line.Add(buffer[i]);
-                        else { line.Clear(); oversized = true; }
+                        if (line.Count < MaxLineBytes)
+                        {
+                            line.Add(buffer[i]);
+                        }
+                        else
+                        {
+                            line.Clear();
+                            oversized = true;
+                        }
                     }
-                }
             }
+
             if (!oversized && TryReadLine(line, source, out var first)) result.Add(first!);
             if (result.Count == tail) return Chronological(result);
         }
+
         return Chronological(result);
     }
 
@@ -104,16 +136,25 @@ internal sealed class LocalLogStore : IDisposable
         entry = null;
         if (reversed.Count == 0) return false;
         CollectionsMarshal.AsSpan(reversed).Reverse();
-        try { entry = JsonSerializer.Deserialize<HostLogHub.LogEntry>(CollectionsMarshal.AsSpan(reversed), JsonOptions); }
-        catch (JsonException) { return false; }
-        return entry is not null && !string.IsNullOrWhiteSpace(entry.Time) && !string.IsNullOrWhiteSpace(entry.Message) &&
-            (source.Equals("all", StringComparison.OrdinalIgnoreCase) || source.Equals(entry.Source, StringComparison.OrdinalIgnoreCase));
+        try
+        {
+            entry = JsonSerializer.Deserialize<HostLogHub.LogEntry>(CollectionsMarshal.AsSpan(reversed), JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return entry is not null && !string.IsNullOrWhiteSpace(entry.Time) &&
+               !string.IsNullOrWhiteSpace(entry.Message) &&
+               (source.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+                source.Equals(entry.Source, StringComparison.OrdinalIgnoreCase));
     }
 
     private static HostLogHub.LogEntry[] Chronological(List<HostLogHub.LogEntry> entries)
     {
         entries.Reverse();
-        return entries.ToArray();
+        return [.. entries];
     }
 
     internal void Cleanup()
@@ -121,7 +162,8 @@ internal sealed class LocalLogStore : IDisposable
         var cutoff = _clock.GetLocalNow().Date.AddDays(1 - RetentionDays);
         if (_stream is not null && _date < cutoff) Dispose();
         foreach (var file in Files())
-            if (file.Date < cutoff) File.Delete(file.Path);
+            if (file.Date < cutoff)
+                File.Delete(file.Path);
     }
 
     private IEnumerable<(string Name, string Path, DateTime Date, int Sequence)> Files()
@@ -130,15 +172,11 @@ internal sealed class LocalLogStore : IDisposable
         {
             var name = Path.GetFileName(path);
             if (name.Length != 30 || name[17] != '-' ||
-                !DateTime.TryParseExact(name.AsSpan(9, 8), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ||
-                !int.TryParse(name.AsSpan(18, 6), NumberStyles.None, CultureInfo.InvariantCulture, out var sequence)) continue;
+                !DateTime.TryParseExact(name.AsSpan(9, 8), "yyyyMMdd", CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out var date) ||
+                !int.TryParse(name.AsSpan(18, 6), NumberStyles.None, CultureInfo.InvariantCulture,
+                    out var sequence)) continue;
             yield return (name, path, date, sequence);
         }
-    }
-
-    public void Dispose()
-    {
-        try { _stream?.Dispose(); }
-        finally { _stream = null; }
     }
 }

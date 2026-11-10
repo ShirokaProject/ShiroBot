@@ -15,19 +15,21 @@ internal delegate Task<bool> OwnerReplyHandler(OwnerReply reply);
 internal delegate Task OwnerNotify(string text, OwnerReplyHandler? onReply, CancellationToken cancellationToken);
 
 /// <summary>
-/// Direct messages to the configured owners about things they should know (updates, failures, restarts),
-/// gated by <see cref="CoreConfig.OwnerNotifications"/>. A notification can accept quote-replies, e.g. to
-/// confirm a pending update; owner commands outside a reply can build on the same handler later.
+///     Direct messages to the configured owners about things they should know (updates, failures, restarts),
+///     gated by <see cref="CoreConfig.OwnerNotifications" />. A notification can accept quote-replies, e.g. to
+///     confirm a pending update; owner commands outside a reply can build on the same handler later.
 /// </summary>
 internal sealed class OwnerNotifier(BotContext bot, CoreConfig config)
 {
     /// <summary>How long a notification accepts replies.</summary>
     internal static readonly TimeSpan ReplyWindow = TimeSpan.FromHours(24);
 
-    public async Task NotifyAsync(string text, OwnerReplyHandler? onReply = null, CancellationToken cancellationToken = default)
+    public async Task NotifyAsync(string text, OwnerReplyHandler? onReply = null,
+        CancellationToken cancellationToken = default)
     {
         if (!config.OwnerNotifications) return;
-        var instances = bot.GetAdapterInstances().Select(instance => instance.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var instances = bot.GetAdapterInstances().Select(instance => instance.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         // Every owner's copy shares one resolution: the first handled reply ends them all.
         var subscriptions = new List<IReplySubscription>();
         var resolved = 0;
@@ -39,10 +41,16 @@ internal sealed class OwnerNotifier(BotContext bot, CoreConfig config)
             {
                 SentMessage sent;
                 using (bot.UseInstance(owner.InstanceId))
-                    sent = await bot.Message.SendDirectMessageAsync(owner.UserId, [new TextSegment(text)], cancellationToken).ConfigureAwait(false);
+                {
+                    sent = await bot.Message
+                        .SendDirectMessageAsync(owner.UserId, [new TextSegment(text)], cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 if (onReply is null || sent.Reference is not { } reference) continue;
 
                 lock (subscriptions)
+                {
                     subscriptions.Add(bot.Message.SubscribeReply(reference, ReplyWindow, async message =>
                     {
                         if (Volatile.Read(ref resolved) != 0 || message.InstanceId is not { } instanceId) return;
@@ -51,12 +59,21 @@ internal sealed class OwnerNotifier(BotContext bot, CoreConfig config)
                         var reply = new OwnerReply(sender, message.GetPlainText().Trim(), async answer =>
                         {
                             using (bot.UseInstance(instanceId))
-                                await bot.Message.ReplyAsync(message, new OutgoingMessage { Segments = [new TextSegment(answer)] }).ConfigureAwait(false);
+                            {
+                                await bot.Message
+                                    .ReplyAsync(message, new OutgoingMessage { Segments = [new TextSegment(answer)] },
+                                        CancellationToken.None)
+                                    .ConfigureAwait(false);
+                            }
                         });
-                        if (!await onReply(reply).ConfigureAwait(false) || Interlocked.Exchange(ref resolved, 1) != 0) return;
+                        if (!await onReply(reply).ConfigureAwait(false) ||
+                            Interlocked.Exchange(ref resolved, 1) != 0) return;
                         lock (subscriptions)
+                        {
                             foreach (var subscription in subscriptions) subscription.Dispose();
-                    }, disposeOnReply: false));
+                        }
+                    }, false));
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

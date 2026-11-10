@@ -1,28 +1,30 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Avalonia;
 using Avalonia.Media.Imaging;
-using ShiroBot.AvaloniaSdk;
-using ShiroBot.SDK.Plugin;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Integrations.Avalonia;
+using ShiroBot.SDK.Plugin;
 using ShiroBot.Update;
+
+namespace ShiroBot.Verification;
 
 internal static class CoreConfigReloadVerification
 {
     private const string Probe = """
-        <Border xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                Width="16" Height="16" Background="{DynamicResource ProbeBrush}">
-          <Border.Resources>
-            <ResourceDictionary>
-              <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Light"><SolidColorBrush x:Key="ProbeBrush" Color="White" /></ResourceDictionary>
-                <ResourceDictionary x:Key="Dark"><SolidColorBrush x:Key="ProbeBrush" Color="Black" /></ResourceDictionary>
-              </ResourceDictionary.ThemeDictionaries>
-            </ResourceDictionary>
-          </Border.Resources>
-        </Border>
-        """;
+                                 <Border xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                                         Width="16" Height="16" Background="{DynamicResource ProbeBrush}">
+                                   <Border.Resources>
+                                     <ResourceDictionary>
+                                       <ResourceDictionary.ThemeDictionaries>
+                                         <ResourceDictionary x:Key="Light"><SolidColorBrush x:Key="ProbeBrush" Color="White" /></ResourceDictionary>
+                                         <ResourceDictionary x:Key="Dark"><SolidColorBrush x:Key="ProbeBrush" Color="Black" /></ResourceDictionary>
+                                       </ResourceDictionary.ThemeDictionaries>
+                                     </ResourceDictionary>
+                                   </Border.Resources>
+                                 </Border>
+                                 """;
 
     public static async Task RunAsync()
     {
@@ -54,33 +56,38 @@ internal static class CoreConfigReloadVerification
             // Editors commonly replace rather than modify the watched file.
             var temporaryPath = Path.Combine(root, "next.toml");
             manager.SaveConfig(temporaryPath, updated);
-            File.Move(temporaryPath, path, overwrite: true);
-            await WaitUntilAsync(() => active.AvaloniaTheme == "Light" && active.Api.Token == "updated-token");
+            File.Move(temporaryPath, path, true);
+            await WaitUntilAsync(() => active is { AvaloniaTheme: "Light", Api.Token: "updated-token" });
             await CheckImageAsync(RenderTheme.Auto, true);
             await CheckImageAsync(RenderTheme.Dark, false);
             await CheckImageAsync(RenderTheme.Auto, true);
             if (!active.Showid || bot.OwnerList.Single().UserId != "owner" || bot.AdminList.Single().UserId != "admin"
                 || active.PluginRoutes.AllowsGroup("test", "blocked") || active.HostUpdateRepository != "example/host")
                 throw new InvalidOperationException("Core runtime settings did not reload.");
-            var applyProxy = typeof(Updater).GetMethod("ApplyGithubProxy", BindingFlags.NonPublic | BindingFlags.Static)!;
-            if ((string)applyProxy.Invoke(null, ["https://github.com/example"])! != "https://proxy.example/https://github.com/example")
+            var applyProxy =
+                typeof(Updater).GetMethod("ApplyGithubProxy", BindingFlags.NonPublic | BindingFlags.Static)!;
+            if ((string)applyProxy.Invoke(null, ["https://github.com/example"])! !=
+                "https://proxy.example/https://github.com/example")
                 throw new InvalidOperationException("GitHub proxy did not reload.");
 
             updated.AvaloniaTheme = "Dark";
             updated.GithubProxy = "";
             manager.SaveConfig(path, updated);
-            await WaitUntilAsync(() => active.AvaloniaTheme == "Dark" && active.GithubProxy == "");
+            await WaitUntilAsync(() => active is { AvaloniaTheme: "Dark", GithubProxy: "" });
             await CheckImageAsync(RenderTheme.Auto, false);
             if ((string)applyProxy.Invoke(null, ["https://github.com/example"])! != "https://github.com/example")
                 throw new InvalidOperationException("Clearing GitHub proxy did not take effect.");
 
-            Console.WriteLine("Core file reload, Auto theme inheritance, explicit overrides, permissions, routes, API token and GitHub proxy verification passed.");
+            Console.WriteLine(
+                "Core file reload, Auto theme inheritance, explicit overrides, permissions, routes, API token and GitHub proxy verification passed.");
         }
         finally
         {
             AvaloniaIntegration.Shutdown();
-            Directory.Delete(root, recursive: true);
+            Directory.Delete(root, true);
         }
+
+        return;
 
         async Task CheckImageAsync(RenderTheme theme, bool white)
         {
@@ -89,13 +96,17 @@ internal static class CoreConfigReloadVerification
             var pointer = Marshal.AllocHGlobal(4);
             try
             {
-                bitmap.CopyPixels(new Avalonia.PixelRect(0, 0, 1, 1), pointer, 4, 4);
+                bitmap.CopyPixels(new PixelRect(0, 0, 1, 1), pointer, 4, 4);
                 var pixel = new byte[4];
                 Marshal.Copy(pointer, pixel, 0, 4);
                 if (pixel.Take(3).Any(channel => white ? channel < 240 : channel > 15))
-                    throw new InvalidOperationException($"Rendered theme {theme} did not match host setting; RGB={string.Join(',', pixel)}.");
+                    throw new InvalidOperationException(
+                        $"Rendered theme {theme} did not match host setting; RGB={string.Join(',', pixel)}.");
             }
-            finally { Marshal.FreeHGlobal(pointer); }
+            finally
+            {
+                Marshal.FreeHGlobal(pointer);
+            }
         }
     }
 

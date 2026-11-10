@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.Loader;
 using ShiroBot.Components.Updates;
 using ShiroBot.SDK.Abstractions;
@@ -6,31 +6,31 @@ using ShiroBot.SDK.Abstractions;
 namespace ShiroBot.Plugins.Loading;
 
 /// <summary>
-/// 通用 DLL 加载器。原来只支持可回收 ALC 加载首个 T 实例；现在扩展为：
-/// 1. 可选 collectible / non-collectible；
-/// 2. 可注入 <see cref="SharedAssemblyResolver"/>，让插件复用宿主和 Default ALC 中的共享契约；
-/// 3. 暴露 <see cref="Alc"/> 供宿主管理插件生命周期。
+///     通用 DLL 加载器。原来只支持可回收 ALC 加载首个 T 实例；现在扩展为：
+///     1. 可选 collectible / non-collectible；
+///     2. 可注入 <see cref="SharedAssemblyResolver" />，让插件复用宿主和 Default ALC 中的共享契约；
+///     3. 暴露 <see cref="Alc" /> 供宿主管理插件生命周期。
 /// </summary>
 public class DllLoader<T>
     where T : class
 {
     private readonly bool _collectible;
-    private readonly SharedAssemblyResolver? _shared;
     private readonly PluginDependencyLayout _dependencyLayout;
-    private readonly bool _shadowCopy;
-    private readonly string? _shadowCleanupRoot;
     private readonly Action? _onShadowCleanupPending;
-    private string? _shadowRoot;
+    private readonly string? _shadowCleanupRoot;
+    private readonly bool _shadowCopy;
+    private readonly SharedAssemblyResolver? _shared;
     private PluginAssemblyLoadContext? _alc;
     private WeakReference? _alcWeakReference;
+    private string? _shadowRoot;
 
     public DllLoader()
-        : this(collectible: true, shared: null, dependencies: null)
+        : this(true, null, null)
     {
     }
 
     public DllLoader(bool collectible, SharedAssemblyResolver? shared)
-        : this(collectible, shared, dependencies: null)
+        : this(collectible, shared, null)
     {
     }
 
@@ -51,7 +51,7 @@ public class DllLoader<T>
     }
 
     /// <summary>
-    /// 当前 ALC 实例。<see cref="Load"/> 之前为 null。
+    ///     当前 ALC 实例。<see cref="Load" /> 之前为 null。
     /// </summary>
     public AssemblyLoadContext? Alc => _alc;
 
@@ -77,7 +77,8 @@ public class DllLoader<T>
 
         var primaryType = string.IsNullOrWhiteSpace(typeFullName)
             ? candidateTypes.First()
-            : candidateTypes.FirstOrDefault(type => string.Equals(type.FullName, typeFullName, StringComparison.Ordinal))
+            : candidateTypes.FirstOrDefault(type =>
+                  string.Equals(type.FullName, typeFullName, StringComparison.Ordinal))
               ?? throw new InvalidOperationException($"Type {typeFullName} not found in DLL");
 
         return Activator.CreateInstance(primaryType) as T
@@ -86,10 +87,7 @@ public class DllLoader<T>
 
     public WeakReference? BeginUnload()
     {
-        if (_alc is { IsCollectible: true })
-        {
-            _alc.Unload();
-        }
+        if (_alc is { IsCollectible: true }) _alc.Unload();
         _alc = null;
         DeleteReloadShadow();
 
@@ -98,10 +96,7 @@ public class DllLoader<T>
 
     public static bool WaitForUnload(WeakReference? alcWeakReference, int maxAttempts = 50, int delayMs = 100)
     {
-        if (alcWeakReference is null)
-        {
-            return true;
-        }
+        if (alcWeakReference is null) return true;
 
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
@@ -109,10 +104,7 @@ public class DllLoader<T>
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            if (!alcWeakReference.IsAlive)
-            {
-                return true;
-            }
+            if (!alcWeakReference.IsAlive) return true;
 
             Thread.Sleep(delayMs);
         }
@@ -165,6 +157,7 @@ public class DllLoader<T>
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 File.Copy(source, target);
             }
+
             return Path.Combine(_shadowRoot, Path.GetFileName(assemblyPath));
         }
         catch
@@ -181,14 +174,20 @@ public class DllLoader<T>
         return path;
     }
 
-    private void DeleteReloadShadow() => CleanupDetachedShadow(DetachShadowDirectory());
+    private void DeleteReloadShadow()
+    {
+        CleanupDetachedShadow(DetachShadowDirectory());
+    }
 
     internal void CleanupDetachedShadow(string? shadow)
     {
         if (shadow is null) return;
         try
         {
-            if (_shadowCleanupRoot is null) Directory.Delete(shadow, recursive: true);
+            if (_shadowCleanupRoot is null)
+            {
+                Directory.Delete(shadow, true);
+            }
             else if (DeferredShadowCleanup.DeleteOrStage(_shadowCleanupRoot, shadow) is { } pending)
             {
                 _onShadowCleanupPending?.Invoke();
@@ -204,16 +203,16 @@ public class DllLoader<T>
 }
 
 /// <summary>
-/// 插件 ALC：
-/// 1. 解析 SDK、插件契约和 Avalonia 这类共享程序集时优先走共享解析器，保证类型同一性；
-/// 2. 否则使用 <see cref="AssemblyDependencyResolver"/> 按 plugin 自己的 deps.json 解析（让 plugin 能加载到自己的依赖，例如 Avalonia 全家桶）；
-/// 3. 仍然找不到时返回 null，fallback 到 Default ALC（共用 SDK / Model 等）。
+///     插件 ALC：
+///     1. 解析 SDK、插件契约和 Avalonia 这类共享程序集时优先走共享解析器，保证类型同一性；
+///     2. 否则使用 <see cref="AssemblyDependencyResolver" /> 按 plugin 自己的 deps.json 解析（让 plugin 能加载到自己的依赖，例如 Avalonia 全家桶）；
+///     3. 仍然找不到时返回 null，fallback 到 Default ALC（共用 SDK / Model 等）。
 /// </summary>
 internal sealed class PluginAssemblyLoadContext : AssemblyLoadContext
 {
-    private readonly SharedAssemblyResolver? _shared;
-    private readonly AssemblyDependencyResolver _depsResolver;
     private readonly PluginDependencyLayout _dependencyLayout;
+    private readonly AssemblyDependencyResolver _depsResolver;
+    private readonly SharedAssemblyResolver? _shared;
 
     public PluginAssemblyLoadContext(
         string dllPath,
@@ -229,32 +228,19 @@ internal sealed class PluginAssemblyLoadContext : AssemblyLoadContext
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        if (_shared?.TryResolve(assemblyName) is { } sharedAsm)
-        {
-            return sharedAsm;
-        }
+        if (_shared?.TryResolve(assemblyName) is { } sharedAsm) return sharedAsm;
 
         var resolvedPath = _depsResolver.ResolveAssemblyToPath(assemblyName);
-        if (!string.IsNullOrEmpty(resolvedPath))
-        {
-            return LoadFromAssemblyPath(resolvedPath);
-        }
-
-        return null;
+        return !string.IsNullOrEmpty(resolvedPath) ? LoadFromAssemblyPath(resolvedPath) : null;
     }
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
         var resolvedPath = _depsResolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-        if (!string.IsNullOrEmpty(resolvedPath))
-        {
-            return LoadUnmanagedDllFromPath(resolvedPath);
-        }
+        if (!string.IsNullOrEmpty(resolvedPath)) return LoadUnmanagedDllFromPath(resolvedPath);
 
         if (_dependencyLayout.ResolveNativeAsset(unmanagedDllName) is { } downloadedPath)
-        {
             return LoadUnmanagedDllFromPath(downloadedPath);
-        }
 
         return IntPtr.Zero;
     }

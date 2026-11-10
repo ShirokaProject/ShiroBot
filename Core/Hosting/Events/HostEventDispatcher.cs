@@ -1,12 +1,11 @@
-using ShiroBot.Hosting.Context;
+using ShiroBot.Configuration;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Plugins;
-using ShiroBot.Configuration;
-using ShiroBot.Terminal;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.Terminal;
 
 namespace ShiroBot.Hosting.Events;
 
@@ -18,15 +17,24 @@ internal sealed class HostEventDispatcher(
     Func<bool>? showIds = null,
     PluginRouteConfig? routePolicy = null)
 {
-    private readonly Dictionary<string, List<LoadedPluginHandle>> _groupMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, List<LoadedPluginHandle>> _directMessageExactHandlers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<LoadedPluginHandle> _groupMessageBroadcastHandlers = [];
-    private readonly List<(string Prefix, LoadedPluginHandle Plugin)> _groupMessagePrefixHandlers = [];
     private readonly List<LoadedPluginHandle> _directMessageBroadcastHandlers = [];
+
+    private readonly Dictionary<string, List<LoadedPluginHandle>> _directMessageExactHandlers =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly List<(string Prefix, LoadedPluginHandle Plugin)> _directMessagePrefixHandlers = [];
     private readonly Dictionary<Type, List<LoadedPluginHandle>> _eventHandlers = [];
+    private readonly List<LoadedPluginHandle> _groupMessageBroadcastHandlers = [];
+
+    private readonly Dictionary<string, List<LoadedPluginHandle>> _groupMessageExactHandlers =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly List<(string Prefix, LoadedPluginHandle Plugin)> _groupMessagePrefixHandlers = [];
+
     private readonly TaskCompletionSource _initialPluginsReady = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal TimeSpan PriorityLevelTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     public void RegisterPlugin(LoadedPluginHandle pluginHandle)
     {
@@ -65,10 +73,7 @@ internal sealed class HostEventDispatcher(
             RemoveRoutes(_groupMessageExactHandlers, _groupMessagePrefixHandlers, pluginHandle);
             RemoveRoutes(_directMessageExactHandlers, _directMessagePrefixHandlers, pluginHandle);
 
-            foreach (var handlers in _eventHandlers.Values)
-            {
-                handlers.Remove(pluginHandle);
-            }
+            foreach (var handlers in _eventHandlers.Values) handlers.Remove(pluginHandle);
         }
     }
 
@@ -79,11 +84,15 @@ internal sealed class HostEventDispatcher(
         {
             MessageEvent { IsDirect: false } groupMessage => PublishMessageAsync("群消息", groupMessage),
             MessageEvent directMessage => PublishMessageAsync("私聊消息", directMessage),
-            _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()), (_, handler) => handler.OnEventAsync(message))
+            _ => DispatchAsync(GetEventDisplayName(message), message, Snapshot(message.GetType()),
+                (_, handler) => handler.OnEventAsync(message))
         }).ConfigureAwait(false);
     }
 
-    internal void MarkInitialPluginsReady() => _initialPluginsReady.TrySetResult();
+    internal void MarkInitialPluginsReady()
+    {
+        _initialPluginsReady.TrySetResult();
+    }
 
     private async Task PublishMessageAsync(
         string eventName,
@@ -103,26 +112,33 @@ internal sealed class HostEventDispatcher(
 
         var deliveries = new Dictionary<LoadedPluginHandle, MessageEvent>();
         var mentionsSelf = !string.IsNullOrWhiteSpace(message.SelfId) && message.HasMention(message.SelfId);
-        var commandViews = new Dictionary<string, (MessageEvent? Command, MessageEvent Dispatch)>(StringComparer.Ordinal);
+        var commandViews =
+            new Dictionary<string, (MessageEvent? Command, MessageEvent Dispatch)>(StringComparer.Ordinal);
         foreach (var prefix in new HashSet<string>(routePolicy.GetMessagePrefixes(), StringComparer.Ordinal))
         {
             var command = MessageTriggerPrefix.Strip(message, prefix) ?? (mentionsSelf ? message : null);
             commandViews[prefix] = (command, MessageCommandPrefix.CreateDispatchView(message, command));
         }
+
         foreach (var plugin in MatchMessageHandlers(message, message.IsDirect))
         {
             var prefix = routePolicy.GetMessagePrefix(plugin.Name);
-            deliveries[plugin] = routePolicy.RequiresMessagePrefix(plugin.Name) && commandViews.TryGetValue(prefix, out var view)
-                ? view.Dispatch : message;
+            deliveries[plugin] = routePolicy.RequiresMessagePrefix(plugin.Name) &&
+                                 commandViews.TryGetValue(prefix, out var view)
+                ? view.Dispatch
+                : message;
         }
+
         foreach (var (prefix, view) in commandViews)
         {
             if (view.Command is null) continue;
             foreach (var plugin in MatchMessageHandlers(view.Command, view.Command.IsDirect))
-                if (routePolicy.RequiresMessagePrefix(plugin.Name) && string.Equals(routePolicy.GetMessagePrefix(plugin.Name), prefix, StringComparison.Ordinal))
+                if (routePolicy.RequiresMessagePrefix(plugin.Name) &&
+                    string.Equals(routePolicy.GetMessagePrefix(plugin.Name), prefix, StringComparison.Ordinal))
                     deliveries[plugin] = view.Dispatch;
         }
-        await DispatchAsync(eventName, message, deliveries.Keys.ToArray(),
+
+        await DispatchAsync(eventName, message, [.. deliveries.Keys],
             (plugin, handler) => handler.OnEventAsync(deliveries[plugin]), handledAbove).ConfigureAwait(false);
     }
 
@@ -130,15 +146,9 @@ internal sealed class HostEventDispatcher(
     {
         foreach (var eventType in pluginHandle.SubscribedEventTypes)
         {
-            if (eventType == typeof(MessageEvent))
-            {
-                continue;
-            }
+            if (eventType == typeof(MessageEvent)) continue;
 
-            if (!typeof(BotEvent).IsAssignableFrom(eventType))
-            {
-                continue;
-            }
+            if (!typeof(BotEvent).IsAssignableFrom(eventType)) continue;
 
             if (!_eventHandlers.TryGetValue(eventType, out var handlers))
             {
@@ -159,18 +169,11 @@ internal sealed class HostEventDispatcher(
         Dictionary<string, List<LoadedPluginHandle>> exactBucket,
         List<(string Prefix, LoadedPluginHandle Plugin)> prefixBucket)
     {
-        if (!subscribed)
-        {
-            return;
-        }
+        if (!subscribed) return;
 
-        if (requiresBroadcast)
-        {
-            broadcastBucket.Add(pluginHandle);
-        }
+        if (requiresBroadcast) broadcastBucket.Add(pluginHandle);
 
         foreach (var route in routes)
-        {
             switch (route.MatchType)
             {
                 case MessageRouteMatchType.All:
@@ -182,13 +185,12 @@ internal sealed class HostEventDispatcher(
                 case MessageRouteMatchType.Prefix:
                     prefixBucket.Add((route.Pattern!, pluginHandle));
                     break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(routes), route.MatchType,
+                        "Unknown message route match type.");
             }
-        }
 
-        if (!requiresBroadcast && routes.Count == 0)
-        {
-            broadcastBucket.Add(pluginHandle);
-        }
+        if (!requiresBroadcast && routes.Count == 0) broadcastBucket.Add(pluginHandle);
     }
 
     private static void RegisterExact(
@@ -213,10 +215,7 @@ internal sealed class HostEventDispatcher(
         foreach (var key in exactBucket.Keys.ToArray())
         {
             exactBucket[key].Remove(pluginHandle);
-            if (exactBucket[key].Count == 0)
-            {
-                exactBucket.Remove(key);
-            }
+            if (exactBucket[key].Count == 0) exactBucket.Remove(key);
         }
 
         prefixBucket.RemoveAll(entry => ReferenceEquals(entry.Plugin, pluginHandle));
@@ -226,11 +225,13 @@ internal sealed class HostEventDispatcher(
     {
         lock (pluginLifecycleLock)
         {
-            return _eventHandlers
-                .Where(entry => entry.Key.IsAssignableFrom(eventType))
-                .SelectMany(entry => entry.Value)
-                .Distinct()
-                .ToArray();
+            return
+            [
+                .. _eventHandlers
+                    .Where(entry => entry.Key.IsAssignableFrom(eventType))
+                    .SelectMany(entry => entry.Value)
+                    .Distinct()
+            ];
         }
     }
 
@@ -261,33 +262,25 @@ internal sealed class HostEventDispatcher(
         var matches = new HashSet<LoadedPluginHandle>(broadcastHandlers);
 
         if (exactHandlers.TryGetValue(text, out var exactMatchHandlers))
-        {
             foreach (var handler in exactMatchHandlers)
-            {
                 matches.Add(handler);
-            }
-        }
 
         foreach (var (prefix, plugin) in prefixHandlers)
-        {
             if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
                 matches.Add(plugin);
-            }
-        }
 
-        return matches.ToArray();
+        return [.. matches];
     }
 
     /// <summary>
-    /// Runs handlers in ascending <see cref="LoadedPluginHandle.Priority"/>, each priority in parallel. Once a plugin
-    /// marks the event handled, larger priorities are skipped. A priority still running after
-    /// <see cref="PriorityLevelTimeout"/> no longer holds back the next one; the call still waits for every handler.
+    ///     Runs handlers in ascending <see cref="LoadedPluginHandle.Priority" />, each priority in parallel. Once a plugin
+    ///     marks the event handled, larger priorities are skipped. A priority still running after
+    ///     <see cref="PriorityLevelTimeout" /> no longer holds back the next one; the call still waits for every handler.
     /// </summary>
     private async Task DispatchAsync(
         string eventName,
         BotEvent message,
-        IReadOnlyList<LoadedPluginHandle> handlers,
+        LoadedPluginHandle[] handlers,
         Func<LoadedPluginHandle, IBotEventSubscriber, Task> dispatch,
         int handledAbove = int.MaxValue)
     {
@@ -295,10 +288,7 @@ internal sealed class HostEventDispatcher(
         logHub.Record("system", "log", text);
         ConsoleOutput.Log(text);
 
-        if (handlers.Count == 0)
-        {
-            return;
-        }
+        if (handlers.Length == 0) return;
 
         var groupId = ExtractGroupId(message);
         var levels = handlers
@@ -315,15 +305,18 @@ internal sealed class HostEventDispatcher(
             var level = levels[i];
             if (level.Key > handledAbove) break;
 
-            var tasks = level.Select(plugin => DispatchToPluginAsync(plugin, handler => dispatch(plugin, handler))).ToArray();
+            var tasks = level.Select(plugin => DispatchToPluginAsync(plugin, handler => dispatch(plugin, handler)))
+                .ToArray();
             running.AddRange(tasks);
             if (i == levels.Length - 1) break;
 
             var all = Task.WhenAll(tasks);
             if (await Task.WhenAny(all, Task.Delay(PriorityLevelTimeout)).ConfigureAwait(false) != all)
             {
-                var slow = string.Join("、", level.Where((_, index) => !tasks[index].IsCompleted).Select(plugin => plugin.Name));
-                var warning = $"优先级 {level.Key} 的插件 {slow} 处理{eventName}超过 {PriorityLevelTimeout.TotalSeconds:0} 秒，继续分发给后续插件。";
+                var slow = string.Join("、",
+                    level.Where((_, index) => !tasks[index].IsCompleted).Select(plugin => plugin.Name));
+                var warning =
+                    $"优先级 {level.Key} 的插件 {slow} 处理{eventName}超过 {PriorityLevelTimeout.TotalSeconds:0} 秒，继续分发给后续插件。";
                 logHub.Record("system", "warning", warning);
                 ConsoleOutput.Warning(warning);
             }
@@ -333,8 +326,6 @@ internal sealed class HostEventDispatcher(
 
         await Task.WhenAll(running).ConfigureAwait(false);
     }
-
-    internal TimeSpan PriorityLevelTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     private async Task DispatchToPluginAsync(LoadedPluginHandle plugin, Func<IBotEventSubscriber, Task> dispatch)
     {
@@ -378,13 +369,18 @@ internal sealed class HostEventDispatcher(
             FriendRequestEvent e => $"用户 {e.UserId} 发来好友请求: {e.Comment}",
             GuildInviteEvent e => $"用户 {e.InviterId} 邀请机器人加入 {e.GuildId}",
             BotOfflineEvent e => $"机器人离线: {e.Reason}",
-            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" + (e.Channel is null ? string.Empty : $" @{Display(e.Channel.Name, e.Channel.Id, showId)}"),
+            PlatformEvent e => $"[{e.Platform}:{e.Kind}]" +
+                               (e.Channel is null
+                                   ? string.Empty
+                                   : $" @{Display(e.Channel.Name, e.Channel.Id, showId)}"),
             _ => evt.GetType().Name
         };
     }
 
-    private static string Display(string? name, string id, bool showId) =>
-        string.IsNullOrWhiteSpace(name) || name == id ? id : showId ? $"{name}({id})" : name;
+    private static string Display(string? name, string id, bool showId)
+    {
+        return string.IsNullOrWhiteSpace(name) || name == id ? id : showId ? $"{name}({id})" : name;
+    }
 
     private static string GetMessageSegments(IReadOnlyList<MessageSegment> segments)
     {
@@ -393,12 +389,15 @@ internal sealed class HostEventDispatcher(
             TextSegment text => text.Text,
             ImageSegment image => $"[图片: {image.Uri}]",
             VideoSegment video => $"[视频: {video.Uri}]",
-            AudioSegment audio => string.IsNullOrWhiteSpace(audio.Transcript) ? $"[语音: {audio.Uri}]" : $"[语音: {audio.Uri} 「{audio.Transcript}」]",
+            AudioSegment audio => string.IsNullOrWhiteSpace(audio.Transcript)
+                ? $"[语音: {audio.Uri}]"
+                : $"[语音: {audio.Uri} 「{audio.Transcript}」]",
             FileSegment file => $"[文件: {file.FileName ?? file.Uri}]",
             MentionSegment mention => $"[@{mention.DisplayName ?? mention.UserId}]",
             MentionAllSegment => "[@全体成员]",
             EmojiSegment emoji => $"[表情: {emoji.Name ?? emoji.Id}]",
-            QuoteSegment quote => $"[回复: {(string.IsNullOrWhiteSpace(quote.Preview) ? quote.MessageId : quote.Preview)}]",
+            QuoteSegment quote =>
+                $"[回复: {(string.IsNullOrWhiteSpace(quote.Preview) ? quote.MessageId : quote.Preview)}]",
             RawSegment raw => $"[{raw.Platform}:{raw.Kind}]",
             _ => $"<{segment.GetType().Name}>"
         });

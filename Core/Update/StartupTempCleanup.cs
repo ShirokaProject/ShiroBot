@@ -30,6 +30,7 @@ internal static class StartupTempCleanup
                         Try(() => DeleteWork(directory));
                 DeleteEmpty(work);
             }
+
             DeleteEmpty(temp);
         });
     }
@@ -49,6 +50,7 @@ internal static class StartupTempCleanup
                     (File.GetAttributes(file) & FileAttributes.ReparsePoint) == 0)
                     Try(() => File.Delete(file));
             }
+
             DeleteEmpty(temp);
         });
     }
@@ -63,11 +65,15 @@ internal static class StartupTempCleanup
             if ((attributes & FileAttributes.Directory) != 0) DeleteWork(entry);
             else File.Delete(entry);
         }
+
         DeleteEmpty(directory);
     }
 
-    private static bool IsRealDirectory(string directory) => Directory.Exists(directory) &&
-        (File.GetAttributes(directory) & FileAttributes.ReparsePoint) == 0;
+    private static bool IsRealDirectory(string directory)
+    {
+        return Directory.Exists(directory) &&
+               (File.GetAttributes(directory) & FileAttributes.ReparsePoint) == 0;
+    }
 
     internal static void DeleteEmpty(string directory)
     {
@@ -80,7 +86,12 @@ internal static class StartupTempCleanup
 
     private static void Try(Action action)
     {
-        try { action(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        try
+        {
+            action();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 }

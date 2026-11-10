@@ -6,7 +6,6 @@ namespace ShiroBot.SDK.Plugin;
 /// <summary>Host-only command view; observers retain the original message and segments.</summary>
 internal static class MessageCommandPrefix
 {
-    private sealed record CommandView(MessageEvent? Message);
     private static readonly ConditionalWeakTable<MessageEvent, CommandView> Views = new();
 
     internal static MessageEvent CreateDispatchView(MessageEvent original, MessageEvent? command)
@@ -24,7 +23,10 @@ internal static class MessageCommandPrefix
             command = original;
             return true;
         }
+
         command = view.Message!;
         return view.Message is not null;
     }
+
+    private sealed record CommandView(MessageEvent? Message);
 }

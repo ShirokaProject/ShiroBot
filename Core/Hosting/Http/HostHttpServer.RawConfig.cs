@@ -13,15 +13,13 @@ using Tomlyn.Parsing;
 namespace ShiroBot.Hosting.Http;
 
 /// <summary>
-/// Raw config.toml editing for the Dashboard: every key in the file, including ones the component's
-/// schema does not describe. A plugin edits its whole file with comments kept; an adapter instance in a
-/// shared instances file edits only its own config table, re-serialized without comments.
+///     Raw config.toml editing for the Dashboard: every key in the file, including ones the component's
+///     schema does not describe. A plugin edits its whole file with comments kept; an adapter instance in a
+///     shared instances file edits only its own config table, re-serialized without comments.
 /// </summary>
 internal sealed partial class HostHttpServer
 {
     private const int MaxRawConfigLength = 1024 * 1024;
-
-    private sealed record RawConfigUpdateRequest(string? Content, string? Revision);
 
     private static void MapRawConfigEndpoints(
         RouteGroupBuilder api,
@@ -35,8 +33,9 @@ internal sealed partial class HostHttpServer
             var plugin = FindPluginForConfig(pluginManager, id);
             if (plugin is null) return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
             var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
-            if (!PluginHasConfig(pluginManager, plugin, path)) return NoConfigResult("插件");
-            return Results.Ok(CreateRawConfigResponse(File.Exists(path) ? File.ReadAllText(path) : string.Empty));
+            return !PluginHasConfig(pluginManager, plugin, path)
+                ? NoConfigResult("插件")
+                : Results.Ok(CreateRawConfigResponse(File.Exists(path) ? File.ReadAllText(path) : string.Empty));
         });
 
         api.MapPut("/plugins/{id}/config/raw", async (string id, HttpContext context) =>
@@ -46,7 +45,9 @@ internal sealed partial class HostHttpServer
             var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
             // Writing would create a config.toml the plugin never reads.
             if (!PluginHasConfig(pluginManager, plugin, path)) return NoConfigResult("插件");
-            var (request, error) = await ReadRawConfigRequestAsync(context, File.Exists(path) ? File.ReadAllText(path) : string.Empty).ConfigureAwait(false);
+            var (request, error) =
+                await ReadRawConfigRequestAsync(context,
+                    File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty).ConfigureAwait(false);
             if (error is not null) return error;
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -66,26 +67,32 @@ internal sealed partial class HostHttpServer
         api.MapGet("/adapters/{id}/config/raw", (string id) =>
         {
             var instance = adapterPackages.GetInstance(id);
-            if (instance is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
-            if (!AdapterHasConfig(adapterPackages, adapterManager, instance)) return NoConfigResult("适配器");
-            return Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance)));
+            if (instance is null)
+                return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+            return !AdapterHasConfig(adapterPackages, adapterManager, instance)
+                ? NoConfigResult("适配器")
+                : Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance)));
         });
 
         api.MapPut("/adapters/{id}/config/raw", async (string id, HttpContext context) =>
         {
             var instance = adapterPackages.GetInstance(id);
-            if (instance is null) return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+            if (instance is null)
+                return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
             if (!AdapterHasConfig(adapterPackages, adapterManager, instance)) return NoConfigResult("适配器");
-            var (request, error) = await ReadRawConfigRequestAsync(context, ReadAdapterRawConfig(instance)).ConfigureAwait(false);
+            var (request, error) = await ReadRawConfigRequestAsync(context, ReadAdapterRawConfig(instance))
+                .ConfigureAwait(false);
             if (error is not null) return error;
 
             // Patch hands a declared instance's own table to the writer as a temporary file.
             AdapterInstanceStore.Patch(instance.ConfigPath, id, path => File.WriteAllText(path, request!.Content));
             try
             {
-                var applied = await reloadCoordinator.ExecuteAdapterStartAsync(() => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
+                var applied = await reloadCoordinator
+                    .ExecuteAdapterStartAsync(() => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
                 return Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance), applied ? "applied" :
-                    adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase) ? "legacy_saved_only" : "pending_start"));
+                    adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase) ? "legacy_saved_only" :
+                    "pending_start"));
             }
             catch (Exception ex)
             {
@@ -95,40 +102,60 @@ internal sealed partial class HostHttpServer
     }
 
     /// <summary>A plugin has a config when it declares a config model or already has a config.toml.</summary>
-    private static bool PluginHasConfig(PluginManager pluginManager, PluginConfigTarget plugin, string configPath) =>
-        File.Exists(configPath) ||
-        GetComponentConfigSchema(plugin.AssemblyPath, FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly).Length > 0;
-
-    private static bool AdapterHasConfig(AdapterPackageManager adapterPackages, AdapterManager adapterManager, InstalledAdapterInstance instance) =>
-        AdapterInstanceStore.GetConfig(instance.ConfigPath, instance.Id).Count > 0 ||
-        adapterPackages.Get(instance.PackageId) is { } package &&
-        GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(instance.Id)).Length > 0;
-
-    private static IResult NoConfigResult(string noun) =>
-        Results.BadRequest(new { error = "no_config", message = $"这个{noun}没有配置文件，不能编辑 config.toml。" });
-
-    private static string ReadAdapterRawConfig(InstalledAdapterInstance instance) =>
-        AdapterInstanceStore.IsDeclared(instance.ConfigPath)
-            ? TomlSerializer.Serialize(AdapterInstanceStore.ToTomlTable(AdapterInstanceStore.GetConfig(instance.ConfigPath, instance.Id)))
-            : File.Exists(instance.ConfigPath) ? File.ReadAllText(instance.ConfigPath) : string.Empty;
-
-    private static object CreateRawConfigResponse(string content, string? applyStatus = null) => new
+    private static bool PluginHasConfig(PluginManager pluginManager, PluginConfigTarget plugin, string configPath)
     {
-        content,
-        revision = GetRawConfigRevision(content),
-        apply_status = applyStatus
-    };
+        return File.Exists(configPath) ||
+               GetComponentConfigSchema(plugin.AssemblyPath, FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly)
+                   .Length > 0;
+    }
 
-    internal static string GetRawConfigRevision(string content) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+    private static bool AdapterHasConfig(AdapterPackageManager adapterPackages, AdapterManager adapterManager,
+        InstalledAdapterInstance instance)
+    {
+        return AdapterInstanceStore.GetConfig(instance.ConfigPath, instance.Id).Count > 0 ||
+               adapterPackages.Get(instance.PackageId) is { } package &&
+               GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(instance.Id)).Length > 0;
+    }
+
+    private static IResult NoConfigResult(string noun)
+    {
+        return Results.BadRequest(new { error = "no_config", message = $"这个{noun}没有配置文件，不能编辑 config.toml。" });
+    }
+
+    private static string ReadAdapterRawConfig(InstalledAdapterInstance instance)
+    {
+        return AdapterInstanceStore.IsDeclared(instance.ConfigPath)
+            ? TomlSerializer.Serialize(
+                AdapterInstanceStore.ToTomlTable(AdapterInstanceStore.GetConfig(instance.ConfigPath, instance.Id)))
+            : File.Exists(instance.ConfigPath)
+                ? File.ReadAllText(instance.ConfigPath)
+                : string.Empty;
+    }
+
+    private static object CreateRawConfigResponse(string content, string? applyStatus = null)
+    {
+        return new
+        {
+            content,
+            revision = GetRawConfigRevision(content),
+            apply_status = applyStatus
+        };
+    }
+
+    internal static string GetRawConfigRevision(string content)
+    {
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+    }
 
     /// <summary>Reads and validates a raw config update; returns the error result instead when it is rejected.</summary>
-    private static async Task<(RawConfigUpdateRequest? Request, IResult? Error)> ReadRawConfigRequestAsync(HttpContext context, string current)
+    private static async Task<(RawConfigUpdateRequest? Request, IResult? Error)> ReadRawConfigRequestAsync(
+        HttpContext context, string current)
     {
         RawConfigUpdateRequest? request;
         try
         {
-            request = await JsonSerializer.DeserializeAsync<RawConfigUpdateRequest>(context.Request.Body, JsonSerializerOptions.Web, context.RequestAborted)
+            request = await JsonSerializer.DeserializeAsync<RawConfigUpdateRequest>(context.Request.Body,
+                    JsonSerializerOptions.Web, context.RequestAborted)
                 .ConfigureAwait(false);
         }
         catch (JsonException)
@@ -142,7 +169,12 @@ internal sealed partial class HostHttpServer
             return (null, Results.BadRequest(new { error = "config_too_large", message = "配置文件不能超过 1MB。" }));
         // Someone (an editor, the plugin or another Dashboard tab) saved after this draft was loaded.
         if (!string.IsNullOrEmpty(request.Revision) && request.Revision != GetRawConfigRevision(current))
-            return (null, Results.Conflict(new { error = "config_changed", message = "配置文件已被其他地方修改，请重新加载后再编辑。", content = current, revision = GetRawConfigRevision(current) }));
+            return (null,
+                Results.Conflict(new
+                {
+                    error = "config_changed", message = "配置文件已被其他地方修改，请重新加载后再编辑。", content = current,
+                    revision = GetRawConfigRevision(current)
+                }));
         if (ValidateToml(request.Content) is { } invalid)
             return (null, Results.BadRequest(new { error = "invalid_toml", message = "TOML 格式错误: " + invalid }));
         return (request, null);
@@ -161,4 +193,6 @@ internal sealed partial class HostHttpServer
             return ex.Message;
         }
     }
+
+    private sealed record RawConfigUpdateRequest(string? Content, string? Revision);
 }

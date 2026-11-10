@@ -7,30 +7,35 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ShiroBot.Integrations.Avalonia;
 
+namespace ShiroBot.Verification;
+
 internal static class AvaloniaFontVerification
 {
+    private static readonly string[] FontResourceKeys =
+        ["ContentControlThemeFontFamily", "Md3FontFamilyPlain", "Md3FontFamilyBrand"];
+
     private const string Metrics = """
-        <Border xmlns="https://github.com/avaloniaui" Width="288" Padding="4,9">
-          <UniformGrid Columns="4">
-            <StackPanel Spacing="2" HorizontalAlignment="Center">
-              <TextBlock Text="播放" FontSize="9" HorizontalAlignment="Center" />
-              <TextBlock Text="14.8万" FontSize="12" FontWeight="Bold" />
-            </StackPanel>
-            <StackPanel Spacing="2" HorizontalAlignment="Center">
-              <TextBlock Text="点赞" FontSize="9" HorizontalAlignment="Center" />
-              <TextBlock Text="2.6万" FontSize="12" FontWeight="Bold" />
-            </StackPanel>
-            <StackPanel Spacing="2" HorizontalAlignment="Center">
-              <TextBlock Text="投币" FontSize="9" HorizontalAlignment="Center" />
-              <TextBlock Text="7,305" FontSize="12" FontWeight="Bold" />
-            </StackPanel>
-            <StackPanel Spacing="2" HorizontalAlignment="Center">
-              <TextBlock Text="收藏" FontSize="9" HorizontalAlignment="Center" />
-              <TextBlock Text="9,142" FontSize="12" FontWeight="Bold" />
-            </StackPanel>
-          </UniformGrid>
-        </Border>
-        """;
+                                   <Border xmlns="https://github.com/avaloniaui" Width="288" Padding="4,9">
+                                     <UniformGrid Columns="4">
+                                       <StackPanel Spacing="2" HorizontalAlignment="Center">
+                                         <TextBlock Text="播放" FontSize="9" HorizontalAlignment="Center" />
+                                         <TextBlock Text="14.8万" FontSize="12" FontWeight="Bold" />
+                                       </StackPanel>
+                                       <StackPanel Spacing="2" HorizontalAlignment="Center">
+                                         <TextBlock Text="点赞" FontSize="9" HorizontalAlignment="Center" />
+                                         <TextBlock Text="2.6万" FontSize="12" FontWeight="Bold" />
+                                       </StackPanel>
+                                       <StackPanel Spacing="2" HorizontalAlignment="Center">
+                                         <TextBlock Text="投币" FontSize="9" HorizontalAlignment="Center" />
+                                         <TextBlock Text="7,305" FontSize="12" FontWeight="Bold" />
+                                       </StackPanel>
+                                       <StackPanel Spacing="2" HorizontalAlignment="Center">
+                                         <TextBlock Text="收藏" FontSize="9" HorizontalAlignment="Center" />
+                                         <TextBlock Text="9,142" FontSize="12" FontWeight="Bold" />
+                                       </StackPanel>
+                                     </UniformGrid>
+                                   </Border>
+                                   """;
 
     public static async Task RunAsync()
     {
@@ -45,10 +50,8 @@ internal static class AvaloniaFontVerification
             (["noto sans cjk sc"], OSPlatform.Linux, "noto sans cjk sc")
         };
         foreach (var item in cases)
-        {
             if (SystemFontConfiguration.SelectFamily(item.Installed, item.Platform) != item.Expected)
                 throw new InvalidOperationException($"Incorrect font selection for {item.Platform}.");
-        }
 
         using var host = AvaloniaHostBootstrapper.Start();
         await Dispatcher.UIThread.InvokeAsync(() =>
@@ -64,11 +67,10 @@ internal static class AvaloniaFontVerification
                 Console.WriteLine("No supported system CJK font installed; preserving the platform default.");
                 return;
             }
-            foreach (var key in new[] { "ContentControlThemeFontFamily", "Md3FontFamilyPlain", "Md3FontFamilyBrand" })
-            {
+
+            foreach (var key in FontResourceKeys)
                 if (Application.Current!.Resources[key] is not FontFamily family || family.Name != expected)
                     throw new InvalidOperationException($"Font resource {key} did not honor {expected}.");
-            }
 
             var content = (Control)AvaloniaRuntimeXamlLoader.Load(Metrics);
             var window = new Window { Content = content, Width = 288, Height = 80 };
@@ -77,16 +79,20 @@ internal static class AvaloniaFontVerification
                 window.Show();
                 window.UpdateLayout();
                 var values = content.GetVisualDescendants().OfType<TextBlock>()
-                    .Where(x => x.FontSize == 12).ToArray();
+                    .Where(x => x.FontSize.Equals(12d)).ToArray();
                 var baselines = values.Select(x =>
                     x.TranslatePoint(new Point(0, 0), content)!.Value.Y + x.TextLayout.TextLines[0].Baseline).ToArray();
                 if (values.Length != 4) throw new InvalidOperationException("Missing metric values.");
                 // Explicit overrides are honored even if the chosen font lacks CJK glyphs.
                 if (string.IsNullOrWhiteSpace(configured) && baselines.Max() - baselines.Min() > 0.01)
-                    throw new InvalidOperationException($"Mixed and numeric-only baselines differ: {string.Join(", ", baselines)}.");
+                    throw new InvalidOperationException(
+                        $"Mixed and numeric-only baselines differ: {string.Join(", ", baselines)}.");
                 Console.WriteLine($"Host font: {expected}; metric baselines: {string.Join(", ", baselines)}.");
             }
-            finally { window.Close(); }
+            finally
+            {
+                window.Close();
+            }
         });
 
         var png = await new AxamlRenderer().RenderPngAsync(Metrics);

@@ -21,7 +21,7 @@ public sealed class WebJsonProbe : PluginBase
             StrictDom = true
         });
         // 组件页面作对照：页面列表里不应带网页专用的字段。
-        Context.Dashboard.AddPage("component", "组件", (_, _) => Task.FromResult<UiNode>(Ui.Text("ok")));
+        Context.Dashboard.AddPage("component", "组件", (_, _) => Task.FromResult(Ui.Text("ok")));
         return Task.CompletedTask;
     }
 

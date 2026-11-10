@@ -7,8 +7,8 @@ public sealed class EventRouter
     private readonly List<RouteEntry> _routes = [];
 
     public bool HasRoutes => _routes.Count > 0;
-    public IReadOnlyCollection<Type> EventTypes => _routes.Select(route => route.Descriptor.EventType).Distinct().ToArray();
-    public IReadOnlyList<EventRouteDescriptor> Routes => _routes.Select(route => route.Descriptor).ToArray();
+    public IReadOnlyCollection<Type> EventTypes => [.. _routes.Select(route => route.Descriptor.EventType).Distinct()];
+    public IReadOnlyList<EventRouteDescriptor> Routes => [.. _routes.Select(route => route.Descriptor)];
 
     public void Map<TEvent>(Func<TEvent, Task> handler)
         where TEvent : BotEvent
@@ -23,6 +23,8 @@ public sealed class EventRouter
     }
 
     /// <param name="description">Shown in the Dashboard's plugin details.</param>
+    /// <param name="predicate">Selects the messages or events handled by this route.</param>
+    /// <param name="handler">Asynchronous handler invoked when the route matches.</param>
     public void MapWhen<TEvent>(Func<TEvent, bool> predicate, string description, Func<TEvent, Task> handler)
         where TEvent : BotEvent
     {

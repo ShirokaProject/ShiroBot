@@ -3,6 +3,9 @@ namespace ShiroBot.SDK.Core;
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class BotPluginAttribute(string id) : Attribute
 {
+    /// <summary>The priority of plugins that declare none, including those built before priorities existed.</summary>
+    public const int DefaultPriority = 2;
+
     public string Id { get; } = id;
 
     public string Name { get; init; } = id;
@@ -15,24 +18,21 @@ public sealed class BotPluginAttribute(string id) : Attribute
     public bool IsPluginSingleFile { get; init; }
 
     /// <summary>
-    /// Semicolon-separated Model contract assemblies this plugin uses, such as "ShiroBot.Model.QQ".
-    /// They are shared with the host and adapters; a DLL shipped beside the plugin is loaded into the Default ALC
-    /// when the host does not provide it yet.
+    ///     Semicolon-separated Model contract assemblies this plugin uses, such as "ShiroBot.Model.QQ".
+    ///     They are shared with the host and adapters; a DLL shipped beside the plugin is loaded into the Default ALC
+    ///     when the host does not provide it yet.
     /// </summary>
     public string? SharedAssemblies { get; init; }
 
     /// <summary>
-    /// Semicolon-separated plugin IDs that must be loaded before this plugin.
+    ///     Semicolon-separated plugin IDs that must be loaded before this plugin.
     /// </summary>
     public string? Dependencies { get; init; }
 
     /// <summary>
-    /// Dispatch order for events: smaller values run first, and plugins sharing a value run in parallel.
-    /// Once a plugin marks an event handled (see <see cref="ShiroBot.SDK.Plugin.BotEventHandling"/>),
-    /// plugins with a larger value no longer receive it. Owners can override it per plugin.
+    ///     Dispatch order for events: smaller values run first, and plugins sharing a value run in parallel.
+    ///     Once a plugin marks an event handled (see <see cref="ShiroBot.SDK.Plugin.BotEventHandling" />),
+    ///     plugins with a larger value no longer receive it. Owners can override it per plugin.
     /// </summary>
     public int Priority { get; init; } = DefaultPriority;
-
-    /// <summary>The priority of plugins that declare none, including those built before priorities existed.</summary>
-    public const int DefaultPriority = 2;
 }

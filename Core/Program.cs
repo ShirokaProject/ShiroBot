@@ -1,30 +1,30 @@
-using ShiroBot.Hosting.Files;
 using System.CommandLine;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
 using Avalonia;
 using ShiroBot.Adapters;
 using ShiroBot.Components.Reloading;
+using ShiroBot.Components.Updates;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Commands;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
+using ShiroBot.Hosting.Files;
 using ShiroBot.Hosting.Http;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
 using ShiroBot.Integrations.Avalonia;
 using ShiroBot.Metadata;
-using ShiroBot.Packages;
-using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Update;
 using ShiroBot.Model.Discord;
 using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
+using ShiroBot.Packages;
+using ShiroBot.Plugins;
+using ShiroBot.Plugins.Loading;
 using ShiroBot.SDK.Abstractions;
+using ShiroBot.Update;
 using CH = ShiroBot.Terminal.ConsoleOutput;
-using ShiroBot.Components.Updates;
 
 namespace ShiroBot;
 
@@ -33,15 +33,17 @@ public static class Program
     private static string BasePath => HostPaths.Root;
 
     /// <summary>
-    /// 供 Avalonia 设计器（IDE Previewer）反射调用。Previewer 通过 <c>--method avalonia-remote</c>
-    /// 加载本程序集并在入口类型上找此方法；它会自行替换 windowing platform，但要求 AppBuilder
-    /// 自己声明渲染系统（这里固定 Skia，与运行时一致）。运行时本方法不参与 ShiroBot 的启动流程。
+    ///     供 Avalonia 设计器（IDE 预览器）反射调用。预览器通过 <c>--method avalonia-remote</c>
+    ///     加载本程序集并在入口类型上找此方法；它会自行替换 windowing platform，但要求 AppBuilder
+    ///     自己声明渲染系统（这里固定 Skia，与运行时一致）。运行时本方法不参与 ShiroBot 的启动流程。
     /// </summary>
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<HeadlessHostApp>()
+    public static AppBuilder BuildAvaloniaApp()
+    {
+        return AppBuilder.Configure<HeadlessHostApp>()
             .UseSkia()
             .UseHarfBuzz()
             .ConfigureFonts(SystemFontConfiguration.Apply);
+    }
 
     public static async Task Main(string[] args)
     {
@@ -51,6 +53,7 @@ public static class Program
             Console.WriteLine(HostSelfUpdater.CurrentVersion);
             return;
         }
+
         if (await TryRunAdapterManagementCommandAsync(args).ConfigureAwait(false)) return;
         await HostPowerControl.WaitForPredecessorAsync().ConfigureAwait(false);
         HostDirectoryLock? acquiredLock;
@@ -60,28 +63,47 @@ public static class Program
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Console.Error.WriteLine("无法锁定宿主运行目录: " + error.Message);
+            await Console.Error.WriteLineAsync("无法锁定宿主运行目录: " + error.Message);
             Environment.ExitCode = 1;
             return;
         }
+
         if (acquiredLock is null)
         {
-            Console.Error.WriteLine($"此目录已有 ShiroBot 正在运行，不能重复启动: {BasePath}");
+            await Console.Error.WriteLineAsync($"此目录已有 ShiroBot 正在运行，不能重复启动: {BasePath}");
             Environment.ExitCode = 1;
             return;
         }
-        using var directoryLock = acquiredLock;
-        HostSelfUpdater.CleanupPrevious();
 
-        using var logHub = new HostLogHub();
-        BotLog.SetDefault(new ConsoleLogger(logHub: logHub));
+        var shutdownRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var powerControl = new HostPowerControl(() => shutdownRequested.TrySetResult());
+        try
+        {
+            using var directoryLock = acquiredLock;
+            HostSelfUpdater.CleanupPrevious();
 
+            using var logHub = new HostLogHub();
+            BotLog.SetDefault(new ConsoleLogger(logHub: logHub));
+            await RunHostAsync(args, logHub, shutdownRequested, powerControl).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Unix exec replaces the process without running managed cleanup. Dispose the log
+            // hub and directory lock before starting the replacement, including on early returns.
+            powerControl.CompleteRestart();
+        }
+    }
+
+    private static async Task RunHostAsync(string[] args, HostLogHub logHub,
+        TaskCompletionSource shutdownRequested, HostPowerControl powerControl)
+    {
         var configOption = new Option<string?>("--config", "-c") { Description = "指定配置文件路径" };
         var adapterOption = new Option<string[]>("--adapter", "--adapter-path") { Description = "指定适配器 DLL 路径（可重复）" };
         var pluginOption = new Option<string?>("--plugin-dir") { Description = "指定插件文件夹路径（可以是相对路径或绝对路径）" };
         var noConsoleOption = new Option<bool>("--no-console") { Description = "禁用控制台交互输入" };
 
-        var rootCommand = new RootCommand("ShiroBot 主程序") { adapterOption, pluginOption, configOption, noConsoleOption };
+        var rootCommand = new RootCommand("ShiroBot 主程序")
+            { adapterOption, pluginOption, configOption, noConsoleOption };
         var parserResult = rootCommand.Parse(args);
 
         CH.Info("ShiroBot 启动中...");
@@ -90,7 +112,6 @@ public static class Program
         var sharedAssemblies = new SharedAssemblyResolver();
         sharedAssemblies.Register(["ShiroBot.SDK"], AssemblyLoadContext.Default);
         var modelPackages = new ModelPackageRegistry(sharedAssemblies);
-        BotContext? botContext;
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
         HostHttpServer? hostHttpServer = null;
@@ -98,24 +119,21 @@ public static class Program
         AdapterManager? adapterManager = null;
         ComponentFileWatcher? componentWatcher = null;
         AutoUpdateScheduler? autoUpdates = null;
-        OwnerNotifier? ownerNotifier = null;
         var runtimeState = new HostRuntimeState(DateTimeOffset.UtcNow);
-        var shutdownRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         PosixSignalRegistration? sigintRegistration = null;
         PosixSignalRegistration? sigtermRegistration = null;
 
-        void RequestShutdown() => shutdownRequested.TrySetResult();
-        var powerControl = new HostPowerControl(RequestShutdown);
         Updater.HostUpdateApplier = async (assetUrl, cancellationToken) =>
         {
-            var result = await HostSelfUpdater.ApplyAsync(assetUrl, powerControl, cancellationToken).ConfigureAwait(false);
+            var result = await HostSelfUpdater.ApplyAsync(assetUrl, powerControl, cancellationToken)
+                .ConfigureAwait(false);
             if (!result.Ok) throw new InvalidOperationException(result.Message);
         };
 
         ConsoleCancelEventHandler cancelKeyPressHandler = (_, eventArgs) =>
         {
             eventArgs.Cancel = true;
-            RequestShutdown();
+            shutdownRequested.TrySetResult();
         };
         Console.CancelKeyPress += cancelKeyPressHandler;
 
@@ -124,12 +142,12 @@ public static class Program
             sigintRegistration = PosixSignalRegistration.Create(PosixSignal.SIGINT, context =>
             {
                 context.Cancel = true;
-                RequestShutdown();
+                shutdownRequested.TrySetResult();
             });
             sigtermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
             {
                 context.Cancel = true;
-                RequestShutdown();
+                shutdownRequested.TrySetResult();
             });
         }
 
@@ -147,6 +165,7 @@ public static class Program
                     BotLog.Error("指定的配置文件不存在: " + configuredCoreConfigPath);
                     return;
                 }
+
                 coreConfigPath = configuredCoreConfigPath;
             }
             else
@@ -216,12 +235,14 @@ public static class Program
             // ─── BotContext + 基础设施 ───
             var webPublicBaseUrl = coreConfig.Api.GetPrimaryBaseUrl();
             var webHostContext = new WebHostContext(webPublicBaseUrl, coreConfig.Api.Enable);
-            botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub, temporaryFiles);
+            var botContext = new BotContext(null, coreConfig.OwnerList, coreConfig.AdminList, webHostContext, logHub,
+                temporaryFiles);
             botContext.AttachRuntimeState(runtimeState);
-            ownerNotifier = new OwnerNotifier(botContext, coreConfig);
+            var ownerNotifier = new OwnerNotifier(botContext, coreConfig);
             Updater.Initialize(ownerNotifier.NotifyAsync, coreConfig.GithubProxy);
 
-            var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState, logHub,
+            var hostEventDispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtimeState,
+                logHub,
                 () => coreConfig.Showid, groupRoutePolicy);
             pluginManager = new PluginManager(botContext, sharedAssemblies, modelPackages, runtimeState, logHub);
             Updater.PluginUpdateApplier = async (request, cancellationToken) =>
@@ -230,7 +251,9 @@ public static class Program
                     throw new InvalidOperationException("插件更新缺少下载地址。");
                 var assetName = Path.GetFileName(new Uri(request.AssetDownloadUrl).LocalPath);
                 var result = await PluginUpdateService.ApplyAsync(pluginManager, hostEventDispatcher, groupRoutePolicy,
-                    request.PluginName, request.AssetDownloadUrl, assetName, request.LatestVersion, cancellationToken).ConfigureAwait(false);
+                        request.PluginName, request.AssetDownloadUrl, assetName, request.LatestVersion,
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 BotLog.Info(result.Message);
             };
 
@@ -275,16 +298,23 @@ public static class Program
                 logHub,
                 commandHandler.HandleDirectMessageAsync);
             commandHandler.SetAdapterCommands(adapterManager, null, adapterPackages);
-            if (adapterPaths.Count > 0 || adapterPackages.ListInstances().Any(instance => instance.Active))
+            if (adapterPaths.Length > 0 || adapterPackages.ListInstances().Any(instance => instance.Active))
             {
                 var instances = adapterPackages.ListInstances().Where(instance => instance.Active).ToArray();
-                var installedPaths = adapterPackages.List().Select(package => package.AssemblyPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                await adapterManager.LoadAsync(adapterPaths.Where(path => !installedPaths.Contains(path))).ConfigureAwait(false);
+                var installedPaths = adapterPackages.List().Select(package => package.AssemblyPath)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                await adapterManager.LoadAsync(adapterPaths.Where(path => !installedPaths.Contains(path)))
+                    .ConfigureAwait(false);
                 foreach (var instance in instances)
-                {
-                    try { await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false); }
-                    catch (Exception ex) { BotLog.Error($"Adapter 实例 {instance.Id} 加载失败: {ex.Message}"); }
-                }
+                    try
+                    {
+                        await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        BotLog.Error($"Adapter 实例 {instance.Id} 加载失败: {ex.Message}");
+                    }
+
                 CH.Success($"已加载 {adapterManager.LoadedIds.Count} 个 Adapter。 ");
             }
             else
@@ -313,8 +343,10 @@ public static class Program
                 reloadCoordinator,
                 adapterPackages,
                 powerControl);
-            var autoUpdateRunner = new AutoUpdateRunner(coreConfig, pluginManager, hostEventDispatcher, groupRoutePolicy,
-                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl, ownerNotifier.NotifyAsync,
+            var autoUpdateRunner = new AutoUpdateRunner(coreConfig, pluginManager, hostEventDispatcher,
+                groupRoutePolicy,
+                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl,
+                ownerNotifier.NotifyAsync,
                 new SkippedMajorNotices(Path.Combine(BasePath, "cache", "auto-update-skipped-major.json")));
             autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
                 Path.Combine(BasePath, "cache", "auto-update-last-run"));
@@ -343,15 +375,12 @@ public static class Program
 
                 CH.Info("控制台已就绪，开始在后台加载插件...");
                 _ = pluginManager.ScheduleInitialPluginLoad(
-                    PluginManager.EnumeratePluginEntryAssemblies(pluginRootPath).ToList(),
+                    [.. PluginManager.EnumeratePluginEntryAssemblies(pluginRootPath)],
                     hostEventDispatcher,
                     groupRoutePolicy);
 
                 var completedTask = await Task.WhenAny(exitRequested.Task, shutdownRequested.Task);
-                if (completedTask == shutdownRequested.Task)
-                {
-                    CH.Info("收到进程停止信号，正在安全退出...");
-                }
+                if (completedTask == shutdownRequested.Task) CH.Info("收到进程停止信号，正在安全退出...");
                 return;
             }
 
@@ -363,7 +392,7 @@ public static class Program
 
             CH.Info("开始在后台加载插件...");
             _ = pluginManager.ScheduleInitialPluginLoad(
-                PluginManager.EnumeratePluginEntryAssemblies(pluginRootPath).ToList(),
+                [.. PluginManager.EnumeratePluginEntryAssemblies(pluginRootPath)],
                 hostEventDispatcher,
                 groupRoutePolicy);
 
@@ -387,7 +416,6 @@ public static class Program
             configWatcher?.Dispose();
 
             if (hostHttpServer is not null)
-            {
                 try
                 {
                     await hostHttpServer.DisposeAsync();
@@ -396,10 +424,8 @@ public static class Program
                 {
                     CH.Warning("停止宿主 API 服务时出现异常: " + ex.Message);
                 }
-            }
 
             if (adapterManager is not null)
-            {
                 try
                 {
                     await adapterManager.StopForShutdownAsync().ConfigureAwait(false);
@@ -408,7 +434,6 @@ public static class Program
                 {
                     CH.Warning("停止适配器时出现异常: " + ex.Message);
                 }
-            }
 
             try
             {
@@ -423,11 +448,6 @@ public static class Program
             // releases the remaining plugin and adapter contexts directly.
             temporaryFiles?.Dispose();
             if (powerControl.ExitCode != 0) Environment.ExitCode = powerControl.ExitCode;
-            // Unix restart uses exec rather than returning from Main. Release only after all
-            // cleanup, so the replacement can acquire the same directory lock.
-            directoryLock.Dispose();
-            logHub.Dispose();
-            powerControl.CompleteRestart();
         }
     }
 
@@ -449,7 +469,8 @@ public static class Program
         manager.SaveConfig(configPath, coreConfig);
     }
 
-    private static IReadOnlyList<string> ResolveAdapterPaths(CoreConfig coreConfig, IReadOnlyList<string>? commandAdapterPaths, AdapterPackageManager packages)
+    private static string[] ResolveAdapterPaths(CoreConfig coreConfig, IReadOnlyList<string>? commandAdapterPaths,
+        AdapterPackageManager packages)
     {
         if (commandAdapterPaths is { Count: > 0 })
         {
@@ -473,11 +494,16 @@ public static class Program
                 BotLog.Error($"未找到配置的 Adapter: {value}，已跳过。请检查核心配置中的 protocols。");
                 continue;
             }
+
             paths.Add(path);
         }
 
-        return paths.Concat(packages.ListInstances().Where(instance => instance.Active).Select(instance => instance.AssemblyPath))
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return
+        [
+            .. paths.Concat(packages.ListInstances().Where(instance => instance.Active)
+                    .Select(instance => instance.AssemblyPath))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+        ];
     }
 
     private static string? ResolveAdapterPath(string configured)
@@ -509,29 +535,36 @@ public static class Program
             {
                 case "list":
                     var installed = packages.ListInstances();
-                    foreach (var package in packages.List()) Console.WriteLine($"package={package.Id}\t{package.Version}\t{installed.Count(item => item.PackageId == package.Id)} instances");
+                    foreach (var package in packages.List())
+                        Console.WriteLine(
+                            $"package={package.Id}\t{package.Version}\t{installed.Count(item => item.PackageId == package.Id)} instances");
                     if (installed.Count == 0)
                     {
                         Console.WriteLine("No adapter instances. Use adapter create <package-id> <unique-id>.");
                         break;
                     }
+
                     foreach (var adapter in installed)
-                        Console.WriteLine($"{adapter.Id}\tpackage={adapter.PackageId}\t{(adapter.Enabled ? "enabled" : "disabled")}\t{adapter.ConfigPath}");
+                        Console.WriteLine(
+                            $"{adapter.Id}\tpackage={adapter.PackageId}\t{(adapter.Enabled ? "enabled" : "disabled")}\t{adapter.ConfigPath}");
                     break;
                 case "create":
                     var sourceId = GetCommandArgument(args, 2);
                     var instanceId = GetCommandArgument(args, 3);
                     var created = packages.CreateInstance(sourceId, instanceId, GetOptionValue(args, "--name"));
-                    Console.WriteLine($"Created disabled instance {created.Id}; edit {created.ConfigPath}, then enable it.");
+                    Console.WriteLine(
+                        $"Created disabled instance {created.Id}; edit {created.ConfigPath}, then enable it.");
                     break;
                 case "enable":
                 case "disable":
                     var selectedId = GetCommandArgument(args, 2);
                     packages.SetInstanceEnabled(selectedId, action == "enable");
-                    Console.WriteLine($"Instance {selectedId} {(action == "enable" ? "enabled" : "disabled")}; takes effect next start.");
+                    Console.WriteLine(
+                        $"Instance {selectedId} {(action == "enable" ? "enabled" : "disabled")}; takes effect next start.");
                     break;
                 case "config":
-                    var selected = packages.GetInstance(GetCommandArgument(args, 2)) ?? throw new InvalidOperationException("Adapter instance not found.");
+                    var selected = packages.GetInstance(GetCommandArgument(args, 2)) ??
+                                   throw new InvalidOperationException("Adapter instance not found.");
                     Directory.CreateDirectory(Path.GetDirectoryName(selected.ConfigPath)!);
                     if (!File.Exists(selected.ConfigPath)) File.WriteAllText(selected.ConfigPath, "");
                     Console.WriteLine(selected.ConfigPath);
@@ -543,7 +576,8 @@ public static class Program
                     break;
                 case "verify":
                     var verifyPath = GetCommandArgument(args, 2);
-                    var verifyRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_cli", Guid.NewGuid().ToString("N"));
+                    var verifyRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_cli",
+                        Guid.NewGuid().ToString("N"));
                     try
                     {
                         var probe = packages.Prepare(verifyPath, verifyRoot);
@@ -551,25 +585,31 @@ public static class Program
                     }
                     finally
                     {
-                        if (Directory.Exists(verifyRoot)) Directory.Delete(verifyRoot, recursive: true);
+                        if (Directory.Exists(verifyRoot)) Directory.Delete(verifyRoot, true);
                     }
+
                     break;
                 case "install":
                     var packagePath = GetCommandArgument(args, 2);
-                    var workRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_cli", Guid.NewGuid().ToString("N"));
+                    var workRoot = Path.Combine(Path.GetTempPath(), "ShiroBot", "adapter_cli",
+                        Guid.NewGuid().ToString("N"));
                     try
                     {
                         var probe = packages.Prepare(packagePath, workRoot);
-                        if (packages.Get(probe.Id) is not null && !args.Contains("--replace", StringComparer.OrdinalIgnoreCase))
-                            throw new InvalidOperationException($"Adapter {probe.Id} is already installed. Pass --replace to replace it.");
+                        if (packages.Get(probe.Id) is not null &&
+                            !args.Contains("--replace", StringComparer.OrdinalIgnoreCase))
+                            throw new InvalidOperationException(
+                                $"Adapter {probe.Id} is already installed. Pass --replace to replace it.");
                         var enabled = !args.Contains("--no-enable", StringComparer.OrdinalIgnoreCase);
                         var result = packages.Install(probe, enabled);
-                        Console.WriteLine($"Installed package {result.Id} to {result.AssemblyPath}; create an instance with adapter create {result.Id} <unique-id>");
+                        Console.WriteLine(
+                            $"Installed package {result.Id} to {result.AssemblyPath}; create an instance with adapter create {result.Id} <unique-id>");
                     }
                     finally
                     {
-                        if (Directory.Exists(workRoot)) Directory.Delete(workRoot, recursive: true);
+                        if (Directory.Exists(workRoot)) Directory.Delete(workRoot, true);
                     }
+
                     break;
                 case "remove":
                 case "uninstall":
@@ -581,8 +621,10 @@ public static class Program
                     Console.WriteLine("Adapter management commands:");
                     Console.WriteLine("  ShiroBot adapter list [--adapter-dir <path>]");
                     Console.WriteLine("  ShiroBot adapter verify <dll|zip> [--adapter-dir <path>]");
-                    Console.WriteLine("  ShiroBot adapter install <dll|zip> [--replace] [--no-enable] [--adapter-dir <path>]");
-                    Console.WriteLine("  ShiroBot adapter create <package-id> <instance-id> [--name <name>] [--adapter-dir <path>]");
+                    Console.WriteLine(
+                        "  ShiroBot adapter install <dll|zip> [--replace] [--no-enable] [--adapter-dir <path>]");
+                    Console.WriteLine(
+                        "  ShiroBot adapter create <package-id> <instance-id> [--name <name>] [--adapter-dir <path>]");
                     Console.WriteLine("  ShiroBot adapter config <instance-id> [--adapter-dir <path>]");
                     Console.WriteLine("  ShiroBot adapter enable|disable <instance-id> [--adapter-dir <path>]");
                     Console.WriteLine("  ShiroBot adapter remove <instance-id> [--adapter-dir <path>]");
@@ -609,10 +651,8 @@ public static class Program
     private static string? GetOptionValue(string[] args, string option)
     {
         for (var index = 0; index < args.Length - 1; index++)
-        {
-            if (string.Equals(args[index], option, StringComparison.OrdinalIgnoreCase)) return args[index + 1];
-        }
+            if (string.Equals(args[index], option, StringComparison.OrdinalIgnoreCase))
+                return args[index + 1];
         return null;
     }
-
 }

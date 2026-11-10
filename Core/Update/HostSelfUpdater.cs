@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -20,11 +22,11 @@ internal sealed record HostUpdateCheck(
     string? Reason);
 
 /// <summary>
-/// Checks for and installs a new host release. The new executable must pass <c>--self-check</c> here
-/// first; then the running executable is renamed aside, the new one takes its path, and the host
-/// restarts through <see cref="HostPowerControl"/>, which knows whether to spawn a successor or leave
-/// it to systemd. In Docker the new executable goes to <see cref="UpdateDirectoryVariable"/> on the
-/// data volume instead, and the entrypoint starts it when it is newer than the image's.
+///     Checks for and installs a new host release. The new executable must pass <c>--self-check</c> here
+///     first; then the running executable is renamed aside, the new one takes its path, and the host
+///     restarts through <see cref="HostPowerControl" />, which knows whether to spawn a successor or leave
+///     it to systemd. In Docker the new executable goes to <see cref="UpdateDirectoryVariable" /> on the
+///     data volume instead, and the entrypoint starts it when it is newer than the image's.
 /// </summary>
 internal static class HostSelfUpdater
 {
@@ -45,25 +47,39 @@ internal static class HostSelfUpdater
             var assembly = Assembly.GetEntryAssembly();
             var runtime = GetMetadata(assembly, "ShiroBot.RuntimeIdentifier");
             if (string.IsNullOrWhiteSpace(runtime)) runtime = RuntimeInformation.RuntimeIdentifier;
-            var publishKind = string.Equals(GetMetadata(assembly, "ShiroBot.SelfContained"), "true", StringComparison.OrdinalIgnoreCase)
+            var publishKind = string.Equals(GetMetadata(assembly, "ShiroBot.SelfContained"), "true",
+                StringComparison.OrdinalIgnoreCase)
                 ? "self-contained"
                 : "framework-dependent";
             return $"shirobot-host-{runtime}-{publishKind}.zip";
         }
     }
 
-    public static async Task<HostUpdateCheck> CheckAsync(string repository, CancellationToken cancellationToken = default)
+    [UnconditionalSuppressMessage("SingleFile", "IL3000",
+        Justification = "Assembly.Location being empty is the intended runtime check for a bundled single-file host.")]
+    private static bool IsSingleFile => string.IsNullOrEmpty(typeof(HostSelfUpdater).Assembly.Location);
+
+    private static string? UpdateDirectory =>
+        Environment.GetEnvironmentVariable(UpdateDirectoryVariable) is { Length: > 0 } directory ? directory : null;
+
+    public static async Task<HostUpdateCheck> CheckAsync(string repository,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repository))
-            return new HostUpdateCheck(CurrentVersion, null, false, CurrentAssetName, null, null, null, false, "未配置主程序更新仓库 host_update_repository。");
+            return new HostUpdateCheck(CurrentVersion, null, false, CurrentAssetName, null, null, null, false,
+                "未配置主程序更新仓库 host_update_repository。");
 
-        var update = await Updater.CheckGitHubReleaseAssetAsync(repository, CurrentVersion, CurrentAssetName, cancellationToken: cancellationToken)
+        var update = await Updater.CheckGitHubReleaseAssetAsync(repository, CurrentVersion, CurrentAssetName,
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         if (update is null)
-            return new HostUpdateCheck(CurrentVersion, CurrentVersion, false, CurrentAssetName, null, null, null, false, null);
+            return new HostUpdateCheck(CurrentVersion, CurrentVersion, false, CurrentAssetName, null, null, null, false,
+                null);
 
         var reason = BlockedReason() ??
-                     (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) ? $"新版本没有当前运行形态对应的安装包 {CurrentAssetName}。" : null);
+                     (string.IsNullOrWhiteSpace(update.AssetDownloadUrl)
+                         ? $"新版本没有当前运行形态对应的安装包 {CurrentAssetName}。"
+                         : null);
         return new HostUpdateCheck(
             update.CurrentVersion,
             update.LatestVersion,
@@ -76,23 +92,19 @@ internal static class HostSelfUpdater
             reason);
     }
 
-    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000",
-        Justification = "Assembly.Location being empty is the intended runtime check for a bundled single-file host.")]
-    private static bool IsSingleFile => string.IsNullOrEmpty(typeof(HostSelfUpdater).Assembly.Location);
-
-    private static string? UpdateDirectory =>
-        Environment.GetEnvironmentVariable(UpdateDirectoryVariable) is { Length: > 0 } directory ? directory : null;
-
     /// <summary>Why this host cannot replace itself, or null when it can.</summary>
-    public static string? BlockedReason() => HostEnvironmentInfo.RunMode == "docker" && UpdateDirectory is null
-        ? "当前镜像不支持在面板中更新主程序，请更新镜像：docker compose pull && docker compose up -d。"
-        : !IsSingleFile
-            ? "当前不是单文件发布版本，请使用 Release 发布包后再进行自更新。"
-        : string.IsNullOrWhiteSpace(Environment.ProcessPath)
-            ? "无法确定当前主程序的文件路径。"
-            : null;
+    public static string? BlockedReason()
+    {
+        return HostEnvironmentInfo.RunMode == "docker" && UpdateDirectory is null
+            ? "当前镜像不支持在面板中更新主程序，请更新镜像：docker compose pull && docker compose up -d。"
+            : !IsSingleFile
+                ? "当前不是单文件发布版本，请使用 Release 发布包后再进行自更新。"
+                : string.IsNullOrWhiteSpace(Environment.ProcessPath)
+                    ? "无法确定当前主程序的文件路径。"
+                    : null;
+    }
 
-    /// <summary>Downloads and installs <paramref name="assetDownloadUrl"/>, then restarts the host.</summary>
+    /// <summary>Downloads and installs <paramref name="assetDownloadUrl" />, then restarts the host.</summary>
     public static async Task<HostPowerResult> ApplyAsync(
         string assetDownloadUrl,
         HostPowerControl powerControl,
@@ -108,10 +120,14 @@ internal static class HostSelfUpdater
             if (!result.Ok) BotLog.Error(result.Message);
             return result;
         }
-        finally { ApplyGate.Release(); }
+        finally
+        {
+            ApplyGate.Release();
+        }
     }
 
-    private static async Task<HostPowerResult> ApplyCoreAsync(string assetDownloadUrl, HostPowerControl powerControl, CancellationToken cancellationToken)
+    private static async Task<HostPowerResult> ApplyCoreAsync(string assetDownloadUrl, HostPowerControl powerControl,
+        CancellationToken cancellationToken)
     {
         var processPath = Path.GetFullPath(Environment.ProcessPath!);
         // The image's /app is discarded with the container, so Docker installs onto the data volume.
@@ -127,31 +143,39 @@ internal static class HostSelfUpdater
             var packagePath = Path.Combine(workRoot, "package.zip");
             await Updater.DownloadFileAsync(assetDownloadUrl, packagePath, cancellationToken).ConfigureAwait(false);
             var extractRoot = Path.Combine(workRoot, "extract");
-            ZipFile.ExtractToDirectory(packagePath, extractRoot, overwriteFiles: true);
+            await ZipFile.ExtractToDirectoryAsync(packagePath, extractRoot, true, cancellationToken)
+                .ConfigureAwait(false);
             var replacement = FindReplacementExecutable(extractRoot);
 
             if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(replacement, File.GetUnixFileMode(replacement) | UnixFileMode.UserRead | UnixFileMode.UserExecute);
+                File.SetUnixFileMode(replacement,
+                    File.GetUnixFileMode(replacement) | UnixFileMode.UserRead | UnixFileMode.UserExecute);
             // Only a version that starts on this runtime may replace the working one.
             if (await SelfCheckAsync(replacement, cancellationToken).ConfigureAwait(false) is { } failure)
-            {
                 return new HostPowerResult(false, HostEnvironmentInfo.RunMode == "docker"
-                    ? "新版本无法在当前镜像中运行，可能需要新的 .NET 运行时或系统依赖，请更新镜像：docker compose pull && docker compose up -d。（" + failure + "）"
+                    ? "新版本无法在当前镜像中运行，可能需要新的 .NET 运行时或系统依赖，请更新镜像：docker compose pull && docker compose up -d。（" +
+                      failure + "）"
                     : "新版本无法在当前环境中运行，可能需要安装新的 .NET 运行时。（" + failure + "）");
-            }
 
             cancellationToken.ThrowIfCancellationRequested();
             if (powerControl.IsRequested) return HostPowerResult.Busy;
             InstallExecutable(replacement, targetPath);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or HttpRequestException or InvalidDataException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                                       or HttpRequestException or InvalidDataException)
         {
             return new HostPowerResult(false, "主程序更新失败: " + ex.Message);
         }
         finally
         {
-            try { Directory.Delete(workRoot, recursive: true); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            try
+            {
+                Directory.Delete(workRoot, true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
             StartupTempCleanup.DeleteEmpty(Path.GetDirectoryName(workRoot)!);
             StartupTempCleanup.DeleteEmpty(Path.Combine(directory, ".tmp"));
         }
@@ -167,12 +191,12 @@ internal static class HostSelfUpdater
         // Release packages use the canonical name; the installed executable may have been renamed.
         var name = OperatingSystem.IsWindows() ? "ShiroBot.exe" : "ShiroBot";
         return Directory.EnumerateFiles(extractRoot, name, SearchOption.AllDirectories)
-            .OrderBy(path => path.Count(ch => ch == Path.DirectorySeparatorChar))
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException($"更新包中没有主程序文件 {name}。");
+                   .OrderBy(path => path.Count(ch => ch == Path.DirectorySeparatorChar))
+                   .FirstOrDefault()
+               ?? throw new InvalidOperationException($"更新包中没有主程序文件 {name}。");
     }
 
-    /// <summary>Runs <paramref name="executable"/> with <c>--self-check</c>; returns why it failed, or null.</summary>
+    /// <summary>Runs <paramref name="executable" /> with <c>--self-check</c>; returns why it failed, or null.</summary>
     internal static async Task<string?> SelfCheckAsync(string executable, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo(executable)
@@ -183,9 +207,13 @@ internal static class HostSelfUpdater
         };
         startInfo.ArgumentList.Add(SelfCheckArgument);
         startInfo.Environment.Remove(HostPowerControl.WaitForPidVariable);
-        using var process = new Process { StartInfo = startInfo };
-        try { process.Start(); }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException)
+        using var process = new Process();
+        process.StartInfo = startInfo;
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex) when (ex is Win32Exception or IOException)
         {
             return "无法启动: " + ex.Message;
         }
@@ -200,8 +228,14 @@ internal static class HostSelfUpdater
         }
         catch (OperationCanceledException)
         {
-            try { process.Kill(entireProcessTree: true); }
-            catch (InvalidOperationException) { }
+            try
+            {
+                process.Kill(true);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             return "自检超时";
         }
@@ -225,7 +259,9 @@ internal static class HostSelfUpdater
         Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
         File.Move(replacement, targetPath);
         if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(targetPath, File.GetUnixFileMode(targetPath) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+            File.SetUnixFileMode(targetPath,
+                File.GetUnixFileMode(targetPath) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherExecute);
     }
 
     internal static void ReplaceExecutable(string replacement, string processPath)
@@ -241,7 +277,7 @@ internal static class HostSelfUpdater
         }
         catch
         {
-            File.Move(previousPath, processPath, overwrite: true);
+            File.Move(previousPath, processPath, true);
             throw;
         }
     }
@@ -252,12 +288,19 @@ internal static class HostSelfUpdater
         if (!IsSingleFile) return;
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(processPath)) return;
-        try { File.Delete(processPath + PreviousSuffix); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        try
+        {
+            File.Delete(processPath + PreviousSuffix);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
-    private static string? GetMetadata(Assembly? assembly, string key) =>
-        assembly?.GetCustomAttributes<AssemblyMetadataAttribute>()
+    private static string? GetMetadata(Assembly? assembly, string key)
+    {
+        return assembly?.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.OrdinalIgnoreCase))
             ?.Value;
+    }
 }

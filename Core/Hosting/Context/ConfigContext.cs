@@ -1,24 +1,27 @@
-using ShiroBot.Configuration;
-using ShiroBot.Adapters;
-using ShiroBot.Terminal;
-using ShiroBot.SDK.Config;
 using System.Reflection;
+using System.Text.Json;
+using ShiroBot.Adapters;
+using ShiroBot.Configuration;
+using ShiroBot.SDK.Config;
+using ShiroBot.Terminal;
+
 namespace ShiroBot.Hosting.Context;
 
 internal sealed class ConfigContext : IConfigContext
 {
     private static readonly MethodInfo LoadUntypedMethod = typeof(ConfigContext)
         .GetMethod(nameof(LoadUntypedGeneric), BindingFlags.Static | BindingFlags.NonPublic)!;
+
     private static readonly MethodInfo WatchUntypedMethod = typeof(ConfigContext)
         .GetMethod(nameof(WatchUntypedGeneric), BindingFlags.Static | BindingFlags.NonPublic)!;
+
     private readonly ConfigManager _configManager = new();
     private readonly string _displayName;
     private readonly string? _instanceId;
     private readonly PluginContext? _pluginOwner;
 
-    public string ConfigPath { get; }
-
-    private ConfigContext(string configPath, string displayName, PluginContext? pluginOwner = null, string? instanceId = null)
+    private ConfigContext(string configPath, string displayName, PluginContext? pluginOwner = null,
+        string? instanceId = null)
     {
         ConfigPath = Path.GetFullPath(configPath);
         _displayName = displayName;
@@ -26,64 +29,14 @@ internal sealed class ConfigContext : IConfigContext
         _instanceId = instanceId;
     }
 
-    private sealed class NullConfigContext : IConfigContext
-    {
-        public string ConfigPath => string.Empty;
-        public T Load<T>() where T : class, new() => new();
-        public void Save<T>(T config) where T : class { }
-        public void SetValue(string keyPath, object? value) { }
-
-        public IDisposable Watch<T>(Action<T> onChanged, int debounceMs = 500) where T : class, new()
-        {
-            // 没有真实配置文件，监听变成空操作。
-            return new EmptySubscription();
-        }
-
-        private sealed class EmptySubscription : IDisposable
-        {
-            public void Dispose() { }
-        }
-    }
-
-    public static IConfigContext NullConfig()
-    {
-        return new NullConfigContext();
-    }
-
-    public static IConfigContext ForCore(string coreConfigPath)
-    {
-        return new ConfigContext(coreConfigPath, "核心");
-    }
-
-    public static IConfigContext ForAdapter(string adapterConfigPath, string? instanceId = null)
-    {
-        return new ConfigContext(adapterConfigPath, "适配器", instanceId: AdapterInstanceStore.IsDeclared(adapterConfigPath) ? instanceId : null);
-    }
-
-    public static IConfigContext ForPlugin(string pluginConfigPath, PluginContext pluginOwner)
-    {
-        return new ConfigContext(pluginConfigPath, "插件", pluginOwner);
-    }
-
-    internal static object LoadUntyped(IConfigContext context, Type configType) =>
-        LoadUntypedMethod.MakeGenericMethod(configType).Invoke(null, [context])
-        ?? throw new InvalidOperationException($"无法加载配置类型: {configType.FullName}");
-
-    internal static IDisposable WatchUntyped(IConfigContext context, Type configType, Action<object> onChanged) =>
-        (IDisposable)(WatchUntypedMethod.MakeGenericMethod(configType).Invoke(null, [context, onChanged])
-        ?? throw new InvalidOperationException($"无法监听配置类型: {configType.FullName}"));
-
-    private static object LoadUntypedGeneric<T>(IConfigContext context) where T : class, new() => context.Load<T>();
-
-    private static IDisposable WatchUntypedGeneric<T>(IConfigContext context, Action<object> onChanged)
-        where T : class, new() => context.Watch<T>(value => onChanged(value));
+    public string ConfigPath { get; }
 
     public T Load<T>() where T : class, new()
     {
         TraceConfig("load begin", typeof(T));
         var result = _instanceId is not null
             ? AdapterInstanceStore.Load<T>(ConfigPath, _instanceId)
-            : _configManager.LoadConfig<T>(ConfigPath, _displayName) ?? new();
+            : _configManager.LoadConfig<T>(ConfigPath, _displayName) ?? new T();
         TraceConfig("load completed", typeof(T));
         return result;
     }
@@ -96,15 +49,11 @@ internal sealed class ConfigContext : IConfigContext
         TraceConfig("save completed", typeof(T));
     }
 
-    private void TraceConfig(string stage, Type configType)
-    {
-        if (string.Equals(Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS"), "true", StringComparison.OrdinalIgnoreCase))
-            Console.WriteLine($"Config probe [{_instanceId ?? _displayName}]: {stage}: {configType.FullName}");
-    }
-
     public void SetValue(string keyPath, object? value)
     {
-        if (_instanceId is not null) AdapterInstanceStore.Patch(ConfigPath, _instanceId, path => _configManager.SetConfigValue(path, keyPath, value));
+        if (_instanceId is not null)
+            AdapterInstanceStore.Patch(ConfigPath, _instanceId,
+                path => _configManager.SetConfigValue(path, keyPath, value));
         else _configManager.SetConfigValue(ConfigPath, keyPath, value);
     }
 
@@ -117,22 +66,23 @@ internal sealed class ConfigContext : IConfigContext
         Directory.CreateDirectory(directory);
 
         var effectiveDebounce = Math.Max(50, debounceMs);
-        var lastInstanceConfig = _instanceId is null ? null : System.Text.Json.JsonSerializer.Serialize(AdapterInstanceStore.GetConfig(ConfigPath, _instanceId));
+        var lastInstanceConfig = _instanceId is null
+            ? null
+            : JsonSerializer.Serialize(AdapterInstanceStore.GetConfig(ConfigPath, _instanceId));
 
         var watcher = new FileSystemWatcher(directory, Path.GetFileName(ConfigPath))
         {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime | NotifyFilters.Size
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime |
+                           NotifyFilters.Size
         };
 
         // 防抖 timer + 重入互斥，避免编辑器原子写盘触发的多次 Changed 重叠 reload。
         var reloadGate = new SemaphoreSlim(1, 1);
-        ConfigWatchSubscription? subscription = null;
-        Timer? timer = null;
-        // ReSharper disable once AccessToModifiedClosure
-        timer = new Timer(state => _ = ReloadAsync(), null, Timeout.Infinite, Timeout.Infinite);
+        var subscription = new ConfigWatchSubscription(watcher, reloadGate, ReloadAsync,
+            _pluginOwner is null ? null : _pluginOwner.UnregisterConfigWatch);
 
-        FileSystemEventHandler scheduleReload = (_, _) => subscription!.Schedule(effectiveDebounce);
-        RenamedEventHandler renamedHandler = (_, _) => subscription!.Schedule(effectiveDebounce);
+        FileSystemEventHandler scheduleReload = (_, _) => subscription.Schedule(effectiveDebounce);
+        RenamedEventHandler renamedHandler = (_, _) => subscription.Schedule(effectiveDebounce);
         ErrorEventHandler errorHandler = (_, args) =>
             ConsoleOutput.Warning($"{_displayName}配置热重载监听异常: {ConfigPath} - {args.GetException().Message}");
 
@@ -141,60 +91,42 @@ internal sealed class ConfigContext : IConfigContext
         watcher.Renamed += renamedHandler;
         watcher.Error += errorHandler;
 
-        subscription = new ConfigWatchSubscription(
-            watcher,
-            timer,
-            reloadGate,
-            () =>
-            {
-                watcher.Changed -= scheduleReload;
-                watcher.Created -= scheduleReload;
-                watcher.Renamed -= renamedHandler;
-                watcher.Error -= errorHandler;
-            },
-            _pluginOwner is null ? null : _pluginOwner.UnregisterConfigWatch);
+        subscription.SetUnsubscribe(() =>
+        {
+            watcher.Changed -= scheduleReload;
+            watcher.Created -= scheduleReload;
+            watcher.Renamed -= renamedHandler;
+            watcher.Error -= errorHandler;
+        });
 
         if (_pluginOwner is not null)
-        {
             _pluginOwner.RegisterConfigWatch(subscription);
-        }
         else
-        {
             subscription.Start();
-        }
 
         return subscription;
 
-        async Task ReloadAsync()
+        async Task ReloadAsync(ConfigWatchSubscription currentSubscription)
         {
-            if (subscription?.IsDisposed != false)
-            {
-                return;
-            }
+            if (currentSubscription.IsDisposed) return;
 
             if (!await reloadGate.WaitAsync(0).ConfigureAwait(false))
             {
                 // 已经有一次 reload 在跑，让它处理新的版本即可。
-                subscription.Schedule(effectiveDebounce);
+                currentSubscription.Schedule(effectiveDebounce);
                 return;
             }
 
             try
             {
-                if (subscription.IsDisposed)
-                {
-                    return;
-                }
+                if (currentSubscription.IsDisposed) return;
 
                 // 编辑器写盘瞬间文件可能为 0 字节或被独占，最多重试 5 次共 ~250ms。
                 T? loaded = null;
                 Exception? lastError = null;
                 for (var attempt = 0; attempt < 5; attempt++)
                 {
-                    if (subscription.IsDisposed)
-                    {
-                        return;
-                    }
+                    if (currentSubscription.IsDisposed) return;
 
                     try
                     {
@@ -215,10 +147,7 @@ internal sealed class ConfigContext : IConfigContext
                     await Task.Delay(50).ConfigureAwait(false);
                 }
 
-                if (subscription.IsDisposed)
-                {
-                    return;
-                }
+                if (currentSubscription.IsDisposed) return;
 
                 if (lastError is not null)
                 {
@@ -226,26 +155,21 @@ internal sealed class ConfigContext : IConfigContext
                     return;
                 }
 
-                if (loaded is null)
-                {
-                    return;
-                }
+                if (loaded is null) return;
 
                 if (_instanceId is not null)
                 {
-                    var currentConfig = System.Text.Json.JsonSerializer.Serialize(AdapterInstanceStore.GetConfig(ConfigPath, _instanceId));
+                    var currentConfig =
+                        JsonSerializer.Serialize(AdapterInstanceStore.GetConfig(ConfigPath, _instanceId));
                     if (currentConfig == lastInstanceConfig) return;
                     lastInstanceConfig = currentConfig;
                 }
 
                 try
                 {
-                    if (subscription.IsDisposed)
-                    {
-                        return;
-                    }
+                    if (currentSubscription.IsDisposed) return;
 
-                    subscription.Invoke(onChanged, loaded);
+                    currentSubscription.Invoke(onChanged, loaded);
                 }
                 catch (Exception ex)
                 {
@@ -255,6 +179,88 @@ internal sealed class ConfigContext : IConfigContext
             finally
             {
                 reloadGate.Release();
+            }
+        }
+    }
+
+    public static IConfigContext NullConfig()
+    {
+        return new NullConfigContext();
+    }
+
+    public static IConfigContext ForCore(string coreConfigPath)
+    {
+        return new ConfigContext(coreConfigPath, "核心");
+    }
+
+    public static IConfigContext ForAdapter(string adapterConfigPath, string? instanceId = null)
+    {
+        return new ConfigContext(adapterConfigPath, "适配器",
+            instanceId: AdapterInstanceStore.IsDeclared(adapterConfigPath) ? instanceId : null);
+    }
+
+    public static IConfigContext ForPlugin(string pluginConfigPath, PluginContext pluginOwner)
+    {
+        return new ConfigContext(pluginConfigPath, "插件", pluginOwner);
+    }
+
+    internal static object LoadUntyped(IConfigContext context, Type configType)
+    {
+        return LoadUntypedMethod.MakeGenericMethod(configType).Invoke(null, [context])
+               ?? throw new InvalidOperationException($"无法加载配置类型: {configType.FullName}");
+    }
+
+    internal static IDisposable WatchUntyped(IConfigContext context, Type configType, Action<object> onChanged)
+    {
+        return (IDisposable)(WatchUntypedMethod.MakeGenericMethod(configType).Invoke(null, [context, onChanged])
+                             ?? throw new InvalidOperationException($"无法监听配置类型: {configType.FullName}"));
+    }
+
+    private static object LoadUntypedGeneric<T>(IConfigContext context) where T : class, new()
+    {
+        return context.Load<T>();
+    }
+
+    private static IDisposable WatchUntypedGeneric<T>(IConfigContext context, Action<object> onChanged)
+        where T : class, new()
+    {
+        return context.Watch<T>(onChanged);
+    }
+
+    private void TraceConfig(string stage, Type configType)
+    {
+        if (string.Equals(Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS"), "true",
+                StringComparison.OrdinalIgnoreCase))
+            Console.WriteLine($"Config probe [{_instanceId ?? _displayName}]: {stage}: {configType.FullName}");
+    }
+
+    private sealed class NullConfigContext : IConfigContext
+    {
+        public string ConfigPath => string.Empty;
+
+        public T Load<T>() where T : class, new()
+        {
+            return new T();
+        }
+
+        public void Save<T>(T config) where T : class
+        {
+        }
+
+        public void SetValue(string keyPath, object? value)
+        {
+        }
+
+        public IDisposable Watch<T>(Action<T> onChanged, int debounceMs = 500) where T : class, new()
+        {
+            // 没有真实配置文件，监听变成空操作。
+            return new EmptySubscription();
+        }
+
+        private sealed class EmptySubscription : IDisposable
+        {
+            public void Dispose()
+            {
             }
         }
     }

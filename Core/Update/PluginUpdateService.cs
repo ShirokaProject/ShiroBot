@@ -4,8 +4,6 @@ using ShiroBot.Components.Updates;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Update;
 
@@ -16,14 +14,14 @@ internal static class PluginUpdateService
     private const long MaxPluginUploadBytes = 100L * 1024L * 1024L;
     private const long MaxPluginExtractedBytes = 500L * 1024L * 1024L;
     private const int MaxPluginArchiveEntries = 4096;
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> OperationLocks = new(StringComparer.OrdinalIgnoreCase);
 
-    internal sealed record InstalledPluginInfo(string AssemblyPath, string Version);
-    internal sealed record PluginUploadPackage(string RootPath, string EntryAssemblyPath, string Type, PluginProbeInfo Info);
-    internal sealed record PluginUpdateResult(bool PendingRestart, string Message, string? Reason = null);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> OperationLocks =
+        new(StringComparer.OrdinalIgnoreCase);
 
-    internal static SemaphoreSlim GetOperationLock(string id) =>
-        OperationLocks.GetOrAdd(id.Trim(), _ => new SemaphoreSlim(1, 1));
+    internal static SemaphoreSlim GetOperationLock(string id)
+    {
+        return OperationLocks.GetOrAdd(id.Trim(), _ => new SemaphoreSlim(1, 1));
+    }
 
     /// <summary>Updates an installed plugin from a release asset; the package must be the same plugin.</summary>
     internal static Task<PluginUpdateResult> ApplyAsync(
@@ -31,17 +29,25 @@ internal static class PluginUpdateService
         string id, string assetUrl, string assetName, string latestVersion,
         CancellationToken cancellationToken = default)
     {
-        if (FindInstalledPath(pluginManager, id) is null) throw new InvalidOperationException($"未找到已安装插件: {id}");
-        return InstallFromAssetAsync(pluginManager, eventDispatcher, routePolicy, assetUrl, assetName, null, id, cancellationToken);
+        return FindInstalledPath(pluginManager, id) is null
+            ? throw new InvalidOperationException($"未找到已安装插件: {id}")
+            : InstallFromAssetAsync(pluginManager, eventDispatcher, routePolicy, assetUrl, assetName, null, id,
+                cancellationToken);
     }
 
     /// <summary>
-    /// Downloads a plugin package and installs it, replacing an installed copy of the same plugin, then loads it.
-    /// Shared by the console's market install, plugin updates and automatic updates. A replacement that cannot be
-    /// made while the old version runs is staged for the next restart.
+    ///     Downloads a plugin package and installs it, replacing an installed copy of the same plugin, then loads it.
+    ///     Shared by the console's market install, plugin updates and automatic updates. A replacement that cannot be
+    ///     made while the old version runs is staged for the next restart.
     /// </summary>
     /// <param name="sha256">Hex digest the download must match, as published by the plugin market.</param>
     /// <param name="expectedId">When set, a package for any other plugin is refused.</param>
+    /// <param name="pluginManager">Host plugin registry and loader.</param>
+    /// <param name="eventDispatcher">Dispatches events to the installed plugin.</param>
+    /// <param name="routePolicy">Message routing policy for the installed plugin.</param>
+    /// <param name="assetUrl">Download URL of the release asset.</param>
+    /// <param name="assetName">Release asset filename used to identify the package format.</param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
     internal static async Task<PluginUpdateResult> InstallFromAssetAsync(
         PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy,
         string assetUrl, string assetName, string? sha256, string? expectedId,
@@ -52,7 +58,8 @@ internal static class PluginUpdateService
         {
             Directory.CreateDirectory(uploadRoot);
             var packagePath = Path.Combine(uploadRoot, Path.GetFileName(assetName));
-            await Updater.DownloadFileAsync(assetUrl, packagePath, cancellationToken, MaxPluginUploadBytes, sha256).ConfigureAwait(false);
+            await Updater.DownloadFileAsync(assetUrl, packagePath, cancellationToken, MaxPluginUploadBytes, sha256)
+                .ConfigureAwait(false);
             var package = PreparePluginUploadPackage(pluginManager, packagePath);
             var id = package.Info.Id;
             if (expectedId is not null && !string.Equals(id, expectedId, StringComparison.OrdinalIgnoreCase))
@@ -72,10 +79,12 @@ internal static class PluginUpdateService
                 var version = package.Info.Version;
                 if (installedPath is not null)
                 {
-                    var replacement = await ReplaceInstalledPluginAsync(pluginManager, eventDispatcher, routePolicy, package,
+                    var replacement = await ReplaceInstalledPluginAsync(pluginManager, eventDispatcher, routePolicy,
+                        package,
                         new InstalledPluginInfo(installedPath, loaded?.Version ?? ""), loaded).ConfigureAwait(false);
                     if (replacement.PendingReason is not null)
-                        return new PluginUpdateResult(true, $"插件 {id} 当前版本无法热替换，{version} 已暂存，将在下次重启宿主时替换", replacement.PendingReason);
+                        return new PluginUpdateResult(true, $"插件 {id} 当前版本无法热替换，{version} 已暂存，将在下次重启宿主时替换",
+                            replacement.PendingReason);
                 }
                 else
                 {
@@ -83,9 +92,11 @@ internal static class PluginUpdateService
                 }
 
                 await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
-                if (pluginManager.GetLoadedPluginSnapshot().All(plugin => !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidOperationException($"插件 {id} 的包已安装，但加载失败，请检查宿主日志。");
-                return new PluginUpdateResult(false, installedPath is null ? $"插件 {id} {version} 已安装并加载" : $"插件 {id} 已更新到 {version}");
+                return pluginManager.GetLoadedPluginSnapshot().All(plugin =>
+                    !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))
+                    ? throw new InvalidOperationException($"插件 {id} 的包已安装，但加载失败，请检查宿主日志。")
+                    : new PluginUpdateResult(false,
+                        installedPath is null ? $"插件 {id} {version} 已安装并加载" : $"插件 {id} 已更新到 {version}");
             }
             finally
             {
@@ -98,15 +109,22 @@ internal static class PluginUpdateService
         }
     }
 
-    private static string? FindInstalledPath(PluginManager pluginManager, string id) =>
-        pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
-            string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))?.AssemblyPath
-        ?? pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).FirstOrDefault();
+    private static string? FindInstalledPath(PluginManager pluginManager, string id)
+    {
+        return pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
+                   string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))?.AssemblyPath
+               ?? pluginManager.ResolveFirstPluginLoadCandidate(id);
+    }
 
     private static void TryDeleteDirectory(string path)
     {
-        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     internal static PluginUploadPackage PreparePluginUploadPackage(PluginManager pluginManager, string packagePath)
@@ -121,9 +139,7 @@ internal static class PluginUpdateService
         }
 
         if (!extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
-        {
             throw new InvalidOperationException("只支持上传 .dll 或 .zip 插件。");
-        }
 
         var extractRoot = Path.Combine(Path.GetDirectoryName(packagePath)!, "extract");
         Directory.CreateDirectory(extractRoot);
@@ -138,25 +154,23 @@ internal static class PluginUpdateService
         {
             0 => throw new InvalidOperationException("压缩包中未找到有效插件 DLL。"),
             > 1 => throw new InvalidOperationException("压缩包中包含多个插件入口 DLL，请一次只上传一个插件。"),
-            _ => new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, pluginDlls[0].Path, "zip", pluginDlls[0].Info!)
+            _ => new PluginUploadPackage(Path.GetDirectoryName(packagePath)!, pluginDlls[0].Path, "zip",
+                pluginDlls[0].Info!)
         };
         var sourceRoot = GetZipInstallSourceRoot(package.RootPath, package.EntryAssemblyPath);
         var relativeEntry = Path.GetRelativePath(sourceRoot, package.EntryAssemblyPath);
-        if (relativeEntry.Contains(Path.DirectorySeparatorChar) || relativeEntry.Contains(Path.AltDirectorySeparatorChar))
-        {
+        if (relativeEntry.Contains(Path.DirectorySeparatorChar) ||
+            relativeEntry.Contains(Path.AltDirectorySeparatorChar))
             throw new InvalidOperationException("压缩包的插件入口 DLL 必须位于包根目录或唯一的顶层文件夹中。");
-        }
 
         pluginManager.ValidateInstallCompatibility(package.EntryAssemblyPath);
         return package;
     }
 
-    internal sealed record PluginReplacement(string? EntryPath, string? PendingReason);
-
     /// <summary>
-    /// Replaces an installed plugin in place: only the package's files change, so the plugin's data and
-    /// config.toml stay. The package is staged first; when the running version cannot be unloaded or its
-    /// files are locked, the staged package waits for the next start and the current version keeps running.
+    ///     Replaces an installed plugin in place: only the package's files change, so the plugin's data and
+    ///     config.toml stay. The package is staged first; when the running version cannot be unloaded or its
+    ///     files are locked, the staged package waits for the next start and the current version keeps running.
     /// </summary>
     internal static async Task<PluginReplacement> ReplaceInstalledPluginAsync(
         PluginManager pluginManager,
@@ -173,7 +187,8 @@ internal static class PluginUpdateService
             throw new InvalidOperationException($"插件 {id} 已登记删除任务，请先重启宿主完成删除，再重新安装。");
         var rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var installedPath = Path.GetFullPath(installed.AssemblyPath);
-        var installedDirectory = Path.GetDirectoryName(installedPath)!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var installedDirectory =
+            Path.GetDirectoryName(installedPath)!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var isRootLevelFile = string.Equals(installedDirectory, rootFull, StringComparison.OrdinalIgnoreCase);
         // A plugin keeps its folder; a legacy DLL directly in the root moves into one named after its id.
         var targetDirectory = isRootLevelFile ? GetPluginInstallDirectory(root, id) : installedDirectory;
@@ -187,9 +202,7 @@ internal static class PluginUpdateService
 
         if (loaded is not null &&
             !await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, loaded.Name).ConfigureAwait(false))
-        {
             return await KeepCurrentAsync("当前版本无法卸载（被其他插件依赖，或 OnUnload 执行失败）").ConfigureAwait(false);
-        }
 
         try
         {
@@ -197,7 +210,7 @@ internal static class PluginUpdateService
             {
                 // Remove the old root-level file first, so a failure leaves nothing half-moved.
                 pluginManager.SuppressWatcherPath(installedPath);
-                File.Move(installedPath, installedPath + ".shirobot-old", overwrite: true);
+                File.Move(installedPath, installedPath + ".shirobot-old", true);
             }
 
             pluginManager.SuppressWatcherPath(targetDirectory);
@@ -214,31 +227,44 @@ internal static class PluginUpdateService
 
         // A disabled install is a renamed copy of the entry DLL, not one of the package's files.
         if (!isRootLevelFile && installedPath.EndsWith(DisabledPluginSuffix, StringComparison.OrdinalIgnoreCase))
+            try
+            {
+                File.Delete(installedPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
+        if (!isRootLevelFile)
         {
-            try { File.Delete(installedPath); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            return new PluginReplacement(entryPath, null);
         }
 
-        if (isRootLevelFile)
+        try
         {
-            try { File.Delete(installedPath + ".shirobot-old"); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            File.Delete(installedPath + ".shirobot-old");
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
         return new PluginReplacement(entryPath, null);
 
         async Task<PluginReplacement> KeepCurrentAsync(string reason)
         {
-            if (loaded is not null && pluginManager.GetLoadedPluginSnapshot().All(plugin => !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase)))
-            {
+            if (loaded is not null && pluginManager.GetLoadedPluginSnapshot().All(plugin =>
+                    !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase)))
                 await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
-            }
 
             return new PluginReplacement(null, reason);
         }
     }
 
     /// <param name="targetRootOverride">Install somewhere else than the plugin's directory, e.g. a staging folder.</param>
-    internal static string InstallUploadedPlugin(PluginManager pluginManager, PluginUploadPackage package, string? targetRootOverride = null)
+    /// <param name="pluginManager">Host plugin registry and loader.</param>
+    /// <param name="package">Prepared plugin package to install.</param>
+    internal static string InstallUploadedPlugin(PluginManager pluginManager, PluginUploadPackage package,
+        string? targetRootOverride = null)
     {
         pluginManager.ValidateInstallCompatibility(package.EntryAssemblyPath);
         var pluginRootPath = pluginManager.PluginRootPath;
@@ -252,8 +278,9 @@ internal static class PluginUpdateService
             // The caller loads the plugin itself; without this the file watcher
             // would queue a second, redundant load for the same assembly.
             pluginManager.SuppressWatcherPath(targetPath);
-            File.Copy(package.EntryAssemblyPath, targetPath, overwrite: true);
-            File.WriteAllLines(Path.Combine(targetRoot, StagedComponentUpdates.PackageFilesName), [Path.GetFileName(targetPath)]);
+            File.Copy(package.EntryAssemblyPath, targetPath, true);
+            File.WriteAllLines(Path.Combine(targetRoot, StagedComponentUpdates.PackageFilesName),
+                [Path.GetFileName(targetPath)]);
             pluginManager.SuppressWatcherPath(targetPath);
             pluginManager.SuppressWatcherPath(targetRoot);
             return targetPath;
@@ -271,9 +298,7 @@ internal static class PluginUpdateService
         if (string.IsNullOrWhiteSpace(pluginId) || pluginId is "." or ".." ||
             pluginId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
             pluginId.Contains(Path.DirectorySeparatorChar) || pluginId.Contains(Path.AltDirectorySeparatorChar))
-        {
             throw new InvalidOperationException("插件 ID 不能用于安装目录名。");
-        }
 
         return Path.Combine(pluginRootPath, pluginId);
     }
@@ -296,28 +321,24 @@ internal static class PluginUpdateService
 
     private static void ExtractZipSafely(string zipPath, string destinationRoot)
     {
-        var normalizedDestination = Path.GetFullPath(destinationRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedDestination = Path.GetFullPath(destinationRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         using var archive = ZipFile.OpenRead(zipPath);
         if (archive.Entries.Count > MaxPluginArchiveEntries)
-        {
             throw new InvalidOperationException($"压缩包文件数量超过限制: {archive.Entries.Count} > {MaxPluginArchiveEntries}");
-        }
 
         long totalUncompressedBytes = 0;
         foreach (var entry in archive.Entries)
         {
             if (entry.Length > MaxPluginExtractedBytes - totalUncompressedBytes)
-            {
                 throw new InvalidOperationException($"压缩包解压后大小超过限制: {MaxPluginExtractedBytes}");
-            }
             totalUncompressedBytes += entry.Length;
 
             var destinationPath = Path.GetFullPath(Path.Combine(normalizedDestination, entry.FullName));
-            if (!destinationPath.StartsWith(normalizedDestination + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+            if (!destinationPath.StartsWith(normalizedDestination + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(destinationPath, normalizedDestination, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("压缩包包含非法路径。" );
-            }
+                throw new InvalidOperationException("压缩包包含非法路径。");
 
             if (string.IsNullOrEmpty(entry.Name))
             {
@@ -326,8 +347,19 @@ internal static class PluginUpdateService
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
-            entry.ExtractToFile(destinationPath, overwrite: true);
+            entry.ExtractToFile(destinationPath, true);
         }
     }
 
+    internal sealed record InstalledPluginInfo(string AssemblyPath, string Version);
+
+    internal sealed record PluginUploadPackage(
+        string RootPath,
+        string EntryAssemblyPath,
+        string Type,
+        PluginProbeInfo Info);
+
+    internal sealed record PluginUpdateResult(bool PendingRestart, string Message, string? Reason = null);
+
+    internal sealed record PluginReplacement(string? EntryPath, string? PendingReason);
 }

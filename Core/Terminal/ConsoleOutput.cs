@@ -1,11 +1,23 @@
-using System.Text;
+using System.Globalization;
 using System.Runtime.Versioning;
+using System.Text;
+using Spectre.Console.Rendering;
 
 namespace ShiroBot.Terminal;
 
 public static class ConsoleOutput
 {
-    public sealed record ConsoleCommandOption(string Name, string Description);
+    private const int MenuRows = 8;
+    private const int ScreenRowLimit = 500;
+
+    /// <summary>The terminal's own foreground (black on light themes, white on dark), unlike any fixed ConsoleColor.</summary>
+    private const ConsoleColor DefaultColor = (ConsoleColor)(-1);
+
+    /// <summary>
+    ///     The highlight of the selected completion and of notice titles: magenta, which no log level uses
+    ///     (logs are grey, cyan, green, yellow and red), so the menu never blends into the log around it.
+    /// </summary>
+    private const ConsoleColor AccentColor = ConsoleColor.Magenta;
 
     private static readonly Lock OutputLock = new();
     private static readonly StringBuilder InputBuffer = new();
@@ -23,16 +35,34 @@ public static class ConsoleOutput
 
     // Completions matching the input, floating above the prompt as you type; Esc hides them until the input changes.
     private static List<MenuItem> _menu = [];
+    private static int _menuIndex;
+    private static bool _menuClosed;
+    private static readonly char Pointer = Console.OutputEncoding.CodePage == 65001 ? '❯' : '>';
+
+    private static PendingNotice? _notice;
 
     /// <summary>
-    /// One word that can come next: the menu offers a command line a word at a time (first "adapter", then after a
-    /// space "start", then the instance), not every full line at once.
+    ///     Rows the overlay (notice and completions) covers directly above the prompt row (<see cref="_inputTop" />).
+    ///     It is drawn over log rows rather than between them, so the prompt stays where it is.
     /// </summary>
-    private sealed record MenuItem(string Word, string Description, bool Continues);
+    private static int _overlayRows;
+
+    /// <summary>Whether the overlay sits below the prompt, used when there is no room above (a nearly empty screen).</summary>
+    private static bool _overlayBelow;
 
     /// <summary>
-    /// The words typed before the one being completed, and that partial word. A leading "/" (as in chat commands)
-    /// is set aside, so "/" alone lists every command and "/ad" completes like "ad".
+    ///     The rows written above the prompt, newest last, exactly as drawn (wrapped here, not by the terminal).
+    ///     Terminals cannot be read back, so this is what restores the log an overlay covered.
+    /// </summary>
+    private static readonly List<(string Text, ConsoleColor Color)> ScreenRows = [];
+
+    private static readonly char RuleChar = Console.OutputEncoding.CodePage == 20127 ? '-' : '─';
+
+    public static bool IsEnabled { get; set; } = true;
+
+    /// <summary>
+    ///     The words typed before the one being completed, and that partial word. A leading "/" (as in chat commands)
+    ///     is set aside, so "/" alone lists every command and "/ad" completes like "ad".
     /// </summary>
     private static (string[] Done, string Partial, bool Slash) SplitInputUnsafe()
     {
@@ -40,29 +70,40 @@ public static class ConsoleOutput
         var slash = input.StartsWith('/');
         if (slash) input = input[1..];
         var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return input.EndsWith(' ') || words.Length == 0 ? (words, string.Empty, slash) : (words[..^1], words[^1], slash);
+        return input.EndsWith(' ') || words.Length == 0
+            ? (words, string.Empty, slash)
+            : (words[..^1], words[^1], slash);
     }
-    private static int _menuIndex;
-    private static bool _menuClosed;
-    private const int MenuRows = 8;
-    private static readonly char Pointer = Console.OutputEncoding.CodePage == 65001 ? '❯' : '>';
 
-    public static bool IsEnabled { get; set; } = true;
+    public static void Log(string message)
+    {
+        WriteLine(message, ConsoleColor.Gray);
+    }
 
-    public static void Log(string message) => WriteLine(message, ConsoleColor.Gray);
+    public static void Info(string message)
+    {
+        WriteLine(message, ConsoleColor.Cyan);
+    }
 
-    public static void Info(string message) => WriteLine(message, ConsoleColor.Cyan);
+    public static void Success(string message)
+    {
+        WriteLine(message, ConsoleColor.Green);
+    }
 
-    public static void Success(string message) => WriteLine(message, ConsoleColor.Green);
+    public static void Warning(string message)
+    {
+        WriteLine(message, ConsoleColor.Yellow);
+    }
 
-    public static void Warning(string message) => WriteLine(message, ConsoleColor.Yellow);
-
-    public static void Error(string message) => WriteLine(message, ConsoleColor.Red);
+    public static void Error(string message)
+    {
+        WriteLine(message, ConsoleColor.Red);
+    }
 
     /// <summary>
-    /// A notice floating above the prompt, like a completion menu: it stays put while logs scroll past above it and
-    /// closes with Esc or the next command. For text the user should read rather than find in the log, such as an
-    /// action's details. Without an interactive prompt (redirected output) it is written as plain lines instead.
+    ///     A notice floating above the prompt, like a completion menu: it stays put while logs scroll past above it and
+    ///     closes with Esc or the next command. For text the user should read rather than find in the log, such as an
+    ///     action's details. Without an interactive prompt (redirected output) it is written as plain lines instead.
     /// </summary>
     public static void Notice(string title, string? summary, string details, bool error = false)
     {
@@ -79,7 +120,8 @@ public static class ConsoleOutput
             }
 
             // What the notice cannot fit goes to the log in full, so nothing is lost when it closes.
-            if (Wrap(details.TrimEnd(), NoticeWidth() - 2).Count > NoticeBodyRoom(string.IsNullOrWhiteSpace(summary) ? 2 : 3))
+            if (Wrap(details.TrimEnd(), NoticeWidth() - 2).Count >
+                NoticeBodyRoom(string.IsNullOrWhiteSpace(summary) ? 2 : 3))
                 WriteLine($"{title}:\n{details.TrimEnd()}", ConsoleColor.Gray);
 
             _notice = new PendingNotice(title, summary, details, error);
@@ -87,41 +129,12 @@ public static class ConsoleOutput
         }
     }
 
-    private sealed record PendingNotice(string Title, string? Summary, string Details, bool Error);
+    private static IEnumerable<(string Text, ConsoleColor Color)[]> BuildNoticeLinesUnsafe(PendingNotice notice)
+    {
+        return BuildNoticeTextUnsafe(notice).Select(line => new[] { line });
+    }
 
-    private static PendingNotice? _notice;
-
-    /// <summary>
-    /// Rows the overlay (notice and completions) covers directly above the prompt row (<see cref="_inputTop"/>).
-    /// It is drawn over log rows rather than between them, so the prompt stays where it is.
-    /// </summary>
-    private static int _overlayRows;
-
-    /// <summary>Whether the overlay sits below the prompt, used when there is no room above (a nearly empty screen).</summary>
-    private static bool _overlayBelow;
-
-    /// <summary>
-    /// The rows written above the prompt, newest last, exactly as drawn (wrapped here, not by the terminal).
-    /// Terminals cannot be read back, so this is what restores the log an overlay covered.
-    /// </summary>
-    private static readonly List<(string Text, ConsoleColor Color)> ScreenRows = [];
-    private const int ScreenRowLimit = 500;
-
-    /// <summary>The terminal's own foreground (black on light themes, white on dark), unlike any fixed ConsoleColor.</summary>
-    private const ConsoleColor DefaultColor = (ConsoleColor)(-1);
-
-    /// <summary>
-    /// The highlight of the selected completion and of notice titles: magenta, which no log level uses
-    /// (logs are grey, cyan, green, yellow and red), so the menu never blends into the log around it.
-    /// </summary>
-    private const ConsoleColor AccentColor = ConsoleColor.Magenta;
-
-    private static readonly char RuleChar = Console.OutputEncoding.CodePage == 20127 ? '-' : '─';
-
-    private static IEnumerable<(string Text, ConsoleColor Color)[]> BuildNoticeLinesUnsafe(PendingNotice notice) =>
-        BuildNoticeTextUnsafe(notice).Select(line => new[] { line });
-
-    private static IReadOnlyList<(string Text, ConsoleColor Color)> BuildNoticeTextUnsafe(PendingNotice notice)
+    private static List<(string Text, ConsoleColor Color)> BuildNoticeTextUnsafe(PendingNotice notice)
     {
         var width = NoticeWidth();
         var textWidth = width - 2;
@@ -129,7 +142,7 @@ public static class ConsoleOutput
         {
             // Rules above and below set it apart from the log, like a menu floating over it.
             (new string(RuleChar, width), ConsoleColor.DarkGray),
-            ("  " + Truncate(notice.Title, textWidth), notice.Error ? ConsoleColor.Red : AccentColor)
+            ("  " + Truncate(notice.Title, textWidth), notice.IsError ? ConsoleColor.Red : AccentColor)
         };
         if (!string.IsNullOrWhiteSpace(notice.Summary))
             lines.AddRange(Wrap(notice.Summary.Trim(), textWidth).Select(line => ("  " + line, ConsoleColor.Gray)));
@@ -143,7 +156,8 @@ public static class ConsoleOutput
             lines.Add(($"  … 还有 {body.Count - shown} 行，已写入日志", ConsoleColor.DarkGray));
 
         const string hint = " Esc 关闭 ";
-        lines.Add((new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2), ConsoleColor.DarkGray));
+        lines.Add((new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2),
+            ConsoleColor.DarkGray));
         return lines;
     }
 
@@ -174,7 +188,10 @@ public static class ConsoleOutput
     }
 
     // Leave the screen's lower half for the log; at least a few lines however small the window.
-    private static int NoticeBodyRoom(int headerLines) => Math.Clamp(SafeWindowHeight() / 2 - headerLines - 2, 3, 30);
+    private static int NoticeBodyRoom(int headerLines)
+    {
+        return Math.Clamp(SafeWindowHeight() / 2 - headerLines - 2, 3, 30);
+    }
 
     private static List<string> Wrap(string text, int width)
     {
@@ -183,7 +200,7 @@ public static class ConsoleOutput
         {
             var line = new StringBuilder();
             var used = 0;
-            var elements = System.Globalization.StringInfo.GetTextElementEnumerator(raw);
+            var elements = StringInfo.GetTextElementEnumerator(raw);
             while (elements.MoveNext())
             {
                 var ch = elements.GetTextElement();
@@ -212,7 +229,10 @@ public static class ConsoleOutput
     }
 
     // CJK and other wide characters take two columns; padding by string length would misalign them.
-    private static int CellWidth(string text) => new Spectre.Console.Rendering.Segment(text).CellCount();
+    private static int CellWidth(string text)
+    {
+        return new Segment(text).CellCount();
+    }
 
     private static int SafeWindowHeight()
     {
@@ -227,8 +247,8 @@ public static class ConsoleOutput
     }
 
     /// <summary>
-    /// Puts back the log rows the overlay covered, from <see cref="ScreenRows"/>; the <paramref name="keep"/> rows
-    /// nearest the prompt are left for a new overlay to overwrite, which avoids flicker.
+    ///     Puts back the log rows the overlay covered, from <see cref="ScreenRows" />; the <paramref name="keep" /> rows
+    ///     nearest the prompt are left for a new overlay to overwrite, which avoids flicker.
     /// </summary>
     private static void RestoreOverlayUnsafe(int keep = 0)
     {
@@ -242,8 +262,6 @@ public static class ConsoleOutput
 
         _overlayRows = 0;
     }
-
-    private enum OverlayPlace { Above, Below, PushDown }
 
     /// <summary>Above the prompt when the visible rows there fit it, else below when those fit, else push down.</summary>
     private static OverlayPlace PlaceOverlay(int rows)
@@ -267,8 +285,8 @@ public static class ConsoleOutput
     }
 
     /// <summary>
-    /// Draws the notice and completions over the rows above the prompt. Only when there are too few rows above
-    /// (an almost empty screen) does the prompt move, down by blank rows, once.
+    ///     Draws the notice and completions over the rows above the prompt. Only when there are too few rows above
+    ///     (an almost empty screen) does the prompt move, down by blank rows, once.
     /// </summary>
     private static void DrawOverlayUnsafe(List<(string Text, ConsoleColor Color)[]> lines, OverlayPlace place)
     {
@@ -309,7 +327,7 @@ public static class ConsoleOutput
         if (!below && lines.Count > 0) lines.Insert(0, []);
         // Keep a few log rows visible however tall the overlay would be.
         var limit = Math.Max(1, SafeWindowHeight() - 3);
-        return lines.Count > limit ? lines.Skip(lines.Count - limit).ToList() : lines;
+        return lines.Count > limit ? [.. lines.Skip(lines.Count - limit)] : lines;
     }
 
     /// <summary>Overwrites one row with the given segments, padded short of the last column so nothing wraps.</summary>
@@ -364,12 +382,16 @@ public static class ConsoleOutput
         var hidden = _menu.Count - shown.Length;
         var hint = hidden > 0 ? $" ↑↓ 选择 · 还有 {hidden} 项 · Enter/Tab 补全 " : " ↑↓ 选择 · Enter/Tab 补全 ";
         if (Pointer == '>') hint = hint.Replace("↑↓", "Up/Down");
-        yield return [(new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2), ConsoleColor.DarkGray)];
+        yield return
+        [
+            (new string(RuleChar, Math.Max(0, width - CellWidth(hint) - 2)) + hint + new string(RuleChar, 2),
+                ConsoleColor.DarkGray)
+        ];
     }
 
     /// <summary>
-    /// Replaces the word being typed with the selected one. Tab adds a space when more words can follow, to go on to
-    /// them; Enter does not, so a second Enter runs the command.
+    ///     Replaces the word being typed with the selected one. Tab adds a space when more words can follow, to go on to
+    ///     them; Enter does not, so a second Enter runs the command.
     /// </summary>
     private static void AcceptMenuSelectionUnsafe(bool addSpace = true)
     {
@@ -404,11 +426,9 @@ public static class ConsoleOutput
             Console.Clear();
             _overlayRows = 0;
             ScreenRows.Clear();
-            if (_isReadingInput)
-            {
-                _inputTop = Console.CursorTop;
-                RedrawInputUnsafe();
-            }
+            if (!_isReadingInput) return;
+            _inputTop = Console.CursorTop;
+            RedrawInputUnsafe();
         }
     }
 
@@ -442,14 +462,10 @@ public static class ConsoleOutput
             {
                 // Workaround for Linux/Mac: Console.ReadKey blocks stdout
                 if (!OperatingSystem.IsWindows())
-                {
                     while (!Console.KeyAvailable)
-                    {
                         Thread.Sleep(10);
-                    }
-                }
-                
-                key = Console.ReadKey(intercept: true);
+
+                key = Console.ReadKey(true);
             }
             catch
             {
@@ -468,19 +484,15 @@ public static class ConsoleOutput
 
             lock (OutputLock)
             {
+                // Non-command keys are handled as printable input by the default branch.
+                // ReSharper disable once SwitchStatementHandlesSomeKnownEnumValuesWithDefault
                 switch (key.Key)
                 {
                     case ConsoleKey.PageUp:
-                        if (OperatingSystem.IsWindows())
-                        {
-                            ScrollViewportUnsafe(-1);
-                        }
+                        if (OperatingSystem.IsWindows()) ScrollViewportUnsafe(-1);
                         break;
                     case ConsoleKey.PageDown:
-                        if (OperatingSystem.IsWindows())
-                        {
-                            ScrollViewportUnsafe(1);
-                        }
+                        if (OperatingSystem.IsWindows()) ScrollViewportUnsafe(1);
                         break;
                     case ConsoleKey.Escape:
                         if (_menu.Count > 0)
@@ -501,8 +513,9 @@ public static class ConsoleOutput
                         break;
                     // Enter takes the highlighted completion first; once the input is that command, it runs it.
                     case ConsoleKey.Enter when _menu.Count > 0 &&
-                        !string.Equals(_menu[_menuIndex].Word, SplitInputUnsafe().Partial, StringComparison.OrdinalIgnoreCase):
-                        AcceptMenuSelectionUnsafe(addSpace: false);
+                                               !string.Equals(_menu[_menuIndex].Word, SplitInputUnsafe().Partial,
+                                                   StringComparison.OrdinalIgnoreCase):
+                        AcceptMenuSelectionUnsafe(false);
                         break;
                     case ConsoleKey.Enter:
                     {
@@ -520,9 +533,7 @@ public static class ConsoleOutput
 
                         if (!string.IsNullOrWhiteSpace(result) &&
                             (History.Count == 0 || !string.Equals(History[^1], result, StringComparison.Ordinal)))
-                        {
                             History.Add(result);
-                        }
 
                         InputBuffer.Clear();
                         _cursorIndex = 0;
@@ -619,9 +630,7 @@ public static class ConsoleOutput
 
         if (!string.IsNullOrWhiteSpace(input) &&
             (History.Count == 0 || !string.Equals(History[^1], input, StringComparison.Ordinal)))
-        {
             History.Add(input);
-        }
 
         _historyIndex = History.Count;
         _historyDraft = string.Empty;
@@ -630,15 +639,9 @@ public static class ConsoleOutput
 
     private static void NavigateHistory(int direction)
     {
-        if (History.Count == 0)
-        {
-            return;
-        }
+        if (History.Count == 0) return;
 
-        if (_historyIndex == History.Count)
-        {
-            _historyDraft = InputBuffer.ToString();
-        }
+        if (_historyIndex == History.Count) _historyDraft = InputBuffer.ToString();
 
         _historyIndex = Math.Clamp(_historyIndex + direction, 0, History.Count);
         InputBuffer.Clear();
@@ -653,10 +656,7 @@ public static class ConsoleOutput
     private static void ApplyCompletion()
     {
         UpdateInlineCompletion();
-        if (string.IsNullOrEmpty(_inlineCompletionSuffix))
-        {
-            return;
-        }
+        if (string.IsNullOrEmpty(_inlineCompletionSuffix)) return;
 
         InputBuffer.Append(_inlineCompletionSuffix);
         _cursorIndex = InputBuffer.Length;
@@ -673,7 +673,8 @@ public static class ConsoleOutput
 
         var (done, partial, _) = SplitInputUnsafe();
         var options = (_completionOptions ?? [])
-            .Select(option => (Words: option.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries), option.Description))
+            .Select(option =>
+                (Words: option.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries), option.Description))
             .Where(option => option.Words.Length > done.Length &&
                              option.Words.Take(done.Length).SequenceEqual(done, StringComparer.OrdinalIgnoreCase) &&
                              option.Words[done.Length].StartsWith(partial, StringComparison.OrdinalIgnoreCase))
@@ -690,7 +691,8 @@ public static class ConsoleOutput
             .OrderBy(item => item.Word, StringComparer.OrdinalIgnoreCase)
             .ToList();
         // Nothing to suggest once the word is typed in full and nothing can follow it.
-        if (matches.Count == 0 || matches is [{ Continues: false } only] && only.Word.Length == partial.Length) return;
+        if (matches.Count == 0 ||
+            (matches is [{ Continues: false } only] && only.Word.Length == partial.Length)) return;
 
         _menuIndex = Math.Clamp(_menuIndex, 0, matches.Count - 1);
         if (!_menuClosed) _menu = matches;
@@ -700,10 +702,7 @@ public static class ConsoleOutput
 
     private static void WriteLine(string message, ConsoleColor color)
     {
-        if (!IsEnabled)
-        {
-            return;
-        }
+        if (!IsEnabled) return;
 
         lock (OutputLock)
         {
@@ -734,23 +733,18 @@ public static class ConsoleOutput
 
             Console.ForegroundColor = previous;
 
-            if (_isReadingInput)
-            {
-                _inputTop = Console.CursorTop;
-                RedrawInputUnsafe();
-            }
+            if (!_isReadingInput) return;
+            _inputTop = Console.CursorTop;
+            RedrawInputUnsafe();
         }
     }
 
     private static void RedrawInputUnsafe()
     {
-        if (!_isReadingInput || string.IsNullOrEmpty(_activePrompt))
-        {
-            return;
-        }
+        if (!_isReadingInput || string.IsNullOrEmpty(_activePrompt)) return;
 
         UpdateInlineCompletion();
-        var place = PlaceOverlay(BuildOverlayLinesUnsafe(below: false).Count);
+        var place = PlaceOverlay(BuildOverlayLinesUnsafe(false).Count);
         var overlay = BuildOverlayLinesUnsafe(place == OverlayPlace.Below);
         // Rows the new overlay covers again on the same side are simply overwritten; the rest are restored.
         var sameSide = place != OverlayPlace.PushDown && _overlayBelow == (place == OverlayPlace.Below);
@@ -766,10 +760,7 @@ public static class ConsoleOutput
     {
         var content = _activePrompt + InputBuffer;
         var width = Math.Max(1, Console.BufferWidth);
-        if (content.Length <= width - 1)
-        {
-            return content;
-        }
+        if (content.Length <= width - 1) return content;
 
         var visibleWidth = Math.Max(1, width - 1);
         var promptLength = _activePrompt!.Length;
@@ -778,10 +769,7 @@ public static class ConsoleOutput
         visibleInput = windowStart < visibleInput.Length ? visibleInput[windowStart..] : string.Empty;
 
         var maxInputLength = Math.Max(0, visibleWidth - promptLength);
-        if (visibleInput.Length > maxInputLength)
-        {
-            visibleInput = visibleInput[..maxInputLength];
-        }
+        if (visibleInput.Length > maxInputLength) visibleInput = visibleInput[..maxInputLength];
 
         return _activePrompt + visibleInput;
     }
@@ -793,9 +781,7 @@ public static class ConsoleOutput
         var visibleSuffix = _inlineCompletionSuffix;
 
         if (renderedInput.Length + visibleSuffix.Length > width - 1)
-        {
             visibleSuffix = visibleSuffix[..Math.Max(0, width - 1 - renderedInput.Length)];
-        }
 
         // Typed text in the terminal's own colour, the completion's rest dimmed after it, on light and dark themes.
         Console.ResetColor();
@@ -808,18 +794,12 @@ public static class ConsoleOutput
         }
 
         var written = renderedInput.Length + visibleSuffix.Length;
-        if (written < width)
-        {
-            Console.Write(new string(' ', width - written));
-        }
+        if (written < width) Console.Write(new string(' ', width - written));
     }
 
     private static void PositionCursorUnsafe()
     {
-        if (string.IsNullOrEmpty(_activePrompt))
-        {
-            return;
-        }
+        if (string.IsNullOrEmpty(_activePrompt)) return;
 
         var width = Math.Max(1, Console.BufferWidth);
         var promptLength = _activePrompt.Length;
@@ -844,12 +824,32 @@ public static class ConsoleOutput
         }
     }
 
-    private static string Timestamp() => $"[{DateTime.Now:HH:mm:ss}]";
+    private static string Timestamp()
+    {
+        return $"[{DateTime.Now:HH:mm:ss}]";
+    }
 
     private static void SetCursorPositionSafe(int left, int top)
     {
         var safeLeft = Math.Clamp(left, 0, Math.Max(0, Console.BufferWidth - 1));
         var safeTop = Math.Clamp(top, 0, Math.Max(0, Console.BufferHeight - 1));
         Console.SetCursorPosition(safeLeft, safeTop);
+    }
+
+    public sealed record ConsoleCommandOption(string Name, string Description);
+
+    /// <summary>
+    ///     One word that can come next: the menu offers a command line a word at a time (first "adapter", then after a
+    ///     space "start", then the instance), not every full line at once.
+    /// </summary>
+    private sealed record MenuItem(string Word, string Description, bool Continues);
+
+    private sealed record PendingNotice(string Title, string? Summary, string Details, bool IsError);
+
+    private enum OverlayPlace
+    {
+        Above,
+        Below,
+        PushDown
     }
 }

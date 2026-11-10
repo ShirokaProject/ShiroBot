@@ -19,10 +19,7 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
         TimeSpan? expiresAfter = null,
         string? contentType = null)
     {
-        if (!IsEnabled)
-        {
-            throw new InvalidOperationException("宿主 API 服务未启用。");
-        }
+        if (!IsEnabled) throw new InvalidOperationException("宿主 API 服务未启用。");
 
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentNullException.ThrowIfNull(routePrefix);
@@ -54,10 +51,7 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
         string routePath,
         Func<HttpContext, Task<IResult>> handler)
     {
-        if (!IsEnabled)
-        {
-            throw new InvalidOperationException("宿主 API 服务未启用。");
-        }
+        if (!IsEnabled) throw new InvalidOperationException("宿主 API 服务未启用。");
 
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
@@ -66,7 +60,8 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
 
         var normalizedMethod = NormalizeMethod(method);
         var fullRoutePath = $"{GetOwnerRoutePrefix(ownerId)}/{NormalizeRoutePrefix(routePath)}";
-        _routes[CreateRouteKey(normalizedMethod, fullRoutePath)] = new WebRouteEntry(ownerId, normalizedMethod, fullRoutePath, handler);
+        _routes[CreateRouteKey(normalizedMethod, fullRoutePath)] =
+            new WebRouteEntry(ownerId, normalizedMethod, fullRoutePath, handler);
 
         return $"{NormalizeBaseUrl(publicBaseUrl).TrimEnd('/')}/{fullRoutePath}";
     }
@@ -74,79 +69,61 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
     public string MapGet(
         string ownerId,
         string routePath,
-        Func<HttpContext, Task<IResult>> handler) =>
-        Map(ownerId, HttpMethods.Get, routePath, handler);
+        Func<HttpContext, Task<IResult>> handler)
+    {
+        return Map(ownerId, HttpMethods.Get, routePath, handler);
+    }
 
     public string MapPost(
         string ownerId,
         string routePath,
-        Func<HttpContext, Task<IResult>> handler) =>
-        Map(ownerId, HttpMethods.Post, routePath, handler);
+        Func<HttpContext, Task<IResult>> handler)
+    {
+        return Map(ownerId, HttpMethods.Post, routePath, handler);
+    }
 
     public void UnregisterOwner(string ownerId)
     {
         if (string.IsNullOrWhiteSpace(ownerId)) return;
 
         foreach (var (token, entry) in _files.ToArray())
-        {
             if (string.Equals(entry.OwnerId, ownerId, StringComparison.OrdinalIgnoreCase))
-            {
                 _files.TryRemove(token, out _);
-            }
-        }
 
         foreach (var (key, entry) in _routes.ToArray())
-        {
             if (string.Equals(entry.OwnerId, ownerId, StringComparison.OrdinalIgnoreCase))
-            {
                 _routes.TryRemove(key, out _);
-            }
-        }
     }
 
     internal async Task<IResult> HandleRequest(HttpContext context)
     {
         var routePath = context.Request.Path.Value?.Trim('/');
-        if (string.IsNullOrWhiteSpace(routePath))
-        {
-            return Results.NotFound();
-        }
+        if (string.IsNullOrWhiteSpace(routePath)) return Results.NotFound();
 
         if (TryGetRoute(context.Request.Method, routePath, out var route))
-        {
             return await route.Handler(context).ConfigureAwait(false);
-        }
 
-        if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
-        {
+        if ((!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method)) ||
+            !_files.TryGetValue(routePath, out var entry))
             return Results.NotFound();
-        }
 
-        if (!_files.TryGetValue(routePath, out var entry))
+        if (entry.ExpiresAt >= DateTimeOffset.UtcNow && File.Exists(entry.FilePath))
         {
-            return Results.NotFound();
+            return Results.File(entry.FilePath, entry.ContentType, enableRangeProcessing: true);
         }
 
-        if (entry.ExpiresAt < DateTimeOffset.UtcNow)
         {
             _files.TryRemove(routePath, out _);
             return Results.NotFound();
         }
-
-        if (!File.Exists(entry.FilePath))
-        {
-            _files.TryRemove(routePath, out _);
-            return Results.NotFound();
-        }
-
-        return Results.File(entry.FilePath, entry.ContentType, enableRangeProcessing: true);
     }
 
     private bool TryGetRoute(string method, string routePath, out WebRouteEntry route)
     {
         var normalizedMethod = NormalizeMethod(method);
         if (_routes.TryGetValue(CreateRouteKey(normalizedMethod, routePath), out route!)) return true;
-        return HttpMethods.IsHead(normalizedMethod) && _routes.TryGetValue(CreateRouteKey(HttpMethods.Get, routePath), out route!);
+        return HttpMethods.IsHead(normalizedMethod) &&
+               _routes.TryGetValue(CreateRouteKey(HttpMethods.Get, routePath), out route!);
     }
 
     private string CreateUniqueToken(string routeBase)
@@ -167,10 +144,7 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
         RandomNumberGenerator.Fill(random);
         Span<char> result = stackalloc char[4];
 
-        for (var i = 0; i < 4; i++)
-        {
-            result[i] = chars[random[i] % chars.Length];
-        }
+        for (var i = 0; i < 4; i++) result[i] = chars[random[i] % chars.Length];
 
         return new string(result);
     }
@@ -181,13 +155,25 @@ internal sealed class WebHostContext(string publicBaseUrl, bool isEnabled) : IWe
         return url.EndsWith('/') ? url : url + "/";
     }
 
-    private static string NormalizeRoutePrefix(string routePrefix) => routePrefix.Trim().Trim('/');
+    private static string NormalizeRoutePrefix(string routePrefix)
+    {
+        return routePrefix.Trim().Trim('/');
+    }
 
-    private static string NormalizeMethod(string method) => method.Trim().ToUpperInvariant();
+    private static string NormalizeMethod(string method)
+    {
+        return method.Trim().ToUpperInvariant();
+    }
 
-    private static string CreateRouteKey(string method, string routePath) => $"{method}:{routePath}";
+    private static string CreateRouteKey(string method, string routePath)
+    {
+        return $"{method}:{routePath}";
+    }
 
-    private static string GetOwnerRoutePrefix(string ownerId) => $"plugin/{NormalizeRouteSegment(ownerId)}";
+    private static string GetOwnerRoutePrefix(string ownerId)
+    {
+        return $"plugin/{NormalizeRouteSegment(ownerId)}";
+    }
 
     private static string NormalizeRouteSegment(string value)
     {

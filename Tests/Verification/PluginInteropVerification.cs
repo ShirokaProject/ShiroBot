@@ -1,24 +1,34 @@
+using System.Buffers;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ShiroBot.Adapters;
+using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Http;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
+using ShiroBot.Model.Discord;
+using ShiroBot.Model.QQ;
+using ShiroBot.Model.Telegram;
 using ShiroBot.Packages;
 using ShiroBot.Plugins;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Services;
-using ShiroBot.SDK.Abstractions;
+using ShiroBot.SDK.Adapter;
+using ShiroBot.SDK.Config;
+using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
 
+namespace ShiroBot.Verification;
+
 /// <summary>
-/// 插件生命周期作用域、按名称调用的服务和事件总线：
-/// 用 Templates/Examples/PluginInterop 的两个示例插件在真实的可回收 ALC 里加载、互相调用、单独热替换提供方，
-/// 最后卸载并确认两个 ALC 都能被回收。
+///     插件生命周期作用域、按名称调用的服务和事件总线：
+///     用 Templates/Examples/PluginInterop 的两个示例插件在真实的可回收 ALC 里加载、互相调用、单独热替换提供方，
+///     最后卸载并确认两个 ALC 都能被回收。
 /// </summary>
 internal static class PluginInteropVerification
 {
@@ -38,35 +48,74 @@ internal static class PluginInteropVerification
         var order = new List<string>();
         var scope = new PluginLifetimeScope();
         var ticks = 0;
-        scope.SetInterval(TimeSpan.FromMilliseconds(10), _ => { Interlocked.Increment(ref ticks); return Task.CompletedTask; });
+        scope.SetInterval(TimeSpan.FromMilliseconds(10), _ =>
+        {
+            Interlocked.Increment(ref ticks);
+            return Task.CompletedTask;
+        });
         var timeoutFired = false;
-        var cancelledTimeout = scope.SetTimeout(TimeSpan.FromMilliseconds(20), _ => { timeoutFired = true; return Task.CompletedTask; });
+        var cancelledTimeout = scope.SetTimeout(TimeSpan.FromMilliseconds(20), _ =>
+        {
+            timeoutFired = true;
+            return Task.CompletedTask;
+        });
         cancelledTimeout.Dispose();
         var loopObservedStop = false;
         _ = scope.Run(async token =>
         {
-            try { await Task.Delay(Timeout.Infinite, token); }
-            catch (OperationCanceledException) { loopObservedStop = true; throw; }
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            catch (OperationCanceledException)
+            {
+                loopObservedStop = true;
+                throw;
+            }
         });
-        scope.Defer(() => { order.Add("first"); return ValueTask.CompletedTask; });
-        var removed = scope.Defer(() => { order.Add("removed"); return ValueTask.CompletedTask; });
+        scope.Defer(() =>
+        {
+            order.Add("first");
+            return ValueTask.CompletedTask;
+        });
+        var removed = scope.Defer(() =>
+        {
+            order.Add("removed");
+            return ValueTask.CompletedTask;
+        });
         removed.Dispose();
         var resource = scope.Track(new Probe(order, "resource"));
         var child = scope.CreateScope();
-        child.Defer(() => { order.Add("child"); return ValueTask.CompletedTask; });
+        child.Defer(() =>
+        {
+            order.Add("child");
+            return ValueTask.CompletedTask;
+        });
         await Task.Delay(100);
 
         scope.Cancel();
         await scope.StopTasksAsync().WaitAsync(TimeSpan.FromSeconds(2));
         if (!loopObservedStop || ticks == 0 || timeoutFired || resource.Disposed || order.Count != 0)
-            throw new InvalidOperationException("Stopping a plugin lifetime must end tasks and timers before releasing resources.");
+            throw new InvalidOperationException(
+                "Stopping a plugin lifetime must end tasks and timers before releasing resources.");
         // OnUnload 期间仍可以登记资源。
-        scope.Defer(() => { order.Add("during-unload"); return ValueTask.CompletedTask; });
+        scope.Defer(() =>
+        {
+            order.Add("during-unload");
+            return ValueTask.CompletedTask;
+        });
         await scope.DisposeResourcesAsync().WaitAsync(TimeSpan.FromSeconds(2));
         if (!order.SequenceEqual(["child", "during-unload", "resource", "first"]))
-            throw new InvalidOperationException("Plugin lifetime resources must be released in reverse order: " + string.Join(",", order));
-        try { _ = scope.Run(_ => Task.CompletedTask); throw new InvalidOperationException("A stopped lifetime accepted a task."); }
-        catch (ObjectDisposedException) { }
+            throw new InvalidOperationException("Plugin lifetime resources must be released in reverse order: " +
+                                                string.Join(",", order));
+        try
+        {
+            _ = scope.Run(_ => Task.CompletedTask);
+            throw new InvalidOperationException("A stopped lifetime accepted a task.");
+        }
+        catch (ObjectDisposedException)
+        {
+        }
 
         // 子作用域可以单独释放，不影响所在作用域。
         var parent = new PluginLifetimeScope();
@@ -74,8 +123,14 @@ internal static class PluginInteropVerification
         var featureStopped = false;
         _ = feature.Run(async token =>
         {
-            try { await Task.Delay(Timeout.Infinite, token); }
-            finally { featureStopped = true; }
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            finally
+            {
+                featureStopped = true;
+            }
         });
         await feature.DisposeAsync();
         if (!featureStopped || parent.Stopping.IsCancellationRequested)
@@ -90,24 +145,39 @@ internal static class PluginInteropVerification
         var child = parent.CreateScope();
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var work = child.Run(async _ => { started.SetResult(); await release.Task; });
+        var work = child.Run(async _ =>
+        {
+            started.SetResult();
+            await release.Task;
+        });
         await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var cancellationRejected = false;
-        using var callback = parent.Stopping.Register(() =>
+        await using var callback = parent.Stopping.Register(() =>
         {
-            try { parent.CreateScope(); }
-            catch (ObjectDisposedException) { cancellationRejected = true; }
+            try
+            {
+                parent.CreateScope();
+            }
+            catch (ObjectDisposedException)
+            {
+                cancellationRejected = true;
+            }
         });
         var stopping = parent.StopTasksAsync();
         try
         {
             if (!cancellationRejected || stopping.IsCompleted)
-                throw new InvalidOperationException("Stopping must reject scopes even in cancellation callbacks and wait for existing child tasks.");
+                throw new InvalidOperationException(
+                    "Stopping must reject scopes even in cancellation callbacks and wait for existing child tasks.");
             foreach (var scope in new IPluginLifetime[] { parent, child })
-            {
-                try { scope.CreateScope(); throw new InvalidOperationException("Stopping accepted a new child scope."); }
-                catch (ObjectDisposedException) { }
-            }
+                try
+                {
+                    scope.CreateScope();
+                    throw new InvalidOperationException("Stopping accepted a new child scope.");
+                }
+                catch (ObjectDisposedException)
+                {
+                }
         }
         finally
         {
@@ -116,6 +186,7 @@ internal static class PluginInteropVerification
             await stopping.WaitAsync(TimeSpan.FromSeconds(2));
             await parent.DisposeAsync();
         }
+
         Console.WriteLine("Stopping scope creation and child task drain verification passed.");
     }
 
@@ -130,7 +201,8 @@ internal static class PluginInteropVerification
         await AdapterManager.StopAdapterAsync(adapter);
         if (!adapter.StoppingCancelledBeforeStop || !firstLoop.IsCompleted || !firstResource.Disposed ||
             firstResource.DisposedBeforeStop)
-            throw new InvalidOperationException("Adapter lifetimes must cancel, call StopAsync, stop tasks and then release resources.");
+            throw new InvalidOperationException(
+                "Adapter lifetimes must cancel, call StopAsync, stop tasks and then release resources.");
 
         await AdapterManager.StartAdapterAsync(adapter);
         if (ReferenceEquals(adapter.Lifetime, first) || adapter.Lifetime.Stopping.IsCancellationRequested)
@@ -148,20 +220,11 @@ internal static class PluginInteropVerification
     private static void VerifyEnumArrayDefaults()
     {
         var create = typeof(ConfigManager).GetMethod("CreateConfigDefaults",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.MakeGenericMethod(typeof(EnumArrayConfig));
+            BindingFlags.NonPublic | BindingFlags.Static)!.MakeGenericMethod(typeof(EnumArrayConfig));
         var config = (EnumArrayConfig)create.Invoke(null, null)!;
         if (!config.Modes.SequenceEqual([DayOfWeek.Tuesday, DayOfWeek.Sunday]) || !config.Numbers.SequenceEqual([1, 2]))
             throw new InvalidOperationException("Array config defaults must accept enum names and numbers.");
         Console.WriteLine("Config array default conversion verification passed.");
-    }
-
-    private sealed class EnumArrayConfig
-    {
-        [ShiroBot.SDK.Config.ConfigField("Modes.", Default = "[\"tuesday\", 0]")]
-        public DayOfWeek[] Modes { get; set; } = [];
-
-        [ShiroBot.SDK.Config.ConfigField("Numbers.", Default = "[1, 2]")]
-        public int[] Numbers { get; set; } = [];
     }
 
     private static async Task VerifyNamedServicesAsync()
@@ -174,18 +237,34 @@ internal static class PluginInteropVerification
         provider.Provide("math.add", (arguments, _) =>
         {
             received = (JsonObject)arguments!;
-            return Task.FromResult<JsonNode?>(new JsonObject { ["sum"] = (int)arguments!["a"]! + (int)arguments["b"]! });
+            return Task.FromResult<JsonNode?>(new JsonObject
+                { ["sum"] = (int)arguments!["a"]! + (int)arguments["b"]! });
         });
         provider.Provide("math.fail", (_, _) => throw new FormatException("bad input"));
 
         var input = new JsonObject { ["a"] = 2, ["b"] = 3 };
         var result = await consumer.CallAsync("math.add", input);
         if ((int?)result?["sum"] != 5 || ReferenceEquals(received, input))
-            throw new InvalidOperationException("Named services must return results and copy arguments between plugins.");
-        try { await consumer.CallAsync("math.fail"); throw new InvalidOperationException("A failing service did not throw."); }
-        catch (PluginServiceException ex) when (ex.RemoteType == typeof(FormatException).FullName && ex.InnerException is null) { }
-        try { provider.Provide("math.add", (_, _) => Task.FromResult<JsonNode?>(null)); throw new InvalidOperationException("A duplicate name was accepted."); }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("already provided")) { }
+            throw new InvalidOperationException(
+                "Named services must return results and copy arguments between plugins.");
+        try
+        {
+            await consumer.CallAsync("math.fail");
+            throw new InvalidOperationException("A failing service did not throw.");
+        }
+        catch (PluginServiceException ex) when (ex.RemoteType == typeof(FormatException).FullName &&
+                                                ex.InnerException is null)
+        {
+        }
+
+        try
+        {
+            provider.Provide("math.add", (_, _) => Task.FromResult<JsonNode?>(null));
+            throw new InvalidOperationException("A duplicate name was accepted.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already provided"))
+        {
+        }
 
         // 按前缀发现服务：带描述副本、按名称排序。
         var metadata = new JsonObject { ["description"] = "Add numbers" };
@@ -193,7 +272,8 @@ internal static class PluginInteropVerification
         provider.Provide("math.tool.div", (_, _) => Task.FromResult<JsonNode?>(null));
         metadata["description"] = "changed";
         var found = consumer.Find("math.tool.");
-        if (found is not [{ Name: "math.tool.div", ProviderId: "provider", Metadata: null }, { Name: "math.tool.mul" } mul] ||
+        if (found is not
+                [{ Name: "math.tool.div", ProviderId: "provider", Metadata: null }, { Name: "math.tool.mul" } mul] ||
             (string?)mul.Metadata?["description"] != "Add numbers")
             throw new InvalidOperationException("Find must list prefixed services with copied metadata.");
         mul.Metadata!["description"] = "mutated";
@@ -207,14 +287,32 @@ internal static class PluginInteropVerification
         registry.DetachInterop(provider.Owner);
         if (consumer.IsAvailable("math.add") || consumer.Find("math.").Count != 0)
             throw new InvalidOperationException("A detached provider must stop serving and stop being listed.");
-        try { await consumer.CallAsync("math.add", input); throw new InvalidOperationException("A detached service was called."); }
-        catch (PluginServiceUnavailableException) { }
+        try
+        {
+            await consumer.CallAsync("math.add", input);
+            throw new InvalidOperationException("A detached service was called.");
+        }
+        catch (PluginServiceUnavailableException)
+        {
+        }
 
         // 事件总线：每个订阅者拿到独立副本，处理失败不影响发布者和其他订阅者。
-        var bus = new PluginEventBusScope(registry, "listener", async work => { await work(); return true; }, new PluginLifetimeScope());
-        var failing = new PluginEventBusScope(registry, "failing", async work => { await work(); return true; }, new PluginLifetimeScope());
+        var bus = new PluginEventBusScope(registry, "listener", async work =>
+        {
+            await work();
+            return true;
+        }, new PluginLifetimeScope());
+        var failing = new PluginEventBusScope(registry, "failing", async work =>
+        {
+            await work();
+            return true;
+        }, new PluginLifetimeScope());
         JsonNode? first = null;
-        bus.On("demo.topic", (payload, _) => { first = payload; return Task.CompletedTask; });
+        bus.On("demo.topic", (payload, _) =>
+        {
+            first = payload;
+            return Task.CompletedTask;
+        });
         failing.On("demo.topic", (_, _) => throw new InvalidOperationException("listener failed"));
         var payload = new JsonObject { ["value"] = 1 };
         var delivered = await bus.EmitAsync("demo.topic", payload);
@@ -234,7 +332,11 @@ internal static class PluginInteropVerification
     private static async Task VerifyReloadedOwnerIsolationAsync()
     {
         var registry = new PluginServiceRegistry();
-        PluginInvoker direct = async work => { await work(); return true; };
+        PluginInvoker direct = async work =>
+        {
+            await work();
+            return true;
+        };
         var oldServices = new PluginServiceScope(registry, "reloaded", lifetime: new PluginLifetimeScope());
         var oldBus = new PluginEventBusScope(registry, oldServices.Owner, direct, new PluginLifetimeScope());
         oldServices.Provide("reload.old", (_, _) => Task.FromResult<JsonNode?>(null));
@@ -251,7 +353,8 @@ internal static class PluginInteropVerification
         registry.DetachInterop(oldServices.Owner);
         if (!newServices.IsAvailable("reload.ping") || (string?)await newServices.CallAsync("reload.ping") != "pong" ||
             await newBus.EmitAsync("reload.topic") != 1)
-            throw new InvalidOperationException("Late cleanup of an old plugin instance removed the reloaded instance's services.");
+            throw new InvalidOperationException(
+                "Late cleanup of an old plugin instance removed the reloaded instance's services.");
     }
 
     private static async Task VerifyInvalidJsonBytesAsync()
@@ -261,30 +364,49 @@ internal static class PluginInteropVerification
         using var consumer = new PluginServiceScope(registry, "caller");
         try
         {
-            provider.ProvideUtf8("bytes.bad-metadata", (_, _) => Task.FromResult(ReadOnlyMemory<byte>.Empty), "{"u8.ToArray());
+            provider.ProvideUtf8("bytes.bad-metadata", (_, _) => Task.FromResult(ReadOnlyMemory<byte>.Empty),
+                "{"u8.ToArray());
             throw new InvalidOperationException("Invalid service metadata was accepted.");
         }
-        catch (ArgumentException) { }
+        catch (ArgumentException)
+        {
+        }
+
         if (consumer.Find("bytes.").Count != 0)
             throw new InvalidOperationException("A rejected service must not be listed.");
 
-        provider.ProvideUtf8("bytes.bad-result", (_, _) => Task.FromResult<ReadOnlyMemory<byte>>("not json"u8.ToArray()));
-        try { await consumer.CallAsync("bytes.bad-result"); throw new InvalidOperationException("An invalid result was returned."); }
-        catch (PluginServiceException ex) when (ex.RemoteType == typeof(System.Text.Json.JsonException).FullName) { }
+        provider.ProvideUtf8("bytes.bad-result",
+            (_, _) => Task.FromResult<ReadOnlyMemory<byte>>("not json"u8.ToArray()));
+        try
+        {
+            await consumer.CallAsync("bytes.bad-result");
+            throw new InvalidOperationException("An invalid result was returned.");
+        }
+        catch (PluginServiceException ex) when (ex.RemoteType == typeof(JsonException).FullName)
+        {
+        }
 
-        try { await consumer.CallUtf8Async("bytes.bad-result", "[1,"u8.ToArray()); throw new InvalidOperationException("Invalid arguments were sent."); }
-        catch (ArgumentException) { }
+        try
+        {
+            await consumer.CallUtf8Async("bytes.bad-result", "[1,"u8.ToArray());
+            throw new InvalidOperationException("Invalid arguments were sent.");
+        }
+        catch (ArgumentException)
+        {
+        }
     }
-
-    private enum UnderscoreMode { Plain, Foo_Bar, HTTPServer }
 
     private static void VerifyEnumUnderscoreRoundTrip()
     {
-        foreach (var mode in Enum.GetValues<UnderscoreMode>())
+        foreach (var mode in new[] { UnderscoreMode.Plain, UnderscoreMode.Foo_Bar, UnderscoreMode.HTTPServer })
         {
-            var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-            using (var writer = new System.Text.Json.Utf8JsonWriter(buffer)) PluginJsonIO.WriteEnum(writer, mode);
-            var reader = new System.Text.Json.Utf8JsonReader(buffer.WrittenSpan);
+            var buffer = new ArrayBufferWriter<byte>();
+            using (var writer = new Utf8JsonWriter(buffer))
+            {
+                PluginJsonIO.WriteEnum(writer, mode);
+            }
+
+            var reader = new Utf8JsonReader(buffer.WrittenSpan);
             reader.Read();
             if (PluginJsonIO.ReadEnum<UnderscoreMode>(ref reader, "mode") != mode)
                 throw new InvalidOperationException($"Enum member {mode} did not survive a JSON round trip.");
@@ -292,8 +414,8 @@ internal static class PluginInteropVerification
     }
 
     /// <summary>
-    /// 开发者自检：把任意插件 DLL（连同所在目录的依赖）加载进隔离的插件目录，运行一段时间后卸载，
-    /// 报告程序集能否被回收。用法：<c>dotnet run --project Tests/Verification -- --plugin-unload-check 插件.dll [秒数]</c>。
+    ///     开发者自检：把任意插件 DLL（连同所在目录的依赖）加载进隔离的插件目录，运行一段时间后卸载，
+    ///     报告程序集能否被回收。用法：<c>dotnet run --project Tests/Verification -- --plugin-unload-check 插件.dll [秒数]</c>。
     /// </summary>
     public static async Task CheckPluginUnloadAsync(string dllPath, int runSeconds)
     {
@@ -311,19 +433,20 @@ internal static class PluginInteropVerification
         var runtime = new HostRuntimeState(DateTimeOffset.UtcNow);
         var resolver = new SharedAssemblyResolver();
         // 与宿主启动时一样提供 SDK 和内置 Model 包，按真实环境加载第三方插件。
-        resolver.Register(["ShiroBot.SDK"], System.Runtime.Loader.AssemblyLoadContext.Default);
+        resolver.Register(["ShiroBot.SDK"], AssemblyLoadContext.Default);
         var models = new ModelPackageRegistry(resolver);
-        models.RegisterBuiltIn(typeof(ShiroBot.Model.QQ.QGroup).Assembly);
-        models.RegisterBuiltIn(typeof(ShiroBot.Model.Discord.DiscordUser).Assembly);
-        models.RegisterBuiltIn(typeof(ShiroBot.Model.Telegram.TelegramUser).Assembly);
+        models.RegisterBuiltIn(typeof(QGroup).Assembly);
+        models.RegisterBuiltIn(typeof(DiscordUser).Assembly);
+        models.RegisterBuiltIn(typeof(TelegramUser).Assembly);
         var manager = new PluginManager(botContext, resolver, models, runtime, logs) { PluginRootPath = pluginRoot };
         var dispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions, runtime, logs);
         try
         {
-            await manager.ScheduleLoadPluginByName(dispatcher, new PluginRouteConfig(), Path.Combine(target, Path.GetFileName(dllPath)));
+            await manager.ScheduleLoadPluginByName(dispatcher, new PluginRouteConfig(),
+                Path.Combine(target, Path.GetFileName(dllPath)));
             var id = manager.GetLoadedPluginNames().SingleOrDefault()
-                ?? throw new InvalidOperationException("The plugin did not load: " + string.Join(" | ",
-                    logs.GetHistory("system", 20).Select(log => log.Message)));
+                     ?? throw new InvalidOperationException("The plugin did not load: " + string.Join(" | ",
+                         logs.GetHistory("system", 20).Select(log => log.Message)));
             Console.WriteLine($"Loaded {id}; running {runSeconds}s before unloading.");
             await Task.Delay(TimeSpan.FromSeconds(runSeconds));
             if (!await manager.ScheduleUnloadPluginByName(dispatcher, id))
@@ -331,19 +454,28 @@ internal static class PluginInteropVerification
             var notice = JsonSerializer.Serialize(runtime.CreateRestartNotice("plugin"));
             if (!notice.Contains("\"recommended\":false"))
                 throw new InvalidOperationException($"{id} unloaded its logic but its assembly is still referenced: " +
-                    string.Join(" | ", logs.GetHistory("system", 20).Select(log => log.Message).Where(message => message.Contains("存活") || message.Contains("残留"))));
+                                                    string.Join(" | ",
+                                                        logs.GetHistory("system", 20).Select(log => log.Message)
+                                                            .Where(message =>
+                                                                message.Contains("存活") || message.Contains("残留"))));
             Console.WriteLine($"Plugin unload check passed: {id} loaded, ran and released its assembly.");
         }
         finally
         {
             await manager.UnloadAllAsync(dispatcher);
-            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+            try
+            {
+                Directory.Delete(root, true);
+            }
+            catch (IOException)
+            {
+            }
         }
     }
 
     /// <summary>
-    /// 开发者自检：只复制适配器 DLL（不带配置，以默认配置启动），加载、运行一段时间后停止并卸载，报告程序集能否被回收。
-    /// 用法：<c>dotnet run --project Tests/Verification -- --adapter-unload-check 适配器.dll [秒数]</c>。
+    ///     开发者自检：只复制适配器 DLL（不带配置，以默认配置启动），加载、运行一段时间后停止并卸载，报告程序集能否被回收。
+    ///     用法：<c>dotnet run --project Tests/Verification -- --adapter-unload-check 适配器.dll [秒数]</c>。
     /// </summary>
     public static async Task CheckAdapterUnloadAsync(string dllPath, int runSeconds)
     {
@@ -352,20 +484,21 @@ internal static class PluginInteropVerification
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, Path.GetFileName(dllPath));
         File.Copy(dllPath, path);
-        var id = ShiroBot.Adapters.Compatibility.AdapterContractProbe.ReadMetadata(path)?.Id
-            ?? throw new InvalidOperationException("The DLL does not declare an adapter.");
+        var id = AdapterContractProbe.ReadMetadata(path)?.Id
+                 ?? throw new InvalidOperationException("The DLL does not declare an adapter.");
 
         var logs = new HostLogHub();
         var resolver = new SharedAssemblyResolver();
-        resolver.Register(["ShiroBot.SDK"], System.Runtime.Loader.AssemblyLoadContext.Default);
+        resolver.Register(["ShiroBot.SDK"], AssemblyLoadContext.Default);
         var models = new ModelPackageRegistry(resolver);
-        models.RegisterBuiltIn(typeof(ShiroBot.Model.QQ.QGroup).Assembly);
-        models.RegisterBuiltIn(typeof(ShiroBot.Model.Discord.DiscordUser).Assembly);
-        models.RegisterBuiltIn(typeof(ShiroBot.Model.Telegram.TelegramUser).Assembly);
+        models.RegisterBuiltIn(typeof(QGroup).Assembly);
+        models.RegisterBuiltIn(typeof(DiscordUser).Assembly);
+        models.RegisterBuiltIn(typeof(TelegramUser).Assembly);
         var runtime = new HostRuntimeState(DateTimeOffset.UtcNow);
         var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
         var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
-        var manager = new AdapterManager(root, resolver, models, context, new AdapterEventBridge(dispatcher), runtime, logs,
+        var manager = new AdapterManager(root, resolver, models, context, new AdapterEventBridge(dispatcher), runtime,
+            logs,
             _ => Task.CompletedTask);
         try
         {
@@ -385,7 +518,13 @@ internal static class PluginInteropVerification
         finally
         {
             await manager.StopForShutdownAsync();
-            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+            try
+            {
+                Directory.Delete(root, true);
+            }
+            catch (IOException)
+            {
+            }
         }
     }
 
@@ -410,21 +549,6 @@ internal static class PluginInteropVerification
         var routes = new PluginRouteConfig();
         var messageId = 0;
 
-        async Task<string> GreetAsync(string name)
-        {
-            var client = manager.GetLoadedPluginSnapshot().Single(plugin => plugin.Name == "sample-greeter-client");
-            var message = new MessageEvent
-            {
-                Platform = "qq", MessageId = "greet-" + Interlocked.Increment(ref messageId),
-                Channel = Channel.Group("group"), Sender = new User("user"), Segments = [new TextSegment("#greet " + name)]
-            };
-            var before = adapter.MessageService.Messages.Count;
-            using (AdapterExecutionContext.Enter("qq"))
-                await client.DispatchAsync<IBotEventSubscriber>(subscriber => subscriber.OnEventAsync(message));
-            return adapter.MessageService.Messages.Count == before + 1
-                ? adapter.MessageService.Messages[^1]
-                : throw new InvalidOperationException("The sample client did not reply exactly once.");
-        }
 
         try
         {
@@ -438,9 +562,11 @@ internal static class PluginInteropVerification
 
             // 只卸载提供方：调用方不受影响，调用时得到“服务不可用”。
             if (!await manager.ScheduleUnloadPluginByName(dispatcher, "sample-greeter"))
-                throw new InvalidOperationException("A named-service provider must unload while its caller stays loaded.");
+                throw new InvalidOperationException(
+                    "A named-service provider must unload while its caller stays loaded.");
             if (await GreetAsync("小白") != "问候服务没有加载。")
-                throw new InvalidOperationException("Calling an unloaded provider must report the service as unavailable.");
+                throw new InvalidOperationException(
+                    "Calling an unloaded provider must report the service as unavailable.");
 
             // 重新加载提供方：调用方不重新加载就能继续使用。
             await manager.ScheduleLoadPluginByName(dispatcher, routes, "sample-greeter");
@@ -456,28 +582,72 @@ internal static class PluginInteropVerification
                 foreach (var log in logs.GetHistory("system", 50)) Console.WriteLine(log.Message);
                 throw new InvalidOperationException("The sample plugins' assemblies were not released: " + notice);
             }
+
             Console.WriteLine("Sample plugin interop, provider hot swap and clean unload verification passed.");
         }
         finally
         {
             await manager.UnloadAllAsync(dispatcher);
-            Directory.Delete(root, recursive: true);
+            Directory.Delete(root, true);
+        }
+
+        return;
+
+        async Task<string> GreetAsync(string name)
+        {
+            var client = manager.GetLoadedPluginSnapshot().Single(plugin => plugin.Name == "sample-greeter-client");
+            var message = new MessageEvent
+            {
+                Platform = "qq", MessageId = "greet-" + Interlocked.Increment(ref messageId),
+                Channel = Channel.Group("group"), Sender = new User("user"),
+                Segments = [new TextSegment("#greet " + name)]
+            };
+            var before = adapter.MessageService.Messages.Count;
+            using (AdapterExecutionContext.Enter("qq"))
+            {
+                await client.DispatchAsync<IBotEventSubscriber>(subscriber => subscriber.OnEventAsync(message));
+            }
+
+            return adapter.MessageService.Messages.Count == before + 1
+                ? adapter.MessageService.Messages[^1]
+                : throw new InvalidOperationException("The sample client did not reply exactly once.");
         }
     }
 
-    private sealed class LifetimeAdapter : ShiroBot.SDK.Core.IBotAdapter, ShiroBot.SDK.Core.ILifetimeAwareAdapter
+    private sealed class EnumArrayConfig
     {
-        public IPluginLifetime Lifetime { get; set; } = null!;
+        // Written by configuration serializers or reflection-based probes.
+        // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Local
+        [ConfigField("Modes.", Default = "[\"tuesday\", 0]")]
+        public DayOfWeek[] Modes { get; set; } = [];
+
+        // Written by configuration serializers or reflection-based probes.
+        // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Local
+        [ConfigField("Numbers.", Default = "[1, 2]")]
+        public int[] Numbers { get; set; } = [];
+    }
+
+    // Exercise the enum codec with deliberately unusual names, including every value.
+    // ReSharper disable InconsistentNaming, UnusedMember.Local
+    private enum UnderscoreMode
+    {
+        Plain,
+        Foo_Bar,
+        HTTPServer
+    }
+
+    private sealed class LifetimeAdapter : IBotAdapter, ILifetimeAwareAdapter
+    {
         public Task? Loop { get; private set; }
         public StopProbe? Resource { get; private set; }
         public bool StoppingCancelledBeforeStop { get; private set; }
-        public ShiroBot.SDK.Config.IConfigContext Config { get; set; } = null!;
+        public IConfigContext Config { get; set; } = null!;
         public IConsoleLogger Logger { get; set; } = null!;
         public string Platform => "lifetime-adapter";
-        public ShiroBot.SDK.Adapter.IMessageService Message => throw new NotSupportedException();
-        public ShiroBot.SDK.Adapter.IChannelService Channel => throw new NotSupportedException();
-        public ShiroBot.SDK.Adapter.IUserService User => throw new NotSupportedException();
-        public ShiroBot.SDK.Adapter.IEventService Event => throw new NotSupportedException();
+        public IMessageService Message => throw new NotSupportedException();
+        public IChannelService Channel => throw new NotSupportedException();
+        public IUserService User => throw new NotSupportedException();
+        public IEventService Event => throw new NotSupportedException();
 
         public Task StartAsync()
         {
@@ -492,13 +662,19 @@ internal static class PluginInteropVerification
             Resource!.DisposedBeforeStop = Resource.Disposed;
             return Task.CompletedTask;
         }
+
+        public IPluginLifetime Lifetime { get; set; } = null!;
     }
 
     private sealed class StopProbe : IDisposable
     {
         public bool Disposed { get; private set; }
         public bool DisposedBeforeStop { get; set; }
-        public void Dispose() => Disposed = true;
+
+        public void Dispose()
+        {
+            Disposed = true;
+        }
     }
 
     private sealed class Probe(List<string> order, string name) : IDisposable

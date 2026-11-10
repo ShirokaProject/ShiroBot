@@ -1,47 +1,17 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.IO.Compression;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
-using ShiroBot.Configuration;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Logging;
-using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
 using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Marketplace;
-using ShiroBot.Update;
-using ShiroBot.Terminal;
-using ShiroBot.Integrations.Avalonia;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Plugin;
-using ShiroBot.Components.Updates;
 using static ShiroBot.Update.PluginUpdateService;
 
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static LoadedPluginHandle? FindLoadedPlugin(PluginManager pluginManager, string id) =>
-        pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
+    private static LoadedPluginHandle? FindLoadedPlugin(PluginManager pluginManager, string id)
+    {
+        return pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
             string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(plugin.DisplayName, id, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static void DisablePluginFile(string assemblyPath)
     {
@@ -78,7 +48,8 @@ internal sealed partial class HostHttpServer
 
                 return aliases.Contains(fileName) ||
                        aliases.Contains(directoryName) ||
-                       (fileName.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) && aliases.Contains(fileName["ShiroBot.".Length..])) ||
+                       (fileName.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
+                        aliases.Contains(fileName["ShiroBot.".Length..])) ||
                        NameMatches(info?.Id, aliases) ||
                        NameMatches(info?.Name, aliases);
             });
@@ -87,12 +58,9 @@ internal sealed partial class HostHttpServer
     private static InstalledPluginInfo? FindInstalledPlugin(PluginManager pluginManager, string id)
     {
         var loaded = FindLoadedPlugin(pluginManager, id);
-        if (loaded is not null)
-        {
-            return new InstalledPluginInfo(loaded.AssemblyPath, loaded.Version);
-        }
+        if (loaded is not null) return new InstalledPluginInfo(loaded.AssemblyPath, loaded.Version);
 
-        var candidate = pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).FirstOrDefault();
+        var candidate = pluginManager.ResolveFirstPluginLoadCandidate(id);
         if (!string.IsNullOrWhiteSpace(candidate))
         {
             var info = pluginManager.TryProbePluginInfoFile(candidate);
@@ -100,13 +68,15 @@ internal sealed partial class HostHttpServer
         }
 
         var disabled = FindDisabledPluginFile(pluginManager, id);
-        if (!string.IsNullOrWhiteSpace(disabled))
+        if (string.IsNullOrWhiteSpace(disabled))
+        {
+            return null;
+        }
+
         {
             var info = TryProbeDisabledPluginInfo(pluginManager, disabled);
             return new InstalledPluginInfo(disabled, info?.Version ?? string.Empty);
         }
-
-        return null;
     }
 
     private static IEnumerable<PluginListItem> EnumerateDisabledPlugins(PluginManager pluginManager)
@@ -129,8 +99,7 @@ internal sealed partial class HostHttpServer
                     string.IsNullOrWhiteSpace(info.Author) ? "Unknown" : info.Author,
                     info.GithubRepo,
                     info.Description ?? string.Empty,
-                    info.Category.ToString(),
-                    "disabled");
+                    info.Category.ToString());
                 continue;
             }
 
@@ -147,8 +116,7 @@ internal sealed partial class HostHttpServer
                 "Unknown",
                 null,
                 string.Empty,
-                "Other",
-                "disabled");
+                "Other");
         }
     }
 
@@ -160,7 +128,7 @@ internal sealed partial class HostHttpServer
 
         // Probe through the manager's file-version cache below. The default enumerator
         // probes DLLs itself, bypassing that cache on every Dashboard refresh.
-        foreach (var path in PluginManager.EnumeratePluginEntryAssemblies(pluginRoot, probeMetadata: false))
+        foreach (var path in PluginManager.EnumeratePluginEntryAssemblies(pluginRoot, false))
         {
             var info = pluginManager.TryProbePluginInfoFile(path);
             if (info is null) continue;
@@ -174,7 +142,7 @@ internal sealed partial class HostHttpServer
                 info.GithubRepo,
                 info.Description ?? string.Empty,
                 info.Category.ToString(),
-                pluginManager.GetPluginLoadError(info.Id) is { } error ? "error" : "disabled",
+                pluginManager.GetPluginLoadError(info.Id) is not null ? "error" : "disabled",
                 pluginManager.GetPluginLoadError(info.Id));
         }
     }
@@ -190,10 +158,14 @@ internal sealed partial class HostHttpServer
     {
         if (string.IsNullOrWhiteSpace(candidate)) return false;
         if (aliases.Contains(candidate)) return true;
-        return candidate.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) && aliases.Contains(candidate["ShiroBot.".Length..]);
+        return candidate.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
+               aliases.Contains(candidate["ShiroBot.".Length..]);
     }
 
-    private static string GetDisabledPluginPath(string assemblyPath) => assemblyPath + DisabledPluginSuffix;
+    private static string GetDisabledPluginPath(string assemblyPath)
+    {
+        return assemblyPath + DisabledPluginSuffix;
+    }
 
     private static IEnumerable<string> GetPluginIdAliases(string id)
     {
@@ -202,44 +174,37 @@ internal sealed partial class HostHttpServer
         yield return id;
         const string shiroBotPrefix = "ShiroBot.";
         if (id.StartsWith(shiroBotPrefix, StringComparison.OrdinalIgnoreCase) && id.Length > shiroBotPrefix.Length)
-        {
             yield return id[shiroBotPrefix.Length..];
-        }
         else
-        {
             yield return shiroBotPrefix + id;
-        }
     }
 
-    private static (string Path, bool Directory) GetPluginDeleteTarget(string pluginRootPath, string targetPath, string pluginName)
+    private static (string Path, bool Directory) GetPluginDeleteTarget(string pluginRootPath, string targetPath,
+        string pluginName)
     {
-        var pluginRoot = Path.GetFullPath(pluginRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var pluginRoot = Path.GetFullPath(pluginRootPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var fullTargetPath = Path.GetFullPath(targetPath);
         if (!fullTargetPath.StartsWith(pluginRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(Path.GetDirectoryName(fullTargetPath)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), pluginRoot, StringComparison.OrdinalIgnoreCase))
-        {
+            !string.Equals(
+                Path.GetDirectoryName(fullTargetPath)
+                    ?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), pluginRoot,
+                StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("拒绝删除插件目录之外的文件");
-        }
 
         var parentDirectory = Path.GetDirectoryName(fullTargetPath);
-        if (string.IsNullOrWhiteSpace(parentDirectory))
-        {
-            throw new InvalidOperationException("无法解析插件文件目录");
-        }
+        if (string.IsNullOrWhiteSpace(parentDirectory)) throw new InvalidOperationException("无法解析插件文件目录");
 
-        var normalizedParent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedParent = Path.GetFullPath(parentDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fullTargetPath);
         var parentName = new DirectoryInfo(normalizedParent).Name;
         var isPluginSubDirectory = !string.Equals(normalizedParent, pluginRoot, StringComparison.OrdinalIgnoreCase) &&
                                    (string.Equals(parentName, pluginName, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(parentName, fileNameWithoutExtension, StringComparison.OrdinalIgnoreCase));
+                                    string.Equals(parentName, fileNameWithoutExtension,
+                                        StringComparison.OrdinalIgnoreCase));
 
-        if (isPluginSubDirectory)
-        {
-            return (normalizedParent, true);
-        }
-
-        return (fullTargetPath, false);
+        return isPluginSubDirectory ? (normalizedParent, true) : (fullTargetPath, false);
     }
 
     private static PluginUploadPackage LoadPreparedPluginUploadPackage(PluginManager pluginManager, string uploadId)
@@ -248,20 +213,15 @@ internal sealed partial class HostHttpServer
         var packagePath = Directory.EnumerateFiles(uploadRoot, "*", SearchOption.TopDirectoryOnly)
             .FirstOrDefault(path => !Path.GetFileName(path).Equals("extract", StringComparison.OrdinalIgnoreCase));
 
-        if (string.IsNullOrWhiteSpace(packagePath))
-        {
-            throw new InvalidOperationException("上传文件不存在。上传可能已过期，请重新上传。");
-        }
-
-        return PreparePluginUploadPackage(pluginManager, packagePath);
+        return string.IsNullOrWhiteSpace(packagePath)
+            ? throw new InvalidOperationException("上传文件不存在。上传可能已过期，请重新上传。")
+            : PreparePluginUploadPackage(pluginManager, packagePath);
     }
 
     private static string GetPluginUploadRoot(string uploadId)
     {
         if (string.IsNullOrWhiteSpace(uploadId) || uploadId.Any(ch => !char.IsAsciiLetterOrDigit(ch)))
-        {
-            throw new InvalidOperationException("upload_id 无效。" );
-        }
+            throw new InvalidOperationException("upload_id 无效。");
 
         return Path.Combine(Path.GetTempPath(), "ShiroBot", "plugin_uploads", uploadId);
     }
@@ -290,7 +250,8 @@ internal sealed partial class HostHttpServer
         value = value.Trim('/');
         var parts = value.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length != 2) return false;
-        if (parts.Any(part => part is "." or ".." || part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)) return false;
+        if (parts.Any(part => part is "." or ".." || part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
+            return false;
 
         repository = string.Join('/', parts);
         return true;
@@ -305,10 +266,7 @@ internal sealed partial class HostHttpServer
     {
         normalizedUrl = string.Empty;
         assetName = string.Empty;
-        if (!Uri.TryCreate(assetUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
-        {
-            return false;
-        }
+        if (!Uri.TryCreate(assetUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps) return false;
 
         if (!uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)) return false;
         if (!string.IsNullOrWhiteSpace(repository))
@@ -320,16 +278,12 @@ internal sealed partial class HostHttpServer
         var urlAssetName = Path.GetFileName(uri.AbsolutePath);
         if (!string.IsNullOrWhiteSpace(requestedAssetName) &&
             !string.Equals(Path.GetFileName(requestedAssetName), urlAssetName, StringComparison.OrdinalIgnoreCase))
-        {
             return false;
-        }
         assetName = urlAssetName;
         var extension = Path.GetExtension(assetName);
         if (!extension.Equals(".zip", StringComparison.OrdinalIgnoreCase) &&
             !extension.Equals(".dll", StringComparison.OrdinalIgnoreCase))
-        {
             return false;
-        }
 
         normalizedUrl = uri.AbsoluteUri;
         return true;
@@ -349,7 +303,8 @@ internal sealed partial class HostHttpServer
     }
 
     /// <summary>Installed plugins, loaded or not, for marking market entries; the console uses it too.</summary>
-    internal static IReadOnlyCollection<MarketplaceInstalledPlugin> GetMarketplaceInstalledPlugins(PluginManager pluginManager)
+    internal static IReadOnlyCollection<MarketplaceInstalledPlugin> GetMarketplaceInstalledPlugins(
+        PluginManager pluginManager)
     {
         var plugins = pluginManager.GetLoadedPluginSnapshot()
             .Select(plugin => new MarketplaceInstalledPlugin(plugin.Name, plugin.GithubRepo, plugin.Version, true))
@@ -358,28 +313,33 @@ internal sealed partial class HostHttpServer
             .Concat(EnumerateUnloadedPlugins(pluginManager)
                 .Select(plugin => new MarketplaceInstalledPlugin(plugin.Id, plugin.Repo, plugin.Version, false)));
 
-        return plugins
-            .GroupBy(plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToArray();
+        return
+        [
+            .. plugins
+                .GroupBy(plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+        ];
     }
 
-    private static object CreatePluginInfoResponse(PluginProbeInfo info) => new
+    private static object CreatePluginInfoResponse(PluginProbeInfo info)
     {
-        id = info.Id,
-        name = info.Name,
-        version = info.Version,
-        author = string.IsNullOrWhiteSpace(info.Author) ? "Unknown" : info.Author,
-        repo = info.GithubRepo,
-        description = info.Description ?? string.Empty,
-        category = info.Category.ToString()
-    };
+        return new
+        {
+            id = info.Id,
+            name = info.Name,
+            version = info.Version,
+            author = string.IsNullOrWhiteSpace(info.Author) ? "Unknown" : info.Author,
+            repo = info.GithubRepo,
+            description = info.Description ?? string.Empty,
+            category = info.Category.ToString()
+        };
+    }
 
     private static void TryDeleteDirectory(string path)
     {
         try
         {
-            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+            if (Directory.Exists(path)) Directory.Delete(path, true);
         }
         catch (IOException)
         {
@@ -392,7 +352,7 @@ internal sealed partial class HostHttpServer
     private static SemaphoreSlim GetPluginOperationLock(string id)
     {
         var key = string.IsNullOrWhiteSpace(id) ? string.Empty : id.Trim().ToUpperInvariant();
-        return PluginUpdateService.GetOperationLock(key);
+        return GetOperationLock(key);
     }
 
     private static void SchedulePluginUploadCleanup(string uploadRoot)
@@ -404,6 +364,8 @@ internal sealed partial class HostHttpServer
         });
     }
 
-    private static void ScheduleAdapterUploadCleanup(string uploadRoot) => SchedulePluginUploadCleanup(uploadRoot);
-
+    private static void ScheduleAdapterUploadCleanup(string uploadRoot)
+    {
+        SchedulePluginUploadCleanup(uploadRoot);
+    }
 }

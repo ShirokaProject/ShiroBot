@@ -2,6 +2,8 @@ using ShiroBot.Hosting.Context;
 using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Models;
 
+namespace ShiroBot.Verification;
+
 internal static class ContactDirectoryVerification
 {
     public static async Task RunAsync()
@@ -14,19 +16,20 @@ internal static class ContactDirectoryVerification
         bot.RegisterAdapter(silent, "official");
         var directory = new ContactDirectory(bot);
 
-        var users = await directory.GetAsync(DirectoryKind.Users, refresh: false, CancellationToken.None);
+        var users = await directory.GetAsync(DirectoryKind.Users, false, CancellationToken.None);
         if (users.Entries is not [{ Instance: "qq-main", InstanceName: "QQ 主号", Id: "10001", Name: "小白" }] ||
             users.Unavailable is not [{ Instance: "official", Reason: "不支持读取好友列表" }])
-            throw new InvalidOperationException("Friend directory did not list per instance or report the unsupported adapter.");
+            throw new InvalidOperationException(
+                "Friend directory did not list per instance or report the unsupported adapter.");
 
         // Only group conversations are offered; direct and thread channels are not groups to route.
-        var groups = await directory.GetAsync(DirectoryKind.Groups, refresh: false, CancellationToken.None);
+        var groups = await directory.GetAsync(DirectoryKind.Groups, false, CancellationToken.None);
         if (!groups.Entries.Select(entry => entry.Id).SequenceEqual(["913449089"]))
             throw new InvalidOperationException("Group directory listed non-group channels.");
 
         friends.Friends = [];
-        if ((await directory.GetAsync(DirectoryKind.Users, refresh: false, CancellationToken.None)).Entries.Count != 1 ||
-            (await directory.GetAsync(DirectoryKind.Users, refresh: true, CancellationToken.None)).Entries.Count != 0)
+        if ((await directory.GetAsync(DirectoryKind.Users, false, CancellationToken.None)).Entries.Count != 1 ||
+            (await directory.GetAsync(DirectoryKind.Users, true, CancellationToken.None)).Entries.Count != 0)
             throw new InvalidOperationException("Directory did not cache for a minute or refresh on request.");
         Console.WriteLine("Contact directory listing, unsupported adapters, caching and refresh verification passed.");
     }
@@ -34,12 +37,20 @@ internal static class ContactDirectoryVerification
     private sealed class ListingUserService : IUserService
     {
         public IReadOnlyList<User> Friends { get; set; } = [];
-        public Task<IReadOnlyList<User>> GetFriendsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Friends);
+
+        public Task<IReadOnlyList<User>> GetFriendsAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Friends);
+        }
     }
 
     private sealed class ListingChannelService : IChannelService
     {
-        public Task<IReadOnlyList<Channel>> GetChannelsAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<Channel>>([Channel.Group("913449089") with { Name = "测试群" }, Channel.Direct("10001")]);
+        public Task<IReadOnlyList<Channel>> GetChannelsAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Channel>>([
+                Channel.Group("913449089") with { Name = "测试群" }, Channel.Direct("10001")
+            ]);
+        }
     }
 }

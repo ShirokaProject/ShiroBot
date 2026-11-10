@@ -1,7 +1,7 @@
 namespace ShiroBot.SDK.Models;
 
 /// <summary>
-/// 平台无关的入站消息事件。
+///     平台无关的入站消息事件。
 /// </summary>
 public sealed record MessageEvent : BotEvent
 {
@@ -20,26 +20,40 @@ public sealed record MessageEvent : BotEvent
     public DateTimeOffset Timestamp { get; init; }
 
     /// <summary>是否为私聊消息。</summary>
-    public MessageReference Reference => new(InstanceId ?? throw new InvalidOperationException("Message has no source instance."), Channel, MessageId);
+    public MessageReference Reference =>
+        new(InstanceId ?? throw new InvalidOperationException("Message has no source instance."), Channel, MessageId);
 
     public bool IsDirect => Channel.Type == ChannelType.Direct;
 
     /// <summary>消息纯文本内容（拼接所有文本段）。</summary>
-    public string GetPlainText() =>
-        string.Concat(Segments.OfType<TextSegment>().Select(segment => segment.Text));
+    public string GetPlainText()
+    {
+        return string.Concat(Segments.OfType<TextSegment>().Select(segment => segment.Text));
+    }
 
-    public bool HasMention() => Segments.OfType<MentionSegment>().Any();
+    public bool HasMention()
+    {
+        return Segments.OfType<MentionSegment>().Any();
+    }
 
-    public bool HasMention(string userId) =>
-        Segments.OfType<MentionSegment>().Any(segment => segment.UserId == userId);
+    public bool HasMention(string userId)
+    {
+        return Segments.OfType<MentionSegment>().Any(segment => segment.UserId == userId);
+    }
 
-    public bool HasMentionAll() => Segments.OfType<MentionAllSegment>().Any();
+    public bool HasMentionAll()
+    {
+        return Segments.OfType<MentionAllSegment>().Any();
+    }
 
-    public QuoteSegment? GetQuote() => Segments.OfType<QuoteSegment>().FirstOrDefault();
+    public QuoteSegment? GetQuote()
+    {
+        return Segments.OfType<QuoteSegment>().FirstOrDefault();
+    }
 }
 
 /// <summary>
-/// 发送消息的结果。
+///     发送消息的结果。
 /// </summary>
 /// <remarks>文件上传发布成功时，平台可能不返回消息 ID，此时 MessageId 为空、Reference 为 null。</remarks>
 public sealed record SentMessage(string MessageId)

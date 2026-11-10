@@ -1,70 +1,40 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.IO.Compression;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using ShiroBot.Components.Updates;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
 using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Plugins.Marketplace;
 using ShiroBot.Update;
-using ShiroBot.Terminal;
-using ShiroBot.Integrations.Avalonia;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Plugin;
-
 using static ShiroBot.Update.PluginUpdateService;
 
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapPluginInstallEndpoints(RouteGroupBuilder api, PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy, HostRuntimeState runtimeState)
+    private static void MapPluginInstallEndpoints(RouteGroupBuilder api, PluginManager pluginManager,
+        HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy, HostRuntimeState runtimeState)
     {
         api.MapPost("/plugins/upload", async (HttpContext context) =>
         {
             if (!context.Request.HasFormContentType)
-            {
-                return Results.BadRequest(new { error = "invalid_request", message = "请使用 multipart/form-data 上传插件文件。" });
-            }
+                return Results.BadRequest(
+                    new { error = "invalid_request", message = "请使用 multipart/form-data 上传插件文件。" });
 
             var form = await context.Request.ReadFormAsync(context.RequestAborted).ConfigureAwait(false);
-            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            var file = form.Files.GetFile("file") ?? (form.Files is [var firstFile, ..] ? firstFile : null);
             if (file is null || file.Length == 0)
-            {
                 return Results.BadRequest(new { error = "missing_file", message = "未收到插件文件。" });
-            }
 
             if (file.Length > MaxPluginUploadBytes)
-            {
                 return Results.BadRequest(new { error = "file_too_large", message = "插件文件不能超过 100MB。" });
-            }
 
             var extension = Path.GetExtension(file.FileName);
             if (!extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
                 !extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
-            {
                 return Results.BadRequest(new { error = "unsupported_file", message = "只支持上传 .dll 或 .zip 插件。" });
-            }
 
             var uploadId = Guid.NewGuid().ToString("N");
             var uploadRoot = GetPluginUploadRoot(uploadId);
@@ -122,7 +92,7 @@ internal sealed partial class HostHttpServer
                 request = await JsonSerializer.DeserializeAsync<PluginUploadConfirmRequest>(
                               context.Request.Body,
                               JsonSerializerOptions.Web,
-                              cancellationToken: context.RequestAborted).ConfigureAwait(false)
+                              context.RequestAborted).ConfigureAwait(false)
                           ?? new PluginUploadConfirmRequest();
             }
             catch (JsonException)
@@ -132,9 +102,7 @@ internal sealed partial class HostHttpServer
 
             var uploadRoot = GetPluginUploadRoot(uploadId);
             if (!Directory.Exists(uploadRoot))
-            {
                 return Results.NotFound(new { error = "upload_not_found", message = "上传记录不存在或已过期。" });
-            }
 
             try
             {
@@ -143,33 +111,21 @@ internal sealed partial class HostHttpServer
                 await gate.WaitAsync(context.RequestAborted).ConfigureAwait(false);
                 try
                 {
-                    if (ShiroBot.Components.Updates.StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, package.Info.Id))
-                        return Results.Conflict(new { error = "plugin_pending_delete", message = "插件已登记删除任务，请先重启宿主完成删除，再重新安装。" });
+                    if (StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, package.Info.Id))
+                        return Results.Conflict(new
+                            { error = "plugin_pending_delete", message = "插件已登记删除任务，请先重启宿主完成删除，再重新安装。" });
                     var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
                     if (installed is not null && !request.Replace)
-                    {
                         return Results.Conflict(new { error = "plugin_exists", message = "插件已存在，请确认替换。" });
-                    }
 
                     var loaded = FindLoadedPlugin(pluginManager, package.Info.Id);
 
-                    async Task FinishPluginInstallAsync(string entryPath)
-                    {
-                        if (request.Enable)
-                        {
-                            await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id).ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            pluginManager.SuppressWatcherPath(entryPath);
-                            DisablePluginFile(entryPath);
-                        }
-                    }
 
                     if (installed is not null)
                     {
                         var replacement = await ReplaceInstalledPluginAsync(
-                            pluginManager, eventDispatcher, routePolicy, package, installed, loaded).ConfigureAwait(false);
+                                pluginManager, eventDispatcher, routePolicy, package, installed, loaded)
+                            .ConfigureAwait(false);
                         if (replacement.PendingReason is not null)
                         {
                             runtimeState.RecommendRestart("plugin-update:" + package.Info.Id,
@@ -187,7 +143,8 @@ internal sealed partial class HostHttpServer
 
                         await FinishPluginInstallAsync(replacement.EntryPath!).ConfigureAwait(false);
                         TryDeleteDirectory(uploadRoot);
-                        return Results.Ok(new { success = true, plugin = new { id = package.Info.Id, enable = request.Enable } });
+                        return Results.Ok(new
+                            { success = true, plugin = new { id = package.Info.Id, enable = request.Enable } });
                     }
 
                     var installedAssemblyPath = InstallUploadedPlugin(pluginManager, package);
@@ -203,8 +160,25 @@ internal sealed partial class HostHttpServer
                             enable = request.Enable
                         }
                     });
+
+                    async Task FinishPluginInstallAsync(string entryPath)
+                    {
+                        if (request.Enable)
+                        {
+                            await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id)
+                                .ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            pluginManager.SuppressWatcherPath(entryPath);
+                            DisablePluginFile(entryPath);
+                        }
+                    }
                 }
-                finally { gate.Release(); }
+                finally
+                {
+                    gate.Release();
+                }
             }
             catch (InvalidOperationException ex)
             {
@@ -226,7 +200,7 @@ internal sealed partial class HostHttpServer
                 request = await JsonSerializer.DeserializeAsync<GitHubPluginInstallRequest>(
                               context.Request.Body,
                               JsonSerializerOptions.Web,
-                              cancellationToken: context.RequestAborted).ConfigureAwait(false)
+                              context.RequestAborted).ConfigureAwait(false)
                           ?? new GitHubPluginInstallRequest(string.Empty);
             }
             catch (JsonException)
@@ -236,13 +210,14 @@ internal sealed partial class HostHttpServer
 
             var hasRepository = TryNormalizeGitHubRepository(request.Repository, out var repository);
             var hasAssetUrl = !string.IsNullOrWhiteSpace(request.AssetUrl);
-            if (hasAssetUrl && !hasRepository)
+            switch (hasRepository, hasAssetUrl)
             {
-                return Results.BadRequest(new { error = "missing_repository", message = "使用 assetUrl 安装时必须提供对应的 GitHub repository。" });
-            }
-            if (!hasAssetUrl && !hasRepository)
-            {
-                return Results.BadRequest(new { error = "invalid_repository", message = "repository 必须是 owner/repo 或 GitHub 仓库 URL。" });
+                case (false, true):
+                    return Results.BadRequest(new
+                        { error = "missing_repository", message = "使用 assetUrl 安装时必须提供对应的 GitHub repository。" });
+                case (false, false):
+                    return Results.BadRequest(new
+                        { error = "invalid_repository", message = "repository 必须是 owner/repo 或 GitHub 仓库 URL。" });
             }
 
             string assetDownloadUrl;
@@ -254,18 +229,19 @@ internal sealed partial class HostHttpServer
             if (hasAssetUrl)
             {
                 if (!TryNormalizeSha256(request.AssetSha256, out var assetSha256))
-                {
-                    return Results.BadRequest(new { error = "invalid_asset_digest", message = "assetSha256 必须是 sha256: 后跟 64 位十六进制摘要。" });
-                }
+                    return Results.BadRequest(new
+                        { error = "invalid_asset_digest", message = "assetSha256 必须是 sha256: 后跟 64 位十六进制摘要。" });
                 if (!TryNormalizeGitHubAssetUrl(
                         request.AssetUrl,
                         request.AssetName,
                         hasRepository ? repository : null,
                         out assetDownloadUrl,
                         out assetName))
-                {
-                    return Results.BadRequest(new { error = "invalid_asset_url", message = "assetUrl 必须属于 repository 对应的 GitHub Release，且是 .zip 或 .dll HTTPS URL。" });
-                }
+                    return Results.BadRequest(new
+                    {
+                        error = "invalid_asset_url",
+                        message = "assetUrl 必须属于 repository 对应的 GitHub Release，且是 .zip 或 .dll HTTPS URL。"
+                    });
 
                 request = request with { AssetSha256 = assetSha256 };
             }
@@ -276,14 +252,13 @@ internal sealed partial class HostHttpServer
                     request.IncludePrerelease,
                     context.RequestAborted).ConfigureAwait(false);
                 if (packageInfo is null)
-                {
-                    return Results.NotFound(new { error = "release_not_found", message = $"仓库 {repository} 没有可用 release。" });
-                }
+                    return Results.NotFound(new
+                        { error = "release_not_found", message = $"仓库 {repository} 没有可用 release。" });
 
-                if (string.IsNullOrWhiteSpace(packageInfo.AssetDownloadUrl) || string.IsNullOrWhiteSpace(packageInfo.AssetName))
-                {
-                    return Results.BadRequest(new { error = "asset_not_found", message = $"仓库 {repository} 的最新 release 没有 .zip 或 .dll 插件资源。" });
-                }
+                if (string.IsNullOrWhiteSpace(packageInfo.AssetDownloadUrl) ||
+                    string.IsNullOrWhiteSpace(packageInfo.AssetName))
+                    return Results.BadRequest(new
+                        { error = "asset_not_found", message = $"仓库 {repository} 的最新 release 没有 .zip 或 .dll 插件资源。" });
 
                 assetDownloadUrl = packageInfo.AssetDownloadUrl;
                 assetName = packageInfo.AssetName;
@@ -354,5 +329,4 @@ internal sealed partial class HostHttpServer
             }
         });
     }
-
 }

@@ -17,6 +17,8 @@ internal static class PackageDependencyProbe
 
         var reader = peReader.GetMetadataReader();
         var assembly = reader.GetAssemblyDefinition();
+        // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var attributeHandle in assembly.GetCustomAttributes())
         {
             var attribute = reader.GetCustomAttribute(attributeHandle);
@@ -24,9 +26,7 @@ internal static class PackageDependencyProbe
                     GetAttributeTypeFullName(reader, attribute),
                     typeof(ShiroBotPackageAttribute).FullName,
                     StringComparison.Ordinal))
-            {
                 continue;
-            }
 
             var blob = reader.GetBlobReader(attribute.Value);
             if (blob.ReadUInt16() != 1) return null;
@@ -57,9 +57,7 @@ internal static class PackageDependencyProbe
                     GetAttributeTypeFullName(reader, attribute),
                     typeof(RequiresShiroBotPackageAttribute).FullName,
                     StringComparison.Ordinal))
-            {
                 continue;
-            }
 
             var blob = reader.GetBlobReader(attribute.Value);
             if (blob.ReadUInt16() != 1) continue;
@@ -75,16 +73,12 @@ internal static class PackageDependencyProbe
                 var typeCode = blob.ReadByte();
                 var memberName = blob.ReadSerializedString();
                 if (typeCode != SerializedTypeString)
-                {
                     throw new InvalidOperationException(
                         $"无法读取 {assemblyPath} 的程序集包依赖：不支持的 Attribute 参数类型。");
-                }
 
                 var value = blob.ReadSerializedString();
-                if (string.Equals(memberName, nameof(RequiresShiroBotPackageAttribute.MinimumVersion), StringComparison.Ordinal))
-                {
-                    minimumVersion = value;
-                }
+                if (string.Equals(memberName, nameof(RequiresShiroBotPackageAttribute.MinimumVersion),
+                        StringComparison.Ordinal)) minimumVersion = value;
             }
 
             requirements.Add(new Requirement(packageId, minimumVersion));
@@ -93,13 +87,17 @@ internal static class PackageDependencyProbe
         return requirements;
     }
 
-    private static string? GetAttributeTypeFullName(MetadataReader reader, CustomAttribute attribute) =>
-        attribute.Constructor.Kind switch
+    private static string? GetAttributeTypeFullName(MetadataReader reader, CustomAttribute attribute)
+    {
+        return attribute.Constructor.Kind switch
         {
-            HandleKind.MemberReference => GetMemberReferenceAttributeType(reader, (MemberReferenceHandle)attribute.Constructor),
-            HandleKind.MethodDefinition => GetMethodDefinitionAttributeType(reader, (MethodDefinitionHandle)attribute.Constructor),
+            HandleKind.MemberReference => GetMemberReferenceAttributeType(reader,
+                (MemberReferenceHandle)attribute.Constructor),
+            HandleKind.MethodDefinition => GetMethodDefinitionAttributeType(reader,
+                (MethodDefinitionHandle)attribute.Constructor),
             _ => null
         };
+    }
 
     private static string? GetMemberReferenceAttributeType(MetadataReader reader, MemberReferenceHandle handle)
     {
@@ -117,5 +115,6 @@ internal static class PackageDependencyProbe
     }
 
     internal sealed record Requirement(string PackageId, string? MinimumVersion);
+
     internal sealed record PackageMetadata(string Id, ShiroBotPackageKind Kind, string Version);
 }

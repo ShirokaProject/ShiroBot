@@ -15,19 +15,23 @@ public enum UiFieldKind
     Switch = 4,
     Select = 5,
     MultiSelect = 6,
+
     /// <summary>一个好友，值为 实例ID:用户ID。</summary>
     User = 7,
+
     /// <summary>多个好友。</summary>
     Users = 8,
+
     /// <summary>一个群，值为群号。</summary>
     Group = 9,
+
     /// <summary>多个群。</summary>
     Groups = 10
 }
 
 /// <summary>
-/// 指定 <see cref="Ui.Form{T}"/> 里这个字段用什么控件，例如群选择器或多行文本；
-/// 不标时按类型推断：字符串是文本，数字是数字，布尔是开关，枚举是单选。
+///     指定 <see cref="Ui.Form{T}" /> 里这个字段用什么控件，例如群选择器或多行文本；
+///     不标时按类型推断：字符串是文本，数字是数字，布尔是开关，枚举是单选。
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Parameter)]
 public sealed class UiFieldAttribute : Attribute
@@ -54,20 +58,23 @@ public sealed class UiFormField
 
     /// <summary>文本必须匹配的正则表达式。</summary>
     public string? Pattern { get; internal set; }
+
     public double? Min { get; internal set; }
     public double? Max { get; internal set; }
 
     /// <summary>数字只接受整数。</summary>
     public bool Integer { get; internal set; }
+
     public IReadOnlyList<UiOption> Options { get; internal set; } = [];
 
     /// <summary>字段的初始值。</summary>
     public JsonNode? Value { get; internal set; }
+
     public string? Description { get; internal set; }
 }
 
 /// <summary>
-/// 表单。提交时宿主先检查字段：只接受声明过的字段，类型、必填、长度、范围和选项都符合才调用处理函数。
+///     表单。提交时宿主先检查字段：只接受声明过的字段，类型、必填、长度、范围和选项都符合才调用处理函数。
 /// </summary>
 public class UiForm : UiNode
 {
@@ -84,47 +91,73 @@ public class UiForm : UiNode
     public IReadOnlyList<UiFormField> Fields => _fields;
     public string SubmitLabel { get; private protected set; } = "保存";
 
-    /// <summary>为 true 时不显示在页面里，只在处理结果 <see cref="DashboardResult.OpenForm(string, JsonObject?)"/> 时以对话框打开。</summary>
+    /// <summary>为 true 时不显示在页面里，只在处理结果 <see cref="DashboardResult.OpenForm(string, JsonObject?)" /> 时以对话框打开。</summary>
     public bool Dialog { get; private set; }
 
     public bool HasSubmit => _submit is not null;
 
-    public UiForm Text(string key, string label, bool required = false, int? maxLength = null, string? pattern = null, string? value = null) =>
-        Add(new UiFormField(key, label, UiFieldKind.Text) { Required = required, MaxLength = maxLength, Pattern = pattern, Value = value });
+    public UiForm Text(string key, string label, bool required = false, int? maxLength = null, string? pattern = null,
+        string? value = null)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.Text)
+            { Required = required, MaxLength = maxLength, Pattern = pattern, Value = value });
+    }
 
-    public UiForm TextArea(string key, string label, bool required = false, int? maxLength = null, string? value = null) =>
-        Add(new UiFormField(key, label, UiFieldKind.TextArea) { Required = required, MaxLength = maxLength, Value = value });
+    public UiForm TextArea(string key, string label, bool required = false, int? maxLength = null, string? value = null)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.TextArea)
+            { Required = required, MaxLength = maxLength, Value = value });
+    }
 
-    public UiForm Secret(string key, string label, bool required = false) =>
-        Add(new UiFormField(key, label, UiFieldKind.Secret) { Required = required });
+    public UiForm Secret(string key, string label, bool required = false)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.Secret) { Required = required });
+    }
 
     public UiForm Number(string key, string label, double? min = null, double? max = null, bool integer = false,
-        bool required = false, double? value = null) =>
-        Add(new UiFormField(key, label, UiFieldKind.Number)
+        bool required = false, double? value = null)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.Number)
         {
-            Min = min, Max = max, Integer = integer, Required = required, Value = value is null ? null : JsonValue.Create(value.Value)
+            Min = min, Max = max, Integer = integer, Required = required,
+            Value = value is null ? null : JsonValue.Create(value.Value)
         });
+    }
 
-    public UiForm Switch(string key, string label, bool value = false) =>
-        Add(new UiFormField(key, label, UiFieldKind.Switch) { Value = value });
+    public UiForm Switch(string key, string label, bool value = false)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.Switch) { Value = value });
+    }
 
-    public UiForm Select(string key, string label, IEnumerable<(string Value, string Label)> options, bool required = false, string? value = null) =>
-        Add(new UiFormField(key, label, UiFieldKind.Select)
+    public UiForm Select(string key, string label, IEnumerable<(string Value, string Label)> options,
+        bool required = false, string? value = null)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.Select)
         {
             Options = ToOptions(options), Required = required, Value = value
         });
+    }
 
-    public UiForm MultiSelect(string key, string label, IEnumerable<(string Value, string Label)> options, bool required = false) =>
-        Add(new UiFormField(key, label, UiFieldKind.MultiSelect) { Options = ToOptions(options), Required = required });
+    public UiForm MultiSelect(string key, string label, IEnumerable<(string Value, string Label)> options,
+        bool required = false)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.MultiSelect)
+            { Options = ToOptions(options), Required = required });
+    }
 
-    public UiForm Users(string key, string label, bool required = false) =>
-        Add(new UiFormField(key, label, UiFieldKind.Users) { Required = required });
+    public UiForm Users(string key, string label, bool required = false)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.Users) { Required = required });
+    }
 
-    public UiForm Groups(string key, string label, bool required = false) =>
-        Add(new UiFormField(key, label, UiFieldKind.Groups) { Required = required });
+    public UiForm Groups(string key, string label, bool required = false)
+    {
+        return Add(new UiFormField(key, label, UiFieldKind.Groups) { Required = required });
+    }
 
     /// <summary>提交按钮和处理函数。</summary>
-    public UiForm Submit(string label, Func<DashboardForm, DashboardEvent, CancellationToken, Task<DashboardResult>> handler)
+    public UiForm Submit(string label,
+        Func<DashboardForm, DashboardEvent, CancellationToken, Task<DashboardResult>> handler)
     {
         SubmitLabel = label;
         _submit = handler ?? throw new ArgumentNullException(nameof(handler));
@@ -139,8 +172,10 @@ public class UiForm : UiNode
     }
 
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public Task<DashboardResult> Invoke(DashboardForm form, DashboardEvent e, CancellationToken cancellationToken) =>
-        (_submit ?? throw new InvalidOperationException($"表单 {Id} 没有提交处理函数。"))(form, e, cancellationToken);
+    public Task<DashboardResult> Invoke(DashboardForm form, DashboardEvent e, CancellationToken cancellationToken)
+    {
+        return (_submit ?? throw new InvalidOperationException($"表单 {Id} 没有提交处理函数。"))(form, e, cancellationToken);
+    }
 
     private protected UiForm Add(UiFormField field)
     {
@@ -150,19 +185,22 @@ public class UiForm : UiNode
         return this;
     }
 
-    private protected void SetSubmit(string label, Func<DashboardForm, DashboardEvent, CancellationToken, Task<DashboardResult>> handler)
+    private protected void SetSubmit(string label,
+        Func<DashboardForm, DashboardEvent, CancellationToken, Task<DashboardResult>> handler)
     {
         SubmitLabel = label;
         _submit = handler;
     }
 
-    private static UiOption[] ToOptions(IEnumerable<(string Value, string Label)> options) =>
-        options.Select(option => new UiOption(option.Value, option.Label)).ToArray();
+    private static UiOption[] ToOptions(IEnumerable<(string Value, string Label)> options)
+    {
+        return [.. options.Select(option => new UiOption(option.Value, option.Label))];
+    }
 }
 
 /// <summary>
-/// 按 record 生成的表单：字段取自它生成的 JSON Schema（字段类型、默认值、<c>[Description]</c> 作为标题、
-/// <c>[Range]</c>、<c>[MaxLength]</c>、<c>[UiField]</c>、必填），提交时把值读成 record 交给处理函数。
+///     按 record 生成的表单：字段取自它生成的 JSON Schema（字段类型、默认值、<c>[Description]</c> 作为标题、
+///     <c>[Range]</c>、<c>[MaxLength]</c>、<c>[UiField]</c>、必填），提交时把值读成 record 交给处理函数。
 /// </summary>
 public sealed class UiForm<T> : UiForm
 {
@@ -177,7 +215,7 @@ public sealed class UiForm<T> : UiForm
         }
     }
 
-    /// <summary>提交按钮和处理函数，收到读成 <typeparamref name="T"/> 的值。</summary>
+    /// <summary>提交按钮和处理函数，收到读成 <typeparamref name="T" /> 的值。</summary>
     public UiForm<T> Submit(string label, Func<T, DashboardEvent, CancellationToken, Task<DashboardResult>> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -196,9 +234,14 @@ public sealed class UiForm<T> : UiForm
     /// <summary>用一个值预填表单。</summary>
     public UiForm<T> Value(T value)
     {
-        if (PluginJson.ToNode(value) is JsonObject values)
-            foreach (var field in Fields)
-                if (values[field.Key] is { } node) field.Value = node.DeepClone();
+        if (PluginJson.ToNode(value) is not JsonObject values)
+        {
+            return this;
+        }
+
+        foreach (var field in Fields)
+            if (values[field.Key] is { } node)
+                field.Value = node.DeepClone();
         return this;
     }
 

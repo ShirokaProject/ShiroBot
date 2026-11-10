@@ -1,6 +1,7 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
-using ShiroBot.SDK.Abstractions;
 using ShiroBot.Hosting.Runtime;
+using ShiroBot.SDK.Abstractions;
 
 namespace ShiroBot.Plugins.Marketplace;
 
@@ -12,9 +13,6 @@ internal sealed record MarketplaceInstalledPlugin(
 
 internal sealed class PluginMarketplaceCache
 {
-    /// <summary>The one cache the Dashboard and the console share.</summary>
-    public static PluginMarketplaceCache Shared { get; } = new();
-
     private const string MarketplaceUrl =
         "https://raw.githubusercontent.com/ShirokaProject/awesome-shirobot/automation/refresh-marketplace/dist/marketplace.v1.json";
 
@@ -23,6 +21,9 @@ internal sealed class PluginMarketplaceCache
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private JsonObject? _memoryCache;
     private DateTimeOffset _memoryCachedAt;
+
+    /// <summary>The one cache the Dashboard and the console share.</summary>
+    public static PluginMarketplaceCache Shared { get; } = new();
 
     public async Task<JsonObject> GetAsync(
         IReadOnlyCollection<MarketplaceInstalledPlugin> installedPlugins,
@@ -36,17 +37,13 @@ internal sealed class PluginMarketplaceCache
     private async Task<JsonObject> GetMarketplaceAsync(bool forceRefresh, CancellationToken cancellationToken)
     {
         if (!forceRefresh && IsFresh(_memoryCachedAt) && _memoryCache is not null)
-        {
             return (JsonObject)_memoryCache.DeepClone();
-        }
 
         await _refreshLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!forceRefresh && IsFresh(_memoryCachedAt) && _memoryCache is not null)
-            {
                 return (JsonObject)_memoryCache.DeepClone();
-            }
 
             var diskCache = await TryReadDiskCacheAsync(cancellationToken).ConfigureAwait(false);
             if (!forceRefresh && diskCache.Document is not null && IsFresh(diskCache.CachedAt))
@@ -68,16 +65,13 @@ internal sealed class PluginMarketplaceCache
             }
             catch (Exception ex) when (
                 !cancellationToken.IsCancellationRequested &&
-                ex is HttpRequestException or TaskCanceledException or InvalidOperationException or System.Text.Json.JsonException)
+                ex is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
             {
-                if (diskCache.Document is not null)
-                {
-                    BotLog.Warning("插件市场远端不可用，使用本地 last-known-good 缓存: " + ex.Message);
-                    SetMemoryCache(diskCache.Document, DateTimeOffset.UtcNow);
-                    return (JsonObject)diskCache.Document.DeepClone();
-                }
-
-                throw new InvalidOperationException("插件市场当前不可用，且没有本地缓存。", ex);
+                if (diskCache.Document is null)
+                    throw new InvalidOperationException("插件市场当前不可用，且没有本地缓存。", ex);
+                BotLog.Warning("插件市场远端不可用，使用本地 last-known-good 缓存: " + ex.Message);
+                SetMemoryCache(diskCache.Document, DateTimeOffset.UtcNow);
+                return (JsonObject)diskCache.Document.DeepClone();
             }
         }
         finally
@@ -86,8 +80,10 @@ internal sealed class PluginMarketplaceCache
         }
     }
 
-    private static bool IsFresh(DateTimeOffset cachedAt) =>
-        DateTimeOffset.UtcNow - cachedAt < CacheDuration;
+    private static bool IsFresh(DateTimeOffset cachedAt)
+    {
+        return DateTimeOffset.UtcNow - cachedAt < CacheDuration;
+    }
 
     private static JsonObject AddInstalledState(
         JsonObject source,
@@ -106,19 +102,16 @@ internal sealed class PluginMarketplaceCache
                 (!string.IsNullOrWhiteSpace(id) &&
                  string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase)) ||
                 (repository is not null &&
-                 string.Equals(NormalizeRepository(candidate.Repository), repository, StringComparison.OrdinalIgnoreCase)));
+                 string.Equals(NormalizeRepository(candidate.Repository), repository,
+                     StringComparison.OrdinalIgnoreCase)));
             if (installed is not null)
-            {
                 plugin["installed"] = new JsonObject
                 {
                     ["version"] = installed.Version,
                     ["enabled"] = installed.Enabled
                 };
-            }
             else
-            {
                 plugin.Remove("installed");
-            }
             plugins.Add(plugin);
         }
 
@@ -134,16 +127,15 @@ internal sealed class PluginMarketplaceCache
     {
         var document = JsonNode.Parse(json) as JsonObject
                        ?? throw new InvalidOperationException("插件市场响应不是 JSON 对象。");
-        if (document["plugins"] is not JsonArray)
-        {
-            throw new InvalidOperationException("插件市场响应缺少 plugins 数组。");
-        }
-
-        return document;
+        return document["plugins"] is not JsonArray
+            ? throw new InvalidOperationException("插件市场响应缺少 plugins 数组。")
+            : document;
     }
 
-    private static string? GetString(JsonObject obj, string propertyName) =>
-        obj[propertyName] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+    private static string? GetString(JsonObject obj, string propertyName)
+    {
+        return obj[propertyName] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+    }
 
     private static string? NormalizeRepository(string? repository)
     {
@@ -152,9 +144,7 @@ internal sealed class PluginMarketplaceCache
         var value = repository.Trim();
         if (Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
             uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
-        {
             value = uri.AbsolutePath;
-        }
 
         value = value.Trim('/');
         if (value.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) value = value[..^4];
@@ -179,7 +169,8 @@ internal sealed class PluginMarketplaceCache
             var json = await File.ReadAllTextAsync(cachePath, cancellationToken).ConfigureAwait(false);
             return (ParseMarketplace(json), File.GetLastWriteTimeUtc(cachePath));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                                       or JsonException)
         {
             BotLog.Warning("读取插件市场缓存失败: " + ex.Message);
             return (null, DateTimeOffset.MinValue);
@@ -194,7 +185,7 @@ internal sealed class PluginMarketplaceCache
         {
             Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
             await File.WriteAllTextAsync(tempPath, json, cancellationToken).ConfigureAwait(false);
-            File.Move(tempPath, cachePath, overwrite: true);
+            File.Move(tempPath, cachePath, true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -212,6 +203,8 @@ internal sealed class PluginMarketplaceCache
         }
     }
 
-    private static string GetCachePath() =>
-        Path.Combine(HostPaths.Root, "cache", "plugin-marketplace.v1.json");
+    private static string GetCachePath()
+    {
+        return Path.Combine(HostPaths.Root, "cache", "plugin-marketplace.v1.json");
+    }
 }

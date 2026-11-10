@@ -6,18 +6,28 @@ public sealed record QOfficialMessageTarget(QOfficialMessageScene Scene, string 
 /// <summary>一条 QQ 官方消息。根据消息种类限制可组合的正文和键盘。</summary>
 public abstract record QOfficialMessage
 {
-    public static QOfficialMessage Text(string content) => new QOfficialTextMessage(content);
+    public static QOfficialMessage Text(string content)
+    {
+        return new QOfficialTextMessage(content);
+    }
 
-    public static QOfficialMessage Markdown(QOfficialMarkdown markdown, QOfficialKeyboard? keyboard = null) =>
-        new QOfficialMarkdownMessage(markdown, keyboard);
+    public static QOfficialMessage Markdown(QOfficialMarkdown markdown, QOfficialKeyboard? keyboard = null)
+    {
+        return new QOfficialMarkdownMessage(markdown, keyboard);
+    }
 
     /// <summary>创建本地媒体消息；媒体上传由适配器在发送时完成。</summary>
     public static QOfficialMessage Media(QOfficialMediaType type, Stream content, string fileName,
-        string? caption = null) => new QOfficialMediaSourceMessage(type, content, fileName, caption);
+        string? caption = null)
+    {
+        return new QOfficialMediaSourceMessage(type, content, fileName, caption);
+    }
 
     /// <summary>创建已上传媒体消息，可在被动回复时复用 file_info。</summary>
-    public static QOfficialMessage Media(QOfficialMedia media, string? caption = null) =>
-        new QOfficialUploadedMediaMessage(media, caption);
+    public static QOfficialMessage Media(QOfficialMedia media, string? caption = null)
+    {
+        return new QOfficialUploadedMediaMessage(media, caption);
+    }
 }
 
 public sealed record QOfficialTextMessage(string Content) : QOfficialMessage;
@@ -84,8 +94,10 @@ public sealed record QKeyboardButton
 {
     /// <summary>在同一键盘内唯一。</summary>
     public string? Id { get; init; }
+
     /// <summary>仅回调按钮有效；组内一个按钮操作后，其余按钮变灰。</summary>
     public string? GroupId { get; init; }
+
     public required QKeyboardRenderData RenderData { get; init; }
     public required QKeyboardAction Action { get; init; }
 }
@@ -104,15 +116,21 @@ public sealed record QKeyboardAction
 {
     public required QKeyboardActionType Type { get; init; }
     public required QKeyboardPermission Permission { get; init; }
+
     /// <summary>跳转 URL、回调数据或指令内容，依 Type 而定。</summary>
     public required string Data { get; init; }
+
     public required string UnsupportTips { get; init; }
+
     /// <summary>仅指令按钮有效；是否引用本消息。</summary>
     public bool? Reply { get; init; }
+
     /// <summary>仅指令按钮有效；点击后直接发送指令。</summary>
     public bool? Enter { get; init; }
+
     /// <summary>仅指令按钮有效；设置后忽略 Enter。值 1 唤起手机端选图器。</summary>
     public int? Anchor { get; init; }
+
     public QKeyboardModal? Modal { get; init; }
 }
 
@@ -130,6 +148,7 @@ public sealed record QKeyboardPermission
 {
     public required QKeyboardPermissionType Type { get; init; }
     public IReadOnlyList<string>? SpecifyUserIds { get; init; }
+
     /// <summary>仅频道的指定身份组权限有效。</summary>
     public IReadOnlyList<string>? SpecifyRoleIds { get; init; }
 }

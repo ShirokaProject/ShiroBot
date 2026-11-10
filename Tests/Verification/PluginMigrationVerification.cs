@@ -2,26 +2,27 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Packages;
-using ShiroBot.SDK.Plugin;
-using ShiroBot.SDK.Core;
-using ShiroBot.Model.QQ;
 using ShiroBot.Model.Discord;
+using ShiroBot.Model.QQ;
 using ShiroBot.Model.Telegram;
+using ShiroBot.Packages;
+using ShiroBot.Plugins.Loading;
+using ShiroBot.SDK.Core;
+
+namespace ShiroBot.Verification;
 
 internal static class PluginMigrationVerification
 {
-    internal sealed record Entry(string Id, string AssemblyPath);
     internal static void Run(string manifestPath)
     {
         var entries = JsonSerializer.Deserialize<Entry[]>(File.ReadAllText(manifestPath))
-            ?? throw new InvalidOperationException("Missing plugin migration manifest.");
+                      ?? throw new InvalidOperationException("Missing plugin migration manifest.");
         if (entries.Length == 0) throw new InvalidOperationException("No plugins to verify.");
         foreach (var entry in entries)
         {
             var report = Load(entry);
-            Console.WriteLine($"PASS {entry.Id}: host contract preflight, plugin activation, {report.TypeCount} type signatures; SDK ABI {report.SdkAbi}, QQ ABI {report.QqAbi?.ToString() ?? "unused"}");
+            Console.WriteLine(
+                $"PASS {entry.Id}: host contract preflight, plugin activation, {report.TypeCount} type signatures; SDK ABI {report.SdkAbi}, QQ ABI {report.QqAbi?.ToString() ?? "unused"}");
         }
     }
 
@@ -30,11 +31,17 @@ internal static class PluginMigrationVerification
     {
         var path = Path.GetFullPath(entry.AssemblyPath);
         var resolver = new SharedAssemblyResolver();
-        foreach (var contract in new[] { typeof(IBotPlugin).Assembly, typeof(QGroup).Assembly, typeof(DiscordUser).Assembly, typeof(TelegramUser).Assembly })
+        foreach (var contract in new[]
+                 {
+                     typeof(IBotPlugin).Assembly, typeof(QGroup).Assembly, typeof(DiscordUser).Assembly,
+                     typeof(TelegramUser).Assembly
+                 })
             resolver.RegisterAssembly(contract);
         resolver.Register(["Avalonia", "SkiaSharp", "HarfBuzzSharp", "MicroCom"], AssemblyLoadContext.Default);
         var registry = new ModelPackageRegistry(resolver);
-        foreach (var model in new[] { typeof(QGroup).Assembly, typeof(DiscordUser).Assembly, typeof(TelegramUser).Assembly }) registry.RegisterBuiltIn(model);
+        foreach (var model in new[]
+                     { typeof(QGroup).Assembly, typeof(DiscordUser).Assembly, typeof(TelegramUser).Assembly })
+            registry.RegisterBuiltIn(model);
         registry.ValidateDependencies(path);
         var loader = new DllLoader<IBotPlugin>(true, resolver);
         try
@@ -44,22 +51,32 @@ internal static class PluginMigrationVerification
             var types = assembly.GetTypes();
             foreach (var type in types)
             {
-                foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+                foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic |
+                                                       BindingFlags.Instance | BindingFlags.Static |
+                                                       BindingFlags.DeclaredOnly))
                 {
                     _ = method.ReturnType;
                     _ = method.GetParameters();
                 }
+
                 _ = type.GetInterfaces();
-                _ = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                _ = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                                   BindingFlags.Static | BindingFlags.DeclaredOnly);
             }
+
             var references = assembly.GetReferencedAssemblies();
             var sdk = references.Single(x => x.Name == "ShiroBot.SDK").Version!;
             var qq = references.SingleOrDefault(x => x.Name == "ShiroBot.Model.QQ")?.Version;
-            if (sdk != new Version(1, 0, 0, 0) || qq is not null && qq != new Version(1, 0, 0, 0))
+            if (sdk != new Version(1, 0, 0, 0) || (qq is not null && qq != new Version(1, 0, 0, 0)))
                 throw new InvalidOperationException($"{entry.Id} was not compiled against the new contracts.");
             // Do not invoke OnLoad: platform/API requests and background jobs remain disabled.
             return (types.Length, sdk, qq);
         }
-        finally { loader.BeginUnload(); }
+        finally
+        {
+            loader.BeginUnload();
+        }
     }
+
+    internal sealed record Entry(string Id, string AssemblyPath);
 }

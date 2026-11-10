@@ -1,11 +1,16 @@
+using System.Collections;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using ShiroBot.Hosting.Runtime;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Config;
 using ShiroBot.Terminal;
-using ShiroBot.Hosting.Runtime;
 using ShiroBot.Update;
 using Tomlyn;
 using Tomlyn.Parsing;
+using Tomlyn.Serialization;
 using Tomlyn.Syntax;
 
 namespace ShiroBot.Configuration;
@@ -15,47 +20,62 @@ namespace ShiroBot.Configuration;
 public class CoreConfig
 {
     /// <summary>并行加载的 Adapter 名称或 DLL 路径。</summary>
-    [ConfigField("适配器包总开关：列出的包 ID 才允许启动，空列表全部关闭；也可填写开发用独立 DLL 路径。Dashboard 适配器页开关保存到此列表。", Label = "启用的适配器包", Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
+    [ConfigField("适配器包总开关：列出的包 ID 才允许启动，空列表全部关闭；也可填写开发用独立 DLL 路径。Dashboard 适配器页开关保存到此列表。", Label = "启用的适配器包",
+        Type = "array", Default = "[]", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 10)]
     public string[] Protocols { get; set; } = [];
 
-    [ConfigField("是否在终端输出普通运行日志；Dashboard 日志和本地保存单独工作。", Label = "输出日志", Default = "true", Group = "runtime", GroupLabel = "运行时", GroupIcon = "settings", GroupDescription = "运行时行为与日志设置。", GroupOrder = 10, Order = 20)]
+    [ConfigField("是否在终端输出普通运行日志；Dashboard 日志和本地保存单独工作。", Label = "输出日志", Default = "true", Group = "runtime",
+        GroupLabel = "运行时", GroupIcon = "settings", GroupDescription = "运行时行为与日志设置。", GroupOrder = 10, Order = 20)]
     public bool EnableLog { get; set; } = true;
 
-    [ConfigField("在消息日志中显示群 ID 和用户 ID；修改后即时生效。", Label = "显示群与用户 ID", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 25)]
+    [ConfigField("在消息日志中显示群 ID 和用户 ID；修改后即时生效。", Label = "显示群与用户 ID", Default = "false", Group = "runtime",
+        GroupLabel = "运行时", GroupOrder = 10, Order = 25)]
     public bool Showid { get; set; } = false;
 
-    [ConfigField("保存系统、插件和适配器日志。", Label = "本地日志", Type = "section", Group = "logs", GroupLabel = "日志", GroupIcon = "folder", GroupDescription = "本地日志保存与自动清理。", GroupOrder = 15, Order = 30)]
+    [ConfigField("保存系统、插件和适配器日志。", Label = "本地日志", Type = "section", Group = "logs", GroupLabel = "日志",
+        GroupIcon = "folder", GroupDescription = "本地日志保存与自动清理。", GroupOrder = 15, Order = 30)]
     public LocalLogConfig Logs { get; set; } = new();
 
-    [ConfigField("是否关闭交互式控制台输入；修改后重启生效。", Label = "禁用控制台输入", Default = "false", Group = "runtime", GroupLabel = "运行时", GroupOrder = 10, Order = 30)]
+    [ConfigField("是否关闭交互式控制台输入；修改后重启生效。", Label = "禁用控制台输入", Default = "false", Group = "runtime", GroupLabel = "运行时",
+        GroupOrder = 10, Order = 30)]
     public bool DisableConsoleInput { get; set; } = false;
 
-    [ConfigField("访问 GitHub 资源时使用的代理前缀。", Label = "GitHub 代理", Default = "", Group = "updates", GroupLabel = "更新与主题", GroupIcon = "download", GroupDescription = "主程序更新来源和主题设置。", GroupOrder = 20, Order = 10)]
+    [ConfigField("访问 GitHub 资源时使用的代理前缀。", Label = "GitHub 代理", Default = "", Group = "updates", GroupLabel = "更新与主题",
+        GroupIcon = "download", GroupDescription = "主程序更新来源和主题设置。", GroupOrder = 20, Order = 10)]
     public string? GithubProxy { get; set; }
 
-    [ConfigField("宿主更新仓库，格式为 owner/repository。", Label = "宿主更新仓库", Default = "ShirokaProject/ShiroBot", Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 20)]
+    [ConfigField("宿主更新仓库，格式为 owner/repository。", Label = "宿主更新仓库", Default = "ShirokaProject/ShiroBot",
+        Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 20)]
     public string HostUpdateRepository { get; set; } = "ShirokaProject/ShiroBot";
 
     /// <summary>Avalonia 宿主主题：Light / Dark / Auto。插件渲染未显式指定 Theme 时仍默认 Light。</summary>
-    [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Auto", Options = new string[] { "Light", "Dark", "Auto" }, Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
+    [ConfigField("Avalonia 宿主主题：Light、Dark 或 Auto（按时间切换，18:00–6:00 为深色）。", Label = "宿主主题", Default = "Auto",
+        Options = ["Light", "Dark", "Auto"], Group = "updates", GroupLabel = "更新与主题", GroupOrder = 20, Order = 30)]
     public string AvaloniaTheme { get; set; } = "Auto";
 
-    [ConfigField("所有者身份列表，格式 instanceId:userId；冒号用 %3A 转义。自动拥有管理员权限。", Label = "Owner 列表", Type = "users", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupIcon = "shield", GroupDescription = "定义供插件权限检查使用的账号列表。", GroupOrder = 30, Order = 10)]
+    [ConfigField("所有者身份列表，格式 instanceId:userId；冒号用 %3A 转义。自动拥有管理员权限。", Label = "Owner 列表", Type = "users",
+        Default = "[]", Group = "permissions", GroupLabel = "权限", GroupIcon = "shield",
+        GroupDescription = "定义供插件权限检查使用的账号列表。", GroupOrder = 30, Order = 10)]
     public string[] OwnerList { get; set; } = [];
 
-    [ConfigField("私聊推送重要信息给 Owner：自动更新结果、更新失败、需要重启或手动操作等；待确认的更新可直接回复消息确认或取消。", Label = "推送 Owner 通知", Default = "true", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 15)]
+    [ConfigField("私聊推送重要信息给 Owner：自动更新结果、更新失败、需要重启或手动操作等；待确认的更新可直接回复消息确认或取消。", Label = "推送 Owner 通知", Default = "true",
+        Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 15)]
     public bool OwnerNotifications { get; set; } = true;
 
-    [ConfigField("管理员身份列表，格式 instanceId:userId；Owner 已自动拥有管理员权限。", Label = "Admin 列表", Type = "users", Default = "[]", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
+    [ConfigField("管理员身份列表，格式 instanceId:userId；Owner 已自动拥有管理员权限。", Label = "Admin 列表", Type = "users", Default = "[]",
+        Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 20)]
     public string[] AdminList { get; set; } = [];
 
-    [ConfigField("每天定时更新插件、适配器和主程序。", Label = "自动更新", Type = "section", Group = "auto_update", GroupLabel = "自动更新", GroupIcon = "refresh", GroupDescription = "每天定时更新插件、适配器和主程序。", GroupOrder = 25, Order = 10)]
+    [ConfigField("每天定时更新插件、适配器和主程序。", Label = "自动更新", Type = "section", Group = "auto_update", GroupLabel = "自动更新",
+        GroupIcon = "refresh", GroupDescription = "每天定时更新插件、适配器和主程序。", GroupOrder = 25, Order = 10)]
     public UpdateConfig Update { get; set; } = new();
 
-    [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API", GroupIcon = "code", GroupDescription = "Dashboard 和外部工具访问主程序的 HTTP API。", GroupOrder = 40, Order = 10)]
+    [ConfigField("宿主 Dashboard HTTP API 设置。", Label = "HTTP API", Type = "section", Group = "api", GroupLabel = "API",
+        GroupIcon = "code", GroupDescription = "Dashboard 和外部工具访问主程序的 HTTP API。", GroupOrder = 40, Order = 10)]
     public ApiHostConfig Api { get; set; } = new();
 
-    [ConfigField("插件群组范围、消息触发前缀和优先级设置。", Label = "插件路由", Type = "section", Group = "permissions", GroupLabel = "权限", GroupOrder = 30, Order = 30)]
+    [ConfigField("插件群组范围、消息触发前缀和优先级设置。", Label = "插件路由", Type = "section", Group = "permissions", GroupLabel = "权限",
+        GroupOrder = 30, Order = 30)]
     public PluginRouteConfig PluginRoutes { get; set; } = new()
     {
         Default = new PluginRouteRuleConfig
@@ -68,10 +88,12 @@ public class CoreConfig
 
 public sealed class LocalLogConfig
 {
-    [ConfigField("默认开启。写入运行目录的 logs 文件夹，Dashboard 历史按需从文件读取，不再保留内存历史副本。修改即时生效。", Label = "保存日志到本地", Default = "true", Order = 30)]
+    [ConfigField("默认开启。写入运行目录的 logs 文件夹，Dashboard 历史按需从文件读取，不再保留内存历史副本。修改即时生效。", Label = "保存日志到本地", Default = "true",
+        Order = 30)]
     public bool SaveToFile { get; set; } = true;
 
-    [ConfigField("默认保留最近 3 个自然日的本地日志（含今天）；自动清理过期文件。关闭本地保存不会删除已有文件。", Label = "日志保留天数", Default = "3", Min = 1, Max = 3650, Order = 40)]
+    [ConfigField("默认保留最近 3 个自然日的本地日志（含今天）；自动清理过期文件。关闭本地保存不会删除已有文件。", Label = "日志保留天数", Default = "3", Min = 1,
+        Max = 3650, Order = 40)]
     public int RetentionDays { get; set; } = 3;
 
     public void Validate()
@@ -108,14 +130,19 @@ public class UpdateConfig
     public bool RestartOnPending { get; set; } = true;
 
     /// <summary>Whether any automatic update is on.</summary>
-    [Tomlyn.Serialization.TomlIgnore, System.Text.Json.Serialization.JsonIgnore]
+    [TomlIgnore]
+    [JsonIgnore]
     public bool Any => Plugins || Adapters || Host;
 
-    public bool SameAs(UpdateConfig other) =>
-        Plugins == other.Plugins && Adapters == other.Adapters && Host == other.Host && SkipMajor == other.SkipMajor &&
-        RestartOnPending == other.RestartOnPending && string.Equals(Time, other.Time, StringComparison.Ordinal) &&
-        ExcludePlugins.SequenceEqual(other.ExcludePlugins, StringComparer.Ordinal) &&
-        ExcludeAdapters.SequenceEqual(other.ExcludeAdapters, StringComparer.Ordinal);
+    public bool SameAs(UpdateConfig other)
+    {
+        return Plugins == other.Plugins && Adapters == other.Adapters && Host == other.Host &&
+               SkipMajor == other.SkipMajor &&
+               RestartOnPending == other.RestartOnPending &&
+               string.Equals(Time, other.Time, StringComparison.Ordinal) &&
+               ExcludePlugins.SequenceEqual(other.ExcludePlugins, StringComparer.Ordinal) &&
+               ExcludeAdapters.SequenceEqual(other.ExcludeAdapters, StringComparer.Ordinal);
+    }
 }
 
 public class ApiHostConfig
@@ -137,27 +164,37 @@ public class ApiHostConfig
     [ConfigField("反向代理后的外部基础 URL 列表；插件生成链接使用第一个非空地址，空列表使用监听地址。", Type = "array")]
     public string[] PublicBaseUrl { get; set; } = [];
 
-    public string GetPrimaryBaseUrl() => PublicBaseUrl.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url))
-        ?? ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? DefaultListenUrl;
+    public string GetPrimaryBaseUrl()
+    {
+        return PublicBaseUrl.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url))
+               ?? ListenUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)) ?? DefaultListenUrl;
+    }
 
     /// <summary>Dashboard link that signs in with the API token; the Dashboard removes it from the address bar.</summary>
-    public string GetDashboardLoginUrl() =>
-        ToBrowsableUrl(GetPrimaryBaseUrl()).TrimEnd('/') + "/dashboard/" +
-        (string.IsNullOrEmpty(Token) ? "" : "?token=" + Uri.EscapeDataString(Token));
+    public string GetDashboardLoginUrl()
+    {
+        return ToBrowsableUrl(GetPrimaryBaseUrl()).TrimEnd('/') + "/dashboard/" +
+               (string.IsNullOrEmpty(Token) ? "" : "?token=" + Uri.EscapeDataString(Token));
+    }
 
     // A wildcard listen address (0.0.0.0 in Docker) is not something a browser can open.
-    private static string ToBrowsableUrl(string url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host is "0.0.0.0" or "[::]" or "::" or "+" or "*"
+    private static string ToBrowsableUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+               uri.Host is "0.0.0.0" or "[::]" or "::" or "+" or "*"
             ? new UriBuilder(uri) { Host = "127.0.0.1" }.Uri.ToString()
             : url;
+    }
 }
 
 public class PluginRouteConfig
 {
-    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；留空不限制。命令匹配前去掉前缀；@ 机器人、整条消息监听和插件自定义判断不受限制。", Label = "消息触发前缀", Default = "", Order = 11)]
+    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；留空不限制。命令匹配前去掉前缀；@ 机器人、整条消息监听和插件自定义判断不受限制。", Label = "消息触发前缀", Default = "",
+        Order = 11)]
     public string MessagePrefix { get; set; } = string.Empty;
 
-    [ConfigField("默认关闭。开启后，精确／前缀命令路由要求触发前缀；@ 机器人、整条消息监听和自定义判断照常接收原文。可按插件覆盖；前缀为空时不限制。", Label = "默认要求触发前缀", Default = "false", Order = 10)]
+    [ConfigField("默认关闭。开启后，精确／前缀命令路由要求触发前缀；@ 机器人、整条消息监听和自定义判断照常接收原文。可按插件覆盖；前缀为空时不限制。", Label = "默认要求触发前缀",
+        Default = "false", Order = 10)]
     public bool RequireMessagePrefix { get; set; }
 
     [ConfigField("未单独配置路由的插件使用此规则。", Label = "默认插件路由", Type = "section", Order = 30)]
@@ -168,56 +205,71 @@ public class PluginRouteConfig
     /// <summary>Owner overrides of the dispatch priority plugins declare in their attribute, by plugin ID.</summary>
     public Dictionary<string, int> Priorities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    private Dictionary<string, string> _prefixModes = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> PrefixModes
     {
-        get => _prefixModes;
-        set => _prefixModes = new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
-    }
+        get;
+        set => field = new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
+    } = new(StringComparer.OrdinalIgnoreCase);
 
-    private Dictionary<string, string> _prefixes = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> Prefixes
     {
-        get => _prefixes;
-        set => _prefixes = new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
+        get;
+        set => field = new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
+    } = new(StringComparer.OrdinalIgnoreCase);
+
+    public string GetMessagePrefix(string pluginName)
+    {
+        return GetPrefixMode(pluginName) == "required" && Prefixes.TryGetValue(pluginName, out var prefix) &&
+               !string.IsNullOrWhiteSpace(prefix)
+            ? prefix
+            : MessagePrefix;
     }
 
-    public string GetMessagePrefix(string pluginName) =>
-        GetPrefixMode(pluginName) == "required" && Prefixes.TryGetValue(pluginName, out var prefix) && !string.IsNullOrWhiteSpace(prefix)
-            ? prefix : MessagePrefix;
+    public string GetPrefixMode(string pluginName)
+    {
+        // Validate runtime values from external plugins or deserialized configuration, regardless of nullable annotations.
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+        return PrefixModes.TryGetValue(pluginName, out var mode)
+            // ReSharper disable once ConditionalAccessQualifierIsNonNullableAccordingToAPIContract
+            ? mode?.Trim().ToLowerInvariant() switch
+            {
+                "required" => "required",
+                "disabled" => "disabled",
+                _ => "default"
+            }
+            : "default";
+    }
 
-    public string GetPrefixMode(string pluginName) =>
-        PrefixModes.TryGetValue(pluginName, out var mode) ? mode?.Trim().ToLowerInvariant() switch
-        {
-            "required" => "required",
-            "disabled" => "disabled",
-            _ => "default"
-        } : "default";
+    public int? GetPriority(string pluginName)
+    {
+        return Priorities.TryGetValue(pluginName, out var priority) ? priority : null;
+    }
 
-    public int? GetPriority(string pluginName) =>
-        Priorities.TryGetValue(pluginName, out var priority) ? priority : null;
-
-    public bool RequiresMessagePrefix(string pluginName) =>
-        GetPrefixMode(pluginName) switch
+    public bool RequiresMessagePrefix(string pluginName)
+    {
+        return GetPrefixMode(pluginName) switch
         {
             "required" => true,
             "disabled" => false,
             _ => RequireMessagePrefix
         };
+    }
 
     public bool HasMessagePrefixRequirements()
     {
         if (RequireMessagePrefix && !string.IsNullOrWhiteSpace(MessagePrefix)) return true;
-        foreach (var entry in PrefixModes)
-            if (GetPrefixMode(entry.Key) == "required" && !string.IsNullOrWhiteSpace(GetMessagePrefix(entry.Key))) return true;
-        return false;
+        return PrefixModes.Any(entry =>
+            GetPrefixMode(entry.Key) == "required" && !string.IsNullOrWhiteSpace(GetMessagePrefix(entry.Key)));
     }
 
     public IEnumerable<string> GetMessagePrefixes()
     {
         if (!string.IsNullOrWhiteSpace(MessagePrefix)) yield return MessagePrefix;
+        // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var entry in PrefixModes)
-            if (GetPrefixMode(entry.Key) == "required" && Prefixes.TryGetValue(entry.Key, out var prefix) && !string.IsNullOrWhiteSpace(prefix))
+            if (GetPrefixMode(entry.Key) == "required" && Prefixes.TryGetValue(entry.Key, out var prefix) &&
+                !string.IsNullOrWhiteSpace(prefix))
                 yield return prefix;
     }
 
@@ -231,7 +283,7 @@ public class PluginRouteConfig
     }
 
     /// <summary>
-    /// 把 <paramref name="other"/> 的内容原子地拷贝进当前实例，使得已经引用本实例的代码无需替换引用即可看到新规则。
+    ///     把 <paramref name="other" /> 的内容原子地拷贝进当前实例，使得已经引用本实例的代码无需替换引用即可看到新规则。
     /// </summary>
     public void CopyFrom(PluginRouteConfig other)
     {
@@ -250,7 +302,8 @@ public class PluginRouteConfig
 
 public class PluginRouteRuleConfig
 {
-    [ConfigField("blacklist：除列表中的群外全部允许；whitelist：仅允许列表中的群。", Label = "默认路由模式", Options = new string[] { "blacklist", "whitelist" }, Order = 30)]
+    [ConfigField("blacklist：除列表中的群外全部允许；whitelist：仅允许列表中的群。", Label = "默认路由模式", Options = ["blacklist", "whitelist"],
+        Order = 30)]
     public string Mode { get; init; } = "whitelist";
 
     [ConfigField("默认路由使用的群 ID 列表；黑名单为空时允许所有群，白名单为空时不允许任何群。", Label = "默认路由群组", Type = "groups", Order = 40)]
@@ -284,9 +337,9 @@ public class ConfigManager(string? coreConfigPath = null)
         WriteIndented = true,
         IndentSize = 4,
         MaxDepth = 64,
-        DefaultIgnoreCondition = TomlIgnoreCondition.WhenWritingNull,
+        DefaultIgnoreCondition = TomlIgnoreCondition.WhenWritingNull
     };
-    
+
     public async Task<CoreConfig> LoadCoreConfig()
     {
         try
@@ -301,7 +354,7 @@ public class ConfigManager(string? coreConfigPath = null)
         {
             throw new Exception($"加载配置时出错:{ex.Message}");
         }
-        
+
         //创建默认配置保存的方法
         async Task<CoreConfig> CreateDefaultConfig()
         {
@@ -343,7 +396,7 @@ public class ConfigManager(string? coreConfigPath = null)
 
             var toml = File.ReadAllText(normalizedConfigPath);
             var defaults = SerializeToml(CreateConfigDefaults<T>(), _options);
-            var updatedToml = MergeToml(toml, defaults, overwriteExisting: false);
+            var updatedToml = MergeToml(toml, defaults, false);
             if (updatedToml != toml)
             {
                 File.WriteAllText(normalizedConfigPath, updatedToml);
@@ -374,22 +427,13 @@ public class ConfigManager(string? coreConfigPath = null)
         return LoadConfig<T>(Path.Combine(directory, "config.toml"), scopeName);
     }
 
-    private static bool TryParseTomlHeader(string trimmed, out string sectionName, out bool isArrayTable)
+    private static bool IsTomlHeader(string trimmed)
     {
-        sectionName = string.Empty;
-        isArrayTable = false;
-
         if (!trimmed.StartsWith('[') || !trimmed.EndsWith(']')) return false;
 
-        if (trimmed.StartsWith("[[") && trimmed.EndsWith("]]"))
-        {
-            sectionName = trimmed[2..^2].Trim();
-            isArrayTable = true;
-            return sectionName.Length > 0;
-        }
+        if (trimmed.StartsWith("[[") && trimmed.EndsWith("]]")) return trimmed[2..^2].Trim().Length > 0;
 
-        sectionName = trimmed[1..^1].Trim();
-        return sectionName.Length > 0;
+        return trimmed[1..^1].Trim().Length > 0;
     }
 
     private static bool TryGetTomlKey(string line, out string key)
@@ -415,6 +459,8 @@ public class ConfigManager(string? coreConfigPath = null)
         SaveToml(configPath, config, _options);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "Keep the existing instance service API compatible with compiled callers.")]
     public void SetConfigValue(string configPath, string keyPath, object? value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
@@ -430,7 +476,7 @@ public class ConfigManager(string? coreConfigPath = null)
         var valueLiteral = FormatTomlValue(value);
         var patch = (sectionName.Length == 0 ? string.Empty : $"[{sectionName}]\n") + $"{key} = {valueLiteral}\n";
         var current = File.Exists(normalizedConfigPath) ? File.ReadAllText(normalizedConfigPath) : string.Empty;
-        var updated = MergeToml(current, patch, overwriteExisting: true);
+        var updated = MergeToml(current, patch, true);
         if (updated != current) File.WriteAllText(normalizedConfigPath, updated);
     }
 
@@ -446,7 +492,7 @@ public class ConfigManager(string? coreConfigPath = null)
         }
 
         var original = File.ReadAllText(normalizedConfigPath);
-        var updated = MergeToml(original, tomlString, overwriteExisting: true);
+        var updated = MergeToml(original, tomlString, true);
         if (updated != original) File.WriteAllText(normalizedConfigPath, updated);
     }
 
@@ -464,24 +510,28 @@ public class ConfigManager(string? coreConfigPath = null)
         var edits = new List<TomlEdit>();
         var matchedTables = new HashSet<TableSyntaxBase>();
         MergeSection(original.KeyValues, replacement.KeyValues, original.Tables.ChildrenCount > 0
-            ? original.Tables.GetChild(0)!.Span.Offset
-            : current.Length,
-            isRoot: true);
+                ? original.Tables.GetChild(0)!.Span.Offset
+                : current.Length,
+            true);
 
         foreach (var newTable in replacement.Tables)
         {
             var oldTable = original.Tables.FirstOrDefault(table =>
                 !matchedTables.Contains(table) &&
                 table.GetType() == newTable.GetType() &&
-                string.Equals(table.Name!.ToString().Trim(), newTable.Name!.ToString().Trim(), StringComparison.OrdinalIgnoreCase));
+                string.Equals(table.Name!.ToString().Trim(), newTable.Name!.ToString().Trim(),
+                    StringComparison.OrdinalIgnoreCase));
 
             if (oldTable is null)
             {
                 var sectionText = newTable.ToString().TrimStart('\r', '\n');
                 var separator = current.Length == 0 || current.EndsWith("\n\n", StringComparison.Ordinal)
                     ? string.Empty
-                    : current.EndsWith('\n') ? newline : newline + newline;
-                edits.Add(new TomlEdit(current.Length, 0, separator + ConvertNewlines(sectionText, newline), edits.Count));
+                    : current.EndsWith('\n')
+                        ? newline
+                        : newline + newline;
+                edits.Add(new TomlEdit(current.Length, 0, separator + ConvertNewlines(sectionText, newline),
+                    edits.Count));
                 continue;
             }
 
@@ -489,35 +539,31 @@ public class ConfigManager(string? coreConfigPath = null)
             var insertion = oldTable.Items.ChildrenCount > 0
                 ? EndOfLine(oldTable.Items.GetChild(oldTable.Items.ChildrenCount - 1)!)
                 : EndOfTableHeader(oldTable);
-            MergeSection(oldTable.Items, newTable.Items, insertion, isRoot: false);
+            MergeSection(oldTable.Items, newTable.Items, insertion, false);
         }
 
         if (edits.Count == 0) return current;
 
         // Apply source-span edits from the end, so earlier offsets remain valid.
-        var updated = current;
-        foreach (var edit in edits.OrderByDescending(edit => edit.Offset).ThenByDescending(edit => edit.Order))
-        {
-            updated = updated.Remove(edit.Offset, edit.Length).Insert(edit.Offset, edit.Text);
-        }
+        var updated = edits.OrderByDescending(edit => edit.Offset).ThenByDescending(edit => edit.Order)
+            .Aggregate(current, (text, edit) => text.Remove(edit.Offset, edit.Length).Insert(edit.Offset, edit.Text));
 
         SyntaxParser.ParseStrict(updated);
         return updated;
 
-        void MergeSection(SyntaxList<KeyValueSyntax> oldItems, SyntaxList<KeyValueSyntax> newItems, int insertion, bool isRoot)
+        void MergeSection(SyntaxList<KeyValueSyntax> oldItems, SyntaxList<KeyValueSyntax> newItems, int insertion,
+            bool isRoot)
         {
-            var additions = new System.Text.StringBuilder();
+            var additions = new StringBuilder();
             foreach (var newItem in newItems)
             {
                 var key = newItem.Key!.ToString().Trim();
                 if (isRoot && original.Tables.Any(table =>
                         string.Equals(table.Name!.ToString().Trim(), key, StringComparison.OrdinalIgnoreCase)))
-                {
                     // Empty collection defaults serialize as `providers = []`, but existing
                     // configs may represent the same property with [[providers]] tables.
                     // Keep the user's table representation and never emit both TOML forms.
                     continue;
-                }
 
                 var oldItem = oldItems.FirstOrDefault(item =>
                     string.Equals(item.Key!.ToString().Trim(), key, StringComparison.OrdinalIgnoreCase));
@@ -531,31 +577,36 @@ public class ConfigManager(string? coreConfigPath = null)
                     var newValue = newItem.Value!.Span;
                     var literal = incoming.Substring(newValue.Offset, newValue.Length);
                     if (current.AsSpan(oldValue.Offset, oldValue.Length).SequenceEqual(literal)) continue;
-                    edits.Add(new TomlEdit(oldValue.Offset, oldValue.Length, ConvertNewlines(literal, newline), edits.Count));
+                    edits.Add(new TomlEdit(oldValue.Offset, oldValue.Length, ConvertNewlines(literal, newline),
+                        edits.Count));
                 }
             }
 
-            if (additions.Length > 0)
-            {
-                var prefix = insertion > 0 && current[insertion - 1] != '\n' ? newline : string.Empty;
-                // Existing-section fields must precede any new tables appended at the same offset.
-                edits.Add(new TomlEdit(insertion, 0, prefix + additions.ToString(), -1));
-            }
+            if (additions.Length <= 0) return;
+            var prefix = insertion > 0 && current[insertion - 1] != '\n' ? newline : string.Empty;
+            // Existing-section fields must precede any new tables appended at the same offset.
+            edits.Add(new TomlEdit(insertion, 0, prefix + additions, -1));
         }
 
-        int EndOfLine(KeyValueSyntax item) => item.EndOfLineToken is { } eol
-            ? eol.Span.Offset + eol.Span.Length
-            : item.Span.Offset + item.Span.Length;
+        int EndOfLine(KeyValueSyntax item)
+        {
+            return item.EndOfLineToken is { } eol
+                ? eol.Span.Offset + eol.Span.Length
+                : item.Span.Offset + item.Span.Length;
+        }
 
-        int EndOfTableHeader(TableSyntaxBase table) => table.EndOfLineToken is { } eol
-            ? eol.Span.Offset + eol.Span.Length
-            : table.CloseBracket!.Span.Offset + table.CloseBracket.Span.Length;
+        int EndOfTableHeader(TableSyntaxBase table)
+        {
+            return table.EndOfLineToken is { } eol
+                ? eol.Span.Offset + eol.Span.Length
+                : table.CloseBracket!.Span.Offset + table.CloseBracket.Span.Length;
+        }
     }
 
-    private static string ConvertNewlines(string text, string newline) =>
-        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", newline, StringComparison.Ordinal);
-
-    private sealed record TomlEdit(int Offset, int Length, string Text, int Order);
+    private static string ConvertNewlines(string text, string newline)
+    {
+        return text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", newline, StringComparison.Ordinal);
+    }
 
     private static string SerializeToml<T>(T config, TomlSerializerOptions options) where T : class
     {
@@ -564,7 +615,7 @@ public class ConfigManager(string? coreConfigPath = null)
             .Select(property => new
             {
                 Key = JsonNamingPolicy.SnakeCaseLower.ConvertName(property.Name),
-                Field = property.GetCustomAttributes(typeof(ConfigFieldAttribute), inherit: true)
+                Field = property.GetCustomAttributes(typeof(ConfigFieldAttribute), true)
                     .OfType<ConfigFieldAttribute>()
                     .FirstOrDefault()
             })
@@ -582,15 +633,10 @@ public class ConfigManager(string? coreConfigPath = null)
         foreach (var line in lines)
         {
             var trimmed = line.Trim();
-            if (TryParseTomlHeader(trimmed, out _, out _))
-            {
-                inTopLevel = false;
-            }
+            if (IsTomlHeader(trimmed)) inTopLevel = false;
 
             if (inTopLevel && TryGetTomlKey(line, out var key) && comments.TryGetValue(key, out var commentLines))
-            {
                 result.AddRange(commentLines);
-            }
 
             result.Add(line);
         }
@@ -604,7 +650,7 @@ public class ConfigManager(string? coreConfigPath = null)
         foreach (var property in typeof(T).GetProperties())
         {
             if (!property.CanWrite) continue;
-            var field = property.GetCustomAttributes(typeof(ConfigFieldAttribute), inherit: true)
+            var field = property.GetCustomAttributes(typeof(ConfigFieldAttribute), true)
                 .OfType<ConfigFieldAttribute>()
                 .FirstOrDefault();
             if (field?.Default is not { } declaredDefault) continue;
@@ -614,10 +660,10 @@ public class ConfigManager(string? coreConfigPath = null)
             if (targetType.IsInstanceOfType(declaredDefault)) value = declaredDefault;
             else if (targetType.IsEnum)
                 value = declaredDefault is string enumName
-                    ? Enum.Parse(targetType, enumName, ignoreCase: true)
+                    ? Enum.Parse(targetType, enumName, true)
                     : Enum.ToObject(targetType, declaredDefault);
             else if (targetType.IsArray) value = ConvertArrayDefault(declaredDefault, targetType);
-            else value = Convert.ChangeType(declaredDefault, targetType, System.Globalization.CultureInfo.InvariantCulture);
+            else value = Convert.ChangeType(declaredDefault, targetType, CultureInfo.InvariantCulture);
             property.SetValue(config, value);
         }
 
@@ -625,8 +671,8 @@ public class ConfigManager(string? coreConfigPath = null)
     }
 
     /// <summary>
-    /// 数组默认值。枚举数组逐个转换，名称和数值都接受：组件自己定义的枚举交给 JsonSerializer 的话，
-    /// 反射元数据缓存会拉住组件可回收的程序集，而且默认的 JSON 转换不认枚举名称。
+    ///     数组默认值。枚举数组逐个转换，名称和数值都接受：组件自己定义的枚举交给 JsonSerializer 的话，
+    ///     反射元数据缓存会拉住组件可回收的程序集，而且默认的 JSON 转换不认枚举名称。
     /// </summary>
     private static object? ConvertArrayDefault(object declaredDefault, Type arrayType)
     {
@@ -639,51 +685,48 @@ public class ConfigManager(string? coreConfigPath = null)
 
         object?[] items = declaredDefault switch
         {
-            string json => JsonSerializer.Deserialize<JsonElement[]>(json)!.Select(item => item.ValueKind switch
-            {
-                JsonValueKind.String => (object?)item.GetString(),
-                JsonValueKind.Number => item.GetInt64(),
-                JsonValueKind.Null => null,
-                _ => throw new FormatException($"Enum array default must contain names or numbers: {json}")
-            }).ToArray(),
-            Array array => array.Cast<object?>().ToArray(),
+            string json =>
+            [
+                // Unaccepted JSON kinds are deliberately rejected by the default branch.
+                // ReSharper disable once SwitchExpressionHandlesSomeKnownEnumValuesWithExceptionInDefault
+                .. JsonSerializer.Deserialize<JsonElement[]>(json)!.Select(item => item.ValueKind switch
+                {
+                    JsonValueKind.String => (object?)item.GetString(),
+                    JsonValueKind.Number => item.GetInt64(),
+                    JsonValueKind.Null => null,
+                    _ => throw new FormatException($"Enum array default must contain names or numbers: {json}")
+                })
+            ],
+            Array array => [.. array.Cast<object?>()],
             _ => throw new FormatException($"Unsupported default for {arrayType.Name}: {declaredDefault}")
         };
         var result = Array.CreateInstance(elementType, items.Length);
         for (var i = 0; i < items.Length; i++)
-        {
             result.SetValue(items[i] switch
             {
                 null => null,
-                string name => Enum.Parse(enumType, name, ignoreCase: true),
-                var number => Enum.ToObject(enumType, Convert.ToInt64(number, System.Globalization.CultureInfo.InvariantCulture))
+                string name => Enum.Parse(enumType, name, true),
+                var number => Enum.ToObject(enumType, Convert.ToInt64(number, CultureInfo.InvariantCulture))
             }, i);
-        }
         return result;
     }
 
-    private static IReadOnlyList<string> CreateConfigCommentLines(ConfigFieldAttribute field)
+    private static List<string> CreateConfigCommentLines(ConfigFieldAttribute field)
     {
         var comments = new List<string>();
         AddComment(field.Label);
         AddComment(field.Description);
 
-        if (field.Options.Length > 0)
-        {
-            AddComment("Options: " + string.Join(", ", field.Options));
-        }
+        if (field.Options.Length > 0) AddComment("Options: " + string.Join(", ", field.Options));
 
         if (!double.IsNaN(field.Min) || !double.IsNaN(field.Max))
         {
-            var min = double.IsNaN(field.Min) ? "-inf" : field.Min.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            var max = double.IsNaN(field.Max) ? "+inf" : field.Max.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var min = double.IsNaN(field.Min) ? "-inf" : field.Min.ToString(CultureInfo.InvariantCulture);
+            var max = double.IsNaN(field.Max) ? "+inf" : field.Max.ToString(CultureInfo.InvariantCulture);
             AddComment($"Range: {min}..{max}");
         }
 
-        if (!string.IsNullOrWhiteSpace(field.Placeholder))
-        {
-            AddComment("Placeholder: " + field.Placeholder);
-        }
+        if (!string.IsNullOrWhiteSpace(field.Placeholder)) AddComment("Placeholder: " + field.Placeholder);
 
         return comments;
 
@@ -704,8 +747,8 @@ public class ConfigManager(string? coreConfigPath = null)
     private static string FormatToml(string toml)
     {
         var lines = toml.Replace("\r\n", "\n").Split('\n');
-        var builder = new System.Text.StringBuilder();
-        
+        var builder = new StringBuilder();
+
         foreach (var line in lines)
         {
             var trimmed = line.TrimStart();
@@ -714,10 +757,7 @@ public class ConfigManager(string? coreConfigPath = null)
             if (isTableHeader && builder.Length > 0)
             {
                 var current = builder.ToString();
-                if (!current.EndsWith("\n\n", StringComparison.Ordinal))
-                {
-                    builder.AppendLine();
-                }
+                if (!current.EndsWith("\n\n", StringComparison.Ordinal)) builder.AppendLine();
             }
 
             builder.AppendLine(line);
@@ -727,15 +767,20 @@ public class ConfigManager(string? coreConfigPath = null)
     }
 
     /// <summary>
-    /// Replaces the whole value at <paramref name="keyPath"/>, whatever TOML form it currently uses.
-    /// Lists and tables cannot be merged key by key: a list may be stored as <c>key = [...]</c> or as
-    /// <c>[[key]]</c> blocks, and a removed table key must disappear. All existing forms of the key,
-    /// including sub-tables, are removed first; a list of tables is then written as <c>[[key]]</c> blocks,
-    /// a table as a <c>[key]</c> block and anything else as <c>key = value</c>. Unrelated content and
-    /// comments are preserved.
+    ///     Replaces the whole value at <paramref name="keyPath" />, whatever TOML form it currently uses.
+    ///     Lists and tables cannot be merged key by key: a list may be stored as <c>key = [...]</c> or as
+    ///     <c>[[key]]</c> blocks, and a removed table key must disappear. All existing forms of the key,
+    ///     including sub-tables, are removed first; a list of tables is then written as <c>[[key]]</c> blocks,
+    ///     a table as a <c>[key]</c> block and anything else as <c>key = value</c>. Unrelated content and
+    ///     comments are preserved.
     /// </summary>
-    public void RemoveConfigValue(string configPath, string keyPath) => ReplaceConfigValue(configPath, keyPath, null, remove: true);
+    public void RemoveConfigValue(string configPath, string keyPath)
+    {
+        ReplaceConfigValue(configPath, keyPath, null, true);
+    }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "Keep the existing instance service API compatible with compiled callers.")]
     public void ReplaceConfigValue(string configPath, string keyPath, object? value, bool remove = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
@@ -758,26 +803,32 @@ public class ConfigManager(string? coreConfigPath = null)
             : document.Tables.OfType<TableSyntax>()
                 .FirstOrDefault(table => SameTomlName(table.Name!.ToString(), parentName))?.Items;
         if (parentItems is not null)
-        {
+            // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+            // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
             foreach (var item in parentItems)
             {
                 if (!SameTomlName(item.Key!.ToString(), leaf)) continue;
-                var end = item.EndOfLineToken is { } eol ? eol.Span.Offset + eol.Span.Length : item.Span.Offset + item.Span.Length;
+                var end = item.EndOfLineToken is { } eol
+                    ? eol.Span.Offset + eol.Span.Length
+                    : item.Span.Offset + item.Span.Length;
                 removals.Add((item.Span.Offset, end));
             }
-        }
 
         var tables = document.Tables.ToList();
         var tableRanges = new List<(int Start, int End)>();
+        // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var table in tables)
         {
             var name = table.Name!.ToString().Trim();
-            if (!SameTomlName(name, fullName) && !name.StartsWith(fullName + ".", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!SameTomlName(name, fullName) &&
+                !name.StartsWith(fullName + ".", StringComparison.OrdinalIgnoreCase)) continue;
             // Stop at the table's last key: comments and blank lines after it introduce what follows.
             var end = table.Items.ChildrenCount > 0
-                ? table.Items.GetChild(table.Items.ChildrenCount - 1) is { } last && last.EndOfLineToken is { } eol
+                ? table.Items.GetChild(table.Items.ChildrenCount - 1) is { EndOfLineToken: { } eol }
                     ? eol.Span.Offset + eol.Span.Length
-                    : table.Items.GetChild(table.Items.ChildrenCount - 1)!.Span.Offset + table.Items.GetChild(table.Items.ChildrenCount - 1)!.Span.Length
+                    : table.Items.GetChild(table.Items.ChildrenCount - 1)!.Span.Offset +
+                      table.Items.GetChild(table.Items.ChildrenCount - 1)!.Span.Length
                 : table.EndOfLineToken is { } headerEol
                     ? headerEol.Span.Offset + headerEol.Span.Length
                     : table.CloseBracket!.Span.Offset + table.CloseBracket.Span.Length;
@@ -797,6 +848,7 @@ public class ConfigManager(string? coreConfigPath = null)
                 var lineEnd = current.IndexOf('\n', scan);
                 if (lineEnd >= 0 && lineEnd < start) extendedStart = lineEnd + 1;
             }
+
             removals.Add((extendedStart, end));
         }
 
@@ -804,29 +856,37 @@ public class ConfigManager(string? coreConfigPath = null)
         foreach (var (start, end) in removals.OrderByDescending(range => range.Start))
             updated = updated.Remove(start, end - start);
 
-        string? block = null;
-        if (value is System.Collections.IDictionary tableValue)
-            block = $"[{fullName}]{newline}{FormatTomlTableBody(tableValue, newline, fullName)}";
-        else if (value is System.Collections.IList { Count: > 0 } list && list.Cast<object?>().All(item => item is System.Collections.IDictionary))
-            block = string.Concat(list.Cast<System.Collections.IDictionary>()
-                .Select(element => $"[[{fullName}]]{newline}{FormatTomlTableBody(element, newline, fullName)}{newline}"));
+        var block = value switch
+        {
+            IDictionary tableValue => $"[{fullName}]{newline}{FormatTomlTableBody(tableValue, newline, fullName)}",
+            IList { Count: > 0 } list when list.Cast<object?>().All(item => item is IDictionary) =>
+                string.Concat(list.Cast<IDictionary>().Select(element =>
+                    $"[[{fullName}]]{newline}{FormatTomlTableBody(element, newline, fullName)}{newline}")),
+            _ => null
+        };
 
-        if (remove) { }
+        if (remove)
+        {
+        }
         else if (block is null)
         {
-            var patch = (parentName.Length == 0 ? string.Empty : $"[{parentName}]\n") + $"{FormatTomlKey(leaf)} = {FormatTomlValue(value)}\n";
-            updated = MergeToml(updated, patch, overwriteExisting: true);
+            var patch = (parentName.Length == 0 ? string.Empty : $"[{parentName}]\n") +
+                        $"{FormatTomlKey(leaf)} = {FormatTomlValue(value)}\n";
+            updated = MergeToml(updated, patch, true);
         }
         else
         {
             // Blocks go where the old tables were, else at the end; a table must not precede root keys it could capture.
-            var shift = removals.Where(range => firstRemovedTable is { } first && range.Start < first).Sum(range => range.End - range.Start);
+            var shift = removals.Where(range => firstRemovedTable is { } first && range.Start < first)
+                .Sum(range => range.End - range.Start);
             var insertAt = firstRemovedTable is { } offset ? offset - shift : updated.Length;
             var beforeBlock = updated.AsSpan(0, insertAt);
             // Count complete line endings so CRLF's '\r' is not mistaken for a nonblank line.
             var prefix = insertAt == 0 || beforeBlock.EndsWith(newline + newline, StringComparison.Ordinal)
                 ? string.Empty
-                : beforeBlock.EndsWith(newline, StringComparison.Ordinal) ? newline : newline + newline;
+                : beforeBlock.EndsWith(newline, StringComparison.Ordinal)
+                    ? newline
+                    : newline + newline;
             // Keep exactly one blank line after the block: reuse the one already there.
             var suffix = insertAt < updated.Length && updated[insertAt] is not ('\n' or '\r') ? newline : string.Empty;
             updated = updated.Insert(insertAt, prefix + block.TrimEnd('\r', '\n') + newline + suffix);
@@ -836,38 +896,53 @@ public class ConfigManager(string? coreConfigPath = null)
         if (updated != current) File.WriteAllText(normalizedConfigPath, updated);
     }
 
-    private static bool SameTomlName(string left, string right) =>
-        string.Equals(
+    private static bool SameTomlName(string left, string right)
+    {
+        return string.Equals(
             string.Join('.', left.Split('.', StringSplitOptions.TrimEntries).Select(part => part.Trim('"'))),
             string.Join('.', right.Split('.', StringSplitOptions.TrimEntries).Select(part => part.Trim('"'))),
             StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
-    /// Plain keys first, then nested tables as their own <c>[path.key]</c> sections and arrays of tables as
-    /// <c>[[path.key]]</c>, recursively, so nested config stays one key per line instead of a long inline table.
+    ///     Plain keys first, then nested tables as their own <c>[path.key]</c> sections and arrays of tables as
+    ///     <c>[[path.key]]</c>, recursively, so nested config stays one key per line instead of a long inline table.
     /// </summary>
-    private static string FormatTomlTableBody(System.Collections.IDictionary table, string newline, string path)
+    private static string FormatTomlTableBody(IDictionary table, string newline, string path)
     {
-        var body = new System.Text.StringBuilder();
-        var sections = new System.Text.StringBuilder();
+        var body = new StringBuilder();
+        var sections = new StringBuilder();
         foreach (var key in table.Keys.Cast<object>())
         {
-            var name = FormatTomlKey(Convert.ToString(key, System.Globalization.CultureInfo.InvariantCulture)!);
+            var name = FormatTomlKey(Convert.ToString(key, CultureInfo.InvariantCulture)!);
             var value = table[key];
             var child = $"{path}.{name}";
-            if (value is System.Collections.IDictionary nested)
-                sections.Append(newline).Append($"[{child}]{newline}").Append(FormatTomlTableBody(nested, newline, child));
-            else if (value is System.Collections.IList { Count: > 0 } list && list.Cast<object?>().All(item => item is System.Collections.IDictionary))
-                foreach (var element in list.Cast<System.Collections.IDictionary>())
-                    sections.Append(newline).Append($"[[{child}]]{newline}").Append(FormatTomlTableBody(element, newline, child));
-            else
-                body.Append($"{name} = {FormatTomlValue(value)}{newline}");
+            switch (value)
+            {
+                case IDictionary nested:
+                    sections.Append(newline).Append($"[{child}]{newline}")
+                        .Append(FormatTomlTableBody(nested, newline, child));
+                    break;
+                case IList { Count: > 0 } list when list.Cast<object?>().All(item => item is IDictionary):
+                    foreach (var element in list.Cast<IDictionary>())
+                        sections.Append(newline).Append($"[[{child}]]{newline}")
+                            .Append(FormatTomlTableBody(element, newline, child));
+                    break;
+                default:
+                    body.Append($"{name} = {FormatTomlValue(value)}{newline}");
+                    break;
+            }
         }
+
         return body.Append(sections).ToString();
     }
 
-    private static string FormatTomlKey(string key) =>
-        key.Length > 0 && key.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-') ? key : QuoteTomlString(key);
+    private static string FormatTomlKey(string key)
+    {
+        return key.Length > 0 && key.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-')
+            ? key
+            : QuoteTomlString(key);
+    }
 
     private static string FormatTomlValue(object? value)
     {
@@ -876,26 +951,31 @@ public class ConfigManager(string? coreConfigPath = null)
             null => "\"\"",
             string text => QuoteTomlString(text),
             bool boolean => boolean ? "true" : "false",
-            sbyte or byte or short or ushort or int or uint or long or ulong => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
-            float or double or decimal => FormatTomlFloat(Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture)),
+            sbyte or byte or short or ushort or int or uint or long or ulong => Convert.ToString(value,
+                CultureInfo.InvariantCulture)!,
+            float or double or decimal => FormatTomlFloat(Convert.ToDouble(value, CultureInfo.InvariantCulture)),
             Enum enumValue => QuoteTomlString(enumValue.ToString()),
             TomlDateTime date => date.ToString(),
-            System.Collections.IDictionary table => "{ " + string.Join(", ", table.Keys.Cast<object>().Select(key =>
-                $"{FormatTomlKey(Convert.ToString(key, System.Globalization.CultureInfo.InvariantCulture)!)} = {FormatTomlValue(table[key])}")) + " }",
-            System.Collections.IEnumerable items when value is not string => FormatTomlArray(items),
+            IDictionary table => "{ " + string.Join(", ", table.Keys.Cast<object>().Select(key =>
+                                     $"{FormatTomlKey(Convert.ToString(key, CultureInfo.InvariantCulture)!)} = {FormatTomlValue(table[key])}")) +
+                                 " }",
+            IEnumerable items and not string => FormatTomlArray(items),
             _ => QuoteTomlString(value.ToString() ?? string.Empty)
         };
     }
 
     // A whole number written as "1" would turn a float setting into an integer on the next load.
-    private static string FormatTomlFloat(double value) =>
-        double.IsNaN(value) ? "nan"
-        : double.IsPositiveInfinity(value) ? "inf"
-        : double.IsNegativeInfinity(value) ? "-inf"
-        : value.ToString("R", System.Globalization.CultureInfo.InvariantCulture) is var text &&
-          text.IndexOfAny(['.', 'E', 'e']) < 0 ? text + ".0" : value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FormatTomlFloat(double value)
+    {
+        return double.IsNaN(value) ? "nan"
+            : double.IsPositiveInfinity(value) ? "inf"
+            : double.IsNegativeInfinity(value) ? "-inf"
+            : value.ToString("R", CultureInfo.InvariantCulture) is var text &&
+              text.IndexOfAny(['.', 'E', 'e']) < 0 ? text + ".0"
+            : value.ToString("R", CultureInfo.InvariantCulture);
+    }
 
-    private static string FormatTomlArray(System.Collections.IEnumerable items)
+    private static string FormatTomlArray(IEnumerable items)
     {
         var values = items.Cast<object?>().Select(FormatTomlValue);
         return "[" + string.Join(", ", values) + "]";
@@ -905,25 +985,26 @@ public class ConfigManager(string? coreConfigPath = null)
     // Chinese names is written as-is (JSON serialization escaped it to \uXXXX).
     private static string QuoteTomlString(string value)
     {
-        var builder = new System.Text.StringBuilder(value.Length + 2).Append('"');
+        var builder = new StringBuilder(value.Length + 2).Append('"');
         foreach (var ch in value)
-        {
             switch (ch)
             {
                 case '"': builder.Append("\\\""); break;
-                case '\\': builder.Append("\\\\"); break;
+                case '\\': builder.Append(@"\\"); break;
                 case '\b': builder.Append("\\b"); break;
                 case '\t': builder.Append("\\t"); break;
                 case '\n': builder.Append("\\n"); break;
                 case '\f': builder.Append("\\f"); break;
                 case '\r': builder.Append("\\r"); break;
                 default:
-                    if (char.IsControl(ch)) builder.Append("\\u").Append(((int)ch).ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
+                    if (char.IsControl(ch))
+                        builder.Append("\\u").Append(((int)ch).ToString("X4", CultureInfo.InvariantCulture));
                     else builder.Append(ch);
                     break;
             }
-        }
+
         return builder.Append('"').ToString();
     }
 
+    private sealed record TomlEdit(int Offset, int Length, string Text, int Order);
 }

@@ -1,9 +1,12 @@
+using System.Collections;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using ShiroBot.Terminal;
 
-internal static class ConsoleOutputVerification
+namespace ShiroBot.Verification;
+
+internal static partial class ConsoleOutputVerification
 {
     private static readonly string LongLine = "中文😀 Podman redirected log " + new string('x', 300);
 
@@ -16,7 +19,7 @@ internal static class ConsoleOutputVerification
         ConsoleOutput.Error("disabled output must not appear");
         ConsoleOutput.IsEnabled = true;
         ConsoleOutput.Notice("notice", "summary", "details");
-        var rows = (System.Collections.ICollection)typeof(ConsoleOutput)
+        var rows = (ICollection)typeof(ConsoleOutput)
             .GetField("ScreenRows", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
         if (rows.Count != 0) throw new Exception("Redirected logs retained terminal screen rows.");
     }
@@ -45,10 +48,14 @@ internal static class ConsoleOutputVerification
         var output = await outputTask;
         var error = await errorTask;
         if (process.ExitCode != 0) throw new Exception($"Redirected console probe failed: {error}");
-        var normalized = Regex.Replace(output.Replace("\r\n", "\n"), @"\[\d{2}:\d{2}:\d{2}\] ", "");
+        var normalized = CompiledPattern1().Replace(output.Replace("\r\n", "\n"), "");
         var expected = LongLine + "\nmultiline first\n多行 second\nnotice\nsummary\ndetails\n";
         if (normalized != expected || error.Length != 0)
             throw new Exception($"Redirected output was wrapped, padded, escaped or changed: {output}");
-        Console.WriteLine("PASS redirected console: complete UTF-8 lines, original multiline text, no padding/ANSI/screen history, disabled output respected.");
+        Console.WriteLine(
+            "PASS redirected console: complete UTF-8 lines, original multiline text, no padding/ANSI/screen history, disabled output respected.");
     }
+
+    [GeneratedRegex(@"\[\d{2}:\d{2}:\d{2}\] ", RegexOptions.None)]
+    private static partial Regex CompiledPattern1();
 }

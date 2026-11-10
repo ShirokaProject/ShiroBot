@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Http;
@@ -14,6 +13,8 @@ using ShiroBot.Hosting.Runtime;
 using ShiroBot.Packages;
 using ShiroBot.Plugins;
 using ShiroBot.Plugins.Loading;
+
+namespace ShiroBot.Verification;
 
 internal static class PluginListBenchmark
 {
@@ -24,7 +25,7 @@ internal static class PluginListBenchmark
         var resolver = new SharedAssemblyResolver();
         var context = new BotContext(null, [], [], new WebHostContext("", false));
         var manager = new PluginManager(context, resolver, new ModelPackageRegistry(resolver),
-            new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub())
+                new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub())
             { PluginRootPath = Path.GetFullPath(fixtures) };
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -33,7 +34,10 @@ internal static class PluginListBenchmark
         typeof(HostHttpServer).GetMethod("MapPluginCatalogEndpoints", BindingFlags.NonPublic | BindingFlags.Static)!
             .Invoke(null, [app.MapGroup("/api/v1"), manager]);
         await app.StartAsync();
-        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        // Assign settings after taking ownership so a setter failure also disposes the client.
+        // ReSharper disable once UseObjectOrCollectionInitializer, ShortLivedHttpClient
+        using var client = new HttpClient();
+        client.BaseAddress = new Uri(app.Urls.Single());
         const string endpoint = "/api/v1/plugins/list";
         var expected = await client.GetStringAsync(endpoint);
         using var expectedDocument = JsonDocument.Parse(expected);
@@ -42,7 +46,9 @@ internal static class PluginListBenchmark
         for (var i = 0; i < 100; i++) await client.GetStringAsync(endpoint);
         for (var trial = 1; trial <= 3; trial++)
         {
-            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
             var liveBefore = GC.GetTotalMemory(false);
             var allocatedBefore = GC.GetTotalAllocatedBytes(true);
             var gen0 = GC.CollectionCount(0);
@@ -55,15 +61,19 @@ internal static class PluginListBenchmark
                 var response = await client.GetStringAsync(endpoint);
                 if (response != expected) throw new InvalidOperationException("Plugin list changed during benchmark.");
             }
+
             watch.Stop();
             var allocated = GC.GetTotalAllocatedBytes(true) - allocatedBefore;
             var collections = GC.CollectionCount(0) - gen0;
             var heapBeforeGc = GC.GetTotalMemory(false);
             process.Refresh();
             var rssAfter = process.WorkingSet64;
-            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
             var liveAfter = GC.GetTotalMemory(false);
-            Console.WriteLine(JsonSerializer.Serialize(new {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
                 trial, requests, elapsedMs = watch.Elapsed.TotalMilliseconds,
                 allocatedBytes = allocated, allocatedBytesPerRequest = allocated / requests,
                 gen0Collections = collections, liveBefore, heapBeforeGc, liveAfter,
@@ -72,6 +82,7 @@ internal static class PluginListBenchmark
                 pluginCount
             }));
         }
+
         // Verify additions and removal are visible without recreating the manager.
         var addedDirectory = Path.Combine(fixtures, "benchmark-added");
         if (Directory.Exists(addedDirectory) || File.Exists(addedDirectory))
@@ -85,14 +96,18 @@ internal static class PluginListBenchmark
             File.Copy(source, target);
             var added = await client.GetStringAsync(endpoint);
             if (added == expected) throw new InvalidOperationException("New plugin DLL was not discovered.");
-            File.WriteAllText(target, "not a managed DLL");
+            await File.WriteAllTextAsync(target, "not a managed DLL");
             if (await client.GetStringAsync(endpoint) != expected)
                 throw new InvalidOperationException("Changed DLL kept stale plugin metadata.");
             File.Delete(target);
             if (await client.GetStringAsync(endpoint) != expected)
                 throw new InvalidOperationException("Deleted DLL kept stale plugin metadata.");
         }
-        finally { Directory.Delete(addedDirectory, recursive: true); }
+        finally
+        {
+            Directory.Delete(addedDirectory, true);
+        }
+
         Console.WriteLine("Plugin list addition, modification and deletion verification passed.");
         await app.StopAsync();
     }

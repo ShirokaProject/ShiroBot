@@ -1,19 +1,21 @@
 using ShiroBot.Hosting.Context;
-using CH = ShiroBot.Terminal.ConsoleOutput;
-using ShiroBot.Integrations.Avalonia;
-using ShiroBot.Update;
 using ShiroBot.Hosting.Logging;
+using ShiroBot.Integrations.Avalonia;
+using ShiroBot.SDK.Models;
+using ShiroBot.Update;
+using CH = ShiroBot.Terminal.ConsoleOutput;
 
 namespace ShiroBot.Configuration;
 
 internal sealed class CoreConfigWatcher : IDisposable
 {
     private readonly BotContext _botContext;
-    private readonly IDisposable _watcherSubscription;
-    private readonly HostLogHub? _logs;
     private readonly string? _hostDirectory;
+    private readonly HostLogHub? _logs;
+    private readonly IDisposable _watcherSubscription;
 
-    public CoreConfigWatcher(string coreConfigPath, CoreConfig initialConfig, BotContext botContext, HostLogHub? logs = null, string? hostDirectory = null)
+    public CoreConfigWatcher(string coreConfigPath, CoreConfig initialConfig, BotContext botContext,
+        HostLogHub? logs = null, string? hostDirectory = null)
     {
         var activeConfig = initialConfig;
         _botContext = botContext;
@@ -26,18 +28,25 @@ internal sealed class CoreConfigWatcher : IDisposable
         });
     }
 
+    public void Dispose()
+    {
+        _watcherSubscription.Dispose();
+    }
+
     private void ApplyCoreConfigChange(CoreConfig? active, CoreConfig? updated)
     {
         if (active is null || updated is null) return;
         updated.Logs.Validate();
 
         // Validate both lists before applying either permission or any runtime settings.
-        foreach (var entry in updated.OwnerList.Concat(updated.AdminList).Where(entry => !string.IsNullOrWhiteSpace(entry)))
-            ShiroBot.SDK.Models.UserReference.Parse(entry);
+        foreach (var entry in updated.OwnerList.Concat(updated.AdminList)
+                     .Where(entry => !string.IsNullOrWhiteSpace(entry)))
+            UserReference.Parse(entry);
         if (!string.IsNullOrWhiteSpace(active.Api.Token) && string.IsNullOrWhiteSpace(updated.Api.Token))
             throw new InvalidOperationException("运行中的 API 令牌不能设为空；修改未应用。");
         var changes = new List<string>();
-        if (active.Logs.SaveToFile != updated.Logs.SaveToFile || active.Logs.RetentionDays != updated.Logs.RetentionDays)
+        if (active.Logs.SaveToFile != updated.Logs.SaveToFile ||
+            active.Logs.RetentionDays != updated.Logs.RetentionDays)
         {
             if (_hostDirectory is not null) _logs?.Configure(updated.Logs, _hostDirectory);
             active.Logs = updated.Logs;
@@ -117,8 +126,9 @@ internal sealed class CoreConfigWatcher : IDisposable
         }
 
         if (active.Api.Enable != updated.Api.Enable || active.Api.EnableDashboard != updated.Api.EnableDashboard
-            || !ArrayEquals(active.Api.ListenUrls, updated.Api.ListenUrls)
-            || !ArrayEquals(active.Api.PublicBaseUrl, updated.Api.PublicBaseUrl))
+                                                    || !ArrayEquals(active.Api.ListenUrls, updated.Api.ListenUrls)
+                                                    || !ArrayEquals(active.Api.PublicBaseUrl,
+                                                        updated.Api.PublicBaseUrl))
         {
             active.Api.Enable = updated.Api.Enable;
             active.Api.EnableDashboard = updated.Api.EnableDashboard;
@@ -137,30 +147,15 @@ internal sealed class CoreConfigWatcher : IDisposable
         changes.Add("plugin_routes");
 
         if (changes.Count > 0)
-        {
             CH.Success("核心配置热重载完成: " + string.Join(", ", changes));
-        }
         else
-        {
             CH.Info("核心配置热重载: 无字段变化。");
-        }
     }
 
     private static bool ArrayEquals(string[]? left, string[]? right)
     {
         if (ReferenceEquals(left, right)) return true;
         if (left is null || right is null) return false;
-        if (left.Length != right.Length) return false;
-        for (var i = 0; i < left.Length; i++)
-        {
-            if (left[i] != right[i]) return false;
-        }
-
-        return true;
-    }
-
-    public void Dispose()
-    {
-        _watcherSubscription.Dispose();
+        return left.Length == right.Length && left.SequenceEqual(right, StringComparer.Ordinal);
     }
 }

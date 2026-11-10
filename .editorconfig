@@ -1,0 +1,12 @@
+# These service entry points retain their instance calling convention.
+# Keep CA1822 enabled for private implementation details in these files.
+[Core/Adapters/{AdapterMarketplaceCache,AdapterPackageManager}.cs]
+dotnet_code_quality.CA1822.api_surface = private
+
+[Core/Configuration/ConfigManager.cs]
+dotnet_code_quality.CA1822.api_surface = private
+
+# ComputedValue must remain an instance property for the reflection fixture.
+# Private helper methods are still checked for possible static declarations.
+[Tests/Verification/Program.cs]
+dotnet_code_quality.CA1822.api_surface = private

@@ -1,20 +1,20 @@
-using ShiroBot.Terminal;
+using System.Collections.Concurrent;
+using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Runtime.Loader;
+using ShiroBot.Components.Updates;
+using ShiroBot.Configuration;
+using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Configuration;
 using ShiroBot.Packages;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Services;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Core;
-using System.Collections.Concurrent;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 using CH = ShiroBot.Terminal.ConsoleOutput;
-using ShiroBot.Components.Updates;
 
 namespace ShiroBot.Plugins;
 
@@ -41,40 +41,44 @@ internal sealed class PluginManager(
     HostRuntimeState runtimeState,
     HostLogHub logHub)
 {
+    private const byte SerializedTypeBoolean = 0x02;
+    private const byte SerializedTypeChar = 0x03;
+    private const byte SerializedTypeI1 = 0x04;
+    private const byte SerializedTypeU1 = 0x05;
+    private const byte SerializedTypeI2 = 0x06;
+    private const byte SerializedTypeU2 = 0x07;
+    private const byte SerializedTypeI4 = 0x08;
+    private const byte SerializedTypeU4 = 0x09;
+    private const byte SerializedTypeI8 = 0x0A;
+    private const byte SerializedTypeU8 = 0x0B;
+    private const byte SerializedTypeR4 = 0x0C;
+    private const byte SerializedTypeR8 = 0x0D;
+    private const byte SerializedTypeString = 0x0E;
+    private const byte SerializedTypeType = 0x50;
+    private const byte SerializedTypeEnum = 0x55;
+    private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _loadErrors = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<LoadedPluginHandle> _loadedPlugins = [];
     private readonly HashSet<string> _loadingPluginIds = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, string> _loadErrors = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, byte> _dirtyProbePaths = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, DateTime> _suppressedWatcherPaths = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, CancellationTokenSource> _watcherReloads = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly ConcurrentDictionary<string, PluginProbeCacheEntry> _probeCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly PluginServiceRegistry _serviceRegistry = new();
-    private FileSystemWatcher? _pluginRootWatcher;
-    private string? _watchedPluginRoot;
-    private bool _isShuttingDown;
+
+    private readonly ConcurrentDictionary<string, DateTime> _suppressedWatcherPaths =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _watcherReloads =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private HostEventDispatcher? _hotReloadEventDispatcher;
     private PluginRouteConfig? _hotReloadRoutePolicy;
-
-    internal void ValidateInstallCompatibility(string entryPath) =>
-        ContractReferencePreflight.Validate(entryPath, SharedAssemblies);
-
-    internal IReadOnlyDictionary<string, string> GetContractAbiVersions() =>
-        System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies
-            .Select(assembly => assembly.GetName())
-            .Where(name => name.Name == "ShiroBot.SDK" || name.Name?.StartsWith("ShiroBot.Model.", StringComparison.Ordinal) == true)
-            .ToDictionary(name => name.Name!, name => name.Version!.ToString(), StringComparer.OrdinalIgnoreCase);
+    private bool _isShuttingDown;
+    private FileSystemWatcher? _pluginRootWatcher;
+    private string? _watchedPluginRoot;
 
     public string PluginRootPath { get; set; } = string.Empty;
-
-    public void EnableFileHotReload(HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy)
-    {
-        _hotReloadEventDispatcher = eventDispatcher;
-        _hotReloadRoutePolicy = routePolicy;
-        if (!string.IsNullOrWhiteSpace(PluginRootPath) && Directory.Exists(PluginRootPath))
-        {
-            EnsurePluginRootWatcher(Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar));
-        }
-    }
 
     private Lock PluginLifecycleLock { get; } = new();
 
@@ -84,11 +88,34 @@ internal sealed class PluginManager(
 
     private ModelPackageRegistry ModelPackages { get; } = modelPackages;
 
+    internal void ValidateInstallCompatibility(string entryPath)
+    {
+        ContractReferencePreflight.Validate(entryPath, SharedAssemblies);
+    }
+
+    internal static IReadOnlyDictionary<string, string> GetContractAbiVersions()
+    {
+        return AssemblyLoadContext.Default.Assemblies
+            .Select(assembly => assembly.GetName())
+            .Where(name =>
+                name.Name == "ShiroBot.SDK" ||
+                name.Name?.StartsWith("ShiroBot.Model.", StringComparison.Ordinal) == true)
+            .ToDictionary(name => name.Name!, name => name.Version!.ToString(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void EnableFileHotReload(HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy)
+    {
+        _hotReloadEventDispatcher = eventDispatcher;
+        _hotReloadRoutePolicy = routePolicy;
+        if (!string.IsNullOrWhiteSpace(PluginRootPath) && Directory.Exists(PluginRootPath))
+            EnsurePluginRootWatcher(Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar));
+    }
+
     public static IEnumerable<string> EnumeratePluginEntryAssemblies(string pluginRoot, bool probeMetadata = true)
     {
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "ShiroBot.SDK.dll",
+            "ShiroBot.SDK.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -104,18 +131,16 @@ internal sealed class PluginManager(
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var directory in pluginDirectories)
+        foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
+                     .Where(path => !sharedAssemblies.Contains(Path.GetFileName(path)))
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
-            foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
-                         .Where(path => !sharedAssemblies.Contains(Path.GetFileName(path)))
-                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-            {
-                var normalizedPath = Path.GetFullPath(dll);
-                if ((!probeMetadata || TryProbePluginInfo(normalizedPath) is not null) && yieldedPaths.Add(normalizedPath))
-                {
-                    yield return normalizedPath;
-                }
-            }
+            var normalizedPath = Path.GetFullPath(dll);
+            if ((!probeMetadata || TryProbePluginInfo(normalizedPath) is not null) && yieldedPaths.Add(normalizedPath))
+                yield return normalizedPath;
         }
     }
 
@@ -123,10 +148,12 @@ internal sealed class PluginManager(
     {
         lock (PluginLifecycleLock)
         {
-            return _loadedPlugins
-                .Select(plugin => plugin.Name)
-                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            return
+            [
+                .. _loadedPlugins
+                    .Select(plugin => plugin.Name)
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            ];
         }
     }
 
@@ -136,10 +163,7 @@ internal sealed class PluginManager(
             .Select(plugin => plugin.Name)
             .Reverse()
             .ToArray();
-        foreach (var name in names)
-        {
-            await ScheduleUnloadPluginByName(hostEventDispatcher, name).ConfigureAwait(false);
-        }
+        foreach (var name in names) await ScheduleUnloadPluginByName(hostEventDispatcher, name).ConfigureAwait(false);
 
         return names;
     }
@@ -150,9 +174,7 @@ internal sealed class PluginManager(
         IReadOnlyList<string> pluginNames)
     {
         foreach (var name in pluginNames.Reverse())
-        {
             await ScheduleLoadPluginByName(hostEventDispatcher, routePolicy, name).ConfigureAwait(false);
-        }
     }
 
     public List<string> GetLoadablePluginCandidates(bool includePluginNames = true)
@@ -181,28 +203,25 @@ internal sealed class PluginManager(
             var relativeCandidate = Path.GetRelativePath(pluginRoot, assemblyPath)
                 .Replace(Path.DirectorySeparatorChar, '/');
 
-            if (!string.IsNullOrWhiteSpace(relativeCandidate) && !relativeCandidate.StartsWith("..", StringComparison.Ordinal))
+            if (!string.IsNullOrWhiteSpace(relativeCandidate) &&
+                !relativeCandidate.StartsWith("..", StringComparison.Ordinal)) candidates.Add(relativeCandidate);
+
+            if (!string.IsNullOrWhiteSpace(candidate)) candidates.Add(candidate);
+
+            if (!includePluginNames)
             {
-                candidates.Add(relativeCandidate);
+                continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(candidate))
-            {
-                candidates.Add(candidate);
-            }
-
-            if (includePluginNames)
-            {
-                if (!string.IsNullOrWhiteSpace(pluginInfo.Id))
-                {
-                    candidates.Add(pluginInfo.Id);
-                }
-            }
+            if (!string.IsNullOrWhiteSpace(pluginInfo.Id))
+                candidates.Add(pluginInfo.Id);
         }
 
-        return candidates
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return
+        [
+            .. candidates
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+        ];
     }
 
     private void EnsurePluginRootWatcher(string pluginRoot)
@@ -215,28 +234,43 @@ internal sealed class PluginManager(
         {
             Filter = "*",
             IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size |
+                           NotifyFilters.DirectoryName,
             EnableRaisingEvents = true
         };
 
         // Packages staged for the next start live under .update and must never be loaded live.
-        bool IsStaged(string path) => StagedComponentUpdates.IsStagingPath(pluginRoot, path);
-        _pluginRootWatcher.Changed += (_, e) => { if (!IsStaged(e.FullPath)) SchedulePluginFileReload(e.FullPath); };
-        _pluginRootWatcher.Created += (_, e) => { if (!IsStaged(e.FullPath)) HandleCreatedPluginPath(e.FullPath); };
-        _pluginRootWatcher.Deleted += (_, e) => { if (!IsStaged(e.FullPath)) HandleDeletedPluginPath(e.FullPath); };
+
+        _pluginRootWatcher.Changed += (_, e) =>
+        {
+            if (!IsStaged(e.FullPath)) SchedulePluginFileReload(e.FullPath);
+        };
+        _pluginRootWatcher.Created += (_, e) =>
+        {
+            if (!IsStaged(e.FullPath)) HandleCreatedPluginPath(e.FullPath);
+        };
+        _pluginRootWatcher.Deleted += (_, e) =>
+        {
+            if (!IsStaged(e.FullPath)) HandleDeletedPluginPath(e.FullPath);
+        };
         _pluginRootWatcher.Renamed += (_, e) =>
         {
             RemoveProbeCache(e.OldFullPath);
             if (!IsStaged(e.FullPath)) HandleCreatedPluginPath(e.FullPath);
         };
+
+        return;
+
+        bool IsStaged(string path)
+        {
+            return StagedComponentUpdates.IsStagingPath(pluginRoot, path);
+        }
     }
 
     private void MarkProbeDirty(string path)
     {
         if (Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase))
-        {
             _dirtyProbePaths[Path.GetFullPath(path)] = 1;
-        }
     }
 
     private void SchedulePluginFileReload(string path)
@@ -246,9 +280,7 @@ internal sealed class PluginManager(
             IsWatcherPathSuppressed(path) ||
             _hotReloadEventDispatcher is null ||
             _hotReloadRoutePolicy is null)
-        {
             return;
-        }
 
         var fullPath = Path.GetFullPath(path);
         var cancellation = new CancellationTokenSource();
@@ -273,10 +305,12 @@ internal sealed class PluginManager(
                 if (loaded is not null)
                 {
                     var source = new FileInfo(fullPath);
-                    if (source.Length == loaded.SourceLength && source.LastWriteTimeUtc == loaded.SourceLastWriteTimeUtc)
+                    if (source.Length == loaded.SourceLength &&
+                        source.LastWriteTimeUtc == loaded.SourceLastWriteTimeUtc)
                         return; // Coalesced directory notifications must not reload an unchanged DLL.
                     await ScheduleUnloadPluginByName(_hotReloadEventDispatcher, loaded.Name).ConfigureAwait(false);
-                    await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath).ConfigureAwait(false);
+                    await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath)
+                        .ConfigureAwait(false);
                     CH.Success($"插件文件热重载成功: {loaded.Name}");
                     return;
                 }
@@ -284,7 +318,8 @@ internal sealed class PluginManager(
                 var info = TryProbePluginInfoCached(fullPath);
                 if (info is not null)
                 {
-                    await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath).ConfigureAwait(false);
+                    await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath)
+                        .ConfigureAwait(false);
                     CH.Success($"新插件已自动加载: {info.Name}");
                 }
             }
@@ -299,7 +334,7 @@ internal sealed class PluginManager(
             {
                 if (_watcherReloads.TryRemove(fullPath, out var current)) current.Dispose();
             }
-        });
+        }, cancellationToken: CancellationToken.None);
     }
 
     private void HandleDeletedPluginPath(string path)
@@ -310,10 +345,7 @@ internal sealed class PluginManager(
         var fullPath = Path.GetFullPath(path);
         var loaded = GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
             string.Equals(Path.GetFullPath(plugin.AssemblyPath), fullPath, StringComparison.OrdinalIgnoreCase));
-        if (loaded is not null)
-        {
-            _ = ScheduleUnloadPluginByName(_hotReloadEventDispatcher, loaded.Name);
-        }
+        if (loaded is not null) _ = ScheduleUnloadPluginByName(_hotReloadEventDispatcher, loaded.Name);
     }
 
     private void HandleCreatedPluginPath(string path)
@@ -339,12 +371,8 @@ internal sealed class PluginManager(
 
             foreach (var entryDll in Directory.EnumerateFiles(fullPath, "*.dll", SearchOption.TopDirectoryOnly)
                          .OrderBy(candidate => candidate, StringComparer.OrdinalIgnoreCase))
-            {
                 if (TryProbePluginInfo(entryDll) is not null)
-                {
                     HandleCreatedPluginFile(entryDll);
-                }
-            }
         });
     }
 
@@ -368,9 +396,8 @@ internal sealed class PluginManager(
 
             CH.Info($"检测到新插件: {info.Name} ({info.Id}) - {fullPath}");
             if (_hotReloadEventDispatcher is not null && _hotReloadRoutePolicy is not null)
-            {
-                await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath).ConfigureAwait(false);
-            }
+                await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath)
+                    .ConfigureAwait(false);
         });
     }
 
@@ -418,24 +445,26 @@ internal sealed class PluginManager(
 
             if (string.Equals(fullPath, suppressedPath, StringComparison.OrdinalIgnoreCase) ||
                 fullPath.StartsWith(suppressedPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            {
                 return true;
-            }
         }
 
         return false;
     }
 
-    private static string NormalizeWatcherPath(string path) =>
-        Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    private static string NormalizeWatcherPath(string path)
+    {
+        return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
 
     private void RemoveProbeCache(string path)
     {
         var fullPath = Path.GetFullPath(path);
         if (!Path.GetExtension(fullPath).Equals(".dll", StringComparison.OrdinalIgnoreCase))
         {
-            var directoryPrefix = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            foreach (var cachedPath in _probeCache.Keys.Where(item => item.StartsWith(directoryPrefix, StringComparison.OrdinalIgnoreCase)).ToArray())
+            var directoryPrefix = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                                  Path.DirectorySeparatorChar;
+            foreach (var cachedPath in _probeCache.Keys
+                         .Where(item => item.StartsWith(directoryPrefix, StringComparison.OrdinalIgnoreCase)).ToArray())
             {
                 _probeCache.TryRemove(cachedPath, out _);
                 _dirtyProbePaths.TryRemove(cachedPath, out _);
@@ -452,12 +481,14 @@ internal sealed class PluginManager(
     {
         lock (PluginLifecycleLock)
         {
-            return _loadedPlugins.ToList();
+            return [.. _loadedPlugins];
         }
     }
 
-    public string? GetPluginLoadError(string pluginId) =>
-        _loadErrors.TryGetValue(pluginId, out var error) ? error : null;
+    public string? GetPluginLoadError(string pluginId)
+    {
+        return _loadErrors.GetValueOrDefault(pluginId);
+    }
 
 
     public async Task<bool> ApplyConfigByIdAsync(string pluginId)
@@ -471,26 +502,21 @@ internal sealed class PluginManager(
     {
         var sharedAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "ShiroBot.SDK.dll",
+            "ShiroBot.SDK.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var entry in EnumeratePluginEntryAssemblies(pluginRoot, probeMetadata: false).Where(yieldedPaths.Add))
-        {
+        foreach (var entry in EnumeratePluginEntryAssemblies(pluginRoot, false).Where(yieldedPaths.Add))
             yield return entry;
-        }
 
-        foreach (var directory in Directory.EnumerateDirectories(pluginRoot).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
-                         .Where(dll => !sharedAssemblies.Contains(Path.GetFileName(dll)))
-                         .OrderBy(dll => dll, StringComparer.OrdinalIgnoreCase)
-                         .Select(Path.GetFullPath)
-                         .Where(yieldedPaths.Add))
-            {
-                yield return dll;
-            }
-        }
+        foreach (var directory in Directory.EnumerateDirectories(pluginRoot)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
+                     .Where(dll => !sharedAssemblies.Contains(Path.GetFileName(dll)))
+                     .OrderBy(dll => dll, StringComparer.OrdinalIgnoreCase)
+                     .Select(Path.GetFullPath)
+                     .Where(yieldedPaths.Add))
+            yield return dll;
     }
 
     public void BeginShutdown()
@@ -510,6 +536,7 @@ internal sealed class PluginManager(
             cancellation.Cancel();
             cancellation.Dispose();
         }
+
         _watcherReloads.Clear();
     }
 
@@ -535,9 +562,9 @@ internal sealed class PluginManager(
     }
 
     /// <summary>
-    /// Unloads a plugin. The result is false when it could not be unloaded cleanly (dependents still use
-    /// it, OnUnload failed or timed out); an assembly that stays referenced afterwards still counts as
-    /// unloaded, because a replacement loads into a fresh context alongside it.
+    ///     Unloads a plugin. The result is false when it could not be unloaded cleanly (dependents still use
+    ///     it, OnUnload failed or timed out); an assembly that stays referenced afterwards still counts as
+    ///     unloaded, because a replacement loads into a fresh context alongside it.
     /// </summary>
     public Task<bool> ScheduleUnloadPluginByName(
         HostEventDispatcher hostEventDispatcher,
@@ -586,13 +613,15 @@ internal sealed class PluginManager(
 
         CH.Info($"已加入热卸载队列: {pluginHandle.Name}");
         var task = TryQueuePluginBackgroundTask(() => ProcessPluginUnloadAsync(pluginHandle));
-        if (task is null)
+        if (task is not null)
+        {
+            return task;
+        }
+
         {
             CH.Warning($"程序正在退出，取消热卸载任务: {pluginHandle.Name}");
             return Task.FromResult(false);
         }
-
-        return task;
     }
 
     private async Task<bool> ProcessPluginUnloadAsync(
@@ -658,12 +687,10 @@ internal sealed class PluginManager(
         if (shadowDirectory is null) return;
         try
         {
-            if (DeferredShadowCleanup.DeleteOrStage(PluginRootPath, shadowDirectory) is { } pending)
-            {
-                runtimeState.RecommendRestart("plugin:" + pluginId,
-                    $"插件 {pluginId} 的旧文件尚未清理，建议重启宿主后完成清理。");
-                CH.Warning($"旧插件影子 DLL 清理失败，已登记到 {pending}，建议重启宿主；下次启动将重试清理。");
-            }
+            if (DeferredShadowCleanup.DeleteOrStage(PluginRootPath, shadowDirectory) is not { } pending) return;
+            runtimeState.RecommendRestart("plugin:" + pluginId,
+                $"插件 {pluginId} 的旧文件尚未清理，建议重启宿主后完成清理。");
+            CH.Warning($"旧插件影子 DLL 清理失败，已登记到 {pending}，建议重启宿主；下次启动将重试清理。");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -696,16 +723,18 @@ internal sealed class PluginManager(
 
         CH.Info($"已加入热加载队列: {pluginNameOrPath}");
         var task = TryQueuePluginBackgroundTask(() => ProcessPluginLoadAsync(
-                candidateAssemblies,
-                hostEventDispatcher,
-                routePolicy));
-        if (task is null)
+            candidateAssemblies,
+            hostEventDispatcher,
+            routePolicy));
+        if (task is not null)
+        {
+            return task;
+        }
+
         {
             CH.Warning($"程序正在退出，取消热加载任务: {pluginNameOrPath}");
             return Task.CompletedTask;
         }
-
-        return task;
     }
 
     private async Task ProcessPluginLoadAsync(
@@ -756,10 +785,7 @@ internal sealed class PluginManager(
             }
         });
 
-        if (task is not null)
-        {
-            return task;
-        }
+        if (task is not null) return task;
 
         hostEventDispatcher.MarkInitialPluginsReady();
         return Task.CompletedTask;
@@ -775,10 +801,8 @@ internal sealed class PluginManager(
         var orderedPlugins = PrepareSharedContractAssemblies(PreparePluginLoadOrder(pluginDlls));
 
         foreach (var plugin in orderedPlugins)
-        {
             await LoadPluginAsync(plugin.AssemblyPath, hostEventDispatcher, routePolicy, plugin.Info)
                 .ConfigureAwait(false);
-        }
     }
 
     private async Task LoadPluginAsync(
@@ -813,7 +837,6 @@ internal sealed class PluginManager(
                 StringComparison.OrdinalIgnoreCase);
 
             if (isRootLevelPluginAssembly)
-            {
                 try
                 {
                     if (pluginInfo.IsPluginSingleFile)
@@ -898,7 +921,6 @@ internal sealed class PluginManager(
                         logHub).ConfigureAwait(false);
                     return;
                 }
-            }
 
             if (loader is null)
             {
@@ -906,9 +928,10 @@ internal sealed class PluginManager(
                 var dllDirectory = Path.GetFullPath(Path.GetDirectoryName(actualDllPath) ?? PluginRootPath)
                     .TrimEnd(Path.DirectorySeparatorChar);
                 var normalizedPluginRoot = Path.GetFullPath(PluginRootPath).TrimEnd(Path.DirectorySeparatorChar);
-                var pluginDirectory = string.Equals(dllDirectory, normalizedPluginRoot, StringComparison.OrdinalIgnoreCase)
-                    ? GetStablePluginDirectory(pluginInfo.Id)
-                    : dllDirectory;
+                var pluginDirectory =
+                    string.Equals(dllDirectory, normalizedPluginRoot, StringComparison.OrdinalIgnoreCase)
+                        ? GetStablePluginDirectory(pluginInfo.Id)
+                        : dllDirectory;
                 var dependencies = await PluginRuntimeDependencyManager.PrepareAsync(
                     actualDllPath,
                     pluginDirectory).ConfigureAwait(false);
@@ -966,17 +989,17 @@ internal sealed class PluginManager(
         finally
         {
             if (loadingPluginId is not null)
-            {
                 lock (PluginLifecycleLock)
                 {
                     _loadingPluginIds.Remove(loadingPluginId);
                 }
-            }
         }
     }
 
-    private bool IsPluginLoaded(string pluginId) =>
-        _loadedPlugins.Any(item => string.Equals(item.Name, pluginId, StringComparison.OrdinalIgnoreCase));
+    private bool IsPluginLoaded(string pluginId)
+    {
+        return _loadedPlugins.Any(item => string.Equals(item.Name, pluginId, StringComparison.OrdinalIgnoreCase));
+    }
 
     private void RegisterLoadedPlugin(
         LoadedPluginHandle pluginHandle,
@@ -1001,12 +1024,20 @@ internal sealed class PluginManager(
         }
     }
 
-    private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null, string? pluginId = null) =>
-        new(collectible: true, shared: SharedAssemblies, dependencies: dependencies, shadowCopy: true, shadowCleanupRoot: PluginRootPath,
-            onShadowCleanupPending: () => runtimeState.RecommendRestart("plugin:" + pluginId,
+    private DllLoader<IBotPlugin> CreateLoader(PluginDependencyLayout? dependencies = null, string? pluginId = null)
+    {
+        return new DllLoader<IBotPlugin>(true, SharedAssemblies, dependencies, true,
+            PluginRootPath,
+            () => runtimeState.RecommendRestart("plugin:" + pluginId,
                 $"插件 {pluginId} 的旧文件尚未清理，建议重启宿主后完成清理。"));
+    }
 
-    private IReadOnlyList<PreparedPlugin> PreparePluginLoadOrder(IReadOnlyList<string> pluginDlls)
+    internal string? ResolveFirstPluginLoadCandidate(string id)
+    {
+        return ResolvePluginLoadCandidates(PluginRootPath, id) is [var candidate, ..] ? candidate : null;
+    }
+
+    private List<PreparedPlugin> PreparePluginLoadOrder(IReadOnlyList<string> pluginDlls)
     {
         var plugins = new Dictionary<string, PreparedPlugin>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in pluginDlls)
@@ -1021,18 +1052,14 @@ internal sealed class PluginManager(
 
 
             if (!plugins.TryAdd(info.Id, new PreparedPlugin(fullPath, info)))
-            {
                 CH.Warning($"发现重复插件 ID，已跳过: {info.Id} ({fullPath})");
-            }
         }
 
         var ordered = new List<PreparedPlugin>(plugins.Count);
         var states = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var plugin in plugins.Values.OrderBy(plugin => plugin.Info.Id, StringComparer.OrdinalIgnoreCase))
-        {
             Visit(plugin, []);
-        }
 
         return ordered;
 
@@ -1040,12 +1067,13 @@ internal sealed class PluginManager(
         {
             if (states.TryGetValue(plugin.Info.Id, out var state))
             {
-                if (state == 2) return true;
-                if (state == 3) return false;
-                if (state == 1)
+                switch (state)
                 {
-                    CH.Error($"检测到插件依赖循环: {string.Join(" -> ", chain.Append(plugin.Info.Id))}");
-                    return false;
+                    case 2: return true;
+                    case 3: return false;
+                    case 1:
+                        CH.Error($"检测到插件依赖循环: {string.Join(" -> ", chain.Append(plugin.Info.Id))}");
+                        return false;
                 }
             }
 
@@ -1062,26 +1090,21 @@ internal sealed class PluginManager(
 
                 lock (PluginLifecycleLock)
                 {
-                    if (!IsPluginLoaded(dependencyId))
-                    {
-                        CH.Error($"插件 {plugin.Info.Id} 缺少依赖插件 {dependencyId}，已跳过加载。");
-                        valid = false;
-                    }
+                    if (IsPluginLoaded(dependencyId)) continue;
+                    CH.Error($"插件 {plugin.Info.Id} 缺少依赖插件 {dependencyId}，已跳过加载。");
+                    valid = false;
                 }
             }
 
             chain.RemoveAt(chain.Count - 1);
             states[plugin.Info.Id] = valid ? 2 : 3;
-            if (valid)
-            {
-                ordered.Add(plugin);
-            }
+            if (valid) ordered.Add(plugin);
 
             return valid;
         }
     }
 
-    private IReadOnlyList<PreparedPlugin> PrepareSharedContractAssemblies(IReadOnlyList<PreparedPlugin> plugins)
+    private List<PreparedPlugin> PrepareSharedContractAssemblies(IReadOnlyList<PreparedPlugin> plugins)
     {
         var failedPluginIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var prepared = new List<PreparedPlugin>(plugins.Count);
@@ -1098,14 +1121,11 @@ internal sealed class PluginManager(
             {
                 foreach (var assemblyName in plugin.Info.SharedAssemblies)
                 {
-                    if (SharedAssemblies.TryGetRegisteredAssembly(assemblyName) is not null)
-                    {
-                        continue;
-                    }
+                    if (SharedAssemblies.TryGetRegisteredAssembly(assemblyName) is not null) continue;
 
                     var assemblyPath = ResolveSharedContractAssemblyPath(plugin.AssemblyPath, assemblyName)
-                        ?? throw new FileNotFoundException(
-                            $"Shared contract assembly {assemblyName}.dll declared by {plugin.Info.Id} was not found beside the plugin.");
+                                       ?? throw new FileNotFoundException(
+                                           $"Shared contract assembly {assemblyName}.dll declared by {plugin.Info.Id} was not found beside the plugin.");
                     SharedAssemblies.RegisterDefaultAssembly(assemblyPath);
                 }
 
@@ -1146,13 +1166,15 @@ internal sealed class PluginManager(
         context?.DetachExternalCallbacks();
 
         if (plugin is not null)
-        {
             try
             {
                 using (BotLog.BeginScope(new ConsoleLogger($"[Plugin:{pluginName}]", logHub)))
                 {
                     if (context is not null) await context.StopLifetimeTasksAsync().ConfigureAwait(false);
-                    try { await plugin.OnUnload().ConfigureAwait(false); }
+                    try
+                    {
+                        await plugin.OnUnload().ConfigureAwait(false);
+                    }
                     finally
                     {
                         if (context is not null) await context.DisposeLifetimeAsync().ConfigureAwait(false);
@@ -1163,7 +1185,6 @@ internal sealed class PluginManager(
             {
                 CH.Warning($"回滚插件初始化时清理失败: {pluginName} - {ex.Message}");
             }
-        }
 
         try
         {
@@ -1185,27 +1206,35 @@ internal sealed class PluginManager(
     }
 
     /// <summary>
-    /// 仅捕获 plugin 名（string）和 routePolicy 引用，不要让闭包捕获 <see cref="IBotPlugin"/>
-    /// 实例本身——否则 LoadedPluginHandle 永远握着 plugin 引用，可回收 ALC 卸不掉。
+    ///     仅捕获 plugin 名（string）和 routePolicy 引用，不要让闭包捕获 <see cref="IBotPlugin" />
+    ///     实例本身——否则 LoadedPluginHandle 永远握着 plugin 引用，可回收 ALC 卸不掉。
     /// </summary>
-    private static Func<string, bool> CreateGroupRouteFilter(string pluginName, PluginRouteConfig routePolicy) =>
-        groupId => routePolicy.AllowsGroup(pluginName, groupId);
+    private static Func<string, bool> CreateGroupRouteFilter(string pluginName, PluginRouteConfig routePolicy)
+    {
+        return groupId => routePolicy.AllowsGroup(pluginName, groupId);
+    }
 
-    private static Func<int?> CreatePriorityOverride(string pluginName, PluginRouteConfig routePolicy) =>
-        () => routePolicy.GetPriority(pluginName);
+    private static Func<int?> CreatePriorityOverride(string pluginName, PluginRouteConfig routePolicy)
+    {
+        return () => routePolicy.GetPriority(pluginName);
+    }
 
     private PluginContext CreatePluginContext(
         string pluginName,
-        string pluginDirectory) =>
-        new(
+        string pluginDirectory)
+    {
+        return new PluginContext(
             botContext,
             pluginName,
             pluginDirectory,
             logHub,
             _serviceRegistry);
+    }
 
-    private string GetStablePluginDirectory(string pluginName) =>
-        Path.Combine(PluginRootPath, pluginName);
+    private string GetStablePluginDirectory(string pluginName)
+    {
+        return Path.Combine(PluginRootPath, pluginName);
+    }
 
     public IReadOnlyList<string> ResolvePluginLoadCandidates(string pluginRoot, string pluginNameOrPath)
     {
@@ -1221,16 +1250,18 @@ internal sealed class PluginManager(
 
             if (File.Exists(fullPath)) return [fullPath];
 
-            if (Directory.Exists(fullPath))
+            if (Directory.Exists(fullPath)) return ResolvePluginDirectoryCandidates(fullPath, normalizedInput);
+
+            if (Path.IsPathRooted(normalizedInput))
             {
-                return ResolvePluginDirectoryCandidates(fullPath, normalizedInput);
+                return [];
             }
 
-            if (!Path.IsPathRooted(normalizedInput))
             {
                 var pluginRelativePath = Path.GetFullPath(Path.Combine(pluginRoot, normalizedInput));
                 if (File.Exists(pluginRelativePath)) return [pluginRelativePath];
-                if (Directory.Exists(pluginRelativePath)) return ResolvePluginDirectoryCandidates(pluginRelativePath, normalizedInput);
+                if (Directory.Exists(pluginRelativePath))
+                    return ResolvePluginDirectoryCandidates(pluginRelativePath, normalizedInput);
             }
 
             return [];
@@ -1245,35 +1276,37 @@ internal sealed class PluginManager(
             if (File.Exists(pluginDirectoryDll)) return [Path.GetFullPath(pluginDirectoryDll)];
 
             var pluginDirectory = Path.Combine(pluginRoot, alias);
-            if (Directory.Exists(pluginDirectory))
-            {
-                var directoryCandidates = ResolvePluginDirectoryCandidates(pluginDirectory, normalizedInput);
-                if (directoryCandidates.Count > 0) return directoryCandidates;
-            }
+            if (!Directory.Exists(pluginDirectory)) continue;
+            var directoryCandidates = ResolvePluginDirectoryCandidates(pluginDirectory, normalizedInput);
+            if (directoryCandidates.Count > 0) return directoryCandidates;
         }
 
         var inputAliases = GetPluginNameAliases(normalizedInput).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return EnumerateLoadableCandidateAssemblies(pluginRoot)
-            .Where(path =>
-            {
-                var fileName = Path.GetFileNameWithoutExtension(path);
-                var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
-                var pluginName = TryProbePluginInfoCached(path)?.Id;
-                return NameMatches(fileName, inputAliases) ||
-                       (NameMatches(directoryName, inputAliases) &&
-                        string.Equals(fileName, directoryName, StringComparison.OrdinalIgnoreCase)) ||
-                       NameMatches(pluginName, inputAliases);
-            })
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return
+        [
+            .. EnumerateLoadableCandidateAssemblies(pluginRoot)
+                .Where(path =>
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(path);
+                    var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
+                    var pluginName = TryProbePluginInfoCached(path)?.Id;
+                    return NameMatches(fileName, inputAliases) ||
+                           (NameMatches(directoryName, inputAliases) &&
+                            string.Equals(fileName, directoryName, StringComparison.OrdinalIgnoreCase)) ||
+                           NameMatches(pluginName, inputAliases);
+                })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+        ];
     }
 
-    private IReadOnlyList<string> ResolvePluginDirectoryCandidates(string pluginDirectory, string pluginNameOrPath)
+    private List<string> ResolvePluginDirectoryCandidates(string pluginDirectory, string pluginNameOrPath)
     {
         var directoryName = new DirectoryInfo(pluginDirectory).Name;
-        var inputName = Path.GetFileName(pluginNameOrPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        var aliases = GetPluginNameAliases(inputName).Concat(GetPluginNameAliases(directoryName)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var inputName =
+            Path.GetFileName(pluginNameOrPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var aliases = GetPluginNameAliases(inputName).Concat(GetPluginNameAliases(directoryName))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var sameNameDll = Path.Combine(pluginDirectory, $"{directoryName}.dll");
         if (File.Exists(sameNameDll)) return [Path.GetFullPath(sameNameDll)];
@@ -1303,7 +1336,10 @@ internal sealed class PluginManager(
         return loadableDlls.Count == 1 ? loadableDlls : [];
     }
 
-    internal PluginProbeInfo? TryProbePluginInfoFile(string assemblyPath) => TryProbePluginInfoCached(assemblyPath);
+    internal PluginProbeInfo? TryProbePluginInfoFile(string assemblyPath)
+    {
+        return TryProbePluginInfoCached(assemblyPath);
+    }
 
     private static IEnumerable<string> GetPluginNameAliases(string name)
     {
@@ -1313,9 +1349,7 @@ internal sealed class PluginManager(
 
         const string shiroBotPrefix = "ShiroBot.";
         if (name.StartsWith(shiroBotPrefix, StringComparison.OrdinalIgnoreCase) && name.Length > shiroBotPrefix.Length)
-        {
             yield return name[shiroBotPrefix.Length..];
-        }
     }
 
     private static bool NameMatches(string? candidate, HashSet<string> aliases)
@@ -1327,9 +1361,12 @@ internal sealed class PluginManager(
                aliases.Contains(candidate["ShiroBot.".Length..]);
     }
 
-    private PluginProbeInfo ProbePluginInfo(string assemblyPath) =>
-        TryProbePluginInfoCached(assemblyPath)
-        ?? throw new InvalidOperationException($"No {nameof(BotPluginAttribute)} found on IBotPlugin type in DLL");
+    private PluginProbeInfo ProbePluginInfo(string assemblyPath)
+    {
+        return TryProbePluginInfoCached(assemblyPath)
+               ?? throw new InvalidOperationException(
+                   $"No {nameof(BotPluginAttribute)} found on IBotPlugin type in DLL");
+    }
 
     private PluginProbeInfo? TryProbePluginInfoCached(string assemblyPath)
     {
@@ -1346,9 +1383,7 @@ internal sealed class PluginManager(
             _probeCache.TryGetValue(fullPath, out var cached) &&
             cached.Length == fileInfo.Length &&
             cached.LastWriteTimeUtc == fileInfo.LastWriteTimeUtc)
-        {
             return cached.Info;
-        }
 
         _dirtyProbePaths.TryRemove(fullPath, out _);
         var info = TryProbePluginInfo(fullPath);
@@ -1369,20 +1404,16 @@ internal sealed class PluginManager(
             {
                 var type = reader.GetTypeDefinition(typeHandle);
                 var attributes = type.Attributes;
-                if ((attributes & TypeAttributes.Interface) != 0 || (attributes & TypeAttributes.Abstract) != 0)
-                {
-                    continue;
-                }
+                if ((attributes & TypeAttributes.Interface) != 0 ||
+                    (attributes & TypeAttributes.Abstract) != 0) continue;
 
                 RawBotPluginAttribute? pluginAttribute = null;
                 foreach (var attributeHandle in type.GetCustomAttributes())
-                {
                     if (TryReadBotPluginAttribute(reader, attributeHandle, out var value))
-                    {
                         pluginAttribute = value;
-                    }
-                }
 
+                // Named attribute fields keep this mapping independent of positional record order.
+                // ReSharper disable once UseDeconstruction
                 if (pluginAttribute is not { } plugin) continue;
                 var id = plugin.Id;
                 if (string.IsNullOrWhiteSpace(id)) return null;
@@ -1422,9 +1453,7 @@ internal sealed class PluginManager(
                 GetAttributeTypeFullName(reader, customAttribute),
                 typeof(BotPluginAttribute).FullName,
                 StringComparison.Ordinal))
-        {
             return false;
-        }
 
         var blob = reader.GetBlobReader(customAttribute.Value);
         if (blob.ReadUInt16() != 1) return false; // CustomAttribute prolog
@@ -1504,12 +1533,16 @@ internal sealed class PluginManager(
         return true;
     }
 
-    private static IReadOnlyList<string> SplitList(string? value) =>
-        string.IsNullOrWhiteSpace(value)
+    private static string[] SplitList(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
             ? []
-            : value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            :
+            [
+                .. value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+            ];
+    }
 
     private static bool TrySkipSerializedFixedArgument(ref BlobReader blob, byte typeCode)
     {
@@ -1558,8 +1591,11 @@ internal sealed class PluginManager(
     {
         return attribute.Constructor.Kind switch
         {
-            HandleKind.MemberReference => GetMemberReferenceParentTypeFullName(reader, reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor)),
-            HandleKind.MethodDefinition => GetTypeDefinitionFullName(reader, reader.GetTypeDefinition(reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType())),
+            HandleKind.MemberReference => GetMemberReferenceParentTypeFullName(reader,
+                reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor)),
+            HandleKind.MethodDefinition => GetTypeDefinitionFullName(reader,
+                reader.GetTypeDefinition(reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor)
+                    .GetDeclaringType())),
             _ => null
         };
     }
@@ -1568,8 +1604,10 @@ internal sealed class PluginManager(
     {
         return memberReference.Parent.Kind switch
         {
-            HandleKind.TypeReference => GetTypeReferenceFullName(reader, reader.GetTypeReference((TypeReferenceHandle)memberReference.Parent)),
-            HandleKind.TypeDefinition => GetTypeDefinitionFullName(reader, reader.GetTypeDefinition((TypeDefinitionHandle)memberReference.Parent)),
+            HandleKind.TypeReference => GetTypeReferenceFullName(reader,
+                reader.GetTypeReference((TypeReferenceHandle)memberReference.Parent)),
+            HandleKind.TypeDefinition => GetTypeDefinitionFullName(reader,
+                reader.GetTypeDefinition((TypeDefinitionHandle)memberReference.Parent)),
             _ => null
         };
     }
@@ -1587,22 +1625,6 @@ internal sealed class PluginManager(
         var ns = reader.GetString(type.Namespace);
         return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
     }
-
-    private const byte SerializedTypeBoolean = 0x02;
-    private const byte SerializedTypeChar = 0x03;
-    private const byte SerializedTypeI1 = 0x04;
-    private const byte SerializedTypeU1 = 0x05;
-    private const byte SerializedTypeI2 = 0x06;
-    private const byte SerializedTypeU2 = 0x07;
-    private const byte SerializedTypeI4 = 0x08;
-    private const byte SerializedTypeU4 = 0x09;
-    private const byte SerializedTypeI8 = 0x0A;
-    private const byte SerializedTypeU8 = 0x0B;
-    private const byte SerializedTypeR4 = 0x0C;
-    private const byte SerializedTypeR8 = 0x0D;
-    private const byte SerializedTypeString = 0x0E;
-    private const byte SerializedTypeType = 0x50;
-    private const byte SerializedTypeEnum = 0x55;
 
     private readonly record struct RawBotPluginAttribute(
         string Id,

@@ -1,5 +1,7 @@
 using ShiroBot.Configuration;
 
+namespace ShiroBot.Verification;
+
 internal static class TomlFormattingVerification
 {
     internal static void Run()
@@ -24,17 +26,20 @@ internal static class TomlFormattingVerification
                     manager.ReplaceConfigValue(path, "providers", new[] { first, second });
                     var expanded = File.ReadAllText(path);
                     if (expanded.Split("[[providers]]").Length != 3 || !expanded.Contains("# Labels follow"))
-                        throw new InvalidOperationException("Replacing TOML tables lost a provider or unrelated comment.");
+                        throw new InvalidOperationException(
+                            "Replacing TOML tables lost a provider or unrelated comment.");
                     manager.ReplaceConfigValue(path, "providers", new[] { first });
                     if (File.ReadAllText(path) != original)
-                        throw new InvalidOperationException($"TOML table round trip changed formatting: newline={newlineName}, cycle={cycle + 1}.");
+                        throw new InvalidOperationException(
+                            $"TOML table round trip changed formatting: newline={newlineName}, cycle={cycle + 1}.");
                 }
             }
             finally
             {
-                Directory.Delete(root, recursive: true);
+                Directory.Delete(root, true);
             }
         }
+
         Console.WriteLine("TOML table round trips preserve LF/CRLF formatting verification passed.");
     }
 }

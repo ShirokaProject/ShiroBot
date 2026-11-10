@@ -1,7 +1,7 @@
 namespace ShiroBot.SDK.Models;
 
 /// <summary>
-/// 会话渠道类型。
+///     会话渠道类型。
 /// </summary>
 public enum ChannelType
 {
@@ -19,8 +19,8 @@ public enum ChannelType
 }
 
 /// <summary>
-/// 平台无关的会话渠道。私聊时 <see cref="Id"/> 通常为对方用户 ID；
-/// 群聊时为群 / 频道 ID。
+///     平台无关的会话渠道。私聊时 <see cref="Id" /> 通常为对方用户 ID；
+///     群聊时为群 / 频道 ID。
 /// </summary>
 public sealed record Channel(string Id, ChannelType Type)
 {
@@ -30,7 +30,13 @@ public sealed record Channel(string Id, ChannelType Type)
     /// <summary>所属服务器 / 群组 ID。QQ 群与群渠道相同；Discord 为 guild id。</summary>
     public string? GuildId { get; init; }
 
-    public static Channel Direct(string userId) => new(userId, ChannelType.Direct);
+    public static Channel Direct(string userId)
+    {
+        return new Channel(userId, ChannelType.Direct);
+    }
 
-    public static Channel Group(string groupId) => new(groupId, ChannelType.Group) { GuildId = groupId };
+    public static Channel Group(string groupId)
+    {
+        return new Channel(groupId, ChannelType.Group) { GuildId = groupId };
+    }
 }

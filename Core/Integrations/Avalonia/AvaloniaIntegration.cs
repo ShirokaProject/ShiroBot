@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Platform;
+using Avalonia.Skia;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using ShiroBot.AvaloniaSdk;
@@ -8,10 +9,9 @@ using ShiroBot.SDK.Plugin;
 namespace ShiroBot.Integrations.Avalonia;
 
 /// <summary>
-/// Avalonia 渲染集成模块。宿主启动时准备渲染上下文，首次渲染时启动 dispatcher，
-/// 关闭时调用 <see cref="Shutdown"/>。整个进程只允许一个 Avalonia 实例。
-///
-/// 宿主把返回的 <see cref="IAvaloniaRenderContext"/> 通过 BotContext.AttachRenderer 暴露给所有插件。
+///     Avalonia 渲染集成模块。宿主启动时准备渲染上下文，首次渲染时启动 dispatcher，
+///     关闭时调用 <see cref="Shutdown" />。整个进程只允许一个 Avalonia 实例。
+///     宿主把返回的 <see cref="IAvaloniaRenderContext" /> 通过 BotContext.AttachRenderer 暴露给所有插件。
 /// </summary>
 public static class AvaloniaIntegration
 {
@@ -27,11 +27,16 @@ public static class AvaloniaIntegration
             _themeMode = NormalizeThemeMode(themeMode);
             // Bitmap decoding is supported before the first render. The application,
             // Fluent resources, system fonts and dispatcher are needed only to render.
-            if (_renderer is null)
+            if (_renderer is not null)
             {
-                global::Avalonia.Skia.SkiaPlatform.Initialize();
+                return _renderer;
+            }
+
+            {
+                SkiaPlatform.Initialize();
                 _renderer = new AxamlRenderer();
             }
+
             return _renderer;
         }
     }
@@ -47,16 +52,13 @@ public static class AvaloniaIntegration
     }
 
     /// <summary>
-    /// 启动 Avalonia headless dispatcher 并返回渲染上下文。重复调用返回同一实例。
+    ///     启动 Avalonia headless dispatcher 并返回渲染上下文。重复调用返回同一实例。
     /// </summary>
     public static IAvaloniaRenderContext Initialize(string? themeMode = null)
     {
         lock (Lock)
         {
-            if (!string.IsNullOrWhiteSpace(themeMode))
-            {
-                _themeMode = NormalizeThemeMode(themeMode);
-            }
+            if (!string.IsNullOrWhiteSpace(themeMode)) _themeMode = NormalizeThemeMode(themeMode);
 
             if (_renderer is not null)
             {
@@ -75,10 +77,7 @@ public static class AvaloniaIntegration
     {
         lock (Lock)
         {
-            if (!string.IsNullOrWhiteSpace(themeMode))
-            {
-                _themeMode = NormalizeThemeMode(themeMode);
-            }
+            if (!string.IsNullOrWhiteSpace(themeMode)) _themeMode = NormalizeThemeMode(themeMode);
 
             ApplyThemeMode();
         }
@@ -100,7 +99,7 @@ public static class AvaloniaIntegration
     }
 
     /// <summary>
-    /// 关停 Avalonia dispatcher。Avalonia 静态状态无法干净卸载，仅做尽力而为的资源释放。
+    ///     关停 Avalonia dispatcher。Avalonia 静态状态无法干净卸载，仅做尽力而为的资源释放。
     /// </summary>
     public static void Shutdown()
     {
@@ -177,6 +176,6 @@ public static class AvaloniaIntegration
     private static bool IsDarkByClock()
     {
         var hour = DateTime.Now.Hour;
-        return hour >= 18 || hour < 6;
+        return hour is >= 18 or < 6;
     }
 }

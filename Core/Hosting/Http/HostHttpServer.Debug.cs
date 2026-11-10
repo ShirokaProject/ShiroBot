@@ -1,44 +1,18 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.IO.Compression;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using ShiroBot.Configuration;
-using ShiroBot.Hosting.Events;
 using ShiroBot.Hosting.Context;
-using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Logging;
-using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
-using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Plugins.Marketplace;
-using ShiroBot.Update;
-using ShiroBot.Terminal;
-using ShiroBot.Integrations.Avalonia;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Plugin;
+using ShiroBot.Hosting.Events;
+using ShiroBot.SDK.Models;
 
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
     /// <summary>
-    /// 调试/测试接口(/api/v1/debug/*),便于 AI 或脚本对适配器做端到端验证。
-    /// 与主 API 共用鉴权。
+    ///     调试/测试接口(/api/v1/debug/*),便于 AI 或脚本对适配器做端到端验证。
+    ///     与主 API 共用鉴权。
     /// </summary>
     private static void MapDebugEndpoints(
         WebApplication app,
@@ -50,9 +24,8 @@ internal sealed partial class HostHttpServer
         debug.AddEndpointFilter(async (context, next) =>
         {
             if (!IsAuthorized(context.HttpContext, config))
-            {
-                return Results.Json(new ApiError("unauthorized", "Missing or invalid API key."), statusCode: StatusCodes.Status401Unauthorized);
-            }
+                return Results.Json(new ApiError("unauthorized", "Missing or invalid API key."),
+                    statusCode: StatusCodes.Status401Unauthorized);
 
             return await next(context).ConfigureAwait(false);
         });
@@ -90,11 +63,11 @@ internal sealed partial class HostHttpServer
             var channelId = root.TryGetProperty("channel_id", out var idProperty) ? idProperty.GetString() : null;
             var text = root.TryGetProperty("text", out var textProperty) ? textProperty.GetString() : null;
             if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrEmpty(text))
-            {
                 return Results.BadRequest(new ApiError("invalid_request", "channel_id 和 text 必填。"));
-            }
 
-            var channelType = root.TryGetProperty("channel_type", out var typeProperty) ? typeProperty.GetString() : "group";
+            var channelType = root.TryGetProperty("channel_type", out var typeProperty)
+                ? typeProperty.GetString()
+                : "group";
 
             try
             {
@@ -119,26 +92,27 @@ internal sealed partial class HostHttpServer
             var root = document.RootElement;
 
             var text = root.TryGetProperty("text", out var textProperty) ? textProperty.GetString() : null;
-            if (string.IsNullOrEmpty(text))
-            {
-                return Results.BadRequest(new ApiError("invalid_request", "text 必填。"));
-            }
+            if (string.IsNullOrEmpty(text)) return Results.BadRequest(new ApiError("invalid_request", "text 必填。"));
 
-            var userId = root.TryGetProperty("user_id", out var userProperty) ? userProperty.GetString() ?? "10000" : "10000";
-            var channelId = root.TryGetProperty("channel_id", out var channelProperty) ? channelProperty.GetString() ?? "10000" : "10000";
+            var userId = root.TryGetProperty("user_id", out var userProperty)
+                ? userProperty.GetString() ?? "10000"
+                : "10000";
+            var channelId = root.TryGetProperty("channel_id", out var channelProperty)
+                ? channelProperty.GetString() ?? "10000"
+                : "10000";
             var direct = root.TryGetProperty("direct", out var directProperty) && directProperty.GetBoolean();
 
-            var message = new SDK.Models.MessageEvent
+            var message = new MessageEvent
             {
                 Platform = botContext.Platform,
                 SelfId = null,
                 MessageId = Random.Shared.NextInt64(100000, 999999).ToString(),
                 Channel = direct
-                    ? SDK.Models.Channel.Direct(userId)
-                    : new SDK.Models.Channel(channelId, SDK.Models.ChannelType.Group) { Name = "debug", GuildId = channelId },
-                Sender = new SDK.Models.User(userId) { Name = "DebugUser" },
-                Member = direct ? null : new SDK.Models.Member(new SDK.Models.User(userId) { Name = "DebugUser" }),
-                Segments = [new SDK.Models.TextSegment(text)],
+                    ? Channel.Direct(userId)
+                    : new Channel(channelId, ChannelType.Group) { Name = "debug", GuildId = channelId },
+                Sender = new User(userId) { Name = "DebugUser" },
+                Member = direct ? null : new Member(new User(userId) { Name = "DebugUser" }),
+                Segments = [new TextSegment(text)],
                 Timestamp = DateTimeOffset.UtcNow
             };
 
@@ -146,5 +120,4 @@ internal sealed partial class HostHttpServer
             return Results.Ok(new { ok = true, injected_message_id = message.MessageId });
         });
     }
-
 }

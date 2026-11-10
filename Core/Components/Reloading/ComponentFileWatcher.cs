@@ -4,8 +4,8 @@ namespace ShiroBot.Components.Reloading;
 
 internal sealed class ComponentFileWatcher : IDisposable
 {
-    private readonly FileSystemWatcher[] _adapterWatchers;
     private readonly Timer _adapterTimer;
+    private readonly FileSystemWatcher[] _adapterWatchers;
     private readonly ComponentReloadCoordinator _coordinator;
     private int _disposed;
 
@@ -17,17 +17,25 @@ internal sealed class ComponentFileWatcher : IDisposable
         var resolvedAdapterPaths = adapterPaths.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
         _adapterTimer = new Timer(state => _ = ReloadAdapterAsync(), null, Timeout.Infinite, Timeout.Infinite);
 
-        _adapterWatchers = resolvedAdapterPaths
-            .Select(Path.GetDirectoryName)
-            .Where(directory => directory is not null)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(directory => CreateWatcher(directory!, includeSubdirectories: false, path =>
-            {
-                if (resolvedAdapterPaths.Contains(Path.GetFullPath(path)))
+        _adapterWatchers =
+        [
+            .. resolvedAdapterPaths
+                .Select(Path.GetDirectoryName)
+                .Where(directory => directory is not null)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(directory => CreateWatcher(directory!, false, path =>
                 {
-                    _adapterTimer.Change(750, Timeout.Infinite);
-                }
-            })).ToArray();
+                    if (resolvedAdapterPaths.Contains(Path.GetFullPath(path)))
+                        _adapterTimer.Change(750, Timeout.Infinite);
+                }))
+        ];
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        foreach (var watcher in _adapterWatchers) watcher.Dispose();
+        _adapterTimer.Dispose();
     }
 
     private async Task ReloadAdapterAsync()
@@ -60,12 +68,5 @@ internal sealed class ComponentFileWatcher : IDisposable
         watcher.Deleted += (_, e) => schedule(e.FullPath);
         watcher.Renamed += (_, e) => schedule(e.FullPath);
         return watcher;
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        foreach (var watcher in _adapterWatchers) watcher.Dispose();
-        _adapterTimer.Dispose();
     }
 }

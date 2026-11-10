@@ -1,11 +1,18 @@
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using ShiroBot.SDK.Dashboard;
 using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.InteropContractProbe;
 
-public enum Mood { Happy, VerySad, Confused = 5 }
+public enum Mood
+{
+    Happy,
+    VerySad,
+    Confused = 5
+}
 
 public sealed record Forecast(
     [property: Description("城市名")] string City,
@@ -33,19 +40,21 @@ public sealed record ToolArgs([property: Description("关键词")] string Query,
 [PluginContract]
 public static partial class ProbeApi
 {
-    [PluginService("probe.forecast")]
-    public static partial PluginService<Forecast, Forecast> Echo { get; }
+    [PluginService("probe.forecast")] public static partial PluginService<Forecast, Forecast> Echo { get; }
 
     [PluginService("probe.source.*")]
     public static partial PluginServiceFamily<Point, Point, SourceInfo> Sources { get; }
 
-    [PluginEvent("probe.moved")]
-    public static partial PluginEvent<Point> Moved { get; }
+    [PluginEvent("probe.moved")] public static partial PluginEvent<Point> Moved { get; }
 }
 
 [PluginJson]
 public sealed record DashboardRule(
-    [property: System.ComponentModel.Description("名称"), System.ComponentModel.DataAnnotations.MaxLength(10)] string Name,
-    [property: ShiroBot.SDK.Dashboard.UiField(Kind = ShiroBot.SDK.Dashboard.UiFieldKind.Group)] string Group,
-    [property: System.ComponentModel.DataAnnotations.Range(typeof(int), "0", "3600")] int Cooldown = 45,
+    [property: Description("名称")]
+    [property: MaxLength(10)]
+    string Name,
+    [property: UiField(Kind = UiFieldKind.Group)]
+    string Group,
+    [property: Range(typeof(int), "0", "3600")]
+    int Cooldown = 45,
     bool Enabled = true);

@@ -6,8 +6,8 @@ using ShiroBot.SDK.Core;
 namespace ShiroBot.Adapters.Compatibility;
 
 /// <summary>
-/// 在加载适配器程序集之前,用元数据读取器预读 BotAdapterAttribute.SharedAssemblies。
-/// 契约程序集必须先于适配器 ALC 注册进 Default ALC,插件与适配器才能看到同一份类型。
+///     在加载适配器程序集之前,用元数据读取器预读 BotAdapterAttribute.SharedAssemblies。
+///     契约程序集必须先于适配器 ALC 注册进 Default ALC,插件与适配器才能看到同一份类型。
 /// </summary>
 internal static class AdapterContractProbe
 {
@@ -18,7 +18,9 @@ internal static class AdapterContractProbe
 
     /// <summary>读取适配器声明的共享契约程序集名列表;无声明或读取失败返回空。</summary>
     public static IReadOnlyList<string> ReadSharedAssemblies(string adapterAssemblyPath)
-        => ReadMetadata(adapterAssemblyPath)?.SharedAssemblies ?? [];
+    {
+        return ReadMetadata(adapterAssemblyPath)?.SharedAssemblies ?? [];
+    }
 
     public static AdapterProbeInfo? ReadMetadata(string adapterAssemblyPath)
     {
@@ -35,18 +37,12 @@ internal static class AdapterContractProbe
                 var type = reader.GetTypeDefinition(typeHandle);
                 if ((type.Attributes & TypeAttributes.Interface) != 0 ||
                     (type.Attributes & TypeAttributes.Abstract) != 0)
-                {
                     continue;
-                }
 
                 RawAdapterAttribute? adapterAttribute = null;
                 foreach (var attributeHandle in type.GetCustomAttributes())
-                {
                     if (TryReadBotAdapterAttribute(reader, attributeHandle, out var value))
-                    {
                         adapterAttribute = value;
-                    }
-                }
 
                 if (adapterAttribute is not { } adapter) continue;
                 if (result is not null)
@@ -85,9 +81,7 @@ internal static class AdapterContractProbe
                 GetAttributeTypeFullName(reader, customAttribute),
                 typeof(BotAdapterAttribute).FullName,
                 StringComparison.Ordinal))
-        {
             return false;
-        }
 
         var blob = reader.GetBlobReader(customAttribute.Value);
         if (blob.ReadUInt16() != 1) return false; // prolog
@@ -106,10 +100,7 @@ internal static class AdapterContractProbe
         {
             _ = blob.ReadByte(); // FIELD / PROPERTY
             var typeCode = blob.ReadByte();
-            if (typeCode == SerializedTypeEnum)
-            {
-                _ = blob.ReadSerializedString();
-            }
+            if (typeCode == SerializedTypeEnum) _ = blob.ReadSerializedString();
 
             var memberName = blob.ReadSerializedString();
 
@@ -124,24 +115,22 @@ internal static class AdapterContractProbe
             {
                 var value = blob.ReadSerializedString();
                 if (string.Equals(memberName, nameof(BotAdapterAttribute.Name), StringComparison.Ordinal)) name = value;
-                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Version), StringComparison.Ordinal)) version = value;
-                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Description), StringComparison.Ordinal)) description = value;
-                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Protocol), StringComparison.Ordinal)) protocol = value;
+                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Version), StringComparison.Ordinal))
+                    version = value;
+                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Description), StringComparison.Ordinal))
+                    description = value;
+                else if (string.Equals(memberName, nameof(BotAdapterAttribute.Protocol), StringComparison.Ordinal))
+                    protocol = value;
                 continue;
             }
 
             // 跳过其他命名参数(BotAdapterAttribute 只有 string / bool 属性)
             switch (typeCode)
             {
-                case SerializedTypeString:
-                    _ = blob.ReadSerializedString();
-                    break;
                 case SerializedTypeBoolean:
                     _ = blob.ReadBoolean();
                     break;
                 case SerializedTypeI4:
-                    _ = blob.ReadInt32();
-                    break;
                 case SerializedTypeEnum:
                     _ = blob.ReadInt32();
                     break;
@@ -161,6 +150,8 @@ internal static class AdapterContractProbe
 
     private static string? GetAttributeTypeFullName(MetadataReader reader, CustomAttribute attribute)
     {
+        // Only constructor handles are valid here; all other metadata handle kinds are rejected.
+        // ReSharper disable once SwitchStatementHandlesSomeKnownEnumValuesWithDefault
         switch (attribute.Constructor.Kind)
         {
             case HandleKind.MemberReference:
@@ -190,6 +181,10 @@ internal static class AdapterContractProbe
         string? Protocol);
 
     private readonly record struct RawAdapterAttribute(
-        string Id, IReadOnlyList<string> SharedAssemblies, string? Name, string? Version, string? Description, string? Protocol);
-
+        string Id,
+        IReadOnlyList<string> SharedAssemblies,
+        string? Name,
+        string? Version,
+        string? Description,
+        string? Protocol);
 }

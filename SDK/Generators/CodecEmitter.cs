@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -16,8 +17,8 @@ internal sealed class CodecEmitter
     private const string Writer = "global::System.Text.Json.Utf8JsonWriter";
 
     private readonly TypeCatalog _catalog;
-    private readonly Dictionary<string, int> _methods = new();
     private readonly Dictionary<string, string> _codecs = new();
+    private readonly Dictionary<string, int> _methods = new();
 
     public CodecEmitter(TypeCatalog catalog)
     {
@@ -29,9 +30,15 @@ internal sealed class CodecEmitter
             _codecs[model.Symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)] = "__PluginJson_" + index++;
     }
 
+    public IEnumerable<string> CodecNames => _catalog.Objects.Select(model => CodecOf(model.Symbol));
+
     /// <summary>对象类型的读写类名，可以在同一个生成文件里引用 <c>.Instance</c>。</summary>
-    public string CodecOf(ITypeSymbol symbol) =>
-        _codecs[symbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)];
+    public string CodecOf(ITypeSymbol symbol)
+    {
+        return _codecs[
+            symbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+                .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)];
+    }
 
     public void Emit(StringBuilder output)
     {
@@ -43,10 +50,15 @@ internal sealed class CodecEmitter
         foreach (var model in _catalog.Objects) EmitCodec(output, model);
     }
 
-    public IEnumerable<string> CodecNames => _catalog.Objects.Select(model => CodecOf(model.Symbol));
+    private string Read(TypeModel type)
+    {
+        return "__PluginJsonIo.Read_" + _methods[type.Key];
+    }
 
-    private string Read(TypeModel type) => "__PluginJsonIo.Read_" + _methods[type.Key];
-    private string Write(TypeModel type) => "__PluginJsonIo.Write_" + _methods[type.Key];
+    private string Write(TypeModel type)
+    {
+        return "__PluginJsonIo.Write_" + _methods[type.Key];
+    }
 
     private void EmitMethods(StringBuilder o, TypeModel type)
     {
@@ -85,24 +97,30 @@ internal sealed class CodecEmitter
                 break;
             case Shape.JsonNode:
                 o.AppendLine($"        if (r.TokenType == {Token}.Null) return {(type.Nullable ? "null" : "null!")};");
-                o.AppendLine($"        return ({t})global::System.Text.Json.Nodes.JsonNode.Parse(ref r){(type.Nullable ? "" : "!")};");
+                o.AppendLine(
+                    $"        return ({t})global::System.Text.Json.Nodes.JsonNode.Parse(ref r){(type.Nullable ? "" : "!")};");
                 break;
             case Shape.Array:
             case Shape.List:
             {
                 var element = type.Element!;
-                o.AppendLine($"        if (!{Io}.StartArray(ref r, f)) return {(type.Nullable ? "null" : EmptyOf(type))};");
-                o.AppendLine($"        var list = new global::System.Collections.Generic.List<{element.DisplayWithNullability}>();");
-                o.AppendLine($"        while (r.Read() && r.TokenType != {Token}.EndArray) list.Add({Read(element)}(ref r, f));");
+                o.AppendLine(
+                    $"        if (!{Io}.StartArray(ref r, f)) return {(type.Nullable ? "null" : EmptyOf(type))};");
+                o.AppendLine(
+                    $"        var list = new global::System.Collections.Generic.List<{element.DisplayWithNullability}>();");
+                o.AppendLine(
+                    $"        while (r.Read() && r.TokenType != {Token}.EndArray) list.Add({Read(element)}(ref r, f));");
                 o.AppendLine(type.Kind == Shape.Array ? "        return list.ToArray();" : "        return list;");
                 break;
             }
             case Shape.Dictionary:
             {
                 var element = type.Element!;
-                o.AppendLine($"        if (r.TokenType == {Token}.Null) return {(type.Nullable ? "null" : EmptyOf(type))};");
+                o.AppendLine(
+                    $"        if (r.TokenType == {Token}.Null) return {(type.Nullable ? "null" : EmptyOf(type))};");
                 o.AppendLine($"        if (!{Io}.StartObject(ref r, f)) return {EmptyOf(type)};");
-                o.AppendLine($"        var map = new global::System.Collections.Generic.Dictionary<string, {element.DisplayWithNullability}>();");
+                o.AppendLine(
+                    $"        var map = new global::System.Collections.Generic.Dictionary<string, {element.DisplayWithNullability}>();");
                 o.AppendLine($"        while (r.Read() && r.TokenType != {Token}.EndObject)");
                 o.AppendLine("        {");
                 o.AppendLine("            var key = r.GetString()!;");
@@ -115,7 +133,10 @@ internal sealed class CodecEmitter
             case Shape.Object:
                 o.AppendLine($"        return {CodecOf(type.Symbol)}.Instance.Read(ref r);");
                 break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(type), type.Kind, "Unsupported codec shape.");
         }
+
         o.AppendLine("    }");
         o.AppendLine();
 
@@ -156,13 +177,17 @@ internal sealed class CodecEmitter
                 break;
             case Shape.Dictionary:
                 o.AppendLine("        w.WriteStartObject();");
-                o.AppendLine($"        foreach (var pair in v) {{ w.WritePropertyName(pair.Key); {Write(type.Element!)}(w, pair.Value); }}");
+                o.AppendLine(
+                    $"        foreach (var pair in v) {{ w.WritePropertyName(pair.Key); {Write(type.Element!)}(w, pair.Value); }}");
                 o.AppendLine("        w.WriteEndObject();");
                 break;
             case Shape.Object:
                 o.AppendLine($"        {CodecOf(type.Symbol)}.Instance.Write(w, v);");
                 break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(type), type.Kind, "Unsupported codec shape.");
         }
+
         o.AppendLine("    }");
         o.AppendLine();
     }
@@ -174,48 +199,58 @@ internal sealed class CodecEmitter
         o.AppendLine($"file sealed class {name} : global::ShiroBot.SDK.Plugin.PluginJsonType<{t}>");
         o.AppendLine("{");
         o.AppendLine($"    public static readonly {name} Instance = new();");
-        o.AppendLine($"    public override string Schema => {SymbolDisplay.FormatLiteral(SchemaOf(model, new HashSet<string>()), true)};");
+        o.AppendLine(
+            $"    public override string Schema => {SymbolDisplay.FormatLiteral(SchemaOf(model, []), true)};");
         o.AppendLine();
 
         o.AppendLine($"    public override void Write({Writer} w, {t} v)");
         o.AppendLine("    {");
         o.AppendLine("        w.WriteStartObject();");
-        for (var i = 0; i < model.Properties.Count; i++)
+        foreach (var property in model.Properties)
         {
-            var property = model.Properties[i];
             var nameLiteral = SymbolDisplay.FormatLiteral(property.JsonName, true);
             if (property.Type.Symbol.IsReferenceType || property.Type.Kind == Shape.Nullable)
-                o.AppendLine($"        {{ var x = v.{property.Name}; if (x is not null) {{ w.WritePropertyName({nameLiteral}u8); {Write(property.Type)}(w, x); }} }}");
+                o.AppendLine(
+                    $"        {{ var x = v.{property.Name}; if (x is not null) {{ w.WritePropertyName({nameLiteral}u8); {Write(property.Type)}(w, x); }} }}");
             else
-                o.AppendLine($"        w.WritePropertyName({nameLiteral}u8); {Write(property.Type)}(w, v.{property.Name});");
+                o.AppendLine(
+                    $"        w.WritePropertyName({nameLiteral}u8); {Write(property.Type)}(w, v.{property.Name});");
         }
+
         o.AppendLine("        w.WriteEndObject();");
         o.AppendLine("    }");
         o.AppendLine();
 
         o.AppendLine($"    public override {t} Read(ref {Reader} r)");
         o.AppendLine("    {");
-        o.AppendLine($"        if (!{Io}.StartObject(ref r, {SymbolDisplay.FormatLiteral(model.Symbol.Name, true)})) return default!;");
+        o.AppendLine(
+            $"        if (!{Io}.StartObject(ref r, {SymbolDisplay.FormatLiteral(model.Symbol.Name, true)})) return default!;");
         for (var i = 0; i < model.Properties.Count; i++)
-            o.AppendLine($"        {model.Properties[i].Type.DisplayWithNullability} p{i} = default!; var h{i} = false;");
+            o.AppendLine(
+                $"        {model.Properties[i].Type.DisplayWithNullability} p{i} = default!; var h{i} = false;");
         o.AppendLine($"        while (r.Read() && r.TokenType != {Token}.EndObject)");
         o.AppendLine("        {");
         for (var i = 0; i < model.Properties.Count; i++)
         {
             var property = model.Properties[i];
             var nameLiteral = SymbolDisplay.FormatLiteral(property.JsonName, true);
-            o.AppendLine($"            {(i == 0 ? "if" : "else if")} (r.ValueTextEquals({nameLiteral}u8)) {{ r.Read(); p{i} = {Read(property.Type)}(ref r, {nameLiteral}); h{i} = true; }}");
+            o.AppendLine(
+                $"            {(i == 0 ? "if" : "else if")} (r.ValueTextEquals({nameLiteral}u8)) {{ r.Read(); p{i} = {Read(property.Type)}(ref r, {nameLiteral}); h{i} = true; }}");
         }
+
         o.AppendLine($"            {(model.Properties.Count == 0 ? "" : "else ")}{{ r.Read(); r.Skip(); }}");
         o.AppendLine("        }");
 
         var arguments = model.Constructor?.Parameters
             .Select(parameter =>
             {
-                var index = model.Properties.FindIndex(p => p.Parameter is not null && SymbolEqualityComparer.Default.Equals(p.Parameter, parameter));
-                return index < 0 ? DefaultFor(parameter, null) : $"h{index} ? p{index} : {DefaultFor(parameter, model.Properties[index].Type)}";
+                var index = model.Properties.FindIndex(p =>
+                    p.Parameter is not null && SymbolEqualityComparer.Default.Equals(p.Parameter, parameter));
+                return index < 0
+                    ? DefaultFor(parameter, null)
+                    : $"h{index} ? p{index} : {DefaultFor(parameter, model.Properties[index].Type)}";
             })
-            .ToList() ?? new List<string>();
+            .ToList() ?? [];
         var initOnly = new List<string>();
         var later = new List<string>();
         for (var i = 0; i < model.Properties.Count; i++)
@@ -226,7 +261,9 @@ internal sealed class CodecEmitter
             else if (property.Settable) later.Add($"        if (h{i}) result.{property.Name} = p{i};");
             else initOnly.Add($"{property.Name} = h{i} ? p{i} : default!");
         }
-        o.AppendLine($"        var result = new {t}({string.Join(", ", arguments)}){(initOnly.Count == 0 ? "" : " { " + string.Join(", ", initOnly) + " }")};");
+
+        o.AppendLine(
+            $"        var result = new {t}({string.Join(", ", arguments)}){(initOnly.Count == 0 ? "" : " { " + string.Join(", ", initOnly) + " }")};");
         foreach (var line in later) o.AppendLine(line);
         o.AppendLine("        return result;");
         o.AppendLine("    }");
@@ -247,25 +284,34 @@ internal sealed class CodecEmitter
         };
     }
 
-    private static string EmptyOf(TypeModel type) => type.Kind switch
+    private static string EmptyOf(TypeModel type)
     {
-        Shape.Array => $"global::System.Array.Empty<{type.Element!.DisplayWithNullability}>()",
-        Shape.List => $"new global::System.Collections.Generic.List<{type.Element!.DisplayWithNullability}>()",
-        Shape.Dictionary => $"new global::System.Collections.Generic.Dictionary<string, {type.Element!.DisplayWithNullability}>()",
-        _ => "default!"
-    };
+        return type.Kind switch
+        {
+            Shape.Array => $"global::System.Array.Empty<{type.Element!.DisplayWithNullability}>()",
+            Shape.List => $"new global::System.Collections.Generic.List<{type.Element!.DisplayWithNullability}>()",
+            Shape.Dictionary =>
+                $"new global::System.Collections.Generic.Dictionary<string, {type.Element!.DisplayWithNullability}>()",
+            _ => "default!"
+        };
+    }
 
     public static string Literal(object? value, ITypeSymbol type)
     {
-        if (value is null) return type.IsValueType && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T ? "default" : "null";
+        if (value is null)
+            return type.IsValueType && type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T
+                ? "default"
+                : "null";
         var display = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         return value switch
         {
             string text => SymbolDisplay.FormatLiteral(text, true),
             char ch => SymbolDisplay.FormatLiteral(ch, true),
             bool flag => flag ? "true" : "false",
-            _ when type.TypeKind == Microsoft.CodeAnalysis.TypeKind.Enum => $"({display}){System.Convert.ToString(value, CultureInfo.InvariantCulture)}",
-            _ => $"({display.TrimEnd('?')}){System.Convert.ToString(value, CultureInfo.InvariantCulture)}{(value is decimal ? "m" : value is float ? "f" : "")}"
+            _ when type.TypeKind == TypeKind.Enum =>
+                $"({display}){Convert.ToString(value, CultureInfo.InvariantCulture)}",
+            _ =>
+                $"({display.TrimEnd('?')}){Convert.ToString(value, CultureInfo.InvariantCulture)}{value switch { decimal => "m", float => "f", _ => "" }}"
         };
     }
 
@@ -279,8 +325,9 @@ internal sealed class CodecEmitter
         {
             var schema = SchemaOf(property.Type, visiting);
             var extra = new List<string>();
-            if (property.Description is { Length: > 0 } description) extra.Add("\"description\":" + JsonString(description));
-            if (property.Parameter is { HasExplicitDefaultValue: true } parameter && parameter.ExplicitDefaultValue is { } value)
+            if (property.Description is { Length: > 0 } description)
+                extra.Add("\"description\":" + JsonString(description));
+            if (property.Parameter is { HasExplicitDefaultValue: true, ExplicitDefaultValue: { } value } parameter)
                 extra.Add("\"default\":" + JsonValue(value, parameter.Type));
             if (property.Minimum is { } minimum) extra.Add("\"minimum\":" + minimum);
             if (property.Maximum is { } maximum) extra.Add("\"maximum\":" + maximum);
@@ -288,30 +335,41 @@ internal sealed class CodecEmitter
             if (property.UiHint is { } hint) extra.Add("\"x-ui\":" + JsonString(hint));
             return JsonString(property.JsonName) + ":" + Merge(extra, schema);
         });
-        var required = model.Properties.Where(property => property.Required).Select(property => JsonString(property.JsonName)).ToList();
+        var required = model.Properties.Where(property => property.Required)
+            .Select(property => JsonString(property.JsonName)).ToList();
         visiting.Remove(key);
         return "{\"type\":\"object\",\"properties\":{" + string.Join(",", properties) + "}"
                + (required.Count == 0 ? "" : ",\"required\":[" + string.Join(",", required) + "]") + "}";
     }
 
-    private string SchemaOf(TypeModel type, HashSet<string> visiting) => type.Kind switch
+    private string SchemaOf(TypeModel type, HashSet<string> visiting)
     {
-        Shape.String => "{\"type\":\"string\"}",
-        Shape.Boolean => "{\"type\":\"boolean\"}",
-        Shape.Number => type.Integer ? "{\"type\":\"integer\"}" : "{\"type\":\"number\"}",
-        Shape.Guid => "{\"type\":\"string\",\"format\":\"uuid\"}",
-        Shape.DateTime or Shape.DateTimeOffset => "{\"type\":\"string\",\"format\":\"date-time\"}",
-        Shape.Enum => "{\"type\":\"string\",\"enum\":[" + string.Join(",", ((INamedTypeSymbol)type.Symbol).GetMembers()
-            .OfType<IFieldSymbol>().Where(field => field.HasConstantValue)
-            .Select(field => JsonString(TypeCatalog.SnakeCase(field.Name)))) + "]}",
-        Shape.Nullable => SchemaOf(type.Element!, visiting),
-        Shape.Array or Shape.List => "{\"type\":\"array\",\"items\":" + SchemaOf(type.Element!, visiting) + "}",
-        Shape.Dictionary => "{\"type\":\"object\",\"additionalProperties\":" + SchemaOf(type.Element!, visiting) + "}",
-        Shape.JsonNode => type.Symbol.Name switch { "JsonObject" => "{\"type\":\"object\"}", "JsonArray" => "{\"type\":\"array\"}", _ => "{}" },
-        Shape.JsonElement => "{}",
-        Shape.Object => _catalog.ObjectOf(type.Symbol) is { } model ? SchemaOf(model, visiting) : "{\"type\":\"object\"}",
-        _ => "{}"
-    };
+        return type.Kind switch
+        {
+            Shape.String => "{\"type\":\"string\"}",
+            Shape.Boolean => "{\"type\":\"boolean\"}",
+            Shape.Number => type.Integer ? "{\"type\":\"integer\"}" : "{\"type\":\"number\"}",
+            Shape.Guid => "{\"type\":\"string\",\"format\":\"uuid\"}",
+            Shape.DateTime or Shape.DateTimeOffset => "{\"type\":\"string\",\"format\":\"date-time\"}",
+            Shape.Enum => "{\"type\":\"string\",\"enum\":[" + string.Join(",",
+                ((INamedTypeSymbol)type.Symbol).GetMembers()
+                .OfType<IFieldSymbol>().Where(field => field.HasConstantValue)
+                .Select(field => JsonString(TypeCatalog.SnakeCase(field.Name)))) + "]}",
+            Shape.Nullable => SchemaOf(type.Element!, visiting),
+            Shape.Array or Shape.List => "{\"type\":\"array\",\"items\":" + SchemaOf(type.Element!, visiting) + "}",
+            Shape.Dictionary => "{\"type\":\"object\",\"additionalProperties\":" + SchemaOf(type.Element!, visiting) +
+                                "}",
+            Shape.JsonNode => type.Symbol.Name switch
+            {
+                "JsonObject" => "{\"type\":\"object\"}", "JsonArray" => "{\"type\":\"array\"}", _ => "{}"
+            },
+            Shape.JsonElement => "{}",
+            Shape.Object => _catalog.ObjectOf(type.Symbol) is { } model
+                ? SchemaOf(model, visiting)
+                : "{\"type\":\"object\"}",
+            _ => "{}"
+        };
+    }
 
     private static string Merge(List<string> fields, string schema)
     {
@@ -322,30 +380,34 @@ internal sealed class CodecEmitter
 
     private static string JsonValue(object value, ITypeSymbol type)
     {
-        if (type.TypeKind == Microsoft.CodeAnalysis.TypeKind.Enum)
+        if (type.TypeKind != TypeKind.Enum)
+        {
+            return value switch
+            {
+                string text => JsonString(text),
+                char ch => JsonString(ch.ToString()),
+                bool flag => flag ? "true" : "false",
+                _ => Convert.ToString(value, CultureInfo.InvariantCulture)!
+            };
+        }
+
         {
             var field = ((INamedTypeSymbol)type).GetMembers().OfType<IFieldSymbol>()
                 .FirstOrDefault(member => member.HasConstantValue && Equals(member.ConstantValue, value));
-            return field is null ? System.Convert.ToString(value, CultureInfo.InvariantCulture)! : JsonString(TypeCatalog.SnakeCase(field.Name));
+            return field is null
+                ? Convert.ToString(value, CultureInfo.InvariantCulture)!
+                : JsonString(TypeCatalog.SnakeCase(field.Name));
         }
-        return value switch
-        {
-            string text => JsonString(text),
-            char ch => JsonString(ch.ToString()),
-            bool flag => flag ? "true" : "false",
-            _ => System.Convert.ToString(value, CultureInfo.InvariantCulture)!
-        };
     }
 
     public static string JsonString(string text)
     {
         var builder = new StringBuilder("\"");
         foreach (var ch in text)
-        {
             switch (ch)
             {
                 case '"': builder.Append("\\\""); break;
-                case '\\': builder.Append("\\\\"); break;
+                case '\\': builder.Append(@"\\"); break;
                 case '\n': builder.Append("\\n"); break;
                 case '\r': builder.Append("\\r"); break;
                 case '\t': builder.Append("\\t"); break;
@@ -354,7 +416,7 @@ internal sealed class CodecEmitter
                     else builder.Append(ch);
                     break;
             }
-        }
+
         return builder.Append('"').ToString();
     }
 }

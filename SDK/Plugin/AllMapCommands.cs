@@ -3,14 +3,16 @@ using ShiroBot.SDK.Models;
 namespace ShiroBot.SDK.Plugin;
 
 /// <summary>
-/// 同时注册到群聊与私聊两个命令路由器的便捷入口。
+///     同时注册到群聊与私聊两个命令路由器的便捷入口。
 /// </summary>
 public sealed class AllMapCommands(
     CommandRouter<MessageEvent> groupCommands,
     CommandRouter<MessageEvent> directCommands)
 {
-    public void Map(string prefix, Func<MessageEvent, Task> handler) =>
+    public void Map(string prefix, Func<MessageEvent, Task> handler)
+    {
         MapPrefix(prefix, handler);
+    }
 
     public void MapExact(string command, Func<MessageEvent, Task> handler)
     {
@@ -38,6 +40,8 @@ public sealed class AllMapCommands(
     }
 
     /// <param name="description">Shown in the Dashboard's plugin details, e.g. "包含关键词 天气".</param>
+    /// <param name="predicate">Selects the messages or events handled by this route.</param>
+    /// <param name="handler">Asynchronous handler invoked when the route matches.</param>
     public void MapWhen(Func<MessageEvent, bool> predicate, string description, Func<MessageEvent, Task> handler)
     {
         groupCommands.MapWhen(predicate, description, handler);

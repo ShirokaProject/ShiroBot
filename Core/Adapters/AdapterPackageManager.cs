@@ -14,28 +14,36 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     private const long MaxPackageBytes = 100L * 1024L * 1024L;
     private const long MaxExtractedBytes = 500L * 1024L * 1024L;
     private const int MaxArchiveEntries = 4096;
-    private readonly string _root = Path.GetFullPath(adapterRoot);
-    // Validate current instance configs once per manager; legacy registries are ignored.
-    private bool _initialized;
-
-    public IReadOnlyList<InstalledAdapterPackage> List()
-    {
-        if (!Directory.Exists(_root)) return [];
-        return Directory.EnumerateDirectories(_root)
-            .Select(ReadInstalled)
-            .Where(package => package is not null)
-            .Cast<InstalledAdapterPackage>()
-            .OrderBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
 
     // Package files are shared; descriptors/configs are host-owned and survive DLL updates.
-    private static readonly object ProtocolGate = new();
+    private static readonly Lock ProtocolGate = new();
+
+    private readonly string _root = Path.GetFullPath(adapterRoot);
+
+    // Validate current instance configs once per manager; legacy registries are ignored.
+    private bool _initialized;
 
     private string CoreConfigPath => coreConfigPath is null
         ? Path.Combine(Path.GetDirectoryName(_root)!, "config.toml")
         : Path.GetFullPath(coreConfigPath);
-    private string PackageConfigPath(InstalledAdapterPackage package) => Path.Combine(GetAdapterDirectory(package.Id), "config.toml");
+
+    public IReadOnlyList<InstalledAdapterPackage> List()
+    {
+        if (!Directory.Exists(_root)) return [];
+        return
+        [
+            .. Directory.EnumerateDirectories(_root)
+                .Select(ReadInstalled)
+                .Where(package => package is not null)
+                .Cast<InstalledAdapterPackage>()
+                .OrderBy(package => package.Id, StringComparer.OrdinalIgnoreCase)
+        ];
+    }
+
+    private string PackageConfigPath(InstalledAdapterPackage package)
+    {
+        return Path.Combine(GetAdapterDirectory(package.Id), "config.toml");
+    }
 
     public void InitializeInstances()
     {
@@ -57,26 +65,33 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             {
                 // Older config without [[instances]]: the whole file is one instance named after the package.
                 if (!ids.Add(package.Id)) throw new InvalidOperationException($"适配器实例 ID {package.Id} 重复，请使用全局唯一 ID。");
-                result.Add(new(package.Id, package.Id, package.AssemblyPath, path, ReadImplicitEnabled(path), package.Name, packageEnabled, Implicit: true));
+                result.Add(new InstalledAdapterInstance(package.Id, package.Id, package.AssemblyPath, path,
+                    ReadImplicitEnabled(path), package.Name, packageEnabled, true));
                 continue;
             }
+
             foreach (var item in AdapterInstanceStore.Read(path))
             {
                 ValidateInstanceId(item.Id);
                 if (!ids.Add(item.Id)) throw new InvalidOperationException($"适配器实例 ID {item.Id} 重复，请使用全局唯一 ID。");
-                result.Add(new(item.Id, package.Id, package.AssemblyPath, path, item.Enabled,
+                result.Add(new InstalledAdapterInstance(item.Id, package.Id, package.AssemblyPath, path, item.Enabled,
                     string.IsNullOrWhiteSpace(item.Name) ? item.Id : item.Name, packageEnabled));
             }
         }
-        return result.OrderBy(item => item.Id, StringComparer.OrdinalIgnoreCase).ToArray();
+
+        return [.. result.OrderBy(item => item.Id, StringComparer.OrdinalIgnoreCase)];
     }
 
-    public InstalledAdapterInstance? GetInstance(string id) => ListInstances().FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+    public InstalledAdapterInstance? GetInstance(string id)
+    {
+        return ListInstances().FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static void ValidateInstanceId(string id)
     {
         ValidateId(id);
-        if (id.Length > 64 || id.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '.' and not '-' and not '_'))
+        if (id.Length > 64 || id.Any(character =>
+                !char.IsAsciiLetterOrDigit(character) && character is not '.' and not '-' and not '_'))
             throw new InvalidOperationException("实例 ID 最多 64 个字符，只能使用英文字母、数字、点、横线和下划线。");
     }
 
@@ -88,41 +103,55 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         if (GetInstance(id) is not null) throw new InvalidOperationException($"适配器实例 ID {id} 已存在。");
         var path = PackageConfigPath(package);
         Materialize(package);
-        AdapterInstanceStore.Mutate(path, instances => instances.Add(new PackageAdapterInstance { Id = id, Name = string.IsNullOrWhiteSpace(name) ? id : name.Trim() }));
+        AdapterInstanceStore.Mutate(path,
+            instances => instances.Add(new PackageAdapterInstance
+                { Id = id, Name = string.IsNullOrWhiteSpace(name) ? id : name.Trim() }));
         return GetInstance(id)!;
     }
 
     /// <summary>
-    /// Rewrites an implicit single-instance config into the [[instances]] layout, keeping its settings under the
-    /// package-named instance. A loaded implicit instance must be restarted afterwards to read its new section.
+    ///     Rewrites an implicit single-instance config into the [[instances]] layout, keeping its settings under the
+    ///     package-named instance. A loaded implicit instance must be restarted afterwards to read its new section.
     /// </summary>
     public bool Materialize(InstalledAdapterPackage package)
     {
         var path = PackageConfigPath(package);
         if (AdapterInstanceStore.IsDeclared(path)) return false;
-        if (File.Exists(path) && !File.Exists(path + ".pre-instances.bak")) File.Copy(path, path + ".pre-instances.bak", overwrite: false);
-        AdapterInstanceStore.Write(path, [new PackageAdapterInstance
-            { Id = package.Id, Name = package.Name, Enabled = ReadImplicitEnabled(path), Config = AdapterInstanceStore.ReadObject(path) }], replaceLegacy: true);
+        if (File.Exists(path) && !File.Exists(path + ".pre-instances.bak"))
+            File.Copy(path, path + ".pre-instances.bak", false);
+        AdapterInstanceStore.Write(path, [
+            new PackageAdapterInstance
+            {
+                Id = package.Id, Name = package.Name, Enabled = ReadImplicitEnabled(path),
+                Config = AdapterInstanceStore.ReadObject(path)
+            }
+        ], true);
         return true;
     }
 
-    private sealed class ProtocolConfig
+    private string[] ReadProtocols()
     {
-        public string[] Protocols { get; set; } = [];
+        return File.Exists(CoreConfigPath)
+            ? TomlSerializer.Deserialize<ProtocolConfig>(File.ReadAllText(CoreConfigPath),
+                new TomlSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower })?.Protocols ?? []
+            : [];
     }
 
-    private string[] ReadProtocols() => File.Exists(CoreConfigPath)
-        ? TomlSerializer.Deserialize<ProtocolConfig>(File.ReadAllText(CoreConfigPath),
-            new TomlSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower })?.Protocols ?? []
-        : [];
+    private bool IsProtocolEnabled(string id)
+    {
+        return ReadProtocols().Any(value =>
+            string.Equals(value.Trim(), id, StringComparison.OrdinalIgnoreCase));
+    }
 
-    private bool IsProtocolEnabled(string id) => ReadProtocols().Any(value =>
-        string.Equals(value.Trim(), id, StringComparison.OrdinalIgnoreCase));
+    private static bool ReadImplicitEnabled(string path)
+    {
+        return AdapterInstanceStore.ReadObject(path).GetValueOrDefault("enabled") is true;
+    }
 
-    private static bool ReadImplicitEnabled(string path) =>
-        AdapterInstanceStore.ReadObject(path).GetValueOrDefault("enabled") is true;
-
-    public bool IsPackageEnabled(InstalledAdapterPackage package) => IsProtocolEnabled(package.Id);
+    public bool IsPackageEnabled(InstalledAdapterPackage package)
+    {
+        return IsProtocolEnabled(package.Id);
+    }
 
     public void SetPackageEnabled(string id, bool enabled)
     {
@@ -158,7 +187,8 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     public void SetInstanceEnabled(string id, bool enabled)
     {
         var instance = GetInstance(id) ?? throw new InvalidOperationException($"未安装 Adapter 实例: {id}");
-        if (instance.Implicit) new ConfigManager(instance.ConfigPath).SetConfigValue(instance.ConfigPath, "enabled", enabled);
+        if (instance.Implicit)
+            new ConfigManager(instance.ConfigPath).SetConfigValue(instance.ConfigPath, "enabled", enabled);
         else AdapterInstanceStore.Update(instance.ConfigPath, id, item => item.Enabled = enabled);
     }
 
@@ -167,20 +197,24 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         var instance = GetInstance(id);
         if (instance is null) return;
         if (instance.Implicit) Materialize(Get(instance.PackageId)!);
-        AdapterInstanceStore.Mutate(instance.ConfigPath, instances => instances.RemoveAll(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)));
+        AdapterInstanceStore.Mutate(instance.ConfigPath,
+            instances => instances.RemoveAll(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)));
     }
 
     private void EnsureInstanceConfig(InstalledAdapterPackage package)
     {
         var path = PackageConfigPath(package);
-        if (!AdapterInstanceStore.IsDeclared(path)) AdapterInstanceStore.Write(path, [], replaceLegacy: true);
+        if (!AdapterInstanceStore.IsDeclared(path)) AdapterInstanceStore.Write(path, [], true);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "Keep the existing instance service API compatible with compiled callers.")]
     public AdapterPackageProbe Prepare(string packagePath, string workRoot)
     {
         var fullPackagePath = Path.GetFullPath(packagePath);
         if (!File.Exists(fullPackagePath)) throw new FileNotFoundException("Adapter 包不存在。", fullPackagePath);
-        if (new FileInfo(fullPackagePath).Length > MaxPackageBytes) throw new InvalidOperationException("Adapter 包不能超过 100MB。");
+        if (new FileInfo(fullPackagePath).Length > MaxPackageBytes)
+            throw new InvalidOperationException("Adapter 包不能超过 100MB。");
 
         var extension = Path.GetExtension(fullPackagePath);
         var extractRoot = Path.Combine(workRoot, "extract");
@@ -201,7 +235,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         }
 
         var metadata = AdapterContractProbe.ReadMetadata(entryPath)
-            ?? throw new InvalidOperationException("未找到有效的 BotAdapter 入口。");
+                       ?? throw new InvalidOperationException("未找到有效的 BotAdapter 入口。");
         ValidateId(metadata.Id);
         return new AdapterPackageProbe(
             metadata.Id,
@@ -226,7 +260,9 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         {
             CopyPackageFiles(package, staging);
             var entryRelativePath = Path.GetRelativePath(
-                package.Type == "zip" ? FindExtractRoot(package.EntryAssemblyPath) : Path.GetDirectoryName(package.EntryAssemblyPath)!,
+                package.Type == "zip"
+                    ? FindExtractRoot(package.EntryAssemblyPath)
+                    : Path.GetDirectoryName(package.EntryAssemblyPath)!,
                 package.EntryAssemblyPath);
             if (package.Type == "dll") entryRelativePath = Path.GetFileName(package.EntryAssemblyPath);
             PreserveUserFiles(target, staging);
@@ -243,7 +279,8 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             }
 
             TryDeleteDirectory(backup);
-            var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled, package.Name, package.Version, package.Description, package.Platform);
+            var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled,
+                package.Name, package.Version, package.Description, package.Platform);
             if (fresh) EnsureInstanceConfig(installed);
             SetPackageEnabled(package.Id, enabled);
             return installed;
@@ -255,10 +292,10 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     }
 
     /// <summary>
-    /// Installs a package and starts it when <paramref name="enabled"/> is set. If a replacement fails to
-    /// start, the previous version is restored. A fresh install that fails to start is kept, disabled, so
-    /// adapters that need configuration before their first start (credentials, endpoints) can be set up
-    /// from the config page and started afterwards.
+    ///     Installs a package and starts it when <paramref name="enabled" /> is set. If a replacement fails to
+    ///     start, the previous version is restored. A fresh install that fails to start is kept, disabled, so
+    ///     adapters that need configuration before their first start (credentials, endpoints) can be set up
+    ///     from the config page and started afterwards.
     /// </summary>
     public async Task<AdapterInstallResult> InstallAndActivateAsync(
         AdapterPackageProbe package,
@@ -272,21 +309,23 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         var target = GetAdapterDirectory(package.Id);
         var staging = target + ".staging-" + Guid.NewGuid().ToString("N");
         var backup = target + ".backup-" + Guid.NewGuid().ToString("N");
-        InstalledAdapterPackage? previous = null;
         var previousProtocolEnabled = IsProtocolEnabled(package.Id);
         try
         {
-            previous = ReadInstalled(target);
+            var previous = ReadInstalled(target);
             CopyPackageFiles(package, staging);
             var entryRelativePath = Path.GetRelativePath(
-                package.Type == "zip" ? FindExtractRoot(package.EntryAssemblyPath) : Path.GetDirectoryName(package.EntryAssemblyPath)!,
+                package.Type == "zip"
+                    ? FindExtractRoot(package.EntryAssemblyPath)
+                    : Path.GetDirectoryName(package.EntryAssemblyPath)!,
                 package.EntryAssemblyPath);
             if (package.Type == "dll") entryRelativePath = Path.GetFileName(package.EntryAssemblyPath);
             PreserveUserFiles(target, staging);
 
             if (Directory.Exists(target)) Directory.Move(target, backup);
             Directory.Move(staging, target);
-            var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled, package.Name, package.Version, package.Description, package.Platform);
+            var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled,
+                package.Name, package.Version, package.Description, package.Platform);
             if (previous is null) EnsureInstanceConfig(installed);
             try
             {
@@ -305,11 +344,13 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 TryDeleteDirectory(target);
                 if (Directory.Exists(backup)) Directory.Move(backup, target);
                 SetPackageEnabled(package.Id, previousProtocolEnabled);
+                // Keep optional recovery together; all paths report the same activation failure afterwards.
+                // ReSharper disable once InvertIf
                 if (previous is not null && restore is not null)
                 {
                     var restored = ReadInstalled(target);
+                    // ReSharper disable once InvertIf
                     if (restored is not null)
-                    {
                         try
                         {
                             await restore(restored).ConfigureAwait(false);
@@ -320,7 +361,6 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                                 $"新 Adapter 启动失败，旧版本恢复也失败。启动错误: {activationError.Message}; 恢复错误: {rollbackError.Message}",
                                 new AggregateException(activationError, rollbackError));
                         }
-                    }
                 }
 
                 throw new InvalidOperationException($"Adapter 启动失败，已恢复旧版本: {activationError.Message}", activationError);
@@ -333,11 +373,14 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         }
     }
 
-    public void SetEnabled(string id, bool enabled) => SetPackageEnabled(id, enabled);
+    public void SetEnabled(string id, bool enabled)
+    {
+        SetPackageEnabled(id, enabled);
+    }
 
     /// <summary>
-    /// Stages a package in <c>.update/&lt;id&gt;/</c> when the running version cannot be released; the next
-    /// start applies it before any adapter is loaded. A newer staged package replaces an older one.
+    ///     Stages a package in <c>.update/&lt;id&gt;/</c> when the running version cannot be released; the next
+    ///     start applies it before any adapter is loaded. A newer staged package replaces an older one.
     /// </summary>
     public void StageUpdate(AdapterPackageProbe package, bool enabled)
     {
@@ -348,13 +391,21 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         StagedComponentUpdates.WriteTarget(staging, GetAdapterDirectory(package.Id));
     }
 
-    public bool HasStagedUpdate(string id) => StagedComponentUpdates.HasStaged(_root, id);
+    public bool HasStagedUpdate(string id)
+    {
+        return StagedComponentUpdates.HasStaged(_root, id);
+    }
 
     /// <summary>Applies staged packages; call at startup before adapters are loaded.</summary>
-    public (IReadOnlyList<string> Applied, IReadOnlyList<(string Id, string Error)> Failed) ApplyStagedUpdates() =>
-        StagedComponentUpdates.ApplyStaged(_root);
+    public (IReadOnlyList<string> Applied, IReadOnlyList<(string Id, string Error)> Failed) ApplyStagedUpdates()
+    {
+        return StagedComponentUpdates.ApplyStaged(_root);
+    }
 
-    public InstalledAdapterPackage? Get(string id) => List().FirstOrDefault(package => string.Equals(package.Id, id, StringComparison.OrdinalIgnoreCase));
+    public InstalledAdapterPackage? Get(string id)
+    {
+        return List().FirstOrDefault(package => string.Equals(package.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
 
     public void Uninstall(string id)
     {
@@ -362,7 +413,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         if (!IsStrictChild(_root, path)) throw new InvalidOperationException("拒绝删除 Adapter 根目录之外的路径。");
         StagedComponentUpdates.DiscardStaged(_root, id);
         if (Get(id) is not null) SetPackageEnabled(id, false);
-        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
         TryDeleteCacheFile(GetMetadataCachePath(path));
     }
 
@@ -382,7 +433,8 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             var files = Directory.EnumerateFiles(directory, "*.dll", SearchOption.AllDirectories)
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .Select(path => new FileInfo(path))
-                .Select(file => new AssemblyStamp(Path.GetRelativePath(directory, file.FullName), file.Length, file.LastWriteTimeUtc.Ticks))
+                .Select(file => new AssemblyStamp(Path.GetRelativePath(directory, file.FullName), file.Length,
+                    file.LastWriteTimeUtc.Ticks))
                 .ToArray();
             var cachePath = GetMetadataCachePath(directory);
             AdapterManifest? manifest = null;
@@ -394,25 +446,32 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                     if (cached?.Files is not null && cached.Files.SequenceEqual(files)) manifest = cached.Manifest;
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+            }
 
             if (manifest is null || !string.Equals(manifest.Id, id, StringComparison.OrdinalIgnoreCase) ||
-                string.IsNullOrWhiteSpace(manifest.Entry) || !files.Any(file => file.Path == manifest.Entry))
+                string.IsNullOrWhiteSpace(manifest.Entry) || files.All(file => file.Path != manifest.Entry))
             {
-                var entries = files.Select(file => (file.Path, Metadata: AdapterContractProbe.ReadMetadata(Path.Combine(directory, file.Path))))
+                var entries = files.Select(file => (file.Path,
+                        Metadata: AdapterContractProbe.ReadMetadata(Path.Combine(directory, file.Path))))
                     .Where(entry => entry.Metadata is not null).ToArray();
-                if (entries.Length != 1 || !string.Equals(entries[0].Metadata!.Id, id, StringComparison.OrdinalIgnoreCase)) return null;
+                if (entries.Length != 1 ||
+                    !string.Equals(entries[0].Metadata!.Id, id, StringComparison.OrdinalIgnoreCase)) return null;
                 var metadata = entries[0].Metadata!;
-                manifest = new AdapterManifest(metadata.Id, entries[0].Path, metadata.Name, metadata.Version, metadata.Description, metadata.Protocol);
+                manifest = new AdapterManifest(metadata.Id, entries[0].Path, metadata.Name, metadata.Version,
+                    metadata.Description, metadata.Protocol);
                 TryWriteMetadataCache(cachePath, new AdapterMetadataCache(manifest, files));
             }
 
             // The former package-local manifest is redundant; never use it as configuration.
             TryDeleteCacheFile(Path.Combine(directory, "adapter.json"));
-            return new InstalledAdapterPackage(manifest.Id, Path.Combine(directory, manifest.Entry), IsProtocolEnabled(manifest.Id),
+            return new InstalledAdapterPackage(manifest.Id, Path.Combine(directory, manifest.Entry),
+                IsProtocolEnabled(manifest.Id),
                 manifest.Name ?? manifest.Id, manifest.Version ?? "1.0.0", manifest.Description, manifest.Platform);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+                                       or ArgumentException)
         {
             return null;
         }
@@ -425,20 +484,27 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(temporary, JsonSerializer.Serialize(cache));
-            File.Move(temporary, path, overwrite: true);
+            File.Move(temporary, path, true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        finally { TryDeleteCacheFile(temporary); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+        finally
+        {
+            TryDeleteCacheFile(temporary);
+        }
     }
 
     private static void TryDeleteCacheFile(string path)
     {
-        try { File.Delete(path); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
-
-    private sealed record AssemblyStamp(string Path, long Length, long LastWriteTicks);
-    private sealed record AdapterMetadataCache(AdapterManifest Manifest, AssemblyStamp[] Files);
 
     private static string FindSingleEntryAssembly(string root)
     {
@@ -455,7 +521,8 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
 
     private static void ExtractZipSafely(string zipPath, string destinationRoot)
     {
-        var root = Path.GetFullPath(destinationRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var root = Path.GetFullPath(destinationRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         using var archive = ZipFile.OpenRead(zipPath);
         if (archive.Entries.Count > MaxArchiveEntries) throw new InvalidOperationException("压缩包文件数量超过限制。");
         long total = 0;
@@ -465,9 +532,14 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             total += entry.Length;
             var destination = Path.GetFullPath(Path.Combine(root, entry.FullName));
             if (!IsUnder(root, destination)) throw new InvalidOperationException("压缩包包含非法路径。");
-            if (string.IsNullOrEmpty(entry.Name)) { Directory.CreateDirectory(destination); continue; }
+            if (string.IsNullOrEmpty(entry.Name))
+            {
+                Directory.CreateDirectory(destination);
+                continue;
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            entry.ExtractToFile(destination, overwrite: true);
+            entry.ExtractToFile(destination, true);
         }
     }
 
@@ -496,13 +568,15 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 files.Add(relative);
             }
         }
+
         File.WriteAllLines(Path.Combine(target, StagedComponentUpdates.PackageFilesName), files);
     }
 
     private static string FindExtractRoot(string entryPath)
     {
         var current = new DirectoryInfo(Path.GetDirectoryName(entryPath)!);
-        while (current.Parent is not null && !string.Equals(current.Name, "extract", StringComparison.OrdinalIgnoreCase)) current = current.Parent;
+        while (current.Parent is not null &&
+               !string.Equals(current.Name, "extract", StringComparison.OrdinalIgnoreCase)) current = current.Parent;
         return current.FullName;
     }
 
@@ -514,16 +588,30 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
 
     private static void ValidateId(string id)
     {
-        if (string.IsNullOrWhiteSpace(id) || id.StartsWith('.') || id is "." or ".." || id != id.Trim() || id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..", StringComparison.Ordinal) || id.Contains('/') || id.Contains('\\') ||
-            string.Equals(id, "CON", StringComparison.OrdinalIgnoreCase) || string.Equals(id, "PRN", StringComparison.OrdinalIgnoreCase) || string.Equals(id, "AUX", StringComparison.OrdinalIgnoreCase) || string.Equals(id, "NUL", StringComparison.OrdinalIgnoreCase) ||
-            id.StartsWith("COM", StringComparison.OrdinalIgnoreCase) && id.Length == 4 && char.IsDigit(id[3]) || id.StartsWith("LPT", StringComparison.OrdinalIgnoreCase) && id.Length == 4 && char.IsDigit(id[3]))
+        if (string.IsNullOrWhiteSpace(id) || id.StartsWith('.') || id is "." or ".." || id != id.Trim() ||
+            id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains("..", StringComparison.Ordinal) ||
+            id.Contains('/') || id.Contains('\\') ||
+            string.Equals(id, "CON", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(id, "PRN", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(id, "AUX", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(id, "NUL", StringComparison.OrdinalIgnoreCase) ||
+            (id.StartsWith("COM", StringComparison.OrdinalIgnoreCase) && id.Length == 4 && char.IsDigit(id[3])) ||
+            (id.StartsWith("LPT", StringComparison.OrdinalIgnoreCase) && id.Length == 4 && char.IsDigit(id[3])))
             throw new InvalidOperationException("Adapter ID 包含非法路径字符。");
     }
 
-    private static bool IsUnder(string root, string path) =>
-        path.StartsWith(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    private static bool IsUnder(string root, string path)
+    {
+        return path.StartsWith(
+            Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+            Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
 
-    private static bool IsStrictChild(string root, string path) => IsUnder(root, path) && !string.Equals(Path.GetFullPath(root), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
+    private static bool IsStrictChild(string root, string path)
+    {
+        return IsUnder(root, path) && !string.Equals(Path.GetFullPath(root), Path.GetFullPath(path),
+            StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void PreserveUserFiles(string target, string staging)
     {
@@ -543,27 +631,78 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             var destination = Path.Combine(staging, relative);
             if (!isConfig && File.Exists(destination)) continue;
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(source, destination, overwrite: isConfig);
+            File.Copy(source, destination, isConfig);
         }
     }
 
     private static void TryDeleteDirectory(string path)
     {
-        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
-    private sealed record AdapterManifest(string Id, string Entry, string? Name = null, string? Version = null, string? Description = null, string? Platform = null);
+    // Constructed by configuration/JSON deserialization.
+    // ReSharper disable once ClassNeverInstantiated.Local
+    private sealed class ProtocolConfig
+    {
+        // Written by configuration serializers or reflection-based probes.
+        // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Local
+        public string[] Protocols { get; set; } = [];
+    }
+
+    private sealed record AssemblyStamp(string Path, long Length, long LastWriteTicks);
+
+    private sealed record AdapterMetadataCache(AdapterManifest Manifest, AssemblyStamp[] Files);
+
+    private sealed record AdapterManifest(
+        string Id,
+        string Entry,
+        string? Name = null,
+        string? Version = null,
+        string? Description = null,
+        string? Platform = null);
 }
 
-internal sealed record AdapterPackageProbe(string Id, string EntryAssemblyPath, string Type, IReadOnlyList<string> SharedAssemblies, string Name, string Version, string? Description, string? Platform);
-/// <summary>Result of an install; <see cref="StartError"/> is set when a fresh install was kept but did not start.</summary>
+internal sealed record AdapterPackageProbe(
+    string Id,
+    string EntryAssemblyPath,
+    string Type,
+    IReadOnlyList<string> SharedAssemblies,
+    string Name,
+    string Version,
+    string? Description,
+    string? Platform);
+
+/// <summary>Result of an install; <see cref="StartError" /> is set when a fresh install was kept but did not start.</summary>
 internal sealed record AdapterInstallResult(InstalledAdapterPackage Package, string? StartError);
 
-internal sealed record InstalledAdapterPackage(string Id, string AssemblyPath, bool Enabled, string Name, string Version, string? Description, string? Platform);
-
+internal sealed record InstalledAdapterPackage(
+    string Id,
+    string AssemblyPath,
+    bool Enabled,
+    string Name,
+    string Version,
+    string? Description,
+    string? Platform);
 
 /// <param name="Implicit">An older config without [[instances]]: the file root is this instance's config.</param>
-internal sealed record InstalledAdapterInstance(string Id, string PackageId, string AssemblyPath, string ConfigPath, bool Enabled, string Name, bool PackageEnabled = true, bool Implicit = false)
+internal sealed record InstalledAdapterInstance(
+    string Id,
+    string PackageId,
+    string AssemblyPath,
+    string ConfigPath,
+    bool Enabled,
+    string Name,
+    bool PackageEnabled = true,
+    bool Implicit = false)
 {
     /// <summary>Loads at startup: both the instance and its package switch are on.</summary>
     public bool Active => Enabled && PackageEnabled;

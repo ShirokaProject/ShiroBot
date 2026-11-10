@@ -9,25 +9,37 @@ internal sealed class UpdaterContext : IUpdater
         string repository,
         string currentVersion,
         bool includePrerelease = false,
-        CancellationToken cancellationToken = default) =>
-        CoreUpdater.CheckGitHubReleaseAsync(repository, currentVersion, includePrerelease, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        return CoreUpdater.CheckGitHubReleaseAsync(repository, currentVersion, includePrerelease, cancellationToken);
+    }
 
     public Task<string> RequestHostUpdateAsync(
         GitHubReleaseUpdate update,
-        CancellationToken cancellationToken = default) =>
-        CoreUpdater.RequestHostUpdateAsync(update, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        return CoreUpdater.RequestHostUpdateAsync(update, cancellationToken);
+    }
 
     public Task<string> RequestPluginUpdateAsync(
         PluginUpdateRequest request,
-        CancellationToken cancellationToken = default) =>
-        CoreUpdater.RequestPluginUpdateAsync(request, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        return CoreUpdater.RequestPluginUpdateAsync(request, cancellationToken);
+    }
 
-    public IReadOnlyList<PendingUpdateInfo> GetPendingUpdates() =>
-        CoreUpdater.GetPendingUpdates();
+    public IReadOnlyList<PendingUpdateInfo> GetPendingUpdates()
+    {
+        return CoreUpdater.GetPendingUpdates();
+    }
 
-    public Task<bool> ConfirmUpdateAsync(string requestId, CancellationToken cancellationToken = default) =>
-        CoreUpdater.ConfirmUpdateAsync(requestId, cancellationToken);
+    public Task<bool> ConfirmUpdateAsync(string requestId, CancellationToken cancellationToken = default)
+    {
+        return CoreUpdater.ConfirmUpdateAsync(requestId, cancellationToken);
+    }
 
-    public bool CancelUpdate(string requestId) =>
-        CoreUpdater.CancelUpdate(requestId);
+    public bool CancelUpdate(string requestId)
+    {
+        return CoreUpdater.CancelUpdate(requestId);
+    }
 }

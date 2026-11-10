@@ -1,10 +1,13 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Logging;
 using ShiroBot.InteropContractProbe;
 using ShiroBot.Plugins.Services;
 using ShiroBot.SDK.Plugin;
+
+namespace ShiroBot.Verification;
 
 /// <summary>契约生成的读写代码、Schema、一类服务和事件。</summary>
 internal static class PluginContractVerification
@@ -22,7 +25,8 @@ internal static class PluginContractVerification
     {
         var id = Guid.NewGuid();
         var at = new DateTimeOffset(2026, 11, 2, 8, 30, 0, TimeSpan.FromHours(8));
-        var forecast = new Forecast("上海", 3, Mood.VerySad, 21.5, ["晴", "热"], new Dictionary<string, int> { ["rain"] = 2 },
+        var forecast = new Forecast("上海", 3, Mood.VerySad, 21.5, ["晴", "热"],
+            new Dictionary<string, int> { ["rain"] = 2 },
             new Point(1.5, -2), new JsonObject { ["raw"] = true })
         {
             At = at, Id = id, Renamed = "x", Path = [new Point(0, 0), new Point(1, 1)]
@@ -30,19 +34,20 @@ internal static class PluginContractVerification
         var json = Encoding.UTF8.GetString(PluginJson.Serialize(forecast));
         foreach (var expected in new[]
                  {
-                     "\"city\":\"上海\"", "\"days\":3", "\"mood\":\"very_sad\"", "\"temperature\":21.5", "\"tags\":[\"晴\",\"热\"]",
-                     "\"counts\":{\"rain\":2}", "\"location\":{\"x\":1.5,\"y\":-2}", "\"extra\":{\"raw\":true}", "\"custom_name\":\"x\"",
+                     "\"city\":\"上海\"", "\"days\":3", "\"mood\":\"very_sad\"", "\"temperature\":21.5",
+                     "\"tags\":[\"晴\",\"热\"]",
+                     "\"counts\":{\"rain\":2}", "\"location\":{\"x\":1.5,\"y\":-2}", "\"extra\":{\"raw\":true}",
+                     "\"custom_name\":\"x\"",
                      "\"path\":[{\"x\":0,\"y\":0},{\"x\":1,\"y\":1}]"
                  })
-        {
             if (!json.Contains(expected, StringComparison.Ordinal))
                 throw new InvalidOperationException($"Contract JSON is missing {expected}: {json}");
-        }
 
         var back = PluginJson.Deserialize<Forecast>(Encoding.UTF8.GetBytes(json))!;
-        if (back.City != "上海" || back.Days != 3 || back.Mood != Mood.VerySad || back.Temperature != 21.5 ||
+        if (back.City != "上海" || back.Days != 3 || back.Mood != Mood.VerySad || !back.Temperature.Equals(21.5d) ||
             back.Tags is not ["晴", "热"] || back.Counts?["rain"] != 2 || back.Location != new Point(1.5, -2) ||
-            (bool?)back.Extra?["raw"] != true || back.At != at || back.Id != id || back.Renamed != "x" || back.Path.Count != 2)
+            (bool?)back.Extra?["raw"] != true || back.At != at || back.Id != id || back.Renamed != "x" ||
+            back.Path.Count != 2)
             throw new InvalidOperationException("Contract JSON did not round-trip: " + back);
     }
 
@@ -55,7 +60,7 @@ internal static class PluginContractVerification
             throw new InvalidOperationException("Missing or unknown contract fields were not handled: " + sparse);
         if (PluginJson.Deserialize<Forecast>("""{"city":"a","mood":5}"""u8)!.Mood != Mood.Confused)
             throw new InvalidOperationException("Enums must also accept their numeric value.");
-        if (PluginJson.Deserialize<Forecast>("null"u8) is not null || PluginJson.Deserialize<Forecast>(ReadOnlySpan<byte>.Empty) is not null)
+        if (PluginJson.Deserialize<Forecast>("null"u8) is not null || PluginJson.Deserialize<Forecast>([]) is not null)
             throw new InvalidOperationException("JSON null and empty input must read as null.");
         if (new JsonObject { ["query"] = "猫" }.As<ToolArgs>() is not { Query: "猫", Limit: 5 })
             throw new InvalidOperationException("As<T> must read [PluginJson] types and keep parameter defaults.");
@@ -64,7 +69,9 @@ internal static class PluginContractVerification
             PluginJson.Deserialize<Forecast>("""{"city":"a","days":"three"}"""u8);
             throw new InvalidOperationException("A wrongly typed field was accepted.");
         }
-        catch (System.Text.Json.JsonException ex) when (ex.Message.Contains("days")) { }
+        catch (JsonException ex) when (ex.Message.Contains("days"))
+        {
+        }
     }
 
     private static void VerifySchema()
@@ -98,10 +105,17 @@ internal static class PluginContractVerification
         {
             if (await ProbeApi.Echo.TryCallAsync(caller, new Forecast("x")) is not null)
                 throw new InvalidOperationException("TryCallAsync must return null without a provider.");
-            try { await ProbeApi.Echo.CallAsync(caller, new Forecast("x")); throw new InvalidOperationException("CallAsync did not throw."); }
-            catch (PluginServiceUnavailableException) { }
+            try
+            {
+                await ProbeApi.Echo.CallAsync(caller, new Forecast("x"));
+                throw new InvalidOperationException("CallAsync did not throw.");
+            }
+            catch (PluginServiceUnavailableException)
+            {
+            }
 
-            ProbeApi.Echo.Provide(provider, (forecast, _) => Task.FromResult(forecast with { Days = forecast.Days + 1 }),
+            ProbeApi.Echo.Provide(provider,
+                (forecast, _) => Task.FromResult(forecast with { Days = forecast.Days + 1 }),
                 new JsonObject { ["description"] = "echo" });
             var echoed = await ProbeApi.Echo.CallAsync(caller, new Forecast("杭州", Tags: ["a"]));
             if (echoed is not { City: "杭州", Days: 2, Tags: ["a"] })
@@ -110,12 +124,13 @@ internal static class PluginContractVerification
                 throw new InvalidOperationException("Single-service metadata was not kept.");
 
             // 一类服务：两个插件各提供一个，发现方按前缀找到并逐个调用。
-            ProbeApi.Sources.Provide(provider, "alpha", (p, _) => Task.FromResult(p with { X = p.X + 1 }), new SourceInfo("Alpha"));
+            ProbeApi.Sources.Provide(provider, "alpha", (p, _) => Task.FromResult(p with { X = p.X + 1 }),
+                new SourceInfo("Alpha"));
             ProbeApi.Sources.Provide(other, "beta", (p, _) => Task.FromResult(p with { Y = p.Y + 1 }),
                 new SourceInfo("Beta", PluginJsonSchema.For<ToolArgs>()));
             var sources = ProbeApi.Sources.Find(caller);
             if (sources.Select(s => (s.ShortName, s.ProviderId, s.Metadata?.Title)).ToArray() is not
-                [("alpha", "provider", "Alpha"), ("beta", "other", "Beta")] ||
+                    [("alpha", "provider", "Alpha"), ("beta", "other", "Beta")] ||
                 (string?)sources[1].Metadata?.Parameters?["properties"]?["query"]?["type"] != "string")
                 throw new InvalidOperationException("Service family discovery returned unexpected entries.");
             if (await sources[0].CallAsync(caller, new Point(1, 1)) != new Point(2, 1) ||
@@ -124,7 +139,11 @@ internal static class PluginContractVerification
 
             // 事件。
             Point? received = null;
-            ProbeApi.Moved.On(other, (point, _) => { received = point; return Task.CompletedTask; });
+            ProbeApi.Moved.On(other, (point, _) =>
+            {
+                received = point;
+                return Task.CompletedTask;
+            });
             if (await ProbeApi.Moved.EmitAsync(caller, new Point(3, 4)) != 1 || received != new Point(3, 4))
                 throw new InvalidOperationException("Typed event was not delivered.");
 
@@ -135,14 +154,21 @@ internal static class PluginContractVerification
 
             // 提供方出错：传回异常类型和消息，TryCallAsync 不吞掉。
             using var failing = new PluginContext(bot, "failing", Path.Combine(root, "failing"), logs, registry);
-            ProbeApi.Sources.Provide(failing, "broken", (_, _) => throw new FormatException("bad point"), new SourceInfo("Broken"));
+            ProbeApi.Sources.Provide(failing, "broken", (_, _) => throw new FormatException("bad point"),
+                new SourceInfo("Broken"));
             var broken = ProbeApi.Sources.Find(caller).Single(s => s.ShortName == "broken");
-            try { await broken.TryCallAsync(caller, new Point(0, 0)); throw new InvalidOperationException("A failing provider was swallowed."); }
-            catch (PluginServiceException ex) when (ex.RemoteMessage == "bad point") { }
+            try
+            {
+                await broken.TryCallAsync(caller, new Point(0, 0));
+                throw new InvalidOperationException("A failing provider was swallowed.");
+            }
+            catch (PluginServiceException ex) when (ex.RemoteMessage == "bad point")
+            {
+            }
         }
         finally
         {
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
 }

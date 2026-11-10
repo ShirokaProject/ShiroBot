@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -9,14 +10,9 @@ namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapHostUpdateEndpoints(RouteGroupBuilder api, ConfigManager configManager, HostPowerControl powerControl)
+    private static void MapHostUpdateEndpoints(RouteGroupBuilder api, ConfigManager configManager,
+        HostPowerControl powerControl)
     {
-        async Task<HostUpdateCheck> CheckAsync(CancellationToken token)
-        {
-            var config = await configManager.LoadCoreConfig().ConfigureAwait(false);
-            return await HostSelfUpdater.CheckAsync(config.HostUpdateRepository, token).ConfigureAwait(false);
-        }
-
         api.MapGet("/system/update", async (HttpContext context) =>
         {
             try
@@ -34,7 +30,7 @@ internal sealed partial class HostHttpServer
                     reason = check.Reason
                 });
             }
-            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException)
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
             {
                 return Results.BadRequest(new { ok = false, message = "检查宿主更新失败: " + ex.Message });
             }
@@ -50,15 +46,24 @@ internal sealed partial class HostHttpServer
                     return Results.Ok(new { ok = true, restarting = false, message = check.Reason ?? "宿主已是最新版本。" });
                 if (!check.CanApply)
                     return Results.BadRequest(new { ok = false, message = check.Reason });
-                var result = await HostSelfUpdater.ApplyAsync(check.AssetDownloadUrl!, powerControl, context.RequestAborted).ConfigureAwait(false);
+                var result = await HostSelfUpdater
+                    .ApplyAsync(check.AssetDownloadUrl!, powerControl, context.RequestAborted).ConfigureAwait(false);
                 return result.Ok
                     ? Results.Ok(new { ok = true, restarting = true, message = result.Message })
                     : Results.Conflict(new { ok = false, message = result.Message });
             }
-            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException)
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
             {
                 return Results.BadRequest(new { ok = false, message = "宿主更新失败: " + ex.Message });
             }
         });
+
+        return;
+
+        async Task<HostUpdateCheck> CheckAsync(CancellationToken token)
+        {
+            var config = await configManager.LoadCoreConfig().ConfigureAwait(false);
+            return await HostSelfUpdater.CheckAsync(config.HostUpdateRepository, token).ConfigureAwait(false);
+        }
     }
 }

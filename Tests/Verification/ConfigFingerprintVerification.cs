@@ -1,15 +1,16 @@
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 using ShiroBot.Plugins;
+
+namespace ShiroBot.Verification;
 
 internal static class ConfigFingerprintVerification
 {
     public static void Run()
     {
         var weak = Exercise();
-        for (int i = 0; weak.IsAlive && i < 20; i++)
+        for (var i = 0; weak.IsAlive && i < 20; i++)
         {
             GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             Thread.Sleep(20);
@@ -26,7 +27,7 @@ internal static class ConfigFingerprintVerification
         var type = context.LoadFromAssemblyPath(path).GetType("ShiroBot.ExternalConfigModelProbe.Settings")!;
         var config = Activator.CreateInstance(type)!;
         type.GetProperty("Cookie")!.SetValue(config, "fixture");
-        for (int i = 0; i < 12; i++)
+        for (var i = 0; i < 12; i++)
         {
             using var doc = JsonDocument.Parse(JsonSerializer.Serialize(ConfigFingerprintValue.Create(config)));
             if (doc.RootElement.GetProperty("Cookie").GetString() != "fixture" || doc.RootElement.GetProperty("Retries").GetInt32() != 5)

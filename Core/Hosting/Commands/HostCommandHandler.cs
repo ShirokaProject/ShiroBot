@@ -1,20 +1,17 @@
+using System.ComponentModel;
 using System.Diagnostics;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using ShiroBot.Configuration;
-using ShiroBot.Terminal;
-using ShiroBot.Update;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Plugins;
 using ShiroBot.Adapters;
 using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Context;
+using ShiroBot.Configuration;
+using ShiroBot.Hosting.Events;
+using ShiroBot.Hosting.Runtime;
+using ShiroBot.Plugins;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.Update;
 using CH = ShiroBot.Terminal.ConsoleOutput;
-using ShiroBot.Hosting.Runtime;
 
 namespace ShiroBot.Hosting.Commands;
 
@@ -42,16 +39,20 @@ internal sealed partial class HostCommandHandler(
     ];
 
     private AdapterManager? _adapterManager;
+    private AdapterPackageManager? _adapterPackages;
     private HostPowerControl? _powerControl;
 
-    public void SetPowerControl(HostPowerControl powerControl) => _powerControl = powerControl;
-
     private ComponentReloadCoordinator? _reloadCoordinator;
-    private AdapterPackageManager? _adapterPackages;
 
     private HostRuntimeState? _runtimeState;
 
-    public void SetAdapterCommands(AdapterManager adapterManager, ComponentReloadCoordinator? reloadCoordinator, AdapterPackageManager? adapterPackages = null,
+    public void SetPowerControl(HostPowerControl powerControl)
+    {
+        _powerControl = powerControl;
+    }
+
+    public void SetAdapterCommands(AdapterManager adapterManager, ComponentReloadCoordinator? reloadCoordinator,
+        AdapterPackageManager? adapterPackages = null,
         HostRuntimeState? runtimeState = null)
     {
         _runtimeState = runtimeState ?? _runtimeState;
@@ -157,20 +158,17 @@ internal sealed partial class HostCommandHandler(
         }
     }
 
-    public Task HandleDirectMessageAsync(MessageEvent message) =>
-        eventDispatcher.PublishAsync(message);
+    public Task HandleDirectMessageAsync(MessageEvent message)
+    {
+        return eventDispatcher.PublishAsync(message);
+    }
 
     private string HandleApiCommand(string[] splitInput)
     {
-        if (splitInput.Length == 1)
-        {
-            return BuildApiInfoText();
-        }
+        if (splitInput.Length == 1) return BuildApiInfoText();
 
         if (!string.Equals(splitInput[1], "token", StringComparison.OrdinalIgnoreCase))
-        {
             return "用法: api | api token | api token <密钥>";
-        }
 
         coreConfig.Api.Token = splitInput.Length >= 3
             ? splitInput[2]
@@ -189,7 +187,8 @@ internal sealed partial class HostCommandHandler(
             .AppendLine(new string('-', 24))
             .AppendLine("启用: " + coreConfig.Api.Enable)
             .AppendLine("地址: " + baseUrl);
-        if (coreConfig.Api.EnableDashboard) text.AppendLine("Dashboard（直接登录）: " + coreConfig.Api.GetDashboardLoginUrl());
+        if (coreConfig.Api.EnableDashboard)
+            text.AppendLine("Dashboard（直接登录）: " + coreConfig.Api.GetDashboardLoginUrl());
         return text
             .AppendLine("鉴权: 始终开启")
             .AppendLine("密钥: " + coreConfig.Api.Token)
@@ -210,13 +209,18 @@ internal sealed partial class HostCommandHandler(
         if (!string.IsNullOrEmpty(text)) CH.Info(text);
     }
 
-    private static string? NormalizeCommand(string? command) => command?.TrimStart('/').ToLowerInvariant();
+    private static string? NormalizeCommand(string? command)
+    {
+        return command?.TrimStart('/').ToLowerInvariant();
+    }
 
     private string BuildAdaptersText()
     {
         var instances = _adapterPackages?.ListInstances();
-        return instances is null || instances.Count == 0 ? "当前没有已安装适配器实例。" : string.Join("\n", instances.Select(instance =>
-            $"{instance.Id} | 包 {instance.PackageId} | {(_adapterManager?.LoadedIds.Contains(instance.Id, StringComparer.OrdinalIgnoreCase) == true ? "运行中" : "已停止")} | 配置 {instance.ConfigPath}"));
+        return instances is null || instances.Count == 0
+            ? "当前没有已安装适配器实例。"
+            : string.Join("\n", instances.Select(instance =>
+                $"{instance.Id} | 包 {instance.PackageId} | {(_adapterManager?.LoadedIds.Contains(instance.Id, StringComparer.OrdinalIgnoreCase) == true ? "运行中" : "已停止")} | 配置 {instance.ConfigPath}"));
     }
 
     private async Task<string> HandleAdapterCommandAsync(string[] input)
@@ -224,12 +228,15 @@ internal sealed partial class HostCommandHandler(
         var manager = _adapterManager;
         var packages = _adapterPackages;
         if (manager is null) return "Adapter 管理器不可用。";
-        if (input.Length < 2 || string.Equals(input[1], "list", StringComparison.OrdinalIgnoreCase)) return BuildAdaptersText();
-        if (string.Equals(input[1], "market", StringComparison.OrdinalIgnoreCase)) return await BuildAdapterMarketTextAsync();
+        if (input.Length < 2 || string.Equals(input[1], "list", StringComparison.OrdinalIgnoreCase))
+            return BuildAdaptersText();
+        if (string.Equals(input[1], "market", StringComparison.OrdinalIgnoreCase))
+            return await BuildAdapterMarketTextAsync();
         if (string.Equals(input[1], "refresh", StringComparison.OrdinalIgnoreCase))
             return $"适配器市场已刷新，共 {(await LoadAdapterMarketAsync()).Count} 个适配器。";
         if (input.Length < 3) return AdapterUsage;
-        if (string.Equals(input[1], "install", StringComparison.OrdinalIgnoreCase)) return await InstallAdapterFromMarketAsync(input[2]);
+        if (string.Equals(input[1], "install", StringComparison.OrdinalIgnoreCase))
+            return await InstallAdapterFromMarketAsync(input[2]);
         try
         {
             switch (input[1].ToLowerInvariant())
@@ -238,31 +245,42 @@ internal sealed partial class HostCommandHandler(
                     if (input.Length < 4) return "用法: adapter create <包 ID> <实例 ID>";
                     if (packages is null) throw new InvalidOperationException("Adapter 包管理器不可用。");
                     InstalledAdapterInstance? created = null;
-                    async Task CreateInstance() => created = await manager.CreateInstanceAsync(packages, input[2], input[3], null);
-                    if (_reloadCoordinator is not null) await _reloadCoordinator.ExecuteAdapterMutationAsync(CreateInstance);
+
+                    if (_reloadCoordinator is not null)
+                        await _reloadCoordinator.ExecuteAdapterMutationAsync(CreateInstance);
                     else await CreateInstance();
                     return $"已创建停用实例 {created!.Id}，请编辑 {created.ConfigPath}，然后 adapter start {created.Id}";
+
+                    async Task CreateInstance()
+                    {
+                        created = await manager.CreateInstanceAsync(packages, input[2], input[3], null);
+                    }
                 case "config":
                     return packages?.GetInstance(input[2])?.ConfigPath ?? $"未安装 Adapter 实例: {input[2]}";
                 case "remove":
                     if (packages is null) throw new InvalidOperationException("Adapter 包管理器不可用。");
+
+                    if (_reloadCoordinator is not null)
+                        await _reloadCoordinator.ExecuteAdapterMutationAsync(RemoveInstance);
+                    else await RemoveInstance();
+                    return $"已删除 Adapter 实例: {input[2]}";
+
                     async Task RemoveInstance()
                     {
                         await manager.StopByIdAsync(input[2]);
                         packages.DeleteInstance(input[2]);
                         manager.ForgetRemovedAdapter(input[2]);
                     }
-                    if (_reloadCoordinator is not null) await _reloadCoordinator.ExecuteAdapterMutationAsync(RemoveInstance);
-                    else await RemoveInstance();
-                    return $"已删除 Adapter 实例: {input[2]}";
                 case "start":
-                    var package = packages?.GetInstance(input[2]) ?? throw new InvalidOperationException($"未安装 Adapter: {input[2]}");
-                    if (!package.PackageEnabled) throw new InvalidOperationException($"适配器包 {package.PackageId} 已关闭，请先打开适配器。");
+                    var package = packages?.GetInstance(input[2]) ??
+                                  throw new InvalidOperationException($"未安装 Adapter: {input[2]}");
+                    if (!package.PackageEnabled)
+                        throw new InvalidOperationException($"适配器包 {package.PackageId} 已关闭，请先打开适配器。");
                     if (_reloadCoordinator is not null)
                         await _reloadCoordinator.ExecuteAdapterStartAsync(() => manager.LoadInstanceAsync(package));
                     else
                         await manager.LoadInstanceAsync(package);
-                    packages!.SetInstanceEnabled(package.Id, true);
+                    packages.SetInstanceEnabled(package.Id, true);
                     return $"已启动 Adapter: {package.Id}";
                 case "stop":
                     if (_reloadCoordinator is not null)
@@ -272,25 +290,27 @@ internal sealed partial class HostCommandHandler(
                     packages?.SetInstanceEnabled(input[2], false);
                     return $"已停止 Adapter: {input[2]}";
                 case "reload":
-                    if (_reloadCoordinator is not null) await _reloadCoordinator.ReloadAdapterByIdAsync(input[2]); else await manager.ReloadByIdAsync(input[2]);
+                    if (_reloadCoordinator is not null) await _reloadCoordinator.ReloadAdapterByIdAsync(input[2]);
+                    else await manager.ReloadByIdAsync(input[2]);
                     return $"已重载 Adapter: {input[2]}";
                 default: return AdapterUsage;
             }
         }
-        catch (Exception ex) { return "Adapter 操作失败: " + ex.Message; }
+        catch (Exception ex)
+        {
+            return "Adapter 操作失败: " + ex.Message;
+        }
     }
 
     private async Task<string> CheckHostUpdateAsync()
     {
-        if (string.IsNullOrWhiteSpace(coreConfig.HostUpdateRepository))
-        {
-            return "宿主没有配置 HostUpdateRepository。";
-        }
+        if (string.IsNullOrWhiteSpace(coreConfig.HostUpdateRepository)) return "宿主没有配置 HostUpdateRepository。";
 
         var check = await HostSelfUpdater.CheckAsync(coreConfig.HostUpdateRepository).ConfigureAwait(false);
         if (!check.UpdateAvailable) return check.Reason ?? $"宿主: 已是最新版本 ({check.CurrentVersion})";
         if (!check.CanApply) return $"宿主: 发现 {check.LatestVersion}。{check.Reason}";
-        var update = new GitHubReleaseUpdate(coreConfig.HostUpdateRepository, check.CurrentVersion, check.LatestVersion!,
+        var update = new GitHubReleaseUpdate(coreConfig.HostUpdateRepository, check.CurrentVersion,
+            check.LatestVersion!,
             null, check.ReleaseUrl, check.ReleaseNotes, check.AssetDownloadUrl, check.AssetName);
         var id = await Updater.RequestHostUpdateAsync(update);
         return $"宿主: {check.CurrentVersion} -> {check.LatestVersion} ({check.AssetName})，更新任务 {id}";
@@ -302,14 +322,10 @@ internal sealed partial class HostCommandHandler(
             .Where(plugin => !string.IsNullOrWhiteSpace(plugin.GithubRepo))
             .ToList();
 
-        if (plugins.Count == 0)
-        {
-            return "当前没有配置 GithubRepo 的已加载插件。";
-        }
+        if (plugins.Count == 0) return "当前没有配置 GithubRepo 的已加载插件。";
 
         var builder = new StringBuilder();
         foreach (var plugin in plugins)
-        {
             try
             {
                 var update = await Updater.CheckGitHubPluginPackageUpdateAsync(plugin.GithubRepo!, plugin.Version);
@@ -335,19 +351,21 @@ internal sealed partial class HostCommandHandler(
                     plugin.AssemblyPath);
                 var id = await Updater.RequestPluginUpdateAsync(request);
 
-                builder.AppendLine($"{plugin.Name}: {update.CurrentVersion} -> {update.LatestVersion} ({update.AssetName})，更新任务 {id}");
+                builder.AppendLine(
+                    $"{plugin.Name}: {update.CurrentVersion} -> {update.LatestVersion} ({update.AssetName})，更新任务 {id}");
             }
             catch (Exception ex)
             {
                 builder.AppendLine($"{plugin.Name}: 检查失败 - {ex.Message}");
             }
-        }
 
         return builder.ToString().TrimEnd();
     }
 
-    private Task<IReadOnlyList<(string PluginId, PluginActionDescriptor Action)>> CollectPluginActionsAsync() =>
-        PluginActions.ListAllAsync(pluginManager);
+    private Task<IReadOnlyList<(string PluginId, PluginActionDescriptor Action)>> CollectPluginActionsAsync()
+    {
+        return PluginActions.ListAllAsync(pluginManager);
+    }
 
     private async Task<string> BuildPluginActionListAsync()
     {
@@ -357,14 +375,10 @@ internal sealed partial class HostCommandHandler(
         var nameWidth = actions.Max(entry => $"plugin action {entry.PluginId} {entry.Action.Id}".Length) + 2;
         var text = new StringBuilder().AppendLine("插件操作").AppendLine(new string('-', 24));
         foreach (var group in actions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
-        {
-            foreach (var (pluginId, action) in group)
-            {
-                text.Append("  ")
-                    .Append($"plugin action {pluginId} {action.Id}".PadRight(nameWidth))
-                    .AppendLine(string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description);
-            }
-        }
+        foreach (var (pluginId, action) in group)
+            text.Append("  ")
+                .Append($"plugin action {pluginId} {action.Id}".PadRight(nameWidth))
+                .AppendLine(string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description);
 
         return text.ToString().TrimEnd();
     }
@@ -380,7 +394,8 @@ internal sealed partial class HostCommandHandler(
 
         var actions = await PluginActions.ListAsync(plugin).ConfigureAwait(false);
         if (actions is null) return $"插件 {pluginId} 正在卸载。";
-        var descriptor = actions.FirstOrDefault(action => string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
+        var descriptor =
+            actions.FirstOrDefault(action => string.Equals(action.Id, actionId, StringComparison.OrdinalIgnoreCase));
         if (descriptor is null) return $"未找到插件操作: {actionId}";
 
         if (descriptor.RequiresConfirmation)
@@ -388,7 +403,7 @@ internal sealed partial class HostCommandHandler(
             var prompt = string.IsNullOrWhiteSpace(descriptor.ConfirmationText)
                 ? $"确认执行 {descriptor.Label}?"
                 : descriptor.ConfirmationText;
-            var answer = CH.ReadPrompt($"{prompt} [y/N] ")?.Trim();
+            var answer = CH.ReadPrompt($"{prompt} [y/N] ").Trim();
             if (!string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase)) return "已取消。";
         }
 
@@ -415,7 +430,7 @@ internal sealed partial class HostCommandHandler(
             using var _ = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             return "已在浏览器中打开 Dashboard。";
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
             // No browser here (a server or container): the link still signs in from another machine's browser.
             return "无法打开浏览器，请手动访问（链接含 API 密钥，勿外传）:\n" + url;
@@ -430,7 +445,11 @@ internal sealed partial class HostCommandHandler(
         if (!string.IsNullOrWhiteSpace(withoutExtension) && loadedPluginNames.Contains(withoutExtension)) return true;
 
         var directoryName = Path.GetDirectoryName(candidate.Replace('/', Path.DirectorySeparatorChar));
-        if (!string.IsNullOrWhiteSpace(directoryName))
+        if (string.IsNullOrWhiteSpace(directoryName))
+        {
+            return false;
+        }
+
         {
             var lastDirectory = Path.GetFileName(directoryName);
             if (!string.IsNullOrWhiteSpace(lastDirectory) && loadedPluginNames.Contains(lastDirectory)) return true;
@@ -439,12 +458,9 @@ internal sealed partial class HostCommandHandler(
         return false;
     }
 
-    private static string BuildLoadedPluginsText(IReadOnlyList<LoadedPluginHandle> plugins)
+    private static string BuildLoadedPluginsText(List<LoadedPluginHandle> plugins)
     {
-        if (plugins.Count == 0)
-        {
-            return "当前没有已加载插件。";
-        }
+        if (plugins.Count == 0) return "当前没有已加载插件。";
 
         var orderedPlugins = plugins
             .OrderBy(plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)

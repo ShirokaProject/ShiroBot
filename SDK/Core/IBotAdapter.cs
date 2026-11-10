@@ -18,11 +18,21 @@ public interface IBotAdapter
     public IEventService Event { get; }
 
     /// <summary>
-    /// 获取平台特有的扩展服务（如 QQ 的戳一戳、群文件；Discord 的 Reaction 等）。
-    /// 适配器未实现该扩展时返回 null，插件应做能力探测。
+    ///     获取平台特有的扩展服务（如 QQ 的戳一戳、群文件；Discord 的 Reaction 等）。
+    ///     适配器未实现该扩展时返回 null，插件应做能力探测。
     /// </summary>
-    TService? GetExtension<TService>() where TService : class => this as TService;
+    TService? GetExtension<TService>() where TService : class
+    {
+        return this as TService;
+    }
 
-    Task StartAsync() => Task.CompletedTask;
-    Task StopAsync() => Task.CompletedTask;
+    Task StartAsync()
+    {
+        return Task.CompletedTask;
+    }
+
+    Task StopAsync()
+    {
+        return Task.CompletedTask;
+    }
 }

@@ -27,13 +27,12 @@ internal static class AdapterModels
             using var stream = File.OpenRead(assemblyPath);
             using var pe = new PEReader(stream);
             var metadata = pe.GetMetadataReader();
-            models = metadata.AssemblyReferences
+            models = [.. metadata.AssemblyReferences
                 .Select(handle => metadata.GetString(metadata.GetAssemblyReference(handle).Name))
                 .Where(name => name.StartsWith(ModelPrefix, StringComparison.Ordinal) && name.Length > ModelPrefix.Length)
                 .Select(name => name[ModelPrefix.Length..])
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Order(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+                .Order(StringComparer.OrdinalIgnoreCase)];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or BadImageFormatException or InvalidOperationException)
         {

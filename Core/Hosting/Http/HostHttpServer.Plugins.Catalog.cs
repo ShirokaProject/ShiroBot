@@ -1,36 +1,7 @@
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.IO.Compression;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
-using ShiroBot.Configuration;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Logging;
-using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
+using Microsoft.AspNetCore.Routing;
 using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Plugins.Marketplace;
-using ShiroBot.Update;
-using ShiroBot.Terminal;
-using ShiroBot.Integrations.Avalonia;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Http;
 
@@ -38,7 +9,7 @@ internal sealed partial class HostHttpServer
 {
     private static void MapPluginCatalogEndpoints(RouteGroupBuilder api, PluginManager pluginManager)
     {
-        api.MapGet("/plugins/contract-abi", () => Results.Ok(pluginManager.GetContractAbiVersions()));
+        api.MapGet("/plugins/contract-abi", () => Results.Ok(PluginManager.GetContractAbiVersions()));
         api.MapGet("/plugins/list", () => Results.Ok(GetPluginListItems(pluginManager)));
 
         api.MapGet("/plugin-market/plugins", async (HttpContext context) =>
@@ -46,7 +17,8 @@ internal sealed partial class HostHttpServer
             try
             {
                 var forceRefresh = context.Request.Query.TryGetValue("refresh", out var refreshValue) &&
-                                   (refreshValue == "1" || string.Equals(refreshValue, "true", StringComparison.OrdinalIgnoreCase));
+                                   (refreshValue == "1" || string.Equals(refreshValue, "true",
+                                       StringComparison.OrdinalIgnoreCase));
                 var marketplace = await MarketplaceCache.GetAsync(
                     GetMarketplaceInstalledPlugins(pluginManager),
                     context.RequestAborted,
@@ -86,15 +58,18 @@ internal sealed partial class HostHttpServer
         var disabledPlugins = EnumerateDisabledPlugins(pluginManager)
             .Where(plugin => !enabledIds.Contains(plugin.Id))
             .ToArray();
-        var listedIds = enabledIds.Concat(disabledPlugins.Select(plugin => plugin.Id)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var listedIds = enabledIds.Concat(disabledPlugins.Select(plugin => plugin.Id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var unloadedPlugins = EnumerateUnloadedPlugins(pluginManager)
             .Where(plugin => !listedIds.Contains(plugin.Id))
             .ToArray();
 
-        return enabledPlugins.Concat(disabledPlugins).Concat(unloadedPlugins).ToArray();
+        return [.. enabledPlugins.Concat(disabledPlugins).Concat(unloadedPlugins)];
     }
 
-    internal static PluginListItem? FindPluginListItem(PluginManager pluginManager, string id) =>
-        GetPluginListItems(pluginManager).FirstOrDefault(item =>
+    internal static PluginListItem? FindPluginListItem(PluginManager pluginManager, string id)
+    {
+        return GetPluginListItems(pluginManager).FirstOrDefault(item =>
             string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
 }

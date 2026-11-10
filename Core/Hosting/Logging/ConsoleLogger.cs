@@ -1,5 +1,5 @@
-using ShiroBot.Terminal;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.Terminal;
 
 namespace ShiroBot.Hosting.Logging;
 
@@ -14,11 +14,30 @@ internal sealed class ConsoleLogger(string? prefix = null, HostLogHub? logHub = 
         set => ConsoleOutput.IsEnabled = value;
     }
 
-    public void Log(string message) => Write("log", message, ConsoleOutput.Log);
-    public void Info(string message) => Write("info", message, ConsoleOutput.Info);
-    public void Success(string message) => Write("success", message, ConsoleOutput.Success);
-    public void Warning(string message) => Write("warning", message, ConsoleOutput.Warning);
-    public void Error(string message) => Write("error", message, ConsoleOutput.Error);
+    public void Log(string message)
+    {
+        Write("log", message, ConsoleOutput.Log);
+    }
+
+    public void Info(string message)
+    {
+        Write("info", message, ConsoleOutput.Info);
+    }
+
+    public void Success(string message)
+    {
+        Write("success", message, ConsoleOutput.Success);
+    }
+
+    public void Warning(string message)
+    {
+        Write("warning", message, ConsoleOutput.Warning);
+    }
+
+    public void Error(string message)
+    {
+        Write("error", message, ConsoleOutput.Error);
+    }
 
     private void Write(string level, string message, Action<string> writeConsole)
     {

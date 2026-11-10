@@ -1,13 +1,28 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using Microsoft.CodeAnalysis;
 
 namespace ShiroBot.SDK.Generators;
 
 internal enum Shape
 {
-    String, Boolean, Number, Guid, DateTime, DateTimeOffset, Enum, Nullable,
-    Array, List, Dictionary, Object, JsonNode, JsonElement
+    String,
+    Boolean,
+    Number,
+    Guid,
+    DateTime,
+    DateTimeOffset,
+    Enum,
+    Nullable,
+    Array,
+    List,
+    Dictionary,
+    Object,
+    JsonNode,
+    JsonElement
 }
 
 /// <summary>契约里一个类型的形状，决定怎么读写和怎么描述成 JSON Schema。</summary>
@@ -22,11 +37,15 @@ internal sealed class TypeModel
 
     public Shape Kind { get; }
     public ITypeSymbol Symbol { get; }
+
     /// <summary>引用类型标了 ? 或 Nullable&lt;T&gt;：允许 null。</summary>
     public bool Nullable { get; }
+
     public TypeModel? Element { get; set; }
+
     /// <summary>数字类型对应的 Utf8JsonReader.GetXxx 后缀，例如 Int32。</summary>
     public string NumberMethod { get; set; } = "";
+
     public bool Integer { get; set; }
 
     /// <summary>不带可空标记的完全限定名，用作 C# 类型。</summary>
@@ -36,9 +55,11 @@ internal sealed class TypeModel
     /// <summary>带可空标记的完全限定名。</summary>
     public string DisplayWithNullability => Nullable && Symbol.IsReferenceType ? Display + "?" : Display;
 
-    public string Key => Kind + ":" + Symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(
-        SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier | SymbolDisplayMiscellaneousOptions.UseSpecialTypes))
-        + (Nullable ? "?" : "");
+    public string Key => Kind + ":" + Symbol.ToDisplayString(
+                             SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(
+                                 SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier |
+                                 SymbolDisplayMiscellaneousOptions.UseSpecialTypes))
+                         + (Nullable ? "?" : "");
 }
 
 /// <summary>契约对象类型的一个属性。</summary>
@@ -61,49 +82,59 @@ internal sealed class PropertyModel
 
     /// <summary>[Range] 的下限和上限、[MaxLength]/[StringLength] 的长度、[UiField] 的控件，写进 JSON Schema 供表单使用。</summary>
     public string? Minimum { get; set; }
+
     public string? Maximum { get; set; }
     public int? MaxLength { get; set; }
     public string? UiHint { get; set; }
-    public bool Settable => Symbol.SetMethod is { } set && !set.IsInitOnly && set.DeclaredAccessibility == Accessibility.Public;
+
+    public bool Settable => Symbol.SetMethod is { IsInitOnly: false, DeclaredAccessibility: Accessibility.Public };
 }
 
 internal sealed class ObjectModel
 {
-    public ObjectModel(INamedTypeSymbol symbol) => Symbol = symbol;
+    public ObjectModel(INamedTypeSymbol symbol)
+    {
+        Symbol = symbol;
+    }
 
     public INamedTypeSymbol Symbol { get; }
-    public List<PropertyModel> Properties { get; } = new();
+    public List<PropertyModel> Properties { get; } = [];
     public IMethodSymbol? Constructor { get; set; }
     public bool IsRecord => Symbol.IsRecord;
 }
 
-/// <summary>把 Roslyn 类型分类成 <see cref="TypeModel"/>；不支持的类型报告诊断。</summary>
+/// <summary>把 Roslyn 类型分类成 <see cref="TypeModel" />；不支持的类型报告诊断。</summary>
 internal sealed class TypeCatalog
 {
-    private readonly Compilation _compilation;
     private readonly Dictionary<string, ObjectModel> _objects = new();
     private readonly Dictionary<string, TypeModel> _types = new();
 
-    public TypeCatalog(Compilation compilation) => _compilation = compilation;
-
-    public List<Diagnostic> Diagnostics { get; } = new();
+    public List<Diagnostic> Diagnostics { get; } = [];
     public IEnumerable<ObjectModel> Objects => _objects.Values;
     public IEnumerable<TypeModel> Types => _types.Values;
-    public HashSet<string> Enums { get; } = new();
+    public HashSet<string> Enums { get; } = [];
 
-    public ObjectModel? ObjectOf(ITypeSymbol symbol) =>
-        _objects.TryGetValue(symbol.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), out var model) ? model : null;
+    public ObjectModel? ObjectOf(ITypeSymbol symbol)
+    {
+        return _objects.TryGetValue(symbol.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            out var model)
+            ? model
+            : null;
+    }
 
     /// <summary>契约里的根类型：请求、响应、事件和描述。只接受对象类型。</summary>
     public TypeModel? AddRoot(ITypeSymbol symbol, Location? location)
     {
         var model = Classify(symbol, symbol.NullableAnnotation == NullableAnnotation.Annotated, location);
-        if (model is not null && model.Kind != Shape.Object)
+        if (model is null || model.Kind == Shape.Object)
+        {
+            return model;
+        }
+
         {
             Diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.RootNotObject, location, symbol.ToDisplayString()));
             return null;
         }
-        return model;
     }
 
     public TypeModel? Classify(ITypeSymbol symbol, bool nullable, Location? location)
@@ -111,8 +142,7 @@ internal sealed class TypeCatalog
         if (symbol is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullableType)
         {
             var inner = Classify(nullableType.TypeArguments[0], false, location);
-            if (inner is null) return null;
-            return Remember(new TypeModel(Shape.Nullable, symbol, true) { Element = inner });
+            return inner is null ? null : Remember(new TypeModel(Shape.Nullable, symbol, true) { Element = inner });
         }
 
         var model = symbol.SpecialType switch
@@ -151,59 +181,72 @@ internal sealed class TypeCatalog
                 return Remember(new TypeModel(Shape.JsonNode, symbol, nullable));
         }
 
-        if (symbol is IArrayTypeSymbol { Rank: 1 } array)
+        switch (symbol)
         {
-            var element = Classify(array.ElementType, array.ElementType.NullableAnnotation == NullableAnnotation.Annotated, location);
-            return element is null ? null : Remember(new TypeModel(Shape.Array, symbol, nullable) { Element = element });
-        }
-
-        if (symbol is INamedTypeSymbol named)
-        {
-            if (named.TypeKind == Microsoft.CodeAnalysis.TypeKind.Enum)
+            case IArrayTypeSymbol { Rank: 1 } array:
             {
-                Enums.Add(fullName);
-                return Remember(new TypeModel(Shape.Enum, symbol, false));
+                var element = Classify(array.ElementType,
+                    array.ElementType.NullableAnnotation == NullableAnnotation.Annotated, location);
+                return element is null
+                    ? null
+                    : Remember(new TypeModel(Shape.Array, symbol, nullable) { Element = element });
             }
-
-            if (named.IsGenericType)
+            case INamedTypeSymbol named:
             {
-                switch (fullName)
+                if (named.TypeKind == TypeKind.Enum)
                 {
-                    case "global::System.Collections.Generic.List<T>":
-                    case "global::System.Collections.Generic.IList<T>":
-                    case "global::System.Collections.Generic.IReadOnlyList<T>":
-                    case "global::System.Collections.Generic.ICollection<T>":
-                    case "global::System.Collections.Generic.IReadOnlyCollection<T>":
-                    case "global::System.Collections.Generic.IEnumerable<T>":
+                    Enums.Add(fullName);
+                    return Remember(new TypeModel(Shape.Enum, symbol, false));
+                }
+
+                if (named.IsGenericType)
+                {
+                    switch (fullName)
                     {
-                        var item = named.TypeArguments[0];
-                        var element = Classify(item, item.NullableAnnotation == NullableAnnotation.Annotated, location);
-                        return element is null ? null : Remember(new TypeModel(Shape.List, symbol, nullable) { Element = element });
-                    }
-                    case "global::System.Collections.Generic.Dictionary<TKey, TValue>":
-                    case "global::System.Collections.Generic.IDictionary<TKey, TValue>":
-                    case "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>":
-                    {
-                        if (named.TypeArguments[0].SpecialType != SpecialType.System_String) break;
-                        var value = named.TypeArguments[1];
-                        var element = Classify(value, value.NullableAnnotation == NullableAnnotation.Annotated, location);
-                        return element is null ? null : Remember(new TypeModel(Shape.Dictionary, symbol, nullable) { Element = element });
+                        case "global::System.Collections.Generic.List<T>":
+                        case "global::System.Collections.Generic.IList<T>":
+                        case "global::System.Collections.Generic.IReadOnlyList<T>":
+                        case "global::System.Collections.Generic.ICollection<T>":
+                        case "global::System.Collections.Generic.IReadOnlyCollection<T>":
+                        case "global::System.Collections.Generic.IEnumerable<T>":
+                        {
+                            var item = named.TypeArguments[0];
+                            var element = Classify(item, item.NullableAnnotation == NullableAnnotation.Annotated,
+                                location);
+                            return element is null
+                                ? null
+                                : Remember(new TypeModel(Shape.List, symbol, nullable) { Element = element });
+                        }
+                        case "global::System.Collections.Generic.Dictionary<TKey, TValue>":
+                        case "global::System.Collections.Generic.IDictionary<TKey, TValue>":
+                        case "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>":
+                        {
+                            if (named.TypeArguments[0].SpecialType != SpecialType.System_String) break;
+                            var value = named.TypeArguments[1];
+                            var element = Classify(value, value.NullableAnnotation == NullableAnnotation.Annotated,
+                                location);
+                            return element is null
+                                ? null
+                                : Remember(new TypeModel(Shape.Dictionary, symbol, nullable) { Element = element });
+                        }
                     }
                 }
-            }
-            else if (named.TypeKind is Microsoft.CodeAnalysis.TypeKind.Class or Microsoft.CodeAnalysis.TypeKind.Struct
-                     && !named.IsAbstract && !named.IsStatic && !IsFrameworkType(named))
-            {
-                if (named.ContainingType is not null)
+                else if (named is { TypeKind: TypeKind.Class or TypeKind.Struct, IsAbstract: false, IsStatic: false } && !IsFrameworkType(named))
                 {
-                    Diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.NestedType, location, named.ToDisplayString()));
-                    return null;
+                    if (named.ContainingType is not null)
+                    {
+                        Diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.NestedType, location,
+                            named.ToDisplayString()));
+                        return null;
+                    }
+
+                    var objectModel = new TypeModel(Shape.Object, symbol, nullable && named.IsReferenceType);
+                    Remember(objectModel);
+                    AddObject(named, location);
+                    return objectModel;
                 }
-                var objectModel = new TypeModel(Shape.Object, symbol, nullable && named.IsReferenceType);
-                Remember(objectModel);
-                AddObject(named, location);
-                return objectModel;
             }
+                break;
         }
 
         Diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UnsupportedType, location, symbol.ToDisplayString()));
@@ -218,45 +261,53 @@ internal sealed class TypeCatalog
         _objects.Add(key, model);
 
         var properties = symbol.GetMembers().OfType<IPropertySymbol>()
-            .Where(property => !property.IsStatic && !property.IsIndexer && property.DeclaredAccessibility == Accessibility.Public
-                               && property.GetMethod is not null && property.Name != "EqualityContract"
-                               && !HasAttribute(property, "global::System.Text.Json.Serialization.JsonIgnoreAttribute"))
+            .Where(property =>
+                property is { IsStatic: false, IsIndexer: false, DeclaredAccessibility: Accessibility.Public, GetMethod: not null, Name: not "EqualityContract" } && !HasAttribute(property,
+                    "global::System.Text.Json.Serialization.JsonIgnoreAttribute"))
             .ToList();
 
         // 位置记录的主构造函数：参数和属性一一对应时用它构造。
         model.Constructor = symbol.InstanceConstructors
             .Where(ctor => ctor.DeclaredAccessibility == Accessibility.Public && ctor.Parameters.Length > 0
-                           && ctor.Parameters.All(parameter => properties.Any(property =>
-                               string.Equals(property.Name, parameter.Name, System.StringComparison.OrdinalIgnoreCase))))
+                                                                              && ctor.Parameters.All(parameter =>
+                                                                                  properties.Any(property =>
+                                                                                      string.Equals(property.Name,
+                                                                                          parameter.Name,
+                                                                                          StringComparison
+                                                                                              .OrdinalIgnoreCase))))
             .OrderByDescending(ctor => ctor.Parameters.Length)
             .FirstOrDefault();
         if (model.Constructor is null && !symbol.InstanceConstructors.Any(ctor =>
                 ctor.Parameters.Length == 0 && ctor.DeclaredAccessibility == Accessibility.Public))
-        {
             Diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.NoConstructor, location, symbol.ToDisplayString()));
-        }
 
         foreach (var property in properties)
         {
             var parameter = model.Constructor?.Parameters.FirstOrDefault(candidate =>
-                string.Equals(candidate.Name, property.Name, System.StringComparison.OrdinalIgnoreCase));
+                string.Equals(candidate.Name, property.Name, StringComparison.OrdinalIgnoreCase));
             var type = Classify(property.Type, property.Type.NullableAnnotation == NullableAnnotation.Annotated,
                 property.Locations.FirstOrDefault() ?? location);
             if (type is null) continue;
-            if (parameter is null && property.SetMethod is null) continue;   // 只读的计算属性不属于消息
+            if (parameter is null && property.SetMethod is null) continue; // 只读的计算属性不属于消息
             var jsonName = AttributeString(property, "global::System.Text.Json.Serialization.JsonPropertyNameAttribute")
                            ?? SnakeCase(property.Name);
             model.Properties.Add(new PropertyModel(property, jsonName, type)
             {
                 Parameter = parameter,
                 Description = AttributeString(property, "global::System.ComponentModel.DescriptionAttribute")
-                              ?? (parameter is null ? null : AttributeString(parameter, "global::System.ComponentModel.DescriptionAttribute")),
-                Required = property.IsRequired || parameter is { HasExplicitDefaultValue: false } && !type.Nullable,
+                              ?? (parameter is null
+                                  ? null
+                                  : AttributeString(parameter, "global::System.ComponentModel.DescriptionAttribute")),
+                Required = property.IsRequired || (parameter is { HasExplicitDefaultValue: false } && !type.Nullable),
                 Minimum = RangeBound(property, parameter, 0),
                 Maximum = RangeBound(property, parameter, 1),
-                MaxLength = int.TryParse(Argument(property, parameter, "global::System.ComponentModel.DataAnnotations.MaxLengthAttribute", 0)
-                                         ?? Argument(property, parameter, "global::System.ComponentModel.DataAnnotations.StringLengthAttribute", 0),
-                    out var maxLength) ? maxLength : null,
+                MaxLength = int.TryParse(Argument(property, parameter,
+                                             "global::System.ComponentModel.DataAnnotations.MaxLengthAttribute", 0)
+                                         ?? Argument(property, parameter,
+                                             "global::System.ComponentModel.DataAnnotations.StringLengthAttribute", 0),
+                    out var maxLength)
+                    ? maxLength
+                    : null,
                 UiHint = UiHintOf(property, parameter)
             });
         }
@@ -268,26 +319,30 @@ internal sealed class TypeCatalog
         return _types[model.Key];
     }
 
-    private static TypeModel Number(ITypeSymbol symbol, string method, bool integer) =>
-        new(Shape.Number, symbol, false) { NumberMethod = method, Integer = integer };
+    private static TypeModel Number(ITypeSymbol symbol, string method, bool integer)
+    {
+        return new TypeModel(Shape.Number, symbol, false) { NumberMethod = method, Integer = integer };
+    }
 
     private static bool IsFrameworkType(INamedTypeSymbol symbol)
     {
         var ns = symbol.ContainingNamespace?.ToDisplayString() ?? "";
-        return ns == "System" || ns.StartsWith("System.", System.StringComparison.Ordinal)
-               || ns.StartsWith("Microsoft.", System.StringComparison.Ordinal);
+        return ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal)
+                              || ns.StartsWith("Microsoft.", StringComparison.Ordinal);
     }
 
-    /// <summary>属性或主构造函数参数上某个特性的第 <paramref name="index"/> 个构造参数，按不变文化格式化。</summary>
+    /// <summary>属性或主构造函数参数上某个特性的第 <paramref name="index" /> 个构造参数，按不变文化格式化。</summary>
     private static string? Argument(IPropertySymbol property, IParameterSymbol? parameter, string attribute, int index)
     {
         foreach (var symbol in new ISymbol?[] { property, parameter })
         {
             var data = symbol?.GetAttributes().FirstOrDefault(candidate =>
                 candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == attribute);
-            if (data is not null && data.ConstructorArguments.Length > index && data.ConstructorArguments[index].Value is { } value)
-                return System.Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+            if (data is not null && data.ConstructorArguments.Length > index &&
+                data.ConstructorArguments[index].Value is { } value)
+                return Convert.ToString(value, CultureInfo.InvariantCulture);
         }
+
         return null;
     }
 
@@ -296,15 +351,17 @@ internal sealed class TypeCatalog
         foreach (var symbol in new ISymbol?[] { property, parameter })
         {
             var data = symbol?.GetAttributes().FirstOrDefault(candidate =>
-                candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::System.ComponentModel.DataAnnotations.RangeAttribute");
+                candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+                "global::System.ComponentModel.DataAnnotations.RangeAttribute");
             if (data is null) continue;
             var offset = data.ConstructorArguments.Length == 3 ? 1 : 0;
             if (data.ConstructorArguments.Length <= index + offset) continue;
-            var text = System.Convert.ToString(data.ConstructorArguments[index + offset].Value, System.Globalization.CultureInfo.InvariantCulture);
-            if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            var text = Convert.ToString(data.ConstructorArguments[index + offset].Value, CultureInfo.InvariantCulture);
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
                 && !double.IsNaN(value) && !double.IsInfinity(value))
-                return value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+                return value.ToString("R", CultureInfo.InvariantCulture);
         }
+
         return null;
     }
 
@@ -314,25 +371,37 @@ internal sealed class TypeCatalog
         foreach (var symbol in new ISymbol?[] { property, parameter })
         {
             var data = symbol?.GetAttributes().FirstOrDefault(candidate =>
-                candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::ShiroBot.SDK.Dashboard.UiFieldAttribute");
+                candidate.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+                "global::ShiroBot.SDK.Dashboard.UiFieldAttribute");
             if (data?.NamedArguments.FirstOrDefault(argument => argument.Key == "Kind").Value.Value is int kind)
-                return kind switch { 1 => "textarea", 2 => "secret", 7 => "user", 8 => "users", 9 => "group", 10 => "groups", _ => null };
+                return kind switch
+                {
+                    1 => "textarea", 2 => "secret", 7 => "user", 8 => "users", 9 => "group", 10 => "groups",
+                    _ => null
+                };
         }
+
         return null;
     }
 
-    public static bool HasAttribute(ISymbol symbol, string fullName) =>
-        symbol.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == fullName);
+    public static bool HasAttribute(ISymbol symbol, string fullName)
+    {
+        return symbol.GetAttributes().Any(attribute =>
+            attribute.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == fullName);
+    }
 
-    public static string? AttributeString(ISymbol symbol, string fullName) =>
-        symbol.GetAttributes()
-            .FirstOrDefault(attribute => attribute.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == fullName)
+    public static string? AttributeString(ISymbol symbol, string fullName)
+    {
+        return symbol.GetAttributes()
+            .FirstOrDefault(attribute =>
+                attribute.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == fullName)
             ?.ConstructorArguments.FirstOrDefault().Value as string;
+    }
 
     /// <summary>与 System.Text.Json 的 SnakeCaseLower 一致。</summary>
     public static string SnakeCase(string name)
     {
-        var builder = new System.Text.StringBuilder(name.Length + 4);
+        var builder = new StringBuilder(name.Length + 4);
         for (var i = 0; i < name.Length; i++)
         {
             var ch = name[i];
@@ -343,8 +412,12 @@ internal sealed class TypeCatalog
                 if (previousLower || nextLower) builder.Append('_');
                 builder.Append(char.ToLowerInvariant(ch));
             }
-            else builder.Append(ch);
+            else
+            {
+                builder.Append(ch);
+            }
         }
+
         return builder.ToString();
     }
 }

@@ -1,247 +1,239 @@
-﻿using System.Reflection;
+using System.Diagnostics;
 using System.IO.Compression;
+using System.Net;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using ShiroBot.Adapters;
 using ShiroBot.Adapters.Compatibility;
-using ShiroBot.Configuration;
 using ShiroBot.Components.Updates;
-using ShiroBot.Update;
-using ShiroBot.SDK.Config;
+using ShiroBot.Configuration;
+using ShiroBot.ExternalConfigModelProbe;
+using ShiroBot.ExternalConfigPluginProbe;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Logging;
+using ShiroBot.Hosting.Files;
 using ShiroBot.Hosting.Http;
+using ShiroBot.Hosting.Logging;
 using ShiroBot.Hosting.Runtime;
+using ShiroBot.Model.Discord;
+using ShiroBot.Model.QQ;
+using ShiroBot.Model.Telegram;
 using ShiroBot.Packages;
 using ShiroBot.Plugins;
 using ShiroBot.Plugins.Loading;
 using ShiroBot.Plugins.Services;
 using ShiroBot.SDK.Adapter;
+using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
-using ShiroBot.Model.Discord;
-using ShiroBot.Model.QQ;
-using ShiroBot.Model.Telegram;
 using ShiroBot.SharedContractPluginProbe;
+using ShiroBot.Terminal;
+using ShiroBot.Update;
+using ShiroBot.Verification;
 
 // Deliberately invalid legacy metadata: current hosts must never parse or enforce it.
 [assembly: ShiroBotApiCompatibility("legacy-ignored", "legacy-ignored")]
-if (args is ["--plugin-list-benchmark", var fixtures, var requestCount])
+switch (args)
 {
-    await PluginListBenchmark.RunAsync(fixtures, int.Parse(requestCount));
-    return;
-}
-
-if (args is ["--directory-lock-probe", var lockDirectory, var holdLock])
-{
-    using var held = HostDirectoryLock.TryAcquire(lockDirectory);
-    if (held is null) { Environment.ExitCode = 73; return; }
-    if (holdLock == "hold")
+    case ["--plugin-list-benchmark", var fixtures, var requestCount]:
     {
-        Console.WriteLine("LOCKED");
-        await Console.In.ReadLineAsync();
+        await PluginListBenchmark.RunAsync(fixtures, int.Parse(requestCount));
+        return;
     }
-    return;
-}
-
-if (args is ["--plugin-unload-check", var unloadCheckDll, .. var unloadCheckRest])
-{
-    await PluginInteropVerification.CheckPluginUnloadAsync(unloadCheckDll,
-        unloadCheckRest is [var seconds] ? int.Parse(seconds) : 3);
-    return;
-}
-
-if (args is ["--adapter-unload-check", var adapterCheckDll, .. var adapterCheckRest])
-{
-    await PluginInteropVerification.CheckAdapterUnloadAsync(adapterCheckDll,
-        adapterCheckRest is [var seconds] ? int.Parse(seconds) : 3);
-    return;
-}
-
-if (args is ["--plugin-interop"])
-{
-    await PluginInteropVerification.RunAsync();
-    return;
-}
-
-if (args is ["--config-fingerprint"])
-{
-    ConfigFingerprintVerification.Run();
-    return;
-}
-
-if (args is ["--config-reload"])
-{
-    await CoreConfigReloadVerification.RunAsync();
-    return;
-}
-
-if (args is ["--toml-formatting"])
-{
-    TomlFormattingVerification.Run();
-    return;
-}
-
-if (args is ["--plugin-priority"])
-{
-    await PluginPriorityVerification.RunAsync();
-    return;
-}
-
-if (args is ["--plugin-actions"])
-{
-    await PluginActionsVerification.RunAsync();
-    await PluginDashboardVerification.RunAsync();
-    return;
-}
-
-if (args is ["--plugin-web-pages"])
-{
-    await PluginWebPageVerification.RunAsync();
-    await PluginWebSafetyVerification.RunAsync();
-    return;
-}
-
-// Interactive: the prompt's floating completion menu and notices, for checking in a real terminal (or a pty).
-// Type to see completions; "notice" shows a long notice; "quit" exits.
-if (args is ["--console-demo"] or ["--console-demo", "quiet"])
-{
-    ShiroBot.Terminal.ConsoleOutput.ConsoleCommandOption[] completions =
-    [
-        new("plugin", "插件: list|market|install|load|unload|update|actions|action"),
-        new("adapter", "适配器: list|market|install|create|start|stop|reload|config|remove"),
-        new("update", "检查或更新主程序"), new("api", "显示或设置 API 鉴权信息"), new("dashboard", "在浏览器中打开 Dashboard"),
-        new("plugin list", "显示已加载插件"), new("plugin market", "浏览插件市场"), new("plugin install", "从插件市场安装: <ID>"),
-        new("plugin install ShiroStatus", "ShiroStatus · v1.2.0"), new("plugin action", "执行插件操作: <插件> <操作>"),
-        new("plugin action AiChatPlugin", "AI Chat · 2 个操作"), new("plugin action AiChatPlugin report", "生成运行报告"),
-        new("plugin action AiChatPlugin clear-memory", "清空所有会话记忆"),
-        new("adapter list", "列出适配器实例"), new("adapter start", "启动已停止的实例"), new("adapter start qq-main", "启动 QQ 主号"),
-        new("notice", "演示浮动提示"), new("quit", "退出演示")
-    ];
-    ShiroBot.Terminal.ConsoleOutput.Info("控制台已就绪");
-    // "quiet" leaves out the background logs, to see the prompt on a nearly empty screen.
-    if (args.Length == 1) _ = Task.Run(async () =>
+    case ["--directory-lock-probe", var lockDirectory, var holdLock]:
     {
-        for (var i = 1; i <= 40; i++)
+        using var held = HostDirectoryLock.TryAcquire(lockDirectory);
+        if (held is null)
         {
-            await Task.Delay(i <= 3 ? 400 : 60);
-            ShiroBot.Terminal.ConsoleOutput.Log($"后台日志 {i}");
+            Environment.ExitCode = 73;
+            return;
         }
-    });
-    while (ShiroBot.Terminal.ConsoleOutput.ReadPrompt("> ", completions) is var input && input != "quit")
-    {
-        if (input == "notice")
-            ShiroBot.Terminal.ConsoleOutput.Notice("会出错", "插件操作执行失败。",
-                string.Join('\n', Enumerable.Range(1, 40).Select(i => $"第 {i} 行：很长的中文内容用来检查换行是否按照两列宽度计算而不会超出终端右边界")), error: true);
-        else
-            ShiroBot.Terminal.ConsoleOutput.Info("执行: " + input);
+
+        if (holdLock == "hold")
+        {
+            Console.WriteLine("LOCKED");
+            await Console.In.ReadLineAsync();
+        }
+
+        return;
     }
-    return;
-}
-
-if (args is ["--memory-retention"])
-{
-    await MemoryRetentionVerification.RunAsync();
-    return;
-}
-
-if (args is ["--avalonia-lazy"])
-{
-    await AvaloniaLazyVerification.RunAsync();
-    return;
-}
-
-if (args is ["--avalonia-loh"])
-{
-    await AvaloniaLohVerification.RunAsync();
-    return;
-}
-
-if (args is ["--avalonia-fonts"])
-{
-    await AvaloniaFontVerification.RunAsync();
-    return;
-}
-
-if (args is ["--idle-font-cache"])
-{
-    await IdleFontCacheVerification.RunAsync();
-    return;
-}
-
-if (args is ["--message-prefix"])
-{
-    await MessagePrefixVerification.RunAsync();
-    return;
-}
-
-if (args is ["--host-environment"])
-{
-    HostEnvironmentVerification.Run();
-    return;
-}
-
-if (args is ["--host-environment-probe"])
-{
-    Console.WriteLine(JsonSerializer.Serialize(HostEnvironmentInfo.Create()));
-    return;
-}
-
-if (args is ["--console-output-probe"])
-{
-    ConsoleOutputVerification.Probe();
-    return;
-}
-
-if (args is ["--console-output"])
-{
-    await ConsoleOutputVerification.RunAsync();
-    return;
-}
-
-if (args is ["--local-logs"])
-{
-    await LocalLogVerification.RunAsync();
-    return;
-}
-
-if (args is ["--idle-font-timer", var enabled])
-{
-    await IdleFontCacheVerification.RunTimerAsync(bool.Parse(enabled));
-    return;
-}
-
-if (args is ["--plugin-migration", var migrationManifest])
-{
-    PluginMigrationVerification.Run(migrationManifest);
-    return;
-}
-
-if (args is ["--shadow-cleanup"])
-{
-    RestartNoticeVerification.Run();
-    DeferredShadowCleanupVerification.Run();
-    return;
-}
-
-if (args is ["--plugin-reload-version", var pluginFixtures])
-{
-    await PluginReloadVersionVerification.RunAsync(pluginFixtures);
-    return;
-}
-
-if (args is ["--update-integration", var fixtureDirectory])
-{
-    await UpdateIntegration.RunAsync(fixtureDirectory);
-    return;
-}
-
-if (args is ["--adapter-reload-isolation"])
-{
-    Console.WriteLine($"Verification runtime: {Environment.Version}");
-    await AdapterReloadIsolationVerification.RunAsync();
-    return;
+    case ["--plugin-unload-check", var unloadCheckDll, .. var unloadCheckRest]:
+    {
+        await PluginInteropVerification.CheckPluginUnloadAsync(unloadCheckDll,
+            unloadCheckRest is [var seconds] ? int.Parse(seconds) : 3);
+        return;
+    }
+    case ["--adapter-unload-check", var adapterCheckDll, .. var adapterCheckRest]:
+    {
+        await PluginInteropVerification.CheckAdapterUnloadAsync(adapterCheckDll,
+            adapterCheckRest is [var seconds] ? int.Parse(seconds) : 3);
+        return;
+    }
+    case ["--plugin-interop"]:
+    {
+        await PluginInteropVerification.RunAsync();
+        return;
+    }
+    case ["--config-fingerprint"]:
+    {
+        ConfigFingerprintVerification.Run();
+        return;
+    }
+    case ["--config-reload"]:
+    {
+        await CoreConfigReloadVerification.RunAsync();
+        return;
+    }
+    case ["--toml-formatting"]:
+    {
+        TomlFormattingVerification.Run();
+        return;
+    }
+    case ["--plugin-priority"]:
+    {
+        await PluginPriorityVerification.RunAsync();
+        return;
+    }
+    case ["--plugin-actions"]:
+    {
+        await PluginActionsVerification.RunAsync();
+        await PluginDashboardVerification.RunAsync();
+        return;
+    }
+    case ["--plugin-web-pages"]:
+    {
+        await PluginWebPageVerification.RunAsync();
+        await PluginWebSafetyVerification.RunAsync();
+        return;
+    }
+    case ["--console-demo"] or ["--console-demo", "quiet"]:
+    {
+        ConsoleOutput.ConsoleCommandOption[] completions =
+        [
+            new("plugin", "插件: list|market|install|load|unload|update|actions|action"),
+            new("adapter", "适配器: list|market|install|create|start|stop|reload|config|remove"),
+            new("update", "检查或更新主程序"), new("api", "显示或设置 API 鉴权信息"), new("dashboard", "在浏览器中打开 Dashboard"),
+            new("plugin list", "显示已加载插件"), new("plugin market", "浏览插件市场"), new("plugin install", "从插件市场安装: <ID>"),
+            new("plugin install ShiroStatus", "ShiroStatus · v1.2.0"), new("plugin action", "执行插件操作: <插件> <操作>"),
+            new("plugin action AiChatPlugin", "AI Chat · 2 个操作"), new("plugin action AiChatPlugin report", "生成运行报告"),
+            new("plugin action AiChatPlugin clear-memory", "清空所有会话记忆"),
+            new("adapter list", "列出适配器实例"), new("adapter start", "启动已停止的实例"), new("adapter start qq-main", "启动 QQ 主号"),
+            new("notice", "演示浮动提示"), new("quit", "退出演示")
+        ];
+        ConsoleOutput.Info("控制台已就绪");
+        // "quiet" leaves out the background logs, to see the prompt on a nearly empty screen.
+        if (args.Length == 1)
+            _ = Task.Run(async () =>
+            {
+                for (var i = 1; i <= 40; i++)
+                {
+                    await Task.Delay(i <= 3 ? 400 : 60);
+                    ConsoleOutput.Log($"后台日志 {i}");
+                }
+            });
+        while (ConsoleOutput.ReadPrompt("> ", completions) is var input && input != "quit")
+            if (input == "notice")
+                ConsoleOutput.Notice("会出错", "插件操作执行失败。",
+                    string.Join('\n',
+                        Enumerable.Range(1, 40).Select(i => $"第 {i} 行：很长的中文内容用来检查换行是否按照两列宽度计算而不会超出终端右边界")),
+                    true);
+            else
+                ConsoleOutput.Info("执行: " + input);
+        return;
+    }
+    case ["--memory-retention"]:
+    {
+        await MemoryRetentionVerification.RunAsync();
+        return;
+    }
+    case ["--avalonia-lazy"]:
+    {
+        await AvaloniaLazyVerification.RunAsync();
+        return;
+    }
+    case ["--avalonia-loh"]:
+    {
+        await AvaloniaLohVerification.RunAsync();
+        return;
+    }
+    case ["--avalonia-fonts"]:
+    {
+        await AvaloniaFontVerification.RunAsync();
+        return;
+    }
+    case ["--idle-font-cache"]:
+    {
+        await IdleFontCacheVerification.RunAsync();
+        return;
+    }
+    case ["--message-prefix"]:
+    {
+        await MessagePrefixVerification.RunAsync();
+        return;
+    }
+    case ["--host-environment"]:
+    {
+        HostEnvironmentVerification.Run();
+        return;
+    }
+    case ["--host-environment-probe"]:
+    {
+        Console.WriteLine(JsonSerializer.Serialize(HostEnvironmentInfo.Create()));
+        return;
+    }
+    case ["--console-output-probe"]:
+    {
+        ConsoleOutputVerification.Probe();
+        return;
+    }
+    case ["--console-output"]:
+    {
+        await ConsoleOutputVerification.RunAsync();
+        return;
+    }
+    case ["--local-logs"]:
+    {
+        await LocalLogVerification.RunAsync();
+        return;
+    }
+    case ["--idle-font-timer", var enabled]:
+    {
+        await IdleFontCacheVerification.RunTimerAsync(bool.Parse(enabled));
+        return;
+    }
+    case ["--plugin-migration", var migrationManifest]:
+    {
+        PluginMigrationVerification.Run(migrationManifest);
+        return;
+    }
+    case ["--shadow-cleanup"]:
+    {
+        RestartNoticeVerification.Run();
+        DeferredShadowCleanupVerification.Run();
+        return;
+    }
+    case ["--plugin-reload-version", var pluginFixtures]:
+    {
+        await PluginReloadVersionVerification.RunAsync(pluginFixtures);
+        return;
+    }
+    case ["--update-integration", var fixtureDirectory]:
+    {
+        await UpdateIntegration.RunAsync(fixtureDirectory);
+        return;
+    }
+    case ["--adapter-reload-isolation"]:
+    {
+        Console.WriteLine($"Verification runtime: {Environment.Version}");
+        await AdapterReloadIsolationVerification.RunAsync();
+        return;
+    }
 }
 
 RestartNoticeVerification.Run();
@@ -270,19 +262,25 @@ if (args is not ["--without-adapter-reload-isolation"])
     try
     {
         // Deliberately fail a deletion, then retry from the retained marker.
-        StagedComponentUpdates.StageDeletion(pluginRoot, "Sample", installed, directory: false);
+        StagedComponentUpdates.StageDeletion(pluginRoot, "Sample", installed, false);
         var failed = StagedComponentUpdates.ApplyStagedDeletions(pluginRoot);
         if (failed.Failed.Count != 1 || !StagedComponentUpdates.HasStagedDeletion(pluginRoot, "Sample") ||
             StagedComponentUpdates.ApplyStaged(pluginRoot).Applied.Count != 0)
             throw new InvalidOperationException("A failed deferred deletion was discarded or treated as an update.");
-        StagedComponentUpdates.StageDeletion(pluginRoot, "Sample", installed, directory: true);
+        StagedComponentUpdates.StageDeletion(pluginRoot, "Sample", installed, true);
         var retried = StagedComponentUpdates.ApplyStagedDeletions(pluginRoot);
         if (retried.Applied.Count != 1 || Directory.Exists(installed))
             throw new InvalidOperationException("A deferred deletion could not be retried.");
-        AssertThrows<InvalidOperationException>(() => StagedComponentUpdates.StageDeletion(pluginRoot, "Outside", deletionRoot, directory: true));
-        AssertThrows<InvalidOperationException>(() => StagedComponentUpdates.StageDeletion(pluginRoot, "Staging", Path.Combine(pluginRoot, ".update"), directory: true));
+        AssertThrows<InvalidOperationException>(() =>
+            StagedComponentUpdates.StageDeletion(pluginRoot, "Outside", deletionRoot, true));
+        AssertThrows<InvalidOperationException>(() =>
+            StagedComponentUpdates.StageDeletion(pluginRoot, "Staging", Path.Combine(pluginRoot, ".update"), true));
     }
-    finally { Directory.Delete(deletionRoot, recursive: true); }
+    finally
+    {
+        Directory.Delete(deletionRoot, true);
+    }
+
     Console.WriteLine("Deferred plugin deletion retry and path validation verification passed.");
 }
 
@@ -309,18 +307,25 @@ if (args is not ["--without-adapter-reload-isolation"])
         Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
         File.WriteAllText(marker, "keep");
     }
+
     try
     {
         StartupTempCleanup.Run(root, plugins);
         if (Directory.Exists(Path.Combine(root, ".tmp")) ||
             !Directory.EnumerateFiles(temp).SequenceEqual([userFile]) || markers.Any(path => !File.Exists(path)))
-            throw new InvalidOperationException("Startup cleanup removed useful files or retained abandoned updater work.");
+            throw new InvalidOperationException(
+                "Startup cleanup removed useful files or retained abandoned updater work.");
         File.Delete(userFile);
         StartupTempCleanup.Run(root, plugins);
         StartupTempCleanup.Run(root, plugins);
-        if (Directory.Exists(temp)) throw new InvalidOperationException("Startup cleanup retained an empty temporary directory.");
+        if (Directory.Exists(temp))
+            throw new InvalidOperationException("Startup cleanup retained an empty temporary directory.");
     }
-    finally { Directory.Delete(root, recursive: true); }
+    finally
+    {
+        Directory.Delete(root, true);
+    }
+
     Console.WriteLine("Startup updater temporary file cleanup verification passed.");
 }
 
@@ -336,49 +341,45 @@ await PluginInteropVerification.RunAsync();
         File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, entryPath);
         var entries = PluginManager.EnumeratePluginEntryAssemblies(pluginRoot).ToArray();
         if (entries.Length != 1 || !string.Equals(entries[0], entryPath, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Plugin entry discovery did not recognize an ID-named directory containing a prefixed DLL.");
-        }
+            throw new InvalidOperationException(
+                "Plugin entry discovery did not recognize an ID-named directory containing a prefixed DLL.");
     }
     finally
     {
-        Directory.Delete(Path.GetDirectoryName(pluginRoot)!, recursive: true);
+        Directory.Delete(Path.GetDirectoryName(pluginRoot)!, true);
     }
 }
 Console.WriteLine("Plugin ID directory discovery verification passed.");
 
 {
-    var pluginTomlPath = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"), "config.toml");
+    var pluginTomlPath = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"),
+        "config.toml");
     Directory.CreateDirectory(Path.GetDirectoryName(pluginTomlPath)!);
     try
     {
-        File.WriteAllText(pluginTomlPath, "name = \"a,b#c\"\n[network]\nport = 7021\nvalues = [1, 2]\n[[targets]]\nid = \"first\"\n");
+        File.WriteAllText(pluginTomlPath,
+            "name = \"a,b#c\"\n[network]\nport = 7021\nvalues = [1, 2]\n[[targets]]\nid = \"first\"\n");
         var config = HostHttpServer.LoadTomlObject(pluginTomlPath);
         if (config["name"] is not "a,b#c" ||
             config["network"] is not Dictionary<string, object?> network ||
             network["port"] is not 7021L ||
-            network["values"] is not object?[] values || values.Length != 2 ||
-            values[0] is not 1L ||
-            config["targets"] is not object?[] targets || targets.Length != 1 ||
-            targets[0] is not Dictionary<string, object?> target ||
+            network["values"] is not (object?[] and [1L, _]) ||
+            config["targets"] is not (object?[] and [Dictionary<string, object?> target]) ||
             target["id"] is not "first")
-        {
-            throw new InvalidOperationException("Plugin config TOML model did not preserve nested tables, arrays, or string values.");
-        }
+            throw new InvalidOperationException(
+                "Plugin config TOML model did not preserve nested tables, arrays, or string values.");
 
         using var patch = JsonDocument.Parse("{\"network\":{\"port\":8080,\"enabled\":true}}");
         HostHttpServer.ApplyComponentConfigPatch(
-            new ConfigManager(pluginTomlPath), pluginTomlPath, patch.RootElement, Array.Empty<object>());
+            new ConfigManager(pluginTomlPath), pluginTomlPath, patch.RootElement, []);
         var updated = HostHttpServer.LoadTomlObject(pluginTomlPath);
         if (updated["network"] is not Dictionary<string, object?> updatedNetwork ||
             updatedNetwork["port"] is not 8080L || updatedNetwork["enabled"] is not true)
-        {
             throw new InvalidOperationException("Plugin config API patch did not update nested TOML values.");
-        }
     }
     finally
     {
-        Directory.Delete(Path.GetDirectoryName(pluginTomlPath)!, recursive: true);
+        Directory.Delete(Path.GetDirectoryName(pluginTomlPath)!, true);
     }
 }
 Console.WriteLine("Plugin config TOML model verification passed.");
@@ -390,45 +391,47 @@ Console.WriteLine("Plugin config nested patch verification passed.");
     {
         var web = new WebHostContext("http://127.0.0.1:7001", true);
         var url = new Uri(web.RegisterFile("JmParser", string.Empty, filePath, contentType: "application/pdf"));
-        if (!System.Text.RegularExpressions.Regex.IsMatch(url.AbsolutePath, @"^/plugin/JmParser/[a-z0-9]{4,8}$"))
-            throw new InvalidOperationException("Empty file prefix did not preserve owner isolation with a short token.");
+        if (!CompiledPattern1().IsMatch(url.AbsolutePath))
+            throw new InvalidOperationException(
+                "Empty file prefix did not preserve owner isolation with a short token.");
         var legacy = new Uri(web.RegisterFile("OtherPlugin", "pdf", filePath));
         if (!legacy.AbsolutePath.StartsWith("/plugin/OtherPlugin/pdf/", StringComparison.Ordinal))
             throw new InvalidOperationException("Existing file route prefixes changed.");
-        var request = new Microsoft.AspNetCore.Http.DefaultHttpContext();
-        request.Request.Method = "GET";
-        request.Request.Path = url.AbsolutePath;
-        if (await web.HandleRequest(request) is not Microsoft.AspNetCore.Http.HttpResults.PhysicalFileHttpResult)
+        var request = new DefaultHttpContext { Request = { Method = "GET", Path = url.AbsolutePath } };
+        if (await web.HandleRequest(request) is not PhysicalFileHttpResult)
             throw new InvalidOperationException("Short file URL did not resolve to the registered file.");
         web.UnregisterOwner("JmParser");
-        if (await web.HandleRequest(request) is not Microsoft.AspNetCore.Http.HttpResults.NotFound)
+        if (await web.HandleRequest(request) is not NotFound)
             throw new InvalidOperationException("Short file URL survived owner unload.");
         var expired = new Uri(web.RegisterFile("JmParser", "", filePath, TimeSpan.FromTicks(1)));
         await Task.Delay(10);
         request.Request.Path = expired.AbsolutePath;
-        if (await web.HandleRequest(request) is not Microsoft.AspNetCore.Http.HttpResults.NotFound)
+        if (await web.HandleRequest(request) is not NotFound)
             throw new InvalidOperationException("Short file expiration was not enforced.");
     }
-    finally { File.Delete(filePath); }
+    finally
+    {
+        File.Delete(filePath);
+    }
+
     Console.WriteLine("Short owner-scoped file route, existing prefix, unload and expiration verification passed.");
 }
 
 {
-    var assembly = typeof(ShiroBot.ExternalConfigPluginProbe.ProbePlugin).Assembly;
-    var before = ShiroBot.ExternalConfigModelProbe.Settings.Constructions;
+    var assembly = typeof(ProbePlugin).Assembly;
+    var before = Settings.Constructions;
     var metadataSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(assembly.Location));
-    if (ShiroBot.ExternalConfigModelProbe.Settings.Constructions != before)
+    if (Settings.Constructions != before)
         throw new InvalidOperationException("External config metadata inspection executed a constructor.");
     var loadedSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(assembly));
-    foreach (var schema in new[] { metadataSchema, loadedSchema })
-    {
-        if (schema.Count != 2 || schema["cookie"].GetProperty("label").GetString() != "登录凭据" ||
+    if (new[] { metadataSchema, loadedSchema }.Any(schema =>
+            schema.Count != 2 || schema["cookie"].GetProperty("label").GetString() != "登录凭据" ||
             schema["cookie"].GetProperty("description").GetString() != "完整 Cookie，留空禁用。" ||
             schema["cookie"].GetProperty("type").GetString() != "password" ||
             schema["cookie"].GetProperty("group_id").GetString() != "cookies" ||
-            schema["cookie"].GetProperty("group_label").GetString() != "Cookie")
-            throw new InvalidOperationException("External config schema lost labels, descriptions, password type or groups.");
-    }
+            schema["cookie"].GetProperty("group_label").GetString() != "Cookie"))
+        throw new InvalidOperationException(
+            "External config schema lost labels, descriptions, password type or groups.");
     if (metadataSchema["retries"].GetProperty("default_value").GetInt32() != 0 ||
         loadedSchema["retries"].GetProperty("default_value").GetInt32() != 5)
         throw new InvalidOperationException("External config defaults did not respect the loaded/unloaded boundary.");
@@ -449,44 +452,38 @@ Console.WriteLine("Plugin config nested patch verification passed.");
     if (!recordFields.SequenceEqual(["value"]))
         throw new InvalidOperationException("Record config schema exposed compiler-generated or internal properties.");
     if (VerificationComponentConfig.Constructions != constructionsBefore)
-        throw new InvalidOperationException("Config schema executed code from a component assembly that is not loaded.");
+        throw new InvalidOperationException(
+            "Config schema executed code from a component assembly that is not loaded.");
     if (fileSchema["retry_count"].GetProperty("default_value").GetInt64() != 0 ||
         fileSchema["mode"].GetProperty("default_value").GetString() != "safe" ||
         fileSchema["retry_count"].GetProperty("group_id").GetString() != "network" ||
         fileSchema["retry_count"].GetProperty("group_label").GetString() != "Network" ||
         fileSchema["retry_count"].GetProperty("order").GetInt32() != 10 ||
         fileSchema["tags"].GetProperty("type").GetString() != "array")
-    {
         throw new InvalidOperationException("Metadata-only config schema did not use explicit or CLR defaults.");
-    }
 
-    var loadedSchemaItems = HostHttpServer.GetComponentConfigSchema(verificationAssembly.Location, verificationAssembly);
+    var loadedSchemaItems =
+        HostHttpServer.GetComponentConfigSchema(verificationAssembly.Location, verificationAssembly);
     var loadedSchema = ReadConfigSchema(loadedSchemaItems);
     if (VerificationComponentConfig.Constructions == constructionsBefore ||
         loadedSchema["retry_count"].GetProperty("default_value").GetInt64() != 3 ||
-        loadedSchema["backoff_seconds"].GetProperty("default_value").GetDouble() != 1.5 ||
+        !loadedSchema["backoff_seconds"].GetProperty("default_value").GetDouble().Equals(1.5d) ||
         loadedSchema["mode"].GetProperty("default_value").GetString() != "safe" ||
         loadedSchema["tags"].GetProperty("default_value").EnumerateArray().Single().GetString() != "a")
-    {
         throw new InvalidOperationException("Loaded config schema did not read initialized defaults.");
-    }
 
     var condition = loadedSchema["backoff_seconds"].GetProperty("conditions").EnumerateArray().Single();
     if (condition.GetProperty("effect").GetString() != "visible" ||
         condition.GetProperty("field").GetString() != "retry_count" ||
         condition.GetProperty("operator").GetString() != "gt" ||
         condition.GetProperty("value").GetString() != "0")
-    {
         throw new InvalidOperationException("Config field visibility condition was not exposed in the schema.");
-    }
 
     // Uses in-memory metadata, so the schema also works in single-file publishes where Location is empty.
     var coreSchema = ReadConfigSchema(HostHttpServer.GetComponentConfigSchema(typeof(CoreConfig).Assembly));
     if (!coreSchema.ContainsKey("protocols") || !coreSchema.ContainsKey("owner_list") ||
         coreSchema["avalonia_theme"].GetProperty("default_value").GetString() != "Auto")
-    {
         throw new InvalidOperationException("Core config schema could not be read from the loaded host assembly.");
-    }
     Console.WriteLine("Component config schema verification passed.");
 
     var schemaRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
@@ -497,7 +494,11 @@ Console.WriteLine("Plugin config nested patch verification passed.");
         File.WriteAllText(componentTomlPath, "retry_count = 3\nmode = \"safe\"\n");
         var componentManager = new ConfigManager(componentTomlPath);
         using (var validPatch = JsonDocument.Parse("{\"retry_count\":5,\"mode\":\"fast\",\"extra\":\"kept\"}"))
-            HostHttpServer.ApplyComponentConfigPatch(componentManager, componentTomlPath, validPatch.RootElement, loadedSchemaItems);
+        {
+            HostHttpServer.ApplyComponentConfigPatch(componentManager, componentTomlPath, validPatch.RootElement,
+                loadedSchemaItems);
+        }
+
         var patched = HostHttpServer.LoadTomlObject(componentTomlPath);
         if (patched["retry_count"] is not 5L || patched["mode"] is not "fast" || patched["extra"] is not "kept")
             throw new InvalidOperationException("Valid component config patch was not saved.");
@@ -510,24 +511,30 @@ Console.WriteLine("Plugin config nested patch verification passed.");
         {
             using var invalidPatch = JsonDocument.Parse(invalid);
             AssertThrows<InvalidOperationException>(() => HostHttpServer.ApplyComponentConfigPatch(
+                // The callback completes before its enclosing resource is disposed; timeout cleanup is deferred until it completes.
+                // ReSharper disable once AccessToDisposedClosure
                 componentManager, componentTomlPath, invalidPatch.RootElement, loadedSchemaItems));
         }
 
         var defaultsPath = Path.Combine(schemaRoot, "defaults", "config.toml");
-        var generated = new ConfigManager(defaultsPath).LoadConfig<VerificationComponentConfig>(defaultsPath, "verification")
-                        ?? throw new InvalidOperationException("Component config defaults were not generated.");
+        var generated =
+            new ConfigManager(defaultsPath).LoadConfig<VerificationComponentConfig>(defaultsPath, "verification")
+            ?? throw new InvalidOperationException("Component config defaults were not generated.");
         if (generated.Mode != "safe" || generated.RetryCount != 3 || !generated.Tags.SequenceEqual(["a"]))
-            throw new InvalidOperationException("Explicit ConfigField defaults did not override initializers in generated config.");
+            throw new InvalidOperationException(
+                "Explicit ConfigField defaults did not override initializers in generated config.");
     }
     finally
     {
-        Directory.Delete(schemaRoot, recursive: true);
+        Directory.Delete(schemaRoot, true);
     }
+
     Console.WriteLine("Component config patch validation verification passed.");
 
     var nestedSchema = ReadConfigSchema(loadedSchemaItems);
     var network = nestedSchema["network"];
-    var networkFields = network.GetProperty("fields").EnumerateArray().ToDictionary(item => item.GetProperty("key").GetString()!);
+    var networkFields = network.GetProperty("fields").EnumerateArray()
+        .ToDictionary(item => item.GetProperty("key").GetString()!);
     var providers = nestedSchema["providers"];
     var recursiveChild = nestedSchema["recursive"].GetProperty("fields").EnumerateArray()
         .Single(item => item.GetProperty("key").GetString() == "child");
@@ -538,15 +545,15 @@ Console.WriteLine("Plugin config nested patch verification passed.");
         networkFields["port"].GetProperty("default_value").GetInt64() != 8080 ||
         providers.GetProperty("type").GetString() != "array" ||
         providers.GetProperty("item_type").GetString() != "section" ||
-        !providers.GetProperty("item_fields").EnumerateArray().Select(item => item.GetProperty("key").GetString()).SequenceEqual(["name", "weight"]) ||
+        !providers.GetProperty("item_fields").EnumerateArray().Select(item => item.GetProperty("key").GetString())
+            .SequenceEqual(["name", "weight"]) ||
         nestedSchema["tags"].GetProperty("item_type").GetString() != "string" ||
         nestedSchema["labels"].GetProperty("type").GetString() != "object" ||
         nestedSchema["optional_limit"].GetProperty("type").GetString() != "integer" ||
         recursiveChild.GetProperty("type").GetString() != "section" ||
         recursiveChild.GetProperty("fields").GetArrayLength() != 0)
-    {
-        throw new InvalidOperationException("Nested config schema did not describe sections, lists, maps or nullable values.");
-    }
+        throw new InvalidOperationException(
+            "Nested config schema did not describe sections, lists, maps or nullable values.");
     Console.WriteLine("Nested component config schema verification passed.");
 
     var nestedRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
@@ -555,32 +562,38 @@ Console.WriteLine("Plugin config nested patch verification passed.");
     {
         var nestedToml = Path.Combine(nestedRoot, "config.toml");
         const string original = """
-            # Component settings
-            retry_count = 3
-            mode = "safe"
+                                # Component settings
+                                retry_count = 3
+                                mode = "safe"
 
-            [network]
-            # Where to connect
-            host = "a"
-            port = 1
+                                [network]
+                                # Where to connect
+                                host = "a"
+                                port = 1
 
-            [[providers]]
-            name = "one"
-            weight = 1
+                                [[providers]]
+                                name = "one"
+                                weight = 1
 
-            # Labels follow
-            [labels]
-            x = "1"
+                                # Labels follow
+                                [labels]
+                                x = "1"
 
-            """;
+                                """;
         File.WriteAllText(nestedToml, original);
         var nestedManager = new ConfigManager(nestedToml);
+
         void Patch(string json)
         {
             using var document = JsonDocument.Parse(json);
-            HostHttpServer.ApplyComponentConfigPatch(nestedManager, nestedToml, document.RootElement, loadedSchemaItems);
+            HostHttpServer.ApplyComponentConfigPatch(nestedManager, nestedToml, document.RootElement,
+                loadedSchemaItems);
         }
-        string CurrentConfigJson() => JsonSerializer.Serialize(HostHttpServer.LoadTomlObject(nestedToml));
+
+        string CurrentConfigJson()
+        {
+            return JsonSerializer.Serialize(HostHttpServer.LoadTomlObject(nestedToml));
+        }
 
         Patch(CurrentConfigJson());
         if (File.ReadAllText(nestedToml) != original)
@@ -595,7 +608,8 @@ Console.WriteLine("Plugin config nested patch verification passed.");
         if (twoProviders.Split("[[providers]]").Length != 3 || !twoProviders.Contains("# Labels follow") ||
             !twoProviders.Contains("# Where to connect") ||
             HostHttpServer.LoadTomlObject(nestedToml)["providers"] is not object?[] { Length: 2 })
-            throw new InvalidOperationException("Appending to a list of tables did not rewrite [[providers]] in place.");
+            throw new InvalidOperationException(
+                "Appending to a list of tables did not rewrite [[providers]] in place.");
 
         Patch("""{"providers":[{"name":"one","weight":1}]}""");
         if (File.ReadAllText(nestedToml) != original.Replace("port = 1", "port = 2"))
@@ -603,7 +617,8 @@ Console.WriteLine("Plugin config nested patch verification passed.");
 
         Patch("""{"providers":[]}""");
         var noProviders = File.ReadAllText(nestedToml);
-        if (noProviders.Contains("[[providers]]") || !noProviders.Contains("providers = []") || !noProviders.Contains("# Labels follow"))
+        if (noProviders.Contains("[[providers]]") || !noProviders.Contains("providers = []") ||
+            !noProviders.Contains("# Labels follow"))
             throw new InvalidOperationException("Clearing a list of tables did not remove its [[providers]] blocks.");
 
         Patch("""{"labels":{"y":"2"}}""");
@@ -625,8 +640,9 @@ Console.WriteLine("Plugin config nested patch verification passed.");
     }
     finally
     {
-        Directory.Delete(nestedRoot, recursive: true);
+        Directory.Delete(nestedRoot, true);
     }
+
     Console.WriteLine("Nested component config patch verification passed.");
 }
 
@@ -642,15 +658,14 @@ Console.WriteLine("Plugin config nested patch verification passed.");
     var applied = await AdapterManager.ApplyAdapterConfigAsync(restartAdapter, restartAdapter, initial, good);
     if (!ReferenceEquals(applied, good) || restartAdapter.Stops != 1 || restartAdapter.Starts != 1 ||
         restartAdapter.CurrentConfigValue.Endpoint != good.Endpoint || !restartAdapter.IsRunning)
-    {
         throw new InvalidOperationException("RestartComponent adapter config was not applied with a restart.");
-    }
 
     var bad = new VerificationAdapterConfig { Endpoint = ConfigurableVerificationAdapter.FailingEndpoint };
     await AssertThrowsAsync<InvalidOperationException>(() =>
         AdapterManager.ApplyAdapterConfigAsync(restartAdapter, restartAdapter, good, bad));
     if (restartAdapter.CurrentConfigValue.Endpoint != good.Endpoint || !restartAdapter.IsRunning)
-        throw new InvalidOperationException("Failed adapter config was not rolled back to the previous running config.");
+        throw new InvalidOperationException(
+            "Failed adapter config was not rolled back to the previous running config.");
 
     var liveAdapter = new ConfigurableVerificationAdapter(ConfigApplyMode.Live);
     await AdapterManager.ApplyAdapterConfigAsync(liveAdapter, liveAdapter, liveAdapter.CurrentConfigValue, good);
@@ -674,9 +689,7 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
         sharedAssemblies.TryGetRegisteredAssembly("ShiroBot.Model.QQ.dll") != typeof(QGroup).Assembly ||
         sharedAssemblies.TryGetRegisteredAssembly("ShiroBot.Model.Discord") != typeof(DiscordUser).Assembly ||
         sharedAssemblies.TryGetRegisteredAssembly("ShiroBot.Model.Telegram") != typeof(TelegramUser).Assembly)
-    {
         throw new InvalidOperationException("Built-in Model was not available as a registered shared contract.");
-    }
 
     var legacyQqRequest = new AssemblyName(typeof(QGroup).Assembly.FullName!)
     {
@@ -710,9 +723,7 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
         } && model.Version == expectedModelVersion) ||
         !builtInModels.Select(model => model.Id).Order().SequenceEqual(
             ["shirobot.model.discord", "shirobot.model.qq", "shirobot.model.telegram"]))
-    {
         throw new InvalidOperationException("Built-in Model package metadata is incorrect.");
-    }
 
     Console.WriteLine("Shared contract ABI and built-in Model package verification passed.");
 }
@@ -728,12 +739,14 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
         var replacement = Path.Combine(extractRoot, OperatingSystem.IsWindows() ? "ShiroBot.exe" : "ShiroBot");
         File.WriteAllText(executable, "old-host");
         File.WriteAllText(replacement, "new-host");
-        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserExecute);
         HostSelfUpdater.ReplaceExecutable(HostSelfUpdater.FindReplacementExecutable(extractRoot), executable);
         if (File.ReadAllText(executable) != "new-host" || File.ReadAllText(executable + ".old") != "old-host" ||
             (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(executable) & UnixFileMode.UserExecute) == 0))
             throw new InvalidOperationException("Host executable replacement lost the backup or execute permission.");
-        AssertThrows<IOException>(() => HostSelfUpdater.ReplaceExecutable(Path.Combine(updateRoot, "missing"), executable));
+        AssertThrows<IOException>(() =>
+            HostSelfUpdater.ReplaceExecutable(Path.Combine(updateRoot, "missing"), executable));
         if (File.ReadAllText(executable) != "new-host")
             throw new InvalidOperationException("A failed host replacement did not restore the original executable.");
         var installed = Path.Combine(updateRoot, "host", "ShiroBot");
@@ -751,16 +764,26 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
             File.SetUnixFileMode(passing, UnixFileMode.UserRead | UnixFileMode.UserExecute);
             File.SetUnixFileMode(failing, UnixFileMode.UserRead | UnixFileMode.UserExecute);
             if (await HostSelfUpdater.SelfCheckAsync(passing, CancellationToken.None) is not null ||
-                await HostSelfUpdater.SelfCheckAsync(failing, CancellationToken.None) is not { } failure || !failure.Contains("framework not found") ||
-                await HostSelfUpdater.SelfCheckAsync(Path.Combine(updateRoot, "missing"), CancellationToken.None) is null)
-                throw new InvalidOperationException("Host self-check did not tell a runnable update from a broken one.");
+                await HostSelfUpdater.SelfCheckAsync(failing, CancellationToken.None) is not { } failure ||
+                !failure.Contains("framework not found") ||
+                await HostSelfUpdater.SelfCheckAsync(Path.Combine(updateRoot, "missing"), CancellationToken.None) is
+                    null)
+                throw new InvalidOperationException(
+                    "Host self-check did not tell a runnable update from a broken one.");
         }
+
         var emptyRepository = await HostSelfUpdater.CheckAsync("");
-        if (emptyRepository.UpdateAvailable || emptyRepository.CanApply || string.IsNullOrEmpty(emptyRepository.Reason) ||
+        if (emptyRepository.UpdateAvailable || emptyRepository.CanApply ||
+            string.IsNullOrEmpty(emptyRepository.Reason) ||
             HostSelfUpdater.BlockedReason() is null)
-            throw new InvalidOperationException("Host update checks allowed an unconfigured repository or a development build to self-update.");
+            throw new InvalidOperationException(
+                "Host update checks allowed an unconfigured repository or a development build to self-update.");
     }
-    finally { Directory.Delete(updateRoot, recursive: true); }
+    finally
+    {
+        Directory.Delete(updateRoot, true);
+    }
+
     Console.WriteLine("Host executable update and rollback verification passed.");
 }
 
@@ -770,70 +793,123 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     var requestId = await Updater.RequestPluginUpdateAsync(request, token =>
     {
         token.ThrowIfCancellationRequested();
-        if (++attempts == 1) throw new IOException("Simulated download failure");
-        return Task.CompletedTask;
+        return ++attempts == 1 ? throw new IOException("Simulated download failure") : Task.CompletedTask;
     });
-    try { await Updater.ConfirmUpdateAsync(requestId); throw new InvalidOperationException("A failing update reported success."); }
-    catch (IOException) { }
-    if (!Updater.GetPendingUpdates().Any(entry => entry.Id == requestId) || !await Updater.ConfirmUpdateAsync(requestId) ||
+    try
+    {
+        await Updater.ConfirmUpdateAsync(requestId);
+        throw new InvalidOperationException("A failing update reported success.");
+    }
+    catch (IOException)
+    {
+    }
+
+    if (Updater.GetPendingUpdates().All(entry => entry.Id != requestId) ||
+        !await Updater.ConfirmUpdateAsync(requestId) ||
         attempts != 2 || Updater.GetPendingUpdates().Any(entry => entry.Id == requestId))
-        throw new InvalidOperationException("A failed update could not be retried or a successful request stayed pending.");
+        throw new InvalidOperationException(
+            "A failed update could not be retried or a successful request stayed pending.");
 
     using var requestLifetime = new CancellationTokenSource();
     var confirmToken = CancellationToken.None;
-    var executionId = await Updater.RequestPluginUpdateAsync(request, token => { confirmToken = token; return Task.CompletedTask; }, requestLifetime.Token);
+    var executionId = await Updater.RequestPluginUpdateAsync(request, token =>
+    {
+        confirmToken = token;
+        return Task.CompletedTask;
+    }, requestLifetime.Token);
     requestLifetime.Cancel();
     using var confirmLifetime = new CancellationTokenSource();
     if (!await Updater.ConfirmUpdateAsync(executionId, confirmLifetime.Token) || confirmToken != confirmLifetime.Token)
-        throw new InvalidOperationException("Update execution used the expired check token instead of the confirmation token.");
+        throw new InvalidOperationException(
+            "Update execution used the expired check token instead of the confirmation token.");
     Console.WriteLine("Pending update retry and cancellation verification passed.");
 
     // Owners answer the update notification by quote-replying instead of typing a console command.
-    var notifications = new List<(string Text, ShiroBot.Hosting.Context.OwnerReplyHandler? OnReply)>();
-    Updater.Initialize((text, onReply, _) => { notifications.Add((text, onReply)); return Task.CompletedTask; });
+    var notifications = new List<(string Text, OwnerReplyHandler? OnReply)>();
+    Updater.Initialize((text, onReply, _) =>
+    {
+        notifications.Add((text, onReply));
+        return Task.CompletedTask;
+    });
     try
     {
         var answers = new List<string>();
         var replyOwner = new UserReference("qq", "owner");
-        ShiroBot.Hosting.Context.OwnerReply Reply(string text) => new(replyOwner, text, answer => { answers.Add(answer); return Task.CompletedTask; });
+
+        OwnerReply Reply(string text)
+        {
+            return new OwnerReply(replyOwner, text, answer =>
+            {
+                answers.Add(answer);
+                return Task.CompletedTask;
+            });
+        }
+
         var executed = 0;
-        var confirmId = await Updater.RequestPluginUpdateAsync(request, _ => { executed++; return Task.CompletedTask; });
+        var confirmId = await Updater.RequestPluginUpdateAsync(request, _ =>
+        {
+            executed++;
+            return Task.CompletedTask;
+        });
         var confirmHandler = notifications[^1].OnReply!;
         if (!notifications[^1].Text.Contains("回复本消息「确认」") || await confirmHandler(Reply("好的")) || executed != 0 ||
-            !await confirmHandler(Reply("确认")) || executed != 1 || Updater.GetPendingUpdates().Any(entry => entry.Id == confirmId) ||
+            !await confirmHandler(Reply("确认")) || executed != 1 ||
+            Updater.GetPendingUpdates().Any(entry => entry.Id == confirmId) ||
             !await confirmHandler(Reply("确认")) || executed != 1 || answers[^1] != "这个更新已经处理过或已取消。")
-            throw new InvalidOperationException("Replying 确认 to an update notification did not run the update exactly once.");
-        var cancelId = await Updater.RequestPluginUpdateAsync(request, _ => { executed++; return Task.CompletedTask; });
-        if (!await notifications[^1].OnReply!(Reply("取消")) || executed != 1 || Updater.GetPendingUpdates().Any(entry => entry.Id == cancelId))
+            throw new InvalidOperationException(
+                "Replying 确认 to an update notification did not run the update exactly once.");
+        var cancelId = await Updater.RequestPluginUpdateAsync(request, _ =>
+        {
+            executed++;
+            return Task.CompletedTask;
+        });
+        if (!await notifications[^1].OnReply!(Reply("取消")) || executed != 1 ||
+            Updater.GetPendingUpdates().Any(entry => entry.Id == cancelId))
             throw new InvalidOperationException("Replying 取消 to an update notification did not cancel it.");
         if (!notifications.Any(item => item.OnReply is null && item.Text.Contains("更新任务已执行")))
             throw new InvalidOperationException("Owners were not told that the confirmed update ran.");
     }
-    finally { Updater.Initialize((_, _, _) => Task.CompletedTask); }
+    finally
+    {
+        Updater.Initialize((_, _, _) => Task.CompletedTask);
+    }
+
     Console.WriteLine("Owner reply update confirmation verification passed.");
 
     var notifyAdapter = new VerificationAdapter("qq");
-    var notifyBot = new BotContext(notifyAdapter, ["qq:owner-one", "qq:owner-two", "offline:owner-three"], [], new WebHostContext("http://127.0.0.1", false));
+    var notifyBot = new BotContext(notifyAdapter, ["qq:owner-one", "qq:owner-two", "offline:owner-three"], [],
+        new WebHostContext("http://127.0.0.1", false));
     var notifyConfig = new CoreConfig { OwnerNotifications = false };
-    var notifier = new ShiroBot.Hosting.Context.OwnerNotifier(notifyBot, notifyConfig);
+    var notifier = new OwnerNotifier(notifyBot, notifyConfig);
     await notifier.NotifyAsync("off");
     notifyConfig.OwnerNotifications = true;
     var handled = new List<string>();
-    await notifier.NotifyAsync("有待确认的更新", reply => { handled.Add(reply.Owner.UserId + ":" + reply.Text); return Task.FromResult(reply.Text == "确认"); });
-    MessageEvent OwnerReplyEvent(int index, string sender, string text) => new()
+    await notifier.NotifyAsync("有待确认的更新", reply =>
     {
-        Platform = "qq", InstanceId = "qq", MessageId = Guid.NewGuid().ToString("N"),
-        Channel = notifyAdapter.MessageService.Sent[index].Channel, Sender = new User(sender),
-        Segments = [new QuoteSegment("sent"), new TextSegment(text)]
-    };
+        handled.Add(reply.Owner.UserId + ":" + reply.Text);
+        return Task.FromResult(reply.Text == "确认");
+    });
+
+    MessageEvent OwnerReplyEvent(int index, string sender, string text)
+    {
+        return new MessageEvent
+        {
+            Platform = "qq", InstanceId = "qq", MessageId = Guid.NewGuid().ToString("N"),
+            Channel = notifyAdapter.MessageService.Sent[index].Channel, Sender = new User(sender),
+            Segments = [new QuoteSegment("sent"), new TextSegment(text)]
+        };
+    }
+
     // Owners on unloaded instances are skipped; a stranger's reply is ignored; the first resolved reply ends both copies.
     await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(0, "stranger", "确认"));
     await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(0, "owner-one", "嗯"));
     await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(0, "owner-one", "确认"));
     await notifyBot.ReplySubscriptions.PublishAsync(OwnerReplyEvent(1, "owner-two", "确认"));
-    if (notifyAdapter.MessageService.Messages.Count(text => text == "有待确认的更新") != 2 || notifyAdapter.MessageService.Messages.Contains("off") ||
+    if (notifyAdapter.MessageService.Messages.Count(text => text == "有待确认的更新") != 2 ||
+        notifyAdapter.MessageService.Messages.Contains("off") ||
         !handled.SequenceEqual(["owner-one:嗯", "owner-one:确认"]))
-        throw new InvalidOperationException("Owner notifications ignored the switch, reached the wrong people or stayed open after being resolved.");
+        throw new InvalidOperationException(
+            "Owner notifications ignored the switch, reached the wrong people or stayed open after being resolved.");
     Console.WriteLine("Owner notification switch and reply resolution verification passed.");
 }
 
@@ -842,43 +918,66 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
     var permissions = new BotContext(null, ["mml: 730188102", " ", "MML:730188102", "qq:1"], [" qq : 2 "],
         new WebHostContext("http://127.0.0.1", false));
     if (!permissions.OwnerList.Select(owner => owner.ToConfigString()).SequenceEqual(["mml:730188102", "qq:1"]) ||
-        !permissions.IsOwner(new UserReference("mml", "730188102")) || !permissions.IsAdmin(new UserReference("qq", "2")))
+        !permissions.IsOwner(new UserReference("mml", "730188102")) ||
+        !permissions.IsAdmin(new UserReference("qq", "2")))
         throw new InvalidOperationException("Permission lists kept spaces, blanks or repeated entries.");
     Console.WriteLine("Permission list trimming and de-duplication verification passed.");
 }
 
 {
     const string owner = "55C88F86C7E7BF9F9F53615CDAAA493F";
-    var permissions = new BotContext(new VerificationAdapter("qq"), ["qq:" + owner], ["qq:admin"], new WebHostContext("http://127.0.0.1", false));
+    var permissions = new BotContext(new VerificationAdapter("qq"), ["qq:" + owner], ["qq:admin"],
+        new WebHostContext("http://127.0.0.1", false));
     var root = Path.Combine(Path.GetTempPath(), "ShiroBot.OwnerAdmin", Guid.NewGuid().ToString("N"));
     try
     {
-        using var context = new PluginContext(permissions, "permission-test", root, new HostLogHub(), new PluginServiceRegistry());
+        using var context = new PluginContext(permissions, "permission-test", root, new HostLogHub(),
+            new PluginServiceRegistry());
         IBotContext sdk = context;
         if (!permissions.IsOwner(owner) || !permissions.IsAdmin(owner) || !sdk.IsOwner(owner) || !sdk.IsAdmin(owner) ||
-            !sdk.IsAdmin("admin") || sdk.IsOwner("admin") || sdk.IsAdmin("other") || sdk.AdminList.Any(entry => entry.UserId == owner))
-            throw new InvalidOperationException("Owner must inherit admin permissions through SDK without duplicating the explicit admin list.");
+            !sdk.IsAdmin("admin") || sdk.IsOwner("admin") || sdk.IsAdmin("other") ||
+            sdk.AdminList.Any(entry => entry.UserId == owner))
+            throw new InvalidOperationException(
+                "Owner must inherit admin permissions through SDK without duplicating the explicit admin list.");
         permissions.UpdateOwnerList(["qq:new-owner"]);
         if (sdk.IsAdmin(owner) || !sdk.IsAdmin("new-owner") || !sdk.IsAdmin("admin"))
             throw new InvalidOperationException("Owner changes did not update effective admin permissions.");
         permissions.UpdateAdminList([]);
         if (sdk.IsAdmin("admin") || !sdk.IsAdmin("new-owner"))
-            throw new InvalidOperationException("Updating the admin list must not remove an owner's inherited permissions.");
+            throw new InvalidOperationException(
+                "Updating the admin list must not remove an owner's inherited permissions.");
         permissions.UpdateOwnerList([]);
         if (sdk.IsAdmin("new-owner")) throw new InvalidOperationException("Removed owner retained admin permissions.");
     }
-    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    finally
+    {
+        if (Directory.Exists(root)) Directory.Delete(root, true);
+    }
+
     permissions.RegisterAdapter(new VerificationAdapter("telegram"), "telegram-test");
     permissions.UpdateOwnerList(["qq:" + owner]);
     using (permissions.UseInstance("telegram-test"))
-        if (permissions.IsOwner(owner) || permissions.IsAdmin(owner)) throw new InvalidOperationException("Permissions crossed platform instances.");
+    {
+        if (permissions.IsOwner(owner) || permissions.IsAdmin(owner))
+            throw new InvalidOperationException("Permissions crossed platform instances.");
+    }
+
     permissions.RegisterAdapter(new VerificationAdapter("qq"), "qq-other");
     using (permissions.UseInstance("qq-other"))
-        if (permissions.IsAdmin(owner)) throw new InvalidOperationException("Permissions crossed instances on the same platform.");
+    {
+        if (permissions.IsAdmin(owner))
+            throw new InvalidOperationException("Permissions crossed instances on the same platform.");
+    }
+
     permissions.UpdateOwnerList(["qq:" + owner, "qq-other:" + owner]);
     using (permissions.UseInstance("qq-other"))
-        if (!permissions.IsOwner(owner)) throw new InvalidOperationException("Explicit cross-instance permission mapping did not work.");
-    if (!permissions.IsOwner(new UserReference("qq", owner))) throw new InvalidOperationException("Explicit scoped identity was not recognized.");
+    {
+        if (!permissions.IsOwner(owner))
+            throw new InvalidOperationException("Explicit cross-instance permission mapping did not work.");
+    }
+
+    if (!permissions.IsOwner(new UserReference("qq", owner)))
+        throw new InvalidOperationException("Explicit scoped identity was not recognized.");
     AssertThrows<FormatException>(() => permissions.UpdateOwnerList([owner]));
     Console.WriteLine("Owner/admin SDK inheritance and hot-reload permission verification passed.");
 }
@@ -889,23 +988,38 @@ var botContext = new BotContext(null, [], [], new WebHostContext("http://127.0.0
 botContext.RegisterAdapter(qqAdapter);
 botContext.RegisterAdapter(discordAdapter);
 
-foreach (var legacyProbe in new[] { Environment.GetEnvironmentVariable("SHIROBOT_LEGACY_ABI_PROBE") ?? Path.Combine(AppContext.BaseDirectory, "fixtures/LegacyFixture.dll"), Path.Combine(AppContext.BaseDirectory, "fixtures/indirect/LegacyIndirect.dll") })
+foreach (var legacyProbe in new[]
+         {
+             Environment.GetEnvironmentVariable("SHIROBOT_LEGACY_ABI_PROBE") ??
+             Path.Combine(AppContext.BaseDirectory, "fixtures/LegacyFixture.dll"),
+             Path.Combine(AppContext.BaseDirectory, "fixtures/indirect/LegacyIndirect.dll")
+         })
 {
     var sentinel = Path.Combine(Path.GetTempPath(), "shirobot-legacy-activated-" + Guid.NewGuid().ToString("N"));
     Environment.SetEnvironmentVariable("SHIROBOT_ABI_FIXTURE_SENTINEL", sentinel);
     var loader = new DllLoader<object>(true, new SharedAssemblyResolver());
     try
     {
-        try { loader.Load(legacyProbe, "LegacyFixture.Probe"); throw new Exception("Old ABI fixture was accepted."); }
-        catch (InvalidOperationException error) when (error.Message.Contains("preflight") && error.Message.Contains("ShiroBot.SDK")) { }
-        if (loader.Alc is not null || File.Exists(sentinel)) throw new InvalidOperationException("Legacy component activated before ABI rejection.");
+        try
+        {
+            loader.Load(legacyProbe, "LegacyFixture.Probe");
+            throw new Exception("Old ABI fixture was accepted.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("preflight") &&
+                                                      error.Message.Contains("ShiroBot.SDK"))
+        {
+        }
+
+        if (loader.Alc is not null || File.Exists(sentinel))
+            throw new InvalidOperationException("Legacy component activated before ABI rejection.");
         var installRoot = Path.Combine(Path.GetTempPath(), "abi-install-rejection-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(installRoot);
         var resolver = new SharedAssemblyResolver();
         var manager = new PluginManager(botContext, resolver, new ModelPackageRegistry(resolver),
             new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub()) { PluginRootPath = installRoot };
         var info = manager.TryProbePluginInfoFile(typeof(SharedContractPluginProbe).Assembly.Location)!;
-        var package = new PluginUpdateService.PluginUploadPackage(Path.GetDirectoryName(legacyProbe)!, legacyProbe, "dll", info);
+        var package =
+            new PluginUpdateService.PluginUploadPackage(Path.GetDirectoryName(legacyProbe)!, legacyProbe, "dll", info);
         try
         {
             AssertThrows<InvalidOperationException>(() => manager.ValidateInstallCompatibility(legacyProbe));
@@ -916,18 +1030,32 @@ foreach (var legacyProbe in new[] { Environment.GetEnvironmentVariable("SHIROBOT
                 new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
             try
             {
-                await PluginUpdateService.ReplaceInstalledPluginAsync(manager, dispatcher, new PluginRouteConfig(), package,
+                await PluginUpdateService.ReplaceInstalledPluginAsync(manager, dispatcher, new PluginRouteConfig(),
+                    package,
                     new PluginUpdateService.InstalledPluginInfo(oldPath, "1.0.0"), null);
                 throw new Exception("Incompatible update was accepted.");
             }
-            catch (InvalidOperationException error) when (error.Message.Contains("preflight")) { }
-            if (File.ReadAllText(oldPath) != "old-version-must-survive" || Directory.GetFiles(installRoot, "*", SearchOption.AllDirectories).Length != 1)
+            catch (InvalidOperationException error) when (error.Message.Contains("preflight"))
+            {
+            }
+
+            if (File.ReadAllText(oldPath) != "old-version-must-survive" ||
+                Directory.GetFiles(installRoot, "*", SearchOption.AllDirectories).Length != 1)
                 throw new Exception("Rejected ABI update changed the installed files or staging area.");
         }
-        finally { Directory.Delete(installRoot, true); }
+        finally
+        {
+            Directory.Delete(installRoot, true);
+        }
+
         Console.WriteLine("Real legacy SDK DLL metadata preflight rejection before activation verification passed.");
     }
-    finally { Environment.SetEnvironmentVariable("SHIROBOT_ABI_FIXTURE_SENTINEL", null); loader.Unload(); if (File.Exists(sentinel)) File.Delete(sentinel); }
+    finally
+    {
+        Environment.SetEnvironmentVariable("SHIROBOT_ABI_FIXTURE_SENTINEL", null);
+        loader.Unload();
+        if (File.Exists(sentinel)) File.Delete(sentinel);
+    }
 }
 
 {
@@ -936,24 +1064,42 @@ foreach (var legacyProbe in new[] { Environment.GetEnvironmentVariable("SHIROBOT
     var user = (VerificationUserService)adapter.User;
     using var cancel = new CancellationTokenSource();
     cancel.Cancel();
-    try { await context.User.AcceptFriendRequestAsync("request", cancel.Token); throw new Exception("Canceled accept was executed."); }
-    catch (OperationCanceledException) { }
-    try { await context.User.RejectFriendRequestAsync("request", "reason", cancel.Token); throw new Exception("Canceled reject was executed."); }
-    catch (OperationCanceledException) { }
-    if (user.ApprovalRequests != 0 || user.LastToken != cancel.Token) throw new InvalidOperationException("Friend approval cancellation token was not forwarded.");
+    try
+    {
+        await context.User.AcceptFriendRequestAsync("request", cancel.Token);
+        throw new Exception("Canceled accept was executed.");
+    }
+    catch (OperationCanceledException)
+    {
+    }
+
+    try
+    {
+        await context.User.RejectFriendRequestAsync("request", "reason", cancel.Token);
+        throw new Exception("Canceled reject was executed.");
+    }
+    catch (OperationCanceledException)
+    {
+    }
+
+    if (user.ApprovalRequests != 0 || user.LastToken != cancel.Token)
+        throw new InvalidOperationException("Friend approval cancellation token was not forwarded.");
     using var active = new CancellationTokenSource();
     await context.User.AcceptFriendRequestAsync("request", active.Token);
     await context.User.RejectFriendRequestAsync("request", "reason", active.Token);
-    if (user.ApprovalRequests != 2 || user.LastToken != active.Token) throw new InvalidOperationException("Active approval tokens were not forwarded.");
+    if (user.ApprovalRequests != 2 || user.LastToken != active.Token)
+        throw new InvalidOperationException("Active approval tokens were not forwarded.");
     Console.WriteLine("Friend accept/reject cancellation forwarding and no-request-on-cancel verification passed.");
 }
 
 if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length: > 0 } qqProbePath)
 {
-    var weakContext = ProbeQQAdapterJson(qqProbePath, out var probeReferences);
+    var weakContext = ProbeQqAdapterJson(qqProbePath, out var probeReferences);
     if (!DllLoader<IBotAdapter>.WaitForUnload(weakContext))
         throw new InvalidOperationException("QQ adapter token JSON deserialization pinned its collectible assembly: " +
-            string.Join(",", probeReferences.Where(item => item.Value.IsAlive).Select(item => item.Key)));
+                                            string.Join(",",
+                                                probeReferences.Where(item => item.Value.IsAlive)
+                                                    .Select(item => item.Key)));
     Console.WriteLine("QQ adapter JSON serialization collectible-context verification passed.");
 }
 
@@ -970,42 +1116,67 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
     var manager = new AdapterManager(root, resolver, new ModelPackageRegistry(resolver), context,
         new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
     var lifecycleDumpCaptured = false;
+
     async Task LifecycleStep(string name, Func<Task> action)
     {
         Console.WriteLine($"Adapter lifecycle probe starting: {name}");
-        try { await action().WaitAsync(TimeSpan.FromSeconds(30)); }
-        catch (TimeoutException) when (OperatingSystem.IsWindows() &&
-            Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
+        try
         {
+            await action().WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        catch (TimeoutException) when (OperatingSystem.IsWindows() &&
+                                       Environment.GetEnvironmentVariable("SHIROBOT_LIFECYCLE_DIAGNOSTICS") == "true")
+        {
+            // Optional diagnostic capture precedes the original timeout rethrow.
+            // ReSharper disable once InvertIf
             if (!lifecycleDumpCaptured)
             {
                 lifecycleDumpCaptured = true;
                 var dumpPath = Path.Combine(Path.GetTempPath(), "shirobot-adapter-lifecycle.dmp");
-                await Diagnose("collect", "--process-id", Environment.ProcessId.ToString(), "--type", "Heap", "--output", dumpPath);
+                await Diagnose("collect", "--process-id", Environment.ProcessId.ToString(), "--type", "Heap",
+                    "--output", dumpPath);
                 await Diagnose("analyze", dumpPath, "-c", "clrstack -all", "-c", "dumpasync", "-c", "exit");
                 var nativeDebugger = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
                     "Windows Kits", "10", "Debuggers", "x64", "cdb.exe");
+                // ReSharper disable once InvertIf
                 if (File.Exists(nativeDebugger))
                 {
-                    var info = new System.Diagnostics.ProcessStartInfo(nativeDebugger) { UseShellExecute = false };
-                    foreach (var argument in new[] { "-z", dumpPath, "-c", "~* kb; q" }) info.ArgumentList.Add(argument);
-                    using var process = System.Diagnostics.Process.Start(info)!;
-                    try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); }
-                    catch (TimeoutException) { process.Kill(entireProcessTree: true); }
+                    var info = new ProcessStartInfo(nativeDebugger) { UseShellExecute = false };
+                    foreach (var argument in new[] { "-z", dumpPath, "-c", "~* kb; q" })
+                        info.ArgumentList.Add(argument);
+                    using var process = Process.Start(info)!;
+                    try
+                    {
+                        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45));
+                    }
+                    catch (TimeoutException)
+                    {
+                        process.Kill(true);
+                    }
                 }
             }
+
             throw;
         }
+
         Console.WriteLine($"Adapter lifecycle probe finished: {name}");
     }
+
     static async Task Diagnose(params string[] arguments)
     {
-        var info = new System.Diagnostics.ProcessStartInfo("dotnet-dump") { UseShellExecute = false };
+        var info = new ProcessStartInfo("dotnet-dump") { UseShellExecute = false };
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
-        using var process = System.Diagnostics.Process.Start(info)!;
-        try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); }
-        catch (TimeoutException) { process.Kill(entireProcessTree: true); }
+        using var process = Process.Start(info)!;
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45));
+        }
+        catch (TimeoutException)
+        {
+            process.Kill(true);
+        }
     }
+
     try
     {
         await LifecycleStep("initial load", () => manager.LoadByIdAsync("lifecycle-probe", path));
@@ -1017,14 +1188,16 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
         File.WriteAllBytes(path, [0, 1, 2, 3]);
         await LifecycleStep("ReloadByIdAsync lifecycle-probe", () => manager.ReloadByIdAsync("lifecycle-probe"));
         if (!manager.IsLoaded || !context.HasAdapter || File.Exists(loadedPath))
-            throw new InvalidOperationException("Adapter rollback did not recover its independent old image or clean it up.");
-        File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, path, overwrite: true);
+            throw new InvalidOperationException(
+                "Adapter rollback did not recover its independent old image or clean it up.");
+        File.Copy(typeof(SharedContractPluginProbe).Assembly.Location, path, true);
         for (var iteration = 0; iteration < 3; iteration++)
         {
             await LifecycleStep("ReloadByIdAsync lifecycle-probe", () => manager.ReloadByIdAsync("lifecycle-probe"));
             if (!manager.IsLoaded || !context.HasAdapter)
                 throw new InvalidOperationException("Adapter hot reload lost the active instance.");
         }
+
         var finalShadow = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
         // 配置热重载会比较新旧配置的指纹；比较时不能让宿主的 JSON 缓存记住适配器的配置类型。
         await LifecycleStep("ApplyConfigByIdAsync lifecycle-probe", async () =>
@@ -1039,16 +1212,22 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
 
         var probeConfigPath = Path.Combine(root, "config.toml");
         AdapterInstanceStore.Write(probeConfigPath,
-            [new PackageAdapterInstance { Id = "probe-a", Enabled = true },
-             new PackageAdapterInstance { Id = "probe-b", Enabled = true }], replaceLegacy: true);
+        [
+            new PackageAdapterInstance { Id = "probe-a", Enabled = true },
+            new PackageAdapterInstance { Id = "probe-b", Enabled = true }
+        ], true);
         await manager.LoadInstanceAsync(new InstalledAdapterInstance("probe-a", "lifecycle-probe", path,
             probeConfigPath, true, "First probe"));
         await manager.LoadInstanceAsync(new InstalledAdapterInstance("probe-b", "lifecycle-probe", path,
             probeConfigPath, true, "Second probe"));
         var instanceSources = logs.GetSources().Where(source => source.Source is "probe-a" or "probe-b").ToArray();
-        if (instanceSources is not [{ Source: "probe-a", PluginName: "First probe", Description: "lifecycle-probe", Kind: "adapter" },
-                                   { Source: "probe-b", PluginName: "Second probe", Description: "lifecycle-probe", Kind: "adapter" }])
-            throw new InvalidOperationException("Adapter log sources must show separate instance names above the adapter type.");
+        if (instanceSources is not
+            [
+                { Source: "probe-a", PluginName: "First probe", Description: "lifecycle-probe", Kind: "adapter" },
+                { Source: "probe-b", PluginName: "Second probe", Description: "lifecycle-probe", Kind: "adapter" }
+            ])
+            throw new InvalidOperationException(
+                "Adapter log sources must show separate instance names above the adapter type.");
         logs.Record("probe-a", "info", "first instance log");
         logs.Record("probe-b", "info", "second instance log");
         if (logs.GetHistory("probe-a", 100).Any(entry => entry.Message == "second instance log") ||
@@ -1057,11 +1236,13 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
         await LifecycleStep("ReloadByIdAsync probe-a", () => manager.ReloadByIdAsync("probe-a"));
         if (logs.GetSources().Single(source => source.Source == "probe-a").PluginName != "First probe")
             throw new InvalidOperationException("Reloading an adapter lost its log source instance name.");
-        if (!manager.LoadedIds.Order().SequenceEqual(new[] { "probe-a", "probe-b" }))
-            throw new InvalidOperationException("Reloading an adapter instance disrupted another instance of the same package.");
+        if (!manager.LoadedIds.Order().SequenceEqual(["probe-a", "probe-b"]))
+            throw new InvalidOperationException(
+                "Reloading an adapter instance disrupted another instance of the same package.");
         await LifecycleStep("StopByIdAsync probe-a", () => manager.StopByIdAsync("probe-a"));
         await LifecycleStep("StopByIdAsync probe-b", () => manager.StopByIdAsync("probe-b"));
-        Console.WriteLine("Collectible adapter overwrite isolation, rollback, hot reload and unload verification passed.");
+        Console.WriteLine(
+            "Collectible adapter overwrite isolation, rollback, hot reload and unload verification passed.");
     }
     catch
     {
@@ -1070,8 +1251,8 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
     }
     finally
     {
-        await LifecycleStep("shutdown", () => manager.StopForShutdownAsync());
-        Directory.Delete(root, recursive: true);
+        await LifecycleStep("shutdown", manager.StopForShutdownAsync);
+        Directory.Delete(root, true);
     }
 }
 
@@ -1088,50 +1269,62 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
             new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub()) { PluginRootPath = pluginRoot };
         var candidates = pluginManager.ResolvePluginLoadCandidates(pluginRoot, "SharedContractPluginProbe");
         if (candidates.Count != 1 || !string.Equals(candidates[0], renamedDll, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Plugin ID lookup failed when a config-only ID directory exists beside a renamed root DLL.");
-        }
+            throw new InvalidOperationException(
+                "Plugin ID lookup failed when a config-only ID directory exists beside a renamed root DLL.");
 
         var detail = HostHttpServer.FindPluginListItem(pluginManager, "sharedcontractpluginprobe");
         if (detail is null || detail.Id != "SharedContractPluginProbe" ||
             detail.Name != "Shared contract plugin probe" || detail.Version != "0.9.2" || detail.Enable ||
             HostHttpServer.FindPluginListItem(pluginManager, "missing-plugin") is not null)
-        {
-            throw new InvalidOperationException("Plugin detail lookup did not return installed plugin metadata or reject a missing plugin.");
-        }
+            throw new InvalidOperationException(
+                "Plugin detail lookup did not return installed plugin metadata or reject a missing plugin.");
         var packageRoot = Path.Combine(Path.GetDirectoryName(pluginRoot)!, "package");
         Directory.CreateDirectory(packageRoot);
         var zipPath = Path.Combine(packageRoot, "plugin.zip");
-        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
         {
             archive.CreateEntryFromFile(renamedDll, "payload/Probe.dll");
-            using (var writer = new StreamWriter(archive.CreateEntry("payload/runtimes/native.bin").Open())) writer.Write("native-v2");
-            using (var writer = new StreamWriter(archive.CreateEntry("payload/config.toml").Open())) writer.Write("seed = 1");
+            await using (var writer = new StreamWriter(archive.CreateEntry("payload/runtimes/native.bin").Open()))
+            {
+                writer.Write("native-v2");
+            }
+
+            await using (var writer = new StreamWriter(archive.CreateEntry("payload/config.toml").Open()))
+            {
+                writer.Write("seed = 1");
+            }
         }
+
         File.WriteAllText(Path.Combine(configDirectory, "config.toml"), "user = 42");
         File.WriteAllText(Path.Combine(configDirectory, "data.json"), "keep");
         var package = PluginUpdateService.PreparePluginUploadPackage(pluginManager, zipPath);
         var dispatcher = new HostEventDispatcher(new Lock(), botContext.ReplySubscriptions,
             new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
-        var replaced = await PluginUpdateService.ReplaceInstalledPluginAsync(pluginManager, dispatcher, new PluginRouteConfig(),
+        var replaced = await PluginUpdateService.ReplaceInstalledPluginAsync(pluginManager, dispatcher,
+            new PluginRouteConfig(),
             package, new PluginUpdateService.InstalledPluginInfo(renamedDll, "0.9.1"), null);
         if (replaced.PendingReason is not null || replaced.EntryPath is null || File.Exists(renamedDll) ||
             !File.Exists(Path.Combine(configDirectory, "runtimes", "native.bin")) ||
             File.ReadAllText(Path.Combine(configDirectory, "config.toml")) != "user = 42" ||
             File.ReadAllText(Path.Combine(configDirectory, "data.json")) != "keep")
-            throw new InvalidOperationException("The shared plugin updater did not replace the full zip or preserve user files.");
-        var dllPackage = PluginUpdateService.PreparePluginUploadPackage(pluginManager, typeof(SharedContractPluginProbe).Assembly.Location);
-        var nextReplacement = await PluginUpdateService.ReplaceInstalledPluginAsync(pluginManager, dispatcher, new PluginRouteConfig(),
+            throw new InvalidOperationException(
+                "The shared plugin updater did not replace the full zip or preserve user files.");
+        var dllPackage =
+            PluginUpdateService.PreparePluginUploadPackage(pluginManager,
+                typeof(SharedContractPluginProbe).Assembly.Location);
+        var nextReplacement = await PluginUpdateService.ReplaceInstalledPluginAsync(pluginManager, dispatcher,
+            new PluginRouteConfig(),
             dllPackage, new PluginUpdateService.InstalledPluginInfo(replaced.EntryPath, "0.9.2"), null);
         if (nextReplacement.PendingReason is not null || File.Exists(replaced.EntryPath) ||
             File.Exists(Path.Combine(configDirectory, "runtimes", "native.bin")) ||
             File.ReadAllText(Path.Combine(configDirectory, "data.json")) != "keep")
-            throw new InvalidOperationException("The shared plugin updater retained removed package files or deleted user data.");
+            throw new InvalidOperationException(
+                "The shared plugin updater retained removed package files or deleted user data.");
         Console.WriteLine("Shared plugin zip replacement and DLL update verification passed.");
     }
     finally
     {
-        Directory.Delete(Path.GetDirectoryName(pluginRoot)!, recursive: true);
+        Directory.Delete(Path.GetDirectoryName(pluginRoot)!, true);
     }
 }
 Console.WriteLine("Renamed plugin ID lookup verification passed.");
@@ -1143,9 +1336,7 @@ await Task.WhenAll(
 
 if (!qqAdapter.MessageService.Messages.SequenceEqual(["qq-message"]) ||
     !discordAdapter.MessageService.Messages.SequenceEqual(["discord-message"]))
-{
     throw new InvalidOperationException("Multi-adapter event scope routed a message to the wrong adapter.");
-}
 
 Console.WriteLine("Multi-adapter message routing verification passed.");
 
@@ -1156,16 +1347,22 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     replies.RegisterAdapter(milky);
     replies.RegisterAdapter(official);
     var messageContext = replies.CreatePluginMessageContext("reply-routing");
-    MessageEvent Incoming(string platform, Channel channel) => new()
+
+    MessageEvent Incoming(string platform, Channel channel)
     {
-        Platform = platform, MessageId = "same-message-id", Channel = channel,
-        Sender = new User("sender"), Segments = []
-    };
+        return new MessageEvent
+        {
+            Platform = platform, MessageId = "same-message-id", Channel = channel,
+            Sender = new User("sender"), Segments = []
+        };
+    }
+
     var group = Incoming("qq-official", Channel.Group("same-channel-id"));
     var direct = Incoming("qq", Channel.Direct("same-channel-id"));
     var image = new ImageSegment("https://example.com/a.png");
     milky.MessageService.BeforeSend = () => CheckReplyScopeAsync("qq");
     official.MessageService.BeforeSend = () => CheckReplyScopeAsync("qq-official");
+
     async Task CheckReplyScopeAsync(string platform)
     {
         await Task.Yield();
@@ -1181,6 +1378,7 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
         await messageContext.QuoteReplyAsync(group, new TextSegment("quoted-segments"));
         if (replies.Platform != "qq") throw new InvalidOperationException("Reply changed the caller's adapter scope.");
     }
+
     await Task.WhenAll(
         messageContext.ReplyAsync(direct, "milky-direct"),
         messageContext.ReplyAsync(group, "official-group"));
@@ -1201,7 +1399,10 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
         await messageContext.ReplyAsync(group with { Platform = "missing" }, "must-not-send");
         throw new InvalidOperationException("Missing source adapter silently used the default adapter.");
     }
-    catch (InvalidOperationException ex) when (ex.Message.Contains("not loaded")) { }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("not loaded"))
+    {
+    }
+
     official.MessageService.BeforeSend = () => Task.FromException(new IOException("send failed"));
     using (replies.UseInstance("qq"))
     {
@@ -1211,6 +1412,7 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
         if (replies.Platform != "qq") throw new InvalidOperationException("Failed reply leaked its adapter scope.");
         await messageContext.SendGroupMessageAsync("same-channel-id", "explicit-send");
     }
+
     if (!milky.MessageService.Messages.SequenceEqual(["milky-direct", "explicit-send"]) ||
         official.MessageService.Messages.Count != 5 || AdapterExecutionContext.Current is not null)
         throw new InvalidOperationException("Reply routing affected later sends or sent through a missing adapter.");
@@ -1238,13 +1440,16 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     if (!successful.IsSuccess || successful.MessageId != "sent" || successful.ErrorMessage is not null)
         throw new InvalidOperationException("Send failure affected a subsequent successful result.");
 
-    adapter.MessageService.BeforeSend = () => Task.FromCanceled(new CancellationToken(canceled: true));
+    adapter.MessageService.BeforeSend = () => Task.FromCanceled(new CancellationToken(true));
     try
     {
         await messages.SendGroupMessageAsync("group-1", "cancelled");
         throw new InvalidOperationException("Adapter cancellation was swallowed.");
     }
-    catch (OperationCanceledException) { }
+    catch (OperationCanceledException)
+    {
+    }
+
     if (logs.GetHistory("official-main", 10).Length != 1)
         throw new InvalidOperationException("Cancellation was logged as an adapter fault.");
 
@@ -1272,48 +1477,94 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     instances.RegisterAdapter(first, "first-qq", "Main account");
     instances.RegisterAdapter(second, "second-qq");
     AssertThrows<InvalidOperationException>(() => instances.UseInstance("missing"));
-    AssertThrows<InvalidOperationException>(() => instances.RegisterAdapter(new VerificationAdapter("discord"), "first-qq"));
+    AssertThrows<InvalidOperationException>(() =>
+        instances.RegisterAdapter(new VerificationAdapter("discord"), "first-qq"));
     var directory = Path.Combine(Path.GetTempPath(), "ShiroBot.InstanceVerification", Guid.NewGuid().ToString("N"));
-    using var plugin = new PluginContext(instances, "instance-routing", directory, new HostLogHub(), new PluginServiceRegistry());
+    using var plugin = new PluginContext(instances, "instance-routing", directory, new HostLogHub(),
+        new PluginServiceRegistry());
     IBotContext context = plugin;
     var message = new MessageEvent
     {
         Platform = "qq", SelfId = "same-account", InstanceId = "second-qq", MessageId = "same-message",
         Channel = Channel.Direct("same-channel"), Sender = new User("sender"), Segments = []
     };
-    var richRequest = new OutgoingMessage { Segments = [new MarkdownSegment("**rich**") { PlainTextFallback = "rich" }], AllowedFallbacks = MessageFallbackOptions.MarkdownAsText };
+    var richRequest = new OutgoingMessage
+    {
+        Segments = [new MarkdownSegment("**rich**") { PlainTextFallback = "rich" }],
+        AllowedFallbacks = MessageFallbackOptions.MarkdownAsText
+    };
     var richTarget = new ChannelReference("second-qq", message.Channel);
     var assessment = context.Message.AssessMessage(richTarget, richRequest);
-    if (!assessment.IsSupported || assessment.IsNative || first.MessageService.Sent.Count != 0 || second.MessageService.Sent.Count != 0)
+    if (!assessment.IsSupported || assessment.IsNative || first.MessageService.Sent.Count != 0 ||
+        second.MessageService.Sent.Count != 0)
         throw new InvalidOperationException("Rich assessment performed a send or lost fallback information.");
     var richResult = await context.Message.SendMessageAsync(richTarget, richRequest);
-    if (richResult.Reference!.InstanceId != "second-qq" || richResult.Transformations.Single().Kind != MessageTransformationKind.MarkdownToText || second.MessageService.Messages.Single() != "rich")
+    if (richResult.Reference!.InstanceId != "second-qq" ||
+        richResult.Transformations.Single().Kind != MessageTransformationKind.MarkdownToText ||
+        second.MessageService.Messages.Single() != "rich")
         throw new InvalidOperationException("Rich send lost transformations or source routing.");
     using (context.UseInstance("first-qq"))
     {
         var reactions = context.GetAdapterExtension<IMessageReactionService>()!;
         await reactions.SetReactionAsync(message.Reference, new UnicodeReactionEmoji("👍"));
-        if (first.MessageService.Reactions.Count != 0 || second.MessageService.Reactions.Single().InstanceId != "second-qq" || context.InstanceId != "first-qq")
+        if (first.MessageService.Reactions.Count != 0 ||
+            second.MessageService.Reactions.Single().InstanceId != "second-qq" || context.InstanceId != "first-qq")
             throw new InvalidOperationException("Cached reaction service ignored message source or leaked routing.");
-        try { await reactions.SetReactionAsync(message.Reference, new PlatformReactionEmoji("1", "first-qq")); throw new InvalidOperationException("Foreign emoji accepted."); }
-        catch (ArgumentException) { }
-        using var canceled = new CancellationTokenSource(); canceled.Cancel();
-        try { await reactions.SetReactionAsync(message.Reference, new UnicodeReactionEmoji("👍"), cancellationToken: canceled.Token); throw new InvalidOperationException("Canceled reaction executed."); }
-        catch (OperationCanceledException) { }
-        if (second.MessageService.Reactions.Count != 1) throw new InvalidOperationException("Rejected reactions reached adapter.");
+        try
+        {
+            await reactions.SetReactionAsync(message.Reference, new PlatformReactionEmoji("1", "first-qq"));
+            throw new InvalidOperationException("Foreign emoji accepted.");
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        try
+        {
+            await reactions.SetReactionAsync(message.Reference, new UnicodeReactionEmoji("👍"),
+                cancellationToken: canceled.Token);
+            throw new InvalidOperationException("Canceled reaction executed.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        if (second.MessageService.Reactions.Count != 1)
+            throw new InvalidOperationException("Rejected reactions reached adapter.");
         await context.Message.ReplyAsync(message, richRequest);
         if (second.MessageService.Sent.Last().Segments.OfType<QuoteSegment>().Single().MessageId != message.MessageId)
             throw new InvalidOperationException("Rich reply lost message reference.");
     }
-    first.MessageService.Messages.Clear(); first.MessageService.Sent.Clear();
-    second.MessageService.Messages.Clear(); second.MessageService.Sent.Clear();
+
+    first.MessageService.Messages.Clear();
+    first.MessageService.Sent.Clear();
+    second.MessageService.Messages.Clear();
+    second.MessageService.Sent.Clear();
     var interactionRoutes = new EventRouter();
-    var typedClicks = 0; var platformClicks = 0;
-    interactionRoutes.Map<InteractionEvent>(_ => { typedClicks++; return Task.CompletedTask; });
-    interactionRoutes.MapPlatform("button", _ => { platformClicks++; return Task.CompletedTask; });
-    await interactionRoutes.DispatchAsync(new InteractionEvent { Platform = "qq", SelfId = "bot", InstanceId = "second-qq", Channel = message.Channel, Kind = "button", InteractionId = "click", User = new User("user") });
-    if (typedClicks != 1 || platformClicks != 1) throw new InvalidOperationException("Typed interaction lost platform event compatibility.");
-    Console.WriteLine("Rich fallback assessment, send and reply routing, reaction source and cancellation verification passed.");
+    var typedClicks = 0;
+    var platformClicks = 0;
+    interactionRoutes.Map<InteractionEvent>(_ =>
+    {
+        typedClicks++;
+        return Task.CompletedTask;
+    });
+    interactionRoutes.MapPlatform("button", _ =>
+    {
+        platformClicks++;
+        return Task.CompletedTask;
+    });
+    await interactionRoutes.DispatchAsync(new InteractionEvent
+    {
+        Platform = "qq", SelfId = "bot", InstanceId = "second-qq", Channel = message.Channel, Kind = "button",
+        InteractionId = "click", User = new User("user")
+    });
+    if (typedClicks != 1 || platformClicks != 1)
+        throw new InvalidOperationException("Typed interaction lost platform event compatibility.");
+    Console.WriteLine(
+        "Rich fallback assessment, send and reply routing, reaction source and cancellation verification passed.");
+
     async Task InInstanceAsync(string id, string text)
     {
         using var scope = context.UseInstance(id);
@@ -1322,51 +1573,93 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
             throw new InvalidOperationException("Concurrent instance selection leaked across async calls.");
         await context.Message.SendDirectMessageAsync("same-channel", text);
     }
+
     await Task.WhenAll(InInstanceAsync("first-qq", "first-send"), InInstanceAsync("second-qq", "second-send"));
     var loadedInstances = context.GetAdapterInstances();
-    if (loadedInstances.Select(item => item.Id).SequenceEqual(["first-qq", "second-qq"]) is false ||
+    if (!loadedInstances.Select(item => item.Id).SequenceEqual(["first-qq", "second-qq"]) ||
         loadedInstances[0] is not { Name: "Main account", PackageId: "verification", Platform: "qq" } ||
         loadedInstances[1].Name != "second-qq")
-        throw new InvalidOperationException("Plugins cannot list loaded adapter instances with their package and names.");
+        throw new InvalidOperationException(
+            "Plugins cannot list loaded adapter instances with their package and names.");
     using (context.UseInstance("second-qq"))
-        if (context.AdapterInstance?.Id != "second-qq") throw new InvalidOperationException("The current adapter instance does not follow UseInstance.");
+    {
+        if (context.AdapterInstance?.Id != "second-qq")
+            throw new InvalidOperationException("The current adapter instance does not follow UseInstance.");
+    }
+
     await context.Message.ReplyAsync(message, "background-second-reply");
     using (context.UseInstance("first-qq"))
     {
         await context.Message.QuoteReplyAsync(message, "second-quote");
-        if (context.InstanceId != "first-qq") throw new InvalidOperationException("Reply did not restore the original instance.");
+        if (context.InstanceId != "first-qq")
+            throw new InvalidOperationException("Reply did not restore the original instance.");
     }
-    try { await context.Message.ReplyAsync(message with { InstanceId = null }, "ambiguous"); throw new Exception("Ambiguous reply was sent."); }
-    catch (InvalidOperationException) { }
+
+    try
+    {
+        await context.Message.ReplyAsync(message with { InstanceId = null }, "ambiguous");
+        throw new Exception("Ambiguous reply was sent.");
+    }
+    catch (InvalidOperationException)
+    {
+    }
 
     var firstReplies = 0;
     var secondReplies = 0;
     using (context.UseInstance("first-qq"))
-        context.Message.SubscribeReply(new MessageReference(context.InstanceId!, message.Channel, "same-message"), TimeSpan.FromMinutes(1), _ => { firstReplies++; return Task.CompletedTask; });
+    {
+        context.Message.SubscribeReply(new MessageReference(context.InstanceId!, message.Channel, "same-message"),
+            TimeSpan.FromMinutes(1), _ =>
+            {
+                firstReplies++;
+                return Task.CompletedTask;
+            });
+    }
+
     using (context.UseInstance("second-qq"))
-        context.Message.SubscribeReply(new MessageReference(context.InstanceId!, message.Channel, "same-message"), TimeSpan.FromMinutes(1), _ => { secondReplies++; return Task.CompletedTask; });
-    await instances.ReplySubscriptions.PublishAsync(message with { Channel = Channel.Group("other-group"), Segments = [new QuoteSegment("same-message")] });
-    if (firstReplies != 0 || secondReplies != 0) throw new InvalidOperationException("Reply subscription crossed channels.");
+    {
+        context.Message.SubscribeReply(new MessageReference(context.InstanceId!, message.Channel, "same-message"),
+            TimeSpan.FromMinutes(1), _ =>
+            {
+                secondReplies++;
+                return Task.CompletedTask;
+            });
+    }
+
+    await instances.ReplySubscriptions.PublishAsync(message with
+    {
+        Channel = Channel.Group("other-group"), Segments = [new QuoteSegment("same-message")]
+    });
+    if (firstReplies != 0 || secondReplies != 0)
+        throw new InvalidOperationException("Reply subscription crossed channels.");
     await instances.ReplySubscriptions.PublishAsync(message with { Segments = [new QuoteSegment("same-message")] });
-    if (firstReplies != 0 || secondReplies != 1) throw new InvalidOperationException("Reply subscription crossed adapter instances.");
+    if (firstReplies != 0 || secondReplies != 1)
+        throw new InvalidOperationException("Reply subscription crossed adapter instances.");
 
     // Query results come from adapters without InstanceId (or with forged metadata).
     second.MessageService.QueryResult = message with { InstanceId = null, Platform = "untrusted-query-platform" };
-    var queried = await context.Message.GetMessageAsync(new MessageReference("second-qq", message.Channel, message.MessageId));
+    var queried =
+        await context.Message.GetMessageAsync(new MessageReference("second-qq", message.Channel, message.MessageId));
     if (queried is not { InstanceId: "second-qq", Platform: "qq" } || queried.Reference.InstanceId != "second-qq")
         throw new InvalidOperationException("Queried message did not receive its captured source identity.");
     await context.Message.DeleteMessageAsync(queried);
     await context.Message.ReplyAsync(queried, "queried-second-reply");
     IReadOnlyList<MessageEvent> history;
-    using (context.UseInstance("second-qq")) history = await context.Message.GetHistoryMessagesAsync(message.Channel);
+    using (context.UseInstance("second-qq"))
+    {
+        history = await context.Message.GetHistoryMessagesAsync(message.Channel);
+    }
+
     var historical = history.Single();
-    if (historical.Reference.InstanceId != "second-qq") throw new InvalidOperationException("History message lost its source identity.");
+    if (historical.Reference.InstanceId != "second-qq")
+        throw new InvalidOperationException("History message lost its source identity.");
     await context.Message.DeleteMessageAsync(historical.Reference);
     await context.Message.ReplyAsync(historical, "history-second-reply");
     if (first.MessageService.Deleted.Count != 0 || second.MessageService.Deleted.Count != 2)
         throw new InvalidOperationException("Queried-message deletion routed to a different instance.");
     second.MessageService.QueryResult = null;
-    if (await context.Message.GetMessageAsync(new MessageReference("second-qq", message.Channel, "missing")) is not null)
+    if (await context.Message.GetMessageAsync(new MessageReference("second-qq", message.Channel,
+            "missing")) is not null)
         throw new InvalidOperationException("Missing message query did not preserve null.");
 
     // The default changes during the await; the completed query must retain its original registration.
@@ -1376,37 +1669,59 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     changing.RegisterAdapter(transient, "query-source");
     changing.RegisterAdapter(remaining, "new-default");
     transient.MessageService.QueryResult = message with { InstanceId = "forged-instance" };
-    transient.MessageService.BeforeQuery = async () => { await Task.Yield(); changing.UnregisterAdapter(transient); };
+    transient.MessageService.BeforeQuery = async () =>
+    {
+        await Task.Yield();
+        changing.UnregisterAdapter(transient);
+    };
     var captured = await changing.Message.GetMessageAsync(message.Channel, message.MessageId);
     if (captured?.Reference.InstanceId != "query-source" || changing.InstanceId != "new-default")
         throw new InvalidOperationException("Query source was captured after awaiting instead of before.");
-    Console.WriteLine("Single/history query source stamping, reference deletion/reply and default-instance change verification passed.");
+    Console.WriteLine(
+        "Single/history query source stamping, reference deletion/reply and default-instance change verification passed.");
 
     var dispatcher = new HostEventDispatcher(new Lock(), instances.ReplySubscriptions,
         new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
     var bridge = new AdapterEventBridge(dispatcher);
     MessageEvent? received = null;
-    await using (var subscription = bridge.Bridge("first-qq", "qq", first.Event, async incoming =>
-    {
-        received = incoming;
-        if (context.InstanceId != "first-qq") throw new InvalidOperationException("Event scope did not select its source instance.");
-        await context.Message.ReplyAsync(incoming, "first-event-reply");
-        await instances.ReplySubscriptions.PublishAsync(incoming);
-    }))
+    await using (bridge.Bridge("first-qq", "qq", first.Event, async incoming =>
+                 {
+                     received = incoming;
+                     if (context.InstanceId != "first-qq")
+                         throw new InvalidOperationException("Event scope did not select its source instance.");
+                     await context.Message.ReplyAsync(incoming, "first-event-reply");
+                     await instances.ReplySubscriptions.PublishAsync(incoming);
+                 }))
     {
         await ((VerificationEventService)first.Event).RaiseAsync(message with
         {
             Platform = "forged", InstanceId = "second-qq", Segments = [new QuoteSegment("same-message")]
         });
     }
-    if (received is not { InstanceId: "first-qq", Platform: "qq", SelfId: "same-account" } || firstReplies != 1 || secondReplies != 1)
-        throw new InvalidOperationException("Event ingress trusted adapter-supplied identity or crossed reply subscriptions.");
+
+    if (received is not { InstanceId: "first-qq", Platform: "qq", SelfId: "same-account" } || firstReplies != 1 ||
+        secondReplies != 1)
+        throw new InvalidOperationException(
+            "Event ingress trusted adapter-supplied identity or crossed reply subscriptions.");
     instances.UnregisterAdapter(second);
-    try { await context.Message.ReplyAsync(message, "must-not-fallback"); throw new Exception("Unloaded source fell back to another instance."); }
-    catch (InvalidOperationException) { }
-    using (context.UseInstance("first-qq")) await context.Message.SendDirectMessageAsync("same-channel", "single-instance-send");
+    try
+    {
+        await context.Message.ReplyAsync(message, "must-not-fallback");
+        throw new Exception("Unloaded source fell back to another instance.");
+    }
+    catch (InvalidOperationException)
+    {
+    }
+
+    using (context.UseInstance("first-qq"))
+    {
+        await context.Message.SendDirectMessageAsync("same-channel", "single-instance-send");
+    }
+
     if (!first.MessageService.Messages.SequenceEqual(["first-send", "first-event-reply", "single-instance-send"]) ||
-        !second.MessageService.Messages.SequenceEqual(["second-send", "background-second-reply", "second-quote", "queried-second-reply", "history-second-reply"]) ||
+        !second.MessageService.Messages.SequenceEqual([
+            "second-send", "background-second-reply", "second-quote", "queried-second-reply", "history-second-reply"
+        ]) ||
         AdapterExecutionContext.Current is not null)
         throw new InvalidOperationException("Identical-platform/account instances routed messages incorrectly.");
     using (context.UseInstance("first-qq"))
@@ -1414,13 +1729,22 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
         instances.UnregisterAdapter(first);
         await AssertMissingBoundInstanceAsync();
     }
+
     async Task AssertMissingBoundInstanceAsync()
     {
-        try { await context.Message.SendDirectMessageAsync("same-channel", "removed"); throw new Exception("Stale scope sent a message."); }
-        catch (InvalidOperationException) { }
+        try
+        {
+            await context.Message.SendDirectMessageAsync("same-channel", "removed");
+            throw new Exception("Stale scope sent a message.");
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
-    Directory.Delete(directory, recursive: true);
-    Console.WriteLine("Same-platform/account instance routing, event identity and reply isolation verification passed.");
+
+    Directory.Delete(directory, true);
+    Console.WriteLine(
+        "Same-platform/account instance routing, event identity and reply isolation verification passed.");
 }
 
 var explicitPlatformDirectory = Path.Combine(
@@ -1437,17 +1761,17 @@ using (explicitPlatformContext.UseInstance("discord"))
 {
     await explicitPlatformContext.Message.SendMessageAsync(
         Channel.Group("channel"),
-        [new TextSegment("explicit-discord")]);
+        new TextSegment("explicit-discord"));
 }
 
+// The callback completes before its enclosing resource is disposed; timeout cleanup is deferred until it completes.
+// ReSharper disable once AccessToDisposedClosure
 AssertThrows<InvalidOperationException>(() => explicitPlatformContext.UseInstance("missing"));
 explicitPlatformContext.Dispose();
-if (Directory.Exists(explicitPlatformDirectory)) Directory.Delete(explicitPlatformDirectory, recursive: true);
+if (Directory.Exists(explicitPlatformDirectory)) Directory.Delete(explicitPlatformDirectory, true);
 if (!discordAdapter.MessageService.Messages.Contains("explicit-discord") ||
     qqAdapter.MessageService.Messages.Contains("explicit-discord"))
-{
     throw new InvalidOperationException("Explicit adapter instance selection routed to the wrong adapter.");
-}
 
 Console.WriteLine("Explicit adapter instance selection verification passed.");
 
@@ -1462,9 +1786,13 @@ var namedGroupMessage = new MessageEvent
 };
 if (HostEventDispatcher.Describe(namedGroupMessage) != "测试群 群名片发送: hello" ||
     HostEventDispatcher.Describe(namedGroupMessage, true) != "测试群(123) 群名片(456)发送: hello" ||
-    HostEventDispatcher.Describe(namedGroupMessage with { Channel = Channel.Direct("456") }, true) != "用户名(456)发送: hello" ||
-    HostEventDispatcher.Describe(namedGroupMessage with { Channel = Channel.Group("123"), Sender = new User("456"), Member = null }, true) != "123 456发送: hello")
-    throw new InvalidOperationException("showid log formatting failed for group, direct, nick or missing-name messages.");
+    HostEventDispatcher.Describe(namedGroupMessage with { Channel = Channel.Direct("456") }, true) !=
+    "用户名(456)发送: hello" ||
+    HostEventDispatcher.Describe(
+        namedGroupMessage with { Channel = Channel.Group("123"), Sender = new User("456"), Member = null }, true) !=
+    "123 456发送: hello")
+    throw new InvalidOperationException(
+        "showid log formatting failed for group, direct, nick or missing-name messages.");
 Console.WriteLine("Message log showid verification passed.");
 
 var tempRoot = Path.Combine(Path.GetTempPath(), "ShiroBot.Verification", Guid.NewGuid().ToString("N"));
@@ -1478,24 +1806,27 @@ try
     var adapterPackage = new AdapterPackageManager(adapterPackageRoot);
     var adapterDll = typeof(VerificationAdapter).Assembly.Location;
     var dllProbe = adapterPackage.Prepare(adapterDll, adapterWorkRoot);
-    var firstInstall = adapterPackage.Install(dllProbe, enabled: true);
+    var firstInstall = adapterPackage.Install(dllProbe, true);
     if (adapterPackage.Get("verification") is not { Enabled: true } || !File.Exists(firstInstall.AssemblyPath))
         throw new InvalidOperationException("Adapter DLL install verification failed.");
 
     var metadataCacheRoot = Path.Combine(tempRoot, "cache", "adapters");
     var packageDirectory = Path.GetDirectoryName(firstInstall.AssemblyPath)!;
-    if (File.Exists(Path.Combine(packageDirectory, "adapter.json")) || !Directory.EnumerateFiles(metadataCacheRoot, "*.json").Any())
+    if (File.Exists(Path.Combine(packageDirectory, "adapter.json")) ||
+        !Directory.EnumerateFiles(metadataCacheRoot, "*.json").Any())
         throw new InvalidOperationException("Adapter metadata was not stored exclusively in the host cache.");
     var originalConfig = File.ReadAllText(Path.Combine(packageDirectory, "config.toml"));
-    Directory.Delete(metadataCacheRoot, recursive: true);
+    Directory.Delete(metadataCacheRoot, true);
     if (new AdapterPackageManager(adapterPackageRoot).Get("verification") is not { Enabled: true } ||
         originalConfig != File.ReadAllText(Path.Combine(packageDirectory, "config.toml")))
-        throw new InvalidOperationException("Clearing adapter metadata cache lost package identity, switches or configuration.");
+        throw new InvalidOperationException(
+            "Clearing adapter metadata cache lost package identity, switches or configuration.");
     var metadataCacheFile = Directory.EnumerateFiles(metadataCacheRoot, "*.json").Single();
     File.WriteAllText(metadataCacheFile, "invalid json");
     File.WriteAllText(Path.Combine(packageDirectory, "adapter.json"), "{\"Id\":\"wrong\",\"Entry\":\"missing.dll\"}");
     if (adapterPackage.Get("verification") is null || File.Exists(Path.Combine(packageDirectory, "adapter.json")))
-        throw new InvalidOperationException("Corrupt cache or obsolete package manifest prevented DLL-based discovery.");
+        throw new InvalidOperationException(
+            "Corrupt cache or obsolete package manifest prevented DLL-based discovery.");
     var nestedEntry = Path.Combine(packageDirectory, "nested", "adapter.dll");
     Directory.CreateDirectory(Path.GetDirectoryName(nestedEntry)!);
     File.Move(firstInstall.AssemblyPath, nestedEntry);
@@ -1506,20 +1837,25 @@ try
     if (adapterPackage.Get("verification") is not null)
         throw new InvalidOperationException("Adapter discovery accepted ambiguous entry DLLs through stale cache.");
     File.Delete(duplicateEntry);
-    Directory.Delete(metadataCacheRoot, recursive: true);
+    Directory.Delete(metadataCacheRoot, true);
     File.WriteAllText(metadataCacheRoot, "Cache directory temporarily unavailable");
     try
     {
         if (adapterPackage.Get("verification")?.AssemblyPath != nestedEntry)
             throw new InvalidOperationException("Adapter loading required a writable metadata cache.");
     }
-    finally { File.Delete(metadataCacheRoot); }
+    finally
+    {
+        File.Delete(metadataCacheRoot);
+    }
+
     File.Move(nestedEntry, firstInstall.AssemblyPath);
     Directory.Delete(Path.GetDirectoryName(nestedEntry)!);
     Console.WriteLine("Adapter metadata cache reconstruction, invalidation and unavailable-cache verification passed.");
 
     // New packages do not create implicit bots; all instances share the package config.
-    if (adapterPackage.ListInstances().Count != 0) throw new InvalidOperationException("Fresh installation created a default instance.");
+    if (adapterPackage.ListInstances().Count != 0)
+        throw new InvalidOperationException("Fresh installation created a default instance.");
     var externalCorePath = Path.Combine(tempRoot, "data", "custom.toml");
     Directory.CreateDirectory(Path.GetDirectoryName(externalCorePath)!);
     File.WriteAllText(externalCorePath, "# Core settings remain unchanged\nprotocols = []\n");
@@ -1535,13 +1871,19 @@ try
     var secondContext = ConfigContext.ForAdapter(second.ConfigPath, second.Id);
     firstContext.Save(new VerificationComponentConfig { Mode = "first account" });
     secondContext.Save(new VerificationComponentConfig { Mode = "second account" });
-    if (firstContext.Load<VerificationComponentConfig>().Mode != "first account" || secondContext.Load<VerificationComponentConfig>().Mode != "second account")
+    if (firstContext.Load<VerificationComponentConfig>().Mode != "first account" ||
+        secondContext.Load<VerificationComponentConfig>().Mode != "second account")
         throw new InvalidOperationException("SDK configuration escaped its instance scope.");
-    AssertThrows<InvalidOperationException>(() => externalPackages.CreateInstance("verification", "EXTERNAL-INSTANCE", null));
-    if (first.PackageEnabled || first.Active) throw new InvalidOperationException("Empty protocols must disable packages.");
-    File.WriteAllText(Path.Combine(Path.GetDirectoryName(first.ConfigPath)!, ".shirobot-adapter-state.json"), "{\"Enabled\":true}");
-    if (externalPackages.GetInstance(first.Id)!.Active) throw new InvalidOperationException("Legacy package state was not ignored.");
-    File.WriteAllText(externalCorePath, "# Preserve unrelated settings\nprotocols = [\"OtherAdapter\"]\nfuture_value = 42\n");
+    AssertThrows<InvalidOperationException>(() =>
+        externalPackages.CreateInstance("verification", "EXTERNAL-INSTANCE", null));
+    if (first.PackageEnabled || first.Active)
+        throw new InvalidOperationException("Empty protocols must disable packages.");
+    File.WriteAllText(Path.Combine(Path.GetDirectoryName(first.ConfigPath)!, ".shirobot-adapter-state.json"),
+        "{\"Enabled\":true}");
+    if (externalPackages.GetInstance(first.Id)!.Active)
+        throw new InvalidOperationException("Legacy package state was not ignored.");
+    File.WriteAllText(externalCorePath,
+        "# Preserve unrelated settings\nprotocols = [\"OtherAdapter\"]\nfuture_value = 42\n");
     externalPackages.SetPackageEnabled("verification", true);
     externalPackages.SetPackageEnabled("VERIFICATION", true);
     var enabledCore = File.ReadAllText(externalCorePath);
@@ -1550,25 +1892,34 @@ try
     AssertSingle(enabledCore, "\"verification\"");
     if (!new AdapterPackageManager(adapterPackageRoot, externalCorePath).GetInstance(first.Id)!.Active)
         throw new InvalidOperationException("Restart did not restore protocols and instance switches.");
-    if (!externalPackages.GetInstance(first.Id)!.Active) throw new InvalidOperationException("Protocols did not enable the instance.");
+    if (!externalPackages.GetInstance(first.Id)!.Active)
+        throw new InvalidOperationException("Protocols did not enable the instance.");
     externalPackages.SetPackageEnabled("verification", false);
     var gated = externalPackages.GetInstance(first.Id)!;
     if (gated.PackageEnabled || gated.Active || !gated.Enabled)
-        throw new InvalidOperationException("The package master switch did not gate its instances without touching their own switches.");
-    if (firstContext.Load<VerificationComponentConfig>().Mode != "first account" || externalPackages.ListInstances().Count != 2)
+        throw new InvalidOperationException(
+            "The package master switch did not gate its instances without touching their own switches.");
+    if (firstContext.Load<VerificationComponentConfig>().Mode != "first account" ||
+        externalPackages.ListInstances().Count != 2)
         throw new InvalidOperationException("Turning the package off disturbed instance configuration.");
     externalPackages.SetPackageEnabled("verification", true);
-    if (!externalPackages.GetInstance(first.Id)!.Active) throw new InvalidOperationException("Turning the package back on did not restore its instances.");
-    AssertThrows<InvalidOperationException>(() => externalPackages.UpdateInstance(first.Id, "SECOND-instance", null));
+    if (!externalPackages.GetInstance(first.Id)!.Active)
+        throw new InvalidOperationException("Turning the package back on did not restore its instances.");
+    var firstInstanceId = first.Id;
+    AssertThrows<InvalidOperationException>(() =>
+        externalPackages.UpdateInstance(firstInstanceId, "SECOND-instance", null));
     var renamed = externalPackages.UpdateInstance(first.Id, "renamed-instance", "Main account");
     if (externalPackages.GetInstance(first.Id) is not null || renamed.Name != "Main account" || !renamed.Enabled ||
-        ConfigContext.ForAdapter(renamed.ConfigPath, renamed.Id).Load<VerificationComponentConfig>().Mode != "first account")
+        ConfigContext.ForAdapter(renamed.ConfigPath, renamed.Id).Load<VerificationComponentConfig>().Mode !=
+        "first account")
         throw new InvalidOperationException("Renaming an instance lost its switch or configuration.");
     first = externalPackages.UpdateInstance(renamed.Id, first.Id, null);
-    if (first.Name != "Main account") throw new InvalidOperationException("Renaming the ID alone changed the display name.");
+    if (first.Name != "Main account")
+        throw new InvalidOperationException("Renaming the ID alone changed the display name.");
     externalPackages.DeleteInstance(first.Id);
     externalPackages.DeleteInstance(second.Id);
-    if (externalPackages.ListInstances().Count != 0 || externalPackages.List().Count != 1 || File.ReadAllText(externalCorePath).Contains("adapter_instances"))
+    if (externalPackages.ListInstances().Count != 0 || externalPackages.List().Count != 1 ||
+        File.ReadAllText(externalCorePath).Contains("adapter_instances"))
         throw new InvalidOperationException("Instance mutations removed the shared DLL or wrote to core config.");
 
     // An older config without [[instances]] is one implicit instance and stays untouched until a second one is added.
@@ -1579,35 +1930,41 @@ try
     var implicitPackages = new AdapterPackageManager(adapterPackageRoot, externalCorePath);
     var implicitInstance = implicitPackages.ListInstances().SingleOrDefault();
     if (implicitInstance is not { Implicit: true, Id: "verification" } ||
-        ConfigContext.ForAdapter(implicitInstance.ConfigPath, implicitInstance.Id).Load<VerificationComponentConfig>().Mode != "legacy account")
+        ConfigContext.ForAdapter(implicitInstance.ConfigPath, implicitInstance.Id).Load<VerificationComponentConfig>()
+            .Mode != "legacy account")
         throw new InvalidOperationException("An undeclared config was not read as one implicit instance.");
     var loadedConfig = File.ReadAllText(packageConfigPath); // Loading fills in defaults, as for any legacy config.
     implicitPackages.SetInstanceEnabled(implicitInstance.Id, !implicitInstance.Enabled);
     implicitPackages.SetPackageEnabled("verification", false);
     implicitPackages.SetPackageEnabled("verification", true);
-    if (!File.ReadAllText(packageConfigPath).Contains("enabled = true") || !loadedConfig.StartsWith(legacyConfig) || implicitPackages.GetInstance("verification")!.Enabled == implicitInstance.Enabled)
+    if (!File.ReadAllText(packageConfigPath).Contains("enabled = true") || !loadedConfig.StartsWith(legacyConfig) ||
+        implicitPackages.GetInstance("verification")!.Enabled == implicitInstance.Enabled)
         throw new InvalidOperationException("Switches rewrote an implicit config or did not persist.");
     implicitPackages.SetInstanceEnabled(implicitInstance.Id, implicitInstance.Enabled);
     implicitPackages.CreateInstance("verification", "second-account", null);
     var converted = implicitPackages.ListInstances();
-    if (converted.Count != 2 || converted.Any(item => item.Implicit) || !File.Exists(packageConfigPath + ".pre-instances.bak") ||
+    if (converted.Count != 2 || converted.Any(item => item.Implicit) ||
+        !File.Exists(packageConfigPath + ".pre-instances.bak") ||
         AdapterInstanceStore.GetConfig(packageConfigPath, "verification")["mode"]?.ToString() != "legacy account")
-        throw new InvalidOperationException("Adding a second instance did not convert the implicit config with its settings.");
+        throw new InvalidOperationException(
+            "Adding a second instance did not convert the implicit config with its settings.");
     File.WriteAllText(packageConfigPath, declaredConfig);
     File.Delete(packageConfigPath + ".pre-instances.bak");
 
     // Instance configs are written as readable sections with UTF-8 text, not one inline table of \u escapes.
     var readablePath = Path.Combine(adapterWorkRoot, "readable-instances.toml");
-    AdapterInstanceStore.Write(readablePath, [new PackageAdapterInstance
-    {
-        Id = "cn-bot", Name = "格瑞普的机器人 \"引号\"", Enabled = true,
-        Config = new Dictionary<string, object?>
+    AdapterInstanceStore.Write(readablePath, [
+        new PackageAdapterInstance
         {
-            ["app_id"] = "102605036",
-            ["sandbox"] = new Dictionary<string, object?> { ["enabled"] = true },
-            ["routes"] = new List<object?> { new Dictionary<string, object?> { ["group"] = "群<1>" } }
+            Id = "cn-bot", Name = "格瑞普的机器人 \"引号\"", Enabled = true,
+            Config = new Dictionary<string, object?>
+            {
+                ["app_id"] = "102605036",
+                ["sandbox"] = new Dictionary<string, object?> { ["enabled"] = true },
+                ["routes"] = new List<object?> { new Dictionary<string, object?> { ["group"] = "群<1>" } }
+            }
         }
-    }], replaceLegacy: true);
+    ], true);
     var readableText = File.ReadAllText(readablePath);
     var readable = AdapterInstanceStore.Read(readablePath).Single();
     if (readableText.Contains("\\u") || readableText.Contains("config = {") || !readableText.Contains("格瑞普的机器人") ||
@@ -1615,28 +1972,34 @@ try
         !readableText.Contains("[[instances.config.routes]]") || readable.Name != "格瑞普的机器人 \"引号\"" ||
         readable.Config["app_id"]?.ToString() != "102605036" ||
         (readable.Config["sandbox"] as Dictionary<string, object?>)?["enabled"] is not true ||
-        ((readable.Config["routes"] as List<object?>)?.SingleOrDefault() as Dictionary<string, object?>)?["group"]?.ToString() != "群<1>")
-        throw new InvalidOperationException("Instance config was not written as readable TOML sections:\n" + readableText);
+        ((readable.Config["routes"] as List<object?>)?.SingleOrDefault() as Dictionary<string, object?>)?["group"]
+        ?.ToString() != "群<1>")
+        throw new InvalidOperationException("Instance config was not written as readable TOML sections:\n" +
+                                            readableText);
 
     var zipPath = Path.Combine(adapterWorkRoot, "adapter.zip");
-    using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+    await using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+    {
         archive.CreateEntryFromFile(adapterDll, "adapter.dll");
+    }
+
     var zipProbe = adapterPackage.Prepare(zipPath, adapterWorkRoot);
-    var replacement = adapterPackage.Install(zipProbe, enabled: false);
+    var replacement = adapterPackage.Install(zipProbe, false);
     if (adapterPackage.Get("verification") is not { Enabled: false } || !File.Exists(replacement.AssemblyPath))
         throw new InvalidOperationException("Adapter ZIP replacement verification failed.");
 
     var installedConfig = Path.Combine(adapterPackageRoot, "verification", "config.toml");
     File.WriteAllText(installedConfig, "user_value = true");
     var packageWithDefaultConfig = Path.Combine(adapterWorkRoot, "adapter-with-config.zip");
-    using (var archive = ZipFile.Open(packageWithDefaultConfig, ZipArchiveMode.Create))
+    await using (var archive = ZipFile.Open(packageWithDefaultConfig, ZipArchiveMode.Create))
     {
         archive.CreateEntryFromFile(adapterDll, "adapter.dll");
-        using var writer = new StreamWriter(archive.CreateEntry("config.toml").Open());
+        await using var writer = new StreamWriter(archive.CreateEntry("config.toml").Open());
         writer.Write("user_value = false");
     }
+
     var configProbe = adapterPackage.Prepare(packageWithDefaultConfig, Path.Combine(adapterWorkRoot, "config-preview"));
-    adapterPackage.Install(configProbe, enabled: true);
+    adapterPackage.Install(configProbe, true);
     if (AdapterInstanceStore.GetConfig(installedConfig, "verification")["user_value"] is not true)
         throw new InvalidOperationException("Adapter replacement overwrote user config.toml.");
 
@@ -1648,7 +2011,7 @@ try
     var restoreCalled = false;
     await AssertThrowsAsync<InvalidOperationException>(() => adapterPackage.InstallAndActivateAsync(
         zipProbe,
-        enabled: true,
+        true,
         _ => throw new InvalidOperationException("simulated new adapter startup failure"),
         _ =>
         {
@@ -1662,37 +2025,46 @@ try
     adapterPackage.Uninstall("verification");
     var freshInstall = await adapterPackage.InstallAndActivateAsync(
         zipProbe,
-        enabled: true,
+        true,
         installed =>
         {
-            File.WriteAllText(Path.Combine(Path.GetDirectoryName(installed.AssemblyPath)!, "config.toml"), "app_id = \"\"");
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(installed.AssemblyPath)!, "config.toml"),
+                "app_id = \"\"");
             throw new InvalidOperationException("simulated missing credentials");
         });
     if (freshInstall.StartError != "simulated missing credentials" || freshInstall.Package.Enabled ||
         adapterPackage.Get("verification") is not { Enabled: false } keptPackage ||
         !File.Exists(keptPackage.AssemblyPath) ||
         !File.Exists(Path.Combine(Path.GetDirectoryName(keptPackage.AssemblyPath)!, "config.toml")))
-        throw new InvalidOperationException("A fresh adapter install that failed to start was not kept disabled for configuration.");
-    if (AdapterMarketplaceCache.MarketplaceUrl != "https://raw.githubusercontent.com/ShirokaProject/awesome-shirobot/automation/refresh-marketplace/dist/adapters.v1.json")
+        throw new InvalidOperationException(
+            "A fresh adapter install that failed to start was not kept disabled for configuration.");
+    if (AdapterMarketplaceCache.MarketplaceUrl !=
+        "https://raw.githubusercontent.com/ShirokaProject/awesome-shirobot/automation/refresh-marketplace/dist/adapters.v1.json")
         throw new InvalidOperationException("Adapter marketplace URL contract changed.");
 
     var traversalZip = Path.Combine(adapterWorkRoot, "traversal.zip");
-    using (var archive = ZipFile.Open(traversalZip, ZipArchiveMode.Create))
+    await using (var archive = ZipFile.Open(traversalZip, ZipArchiveMode.Create))
+    {
         archive.CreateEntry("../escape.dll");
-    AssertThrows<InvalidOperationException>(() => adapterPackage.Prepare(traversalZip, Path.Combine(tempRoot, "traversal-work")));
+    }
+
+    AssertThrows<InvalidOperationException>(() =>
+        adapterPackage.Prepare(traversalZip, Path.Combine(tempRoot, "traversal-work")));
     Console.WriteLine("Adapter package ZIP, traversal, config preservation, and replacement verification passed.");
 
     // Staged updates: an adapter that cannot be released gets its new package at the next start.
-    adapterPackage.StageUpdate(zipProbe, enabled: true);
+    adapterPackage.StageUpdate(zipProbe, true);
     if (!adapterPackage.HasStagedUpdate("verification"))
         throw new InvalidOperationException("Adapter update was not staged.");
     var stagedAdapter = adapterPackage.ApplyStagedUpdates();
     if (!stagedAdapter.Applied.SequenceEqual(["verification"]) || stagedAdapter.Failed.Count != 0 ||
         adapterPackage.HasStagedUpdate("verification") ||
         adapterPackage.Get("verification") is not { Enabled: false } appliedAdapter ||
-        File.ReadAllText(Path.Combine(Path.GetDirectoryName(appliedAdapter.AssemblyPath)!, "config.toml")) != "app_id = \"\"")
-        throw new InvalidOperationException("Staged adapter update was not applied at startup, or replaced the user's config.toml.");
-    adapterPackage.StageUpdate(zipProbe, enabled: true);
+        File.ReadAllText(Path.Combine(Path.GetDirectoryName(appliedAdapter.AssemblyPath)!, "config.toml")) !=
+        "app_id = \"\"")
+        throw new InvalidOperationException(
+            "Staged adapter update was not applied at startup, or replaced the user's config.toml.");
+    adapterPackage.StageUpdate(zipProbe, true);
     adapterPackage.Uninstall("verification");
     if (adapterPackage.HasStagedUpdate("verification"))
         throw new InvalidOperationException("Uninstalling an adapter kept its staged update.");
@@ -1718,7 +2090,8 @@ try
             throw new InvalidOperationException("Cookie defaults did not seed a fresh install.");
         File.WriteAllText(cookiePath, "user-cookie");
         // Simulate the ownership list written by hosts that treated credentials as package assets.
-        File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName), ["cookies/bilibili.txt"]);
+        File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName),
+            ["cookies/bilibili.txt"]);
 
         // The plugin's own state appears next to the package files.
         File.WriteAllText(Path.Combine(installedDir, "config.toml"), "seed = 2 # user edit");
@@ -1735,8 +2108,10 @@ try
             Directory.CreateDirectory(Path.Combine(v2, name));
             File.WriteAllText(Path.Combine(installedDir, name, "state.json"), "user-state");
             File.WriteAllText(Path.Combine(v2, name, "state.json"), "package-state");
-            File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName), [$"{name}/state.json"]);
+            File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName),
+                [$"{name}/state.json"]);
         }
+
         File.WriteAllText(Path.Combine(v2, "Sample.dll"), "v2");
         File.WriteAllText(Path.Combine(v2, "runtimes", "native.so"), "v2-native");
         File.WriteAllText(Path.Combine(v2, "config.toml"), "seed = 1");
@@ -1744,23 +2119,28 @@ try
         File.WriteAllText(Path.Combine(v2, "cookies", "bilibili.txt"), "");
         StagedComponentUpdates.ApplyPackage(v2, installedDir);
         if (File.ReadAllText(cookiePath) != "user-cookie" ||
-            File.ReadAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName)).Any(x => x.StartsWith("cookies/", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("Package defaults overwrote credentials or retained credential ownership.");
-        File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName), ["cookies/bilibili.txt"]);
+            File.ReadAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName))
+                .Any(x => x.StartsWith("cookies/", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException(
+                "Package defaults overwrote credentials or retained credential ownership.");
+        File.AppendAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName),
+            ["cookies/bilibili.txt"]);
         if (File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v2" ||
             File.Exists(Path.Combine(installedDir, "Old.dll")) ||
             !File.Exists(Path.Combine(installedDir, "runtimes", "native.so")) ||
             File.ReadAllText(Path.Combine(installedDir, "config.toml")) != "seed = 2 # user edit" ||
             File.ReadAllText(Path.Combine(installedDir, "data", "history.jsonl")) != "keep")
-            throw new InvalidOperationException("Package replacement touched plugin data, config, or kept a dropped file.");
+            throw new InvalidOperationException(
+                "Package replacement touched plugin data, config, or kept a dropped file.");
 
         if (File.ReadAllText(Path.Combine(installedDir, "user-tool.dll")) != "user-dll" ||
             File.ReadAllText(Path.Combine(installedDir, "notes.txt")) != "user-notes" ||
-            File.ReadAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName)).Contains("notes.txt"))
+            File.ReadAllLines(Path.Combine(installedDir, StagedComponentUpdates.PackageFilesName))
+                .Contains("notes.txt"))
             throw new InvalidOperationException("Package adopted or overwrote an unowned user file.");
-        foreach (var name in new[] { "data", "cache", "tmp", "logs" })
-            if (File.ReadAllText(Path.Combine(installedDir, name, "state.json")) != "user-state")
-                throw new InvalidOperationException("Package overwrote a reserved runtime directory.");
+        if (ReservedRuntimeDirectories.Any(name =>
+                File.ReadAllText(Path.Combine(installedDir, name, "state.json")) != "user-state"))
+            throw new InvalidOperationException("Package overwrote a reserved runtime directory.");
 
         // A failing replacement leaves the installed files exactly as they were.
         var v3 = Path.Combine(tempRoot, "staged-v3");
@@ -1791,7 +2171,8 @@ try
         if (failedAttempt.Failed.Count != 1 || failedAttempt.Applied.Count != 0 ||
             File.ReadAllText(Path.Combine(installedDir, "Sample.dll")) != "v2" ||
             File.ReadAllText(legacyEntry) != "old-root-entry")
-            throw new InvalidOperationException("A failed staged update changed the installed package or legacy entry.");
+            throw new InvalidOperationException(
+                "A failed staged update changed the installed package or legacy entry.");
         Directory.Delete(Path.Combine(installedDir, "blocked"));
         var applied = StagedComponentUpdates.ApplyStaged(componentRoot);
         if (File.Exists(legacyEntry) || !applied.Applied.SequenceEqual(["Sample"]) || applied.Failed.Count != 0 ||
@@ -1807,40 +2188,47 @@ try
 
     var pluginUpdateRoot = Path.Combine(tempRoot, "plugin-update");
     Directory.CreateDirectory(pluginUpdateRoot);
-    var targetPluginName = "ShiroBot.Plugin.Example.dll";
+    const string targetPluginName = "ShiroBot.Plugin.Example.dll";
     var expectedPluginBytes = new byte[] { 1, 2, 3, 4 };
     var pluginUpdateZip = Path.Combine(pluginUpdateRoot, "plugin.zip");
-    using (var archive = ZipFile.Open(pluginUpdateZip, ZipArchiveMode.Create))
+    await using (var archive = ZipFile.Open(pluginUpdateZip, ZipArchiveMode.Create))
     {
         var entry = archive.CreateEntry("nested/" + targetPluginName);
-        using (var output = entry.Open()) output.Write(expectedPluginBytes);
+        await using (var output = entry.Open())
+        {
+            output.Write(expectedPluginBytes);
+        }
+
         archive.CreateEntry("nested/ShiroBot.SDK.dll");
         archive.CreateEntry("nested/ShiroBot.Model.QQ.dll");
     }
+
     var extractedPlugin = Path.Combine(pluginUpdateRoot, "extracted.dll");
-    ShiroBot.Update.Updater.ExtractPluginEntryFromZip(pluginUpdateZip, extractedPlugin, targetPluginName);
+    Updater.ExtractPluginEntryFromZip(pluginUpdateZip, extractedPlugin, targetPluginName);
     if (!File.ReadAllBytes(extractedPlugin).SequenceEqual(expectedPluginBytes))
         throw new InvalidOperationException("Plugin ZIP update did not extract the target entry DLL.");
 
     var renamedPluginZip = Path.Combine(pluginUpdateRoot, "renamed.zip");
-    using (var archive = ZipFile.Open(renamedPluginZip, ZipArchiveMode.Create))
+    await using (var archive = ZipFile.Open(renamedPluginZip, ZipArchiveMode.Create))
     {
         var entry = archive.CreateEntry("ShiroBot.Plugin.Example.dll");
-        using var output = entry.Open();
+        await using var output = entry.Open();
         output.Write(expectedPluginBytes);
     }
-    ShiroBot.Update.Updater.ExtractPluginEntryFromZip(renamedPluginZip, extractedPlugin, "test.dll");
+
+    Updater.ExtractPluginEntryFromZip(renamedPluginZip, extractedPlugin, "test.dll");
     if (!File.ReadAllBytes(extractedPlugin).SequenceEqual(expectedPluginBytes))
         throw new InvalidOperationException("Plugin ZIP update did not handle a locally renamed DLL.");
 
     var ambiguousPluginZip = Path.Combine(pluginUpdateRoot, "ambiguous.zip");
-    using (var archive = ZipFile.Open(ambiguousPluginZip, ZipArchiveMode.Create))
+    await using (var archive = ZipFile.Open(ambiguousPluginZip, ZipArchiveMode.Create))
     {
         archive.CreateEntry("First.Plugin.dll");
         archive.CreateEntry("Second.Plugin.dll");
     }
+
     AssertThrows<InvalidOperationException>(() =>
-        ShiroBot.Update.Updater.ExtractPluginEntryFromZip(ambiguousPluginZip, extractedPlugin, targetPluginName));
+        Updater.ExtractPluginEntryFromZip(ambiguousPluginZip, extractedPlugin, targetPluginName));
     Console.WriteLine("Plugin ZIP update extraction verification passed.");
 
     var eventLogHub = new HostLogHub();
@@ -1872,17 +2260,11 @@ try
         Segments = [new TextSegment("hello")]
     });
 
-    if (directSubscriber.Events.Count != 2 ||
-        directSubscriber.Events[0] is not MemberJoinedEvent ||
-        directSubscriber.Events[1] is not MessageEvent)
-    {
+    if (directSubscriber.Events is not [MemberJoinedEvent, MessageEvent])
         throw new InvalidOperationException("Direct IBotEventSubscriber did not receive all event types exactly once.");
-    }
 
     if (routedPlugin.BaseEventCount != 2 || routedPlugin.MemberJoinedCount != 1)
-    {
         throw new InvalidOperationException("Polymorphic event routing failed or dispatched a plugin more than once.");
-    }
 
     Console.WriteLine("Plugin event compatibility verification passed.");
 
@@ -1892,9 +2274,7 @@ try
     var adapterProbe = AdapterContractProbe.ReadMetadata(typeof(VerificationAdapter).Assembly.Location)
                        ?? throw new InvalidOperationException("Adapter metadata probe failed.");
     if (adapterProbe is not { Id: "verification" })
-    {
         throw new InvalidOperationException("Adapter identity metadata was read incorrectly.");
-    }
 
     var eventBridge = new AdapterEventBridge(eventDispatcher);
     var concurrentDispatchPlugin = new ConcurrentDispatchPlugin();
@@ -1903,7 +2283,8 @@ try
         "concurrent-dispatch",
         eventLogHub);
     eventDispatcher.RegisterPlugin(concurrentDispatchHandle);
-    var bridgeSubscription = eventBridge.Bridge("verification", "verification", queuedEventService, _ => Task.CompletedTask);
+    var bridgeSubscription =
+        eventBridge.Bridge("verification", "verification", queuedEventService, _ => Task.CompletedTask);
     await queuedEventService.RaiseAsync(CreateMemberJoinedEvent("first"));
     await concurrentDispatchPlugin.FirstDispatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
     await queuedEventService.RaiseAsync(CreateMemberJoinedEvent("second"));
@@ -1922,9 +2303,7 @@ try
     var ownedWatch = (ConfigWatchSubscription)watchContext.Config.Watch<VerificationConfig>(_ => { });
     watchContext.Dispose();
     if (!ownedWatch.IsDisposed)
-    {
         throw new InvalidOperationException("Plugin-owned config watcher was not disposed with its context.");
-    }
 
     Console.WriteLine("Plugin config watcher ownership verification passed.");
 
@@ -1935,16 +2314,15 @@ try
         eventLogHub,
         TimeSpan.FromMilliseconds(50),
         TimeSpan.FromMilliseconds(50));
-    var blockedDispatch = blockedDispatchHandle.DispatchAsync<IBlockingDispatchPlugin>(plugin => plugin.DispatchAsync());
+    var blockedDispatch =
+        blockedDispatchHandle.DispatchAsync<IBlockingDispatchPlugin>(plugin => plugin.DispatchAsync());
     await blockedDispatchPlugin.DispatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
     var dispatchTimeoutResult = await blockedDispatchHandle.UnloadAsync().WaitAsync(TimeSpan.FromSeconds(1));
     AssertUnloadTimedOut(dispatchTimeoutResult, "active plugin dispatches");
     if (blockedDispatchHandle.Supports<IBlockingDispatchPlugin>() ||
         await blockedDispatchHandle.DispatchAsync<IBlockingDispatchPlugin>(_ => Task.CompletedTask))
-    {
         throw new InvalidOperationException("Plugin accepted a new dispatch after unload started.");
-    }
 
     blockedDispatchPlugin.ReleaseDispatch.TrySetResult();
     await blockedDispatch.WaitAsync(TimeSpan.FromSeconds(1));
@@ -2018,19 +2396,19 @@ try
     var preservingPath = Path.Combine(tempRoot, "preserving", "config.toml");
     Directory.CreateDirectory(Path.GetDirectoryName(preservingPath)!);
     File.WriteAllText(preservingPath, """
-        # preserved root comment
-        timeout_seconds = 1 # preserved known inline comment
-        output_mode = "legacy"
-        future_flag = "keep" # unknown top-level
+                                      # preserved root comment
+                                      timeout_seconds = 1 # preserved known inline comment
+                                      output_mode = "legacy"
+                                      future_flag = "keep" # unknown top-level
 
-        [retry]
-        # preserved nested comment
-        count = 2
-        future_nested = "keep" # unknown nested key
+                                      [retry]
+                                      # preserved nested comment
+                                      count = 2
+                                      future_nested = "keep" # unknown nested key
 
-        [future_section]
-        enabled = true # unknown section
-        """);
+                                      [future_section]
+                                      enabled = true # unknown section
+                                      """);
 
     var saveContext = new PluginContext(
         botContext,
@@ -2060,9 +2438,7 @@ try
     AssertSingle(preservedToml, "# preserved known inline comment");
     var reloadedPreservingConfig = saveContext.Config.Load<VerificationConfig>();
     if (reloadedPreservingConfig is not { TimeoutSeconds: 42, OutputMode: "detailed", Retry.Count: 7 })
-    {
         throw new InvalidOperationException("Preserved plugin TOML did not deserialize with the saved values.");
-    }
     saveContext.Dispose();
     Console.WriteLine("Plugin config preserving-save verification passed.");
 
@@ -2074,7 +2450,7 @@ try
         "notes = '''\r\nfirst # line\r\nsecond\r\n''' # multiline comment\r\n\r\n" +
         "[retry]\r\ncount = 2 # nested comment\r\n");
     manager.SetConfigValue(patchPath, "message", "after # value = ok");
-    manager.SetConfigValue(patchPath, "tags", new[] { "x#y", "z" });
+    manager.SetConfigValue(patchPath, "tags", PatchedTags);
     manager.SetConfigValue(patchPath, "notes", "done");
     manager.SetConfigValue(patchPath, "new_root", 3);
     manager.SetConfigValue(patchPath, "retry.count", 5);
@@ -2091,9 +2467,7 @@ try
     AssertContains(patchedToml, "label = \"created\"");
     AssertSingle(patchedToml, "# root comment");
     if (patchedToml.Replace("\r\n", string.Empty).Contains('\n'))
-    {
         throw new InvalidOperationException("Config patch changed CRLF line endings.");
-    }
     _ = manager.LoadConfig<VerificationConfig>(patchPath, "verification")
         ?? throw new InvalidOperationException("Patched TOML did not deserialize.");
     var defaultMergedToml = File.ReadAllText(patchPath);
@@ -2104,30 +2478,28 @@ try
     var coreConfigPath = Path.Combine(tempRoot, "core", "config.toml");
     Directory.CreateDirectory(Path.GetDirectoryName(coreConfigPath)!);
     File.WriteAllText(coreConfigPath, """
-        # preserved core comment
-        protocols = []
-        enable_log = true
-        future_core_value = "keep"
+                                      # preserved core comment
+                                      protocols = []
+                                      enable_log = true
+                                      future_core_value = "keep"
 
-        [plugin_routes.default]
-        mode = "whitelist"
-        groups = ["group-1"]
+                                      [plugin_routes.default]
+                                      mode = "whitelist"
+                                      groups = ["group-1"]
 
-        [api]
-        enable = true
-        listen_urls = ["http://127.0.0.1:7001"]
-        future_api_value = "keep"
+                                      [api]
+                                      enable = true
+                                      listen_urls = ["http://127.0.0.1:7001"]
+                                      future_api_value = "keep"
 
-        [future_core_section]
-        value = 9
-        """);
+                                      [future_core_section]
+                                      value = 9
+                                      """);
     var coreManager = new ConfigManager(coreConfigPath);
     var coreConfig = await coreManager.LoadCoreConfig();
     if (coreConfig.Protocols.Length != 0 ||
         !coreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7001"]))
-    {
         throw new InvalidOperationException("Current core array settings were not loaded.");
-    }
     if (!coreConfig.Api.EnableDashboard)
         throw new InvalidOperationException("Existing configs must keep Dashboard enabled by default.");
     coreConfig.Api.EnableDashboard = false;
@@ -2144,9 +2516,7 @@ try
     AssertSingle(preservedCoreToml, "[plugin_routes.default]");
     AssertSingle(preservedCoreToml, "[api]");
     if (preservedCoreToml.Contains("listen_url =", StringComparison.Ordinal))
-    {
         throw new InvalidOperationException("Legacy core keys remained after migration.");
-    }
     AssertContains(preservedCoreToml, "future_core_value = \"keep\"");
     AssertContains(preservedCoreToml, "future_api_value = \"keep\"");
     AssertContains(preservedCoreToml, "[future_core_section]");
@@ -2155,9 +2525,7 @@ try
     var reloadedCoreConfig = await coreManager.LoadCoreConfig();
     if (reloadedCoreConfig.Api.EnableDashboard || reloadedCoreConfig.EnableLog ||
         !reloadedCoreConfig.Api.ListenUrls.SequenceEqual(["http://127.0.0.1:7999"]))
-    {
         throw new InvalidOperationException("Preserved core TOML did not deserialize with the saved values.");
-    }
     Console.WriteLine("Core config preserving-save verification passed.");
 
     var tempCache = Path.Combine(tempRoot, "temporary-cache");
@@ -2165,40 +2533,55 @@ try
     File.WriteAllText(Path.Combine(tempCache, "adapters", "metadata.json"), "keep");
     var time = new TemporaryFilesTestClock();
     string staleDirectory;
-    using (var temporaryManager = new ShiroBot.Hosting.Files.TemporaryFileManager(tempCache, time))
+    using (var temporaryManager = new TemporaryFileManager(tempCache, time))
     {
-        var temporaryBot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), temporaryFiles: temporaryManager);
-        using var temporaryPlugin = new PluginContext(temporaryBot, "temp-plugin", Path.Combine(tempRoot, "temp-plugin"), new HostLogHub(), new PluginServiceRegistry());
-        IBotContext temporaryContext = temporaryPlugin;
-        var firstTemp = temporaryContext.CreateTempDirectory(TimeSpan.FromMinutes(1));
-        var secondTemp = temporaryManager.CreateDirectory("plugin-two", TimeSpan.FromMinutes(2));
-        File.WriteAllText(Path.Combine(firstTemp.Path, "download.bin"), "temporary");
-        File.WriteAllText(Path.Combine(secondTemp.Path, "download.bin"), "temporary");
-        if (firstTemp.Path == secondTemp.Path || firstTemp.ExpiresAt != time.GetUtcNow().AddMinutes(1) ||
-            !Path.GetFullPath(firstTemp.Path).StartsWith(Path.Combine(tempCache, "plugin-temp") + Path.DirectorySeparatorChar))
-            throw new InvalidOperationException("Plugin temporary paths are not unique, contained or time-bound.");
-        AssertThrows<ArgumentOutOfRangeException>(() => temporaryManager.CreateDirectory("plugin/../one", TimeSpan.Zero));
-        time.Advance(TimeSpan.FromSeconds(59));
-        temporaryManager.CleanupExpired();
-        if (!Directory.Exists(firstTemp.Path)) throw new InvalidOperationException("Temporary files expired early.");
-        time.Advance(TimeSpan.FromSeconds(1));
-        temporaryManager.CleanupExpired();
-        if (Directory.Exists(firstTemp.Path) || !Directory.Exists(secondTemp.Path))
-            throw new InvalidOperationException("Expiry cleanup touched another directory or failed to remove expired files.");
-        staleDirectory = secondTemp.Path;
-        temporaryPlugin.Dispose();
+        var temporaryBot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false),
+            temporaryFiles: temporaryManager);
+        PluginContext temporaryContext;
+        using (var temporaryPlugin = new PluginContext(temporaryBot, "temp-plugin",
+                   Path.Combine(tempRoot, "temp-plugin"), new HostLogHub(), new PluginServiceRegistry()))
+        {
+            temporaryContext = temporaryPlugin;
+            var firstTemp = temporaryContext.CreateTempDirectory(TimeSpan.FromMinutes(1));
+            var secondTemp = temporaryManager.CreateDirectory("plugin-two", TimeSpan.FromMinutes(2));
+            File.WriteAllText(Path.Combine(firstTemp.Path, "download.bin"), "temporary");
+            File.WriteAllText(Path.Combine(secondTemp.Path, "download.bin"), "temporary");
+            if (firstTemp.Path == secondTemp.Path || firstTemp.ExpiresAt != time.GetUtcNow().AddMinutes(1) ||
+                !Path.GetFullPath(firstTemp.Path)
+                    .StartsWith(Path.Combine(tempCache, "plugin-temp") + Path.DirectorySeparatorChar))
+                throw new InvalidOperationException("Plugin temporary paths are not unique, contained or time-bound.");
+            // The callback completes before its enclosing resource is disposed; timeout cleanup is deferred until it completes.
+            // ReSharper disable once AccessToDisposedClosure
+            AssertThrows<ArgumentOutOfRangeException>(() =>
+                temporaryManager.CreateDirectory("plugin/../one", TimeSpan.Zero));
+            time.Advance(TimeSpan.FromSeconds(59));
+            temporaryManager.CleanupExpired();
+            if (!Directory.Exists(firstTemp.Path))
+                throw new InvalidOperationException("Temporary files expired early.");
+            time.Advance(TimeSpan.FromSeconds(1));
+            temporaryManager.CleanupExpired();
+            if (Directory.Exists(firstTemp.Path) || !Directory.Exists(secondTemp.Path))
+                throw new InvalidOperationException(
+                    "Expiry cleanup touched another directory or failed to remove expired files.");
+            staleDirectory = secondTemp.Path;
+        }
+
         AssertThrows<ObjectDisposedException>(() => temporaryContext.CreateTempDirectory(TimeSpan.FromMinutes(1)));
     }
-    if (Directory.Exists(staleDirectory)) throw new InvalidOperationException("Host shutdown did not clean temporary files.");
+
+    if (Directory.Exists(staleDirectory))
+        throw new InvalidOperationException("Host shutdown did not clean temporary files.");
     // Simulate a crashed previous process, which could not Dispose its manager.
     staleDirectory = Path.Combine(tempCache, "plugin-temp", "previous-process");
     Directory.CreateDirectory(staleDirectory);
     File.WriteAllText(Path.Combine(staleDirectory, "stale.bin"), "stale");
-    using (var restarted = new ShiroBot.Hosting.Files.TemporaryFileManager(tempCache, time))
+    using (new TemporaryFileManager(tempCache, time))
     {
-        if (Directory.Exists(staleDirectory) || File.ReadAllText(Path.Combine(tempCache, "adapters", "metadata.json")) != "keep")
+        if (Directory.Exists(staleDirectory) ||
+            File.ReadAllText(Path.Combine(tempCache, "adapters", "metadata.json")) != "keep")
             throw new InvalidOperationException("Startup must clean only temporary cache leftovers.");
     }
+
     if (!OperatingSystem.IsWindows())
     {
         var linkedCache = Path.Combine(tempRoot, "linked-cache");
@@ -2208,17 +2591,23 @@ try
         File.WriteAllText(Path.Combine(persistent, "keep.txt"), "keep");
         var link = Path.Combine(linkedCache, "plugin-temp");
         Directory.CreateSymbolicLink(link, persistent);
-        AssertThrows<IOException>(() => new ShiroBot.Hosting.Files.TemporaryFileManager(linkedCache, time));
+        AssertThrows<IOException>(() =>
+        {
+            using var _ = new TemporaryFileManager(linkedCache, time);
+        });
         if (File.ReadAllText(Path.Combine(persistent, "keep.txt")) != "keep")
             throw new InvalidOperationException("Startup followed a temporary-root symlink into persistent files.");
         Directory.Delete(link);
     }
-    Console.WriteLine("Host-managed temporary directory isolation, expiry, shutdown and crash recovery verification passed.");
+
+    Console.WriteLine(
+        "Host-managed temporary directory isolation, expiry, shutdown and crash recovery verification passed.");
 
     if (!AutoUpdateSchedule.TryParseTime("2:00", out var parsedTime) || parsedTime != new TimeOnly(2, 0) ||
         !AutoUpdateSchedule.TryParseTime("23:59", out _) || AutoUpdateSchedule.TryParseTime("24:00", out _) ||
         AutoUpdateSchedule.TryParseTime("2点", out _))
-        throw new InvalidOperationException("Auto-update time parsing accepted an invalid value or rejected a valid one.");
+        throw new InvalidOperationException(
+            "Auto-update time parsing accepted an invalid value or rejected a valid one.");
     var scheduledDay = new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero);
     if (!AutoUpdateSchedule.IsDue(scheduledDay.AddHours(2), parsedTime, null) ||
         AutoUpdateSchedule.IsDue(scheduledDay.AddHours(2).AddMinutes(-1), parsedTime, null) ||
@@ -2243,12 +2632,19 @@ try
     var autoUpdateConfig = new CoreConfig { Update = new UpdateConfig { Adapters = true, Time = "02:00" } };
     var autoUpdateClock = new AutoUpdateTestClock(scheduledDay.AddHours(2).AddMinutes(5));
     var autoUpdateRuns = 0;
-    Task CountAutoUpdate(CancellationToken _) { autoUpdateRuns++; return Task.CompletedTask; }
+
+    Task CountAutoUpdate(CancellationToken _)
+    {
+        autoUpdateRuns++;
+        return Task.CompletedTask;
+    }
+
     using (var scheduler = new AutoUpdateScheduler(autoUpdateConfig, CountAutoUpdate, autoUpdateState, autoUpdateClock))
     {
         await scheduler.TickAsync();
         await scheduler.TickAsync();
     }
+
     // The restart an update causes must not run it again the same day.
     using (var restarted = new AutoUpdateScheduler(autoUpdateConfig, CountAutoUpdate, autoUpdateState, autoUpdateClock))
     {
@@ -2260,16 +2656,21 @@ try
         await restarted.TickAsync();
         autoUpdateConfig.Update.Adapters = true;
         await restarted.TickAsync();
-        if (autoUpdateRuns != 2) throw new InvalidOperationException("Auto-update ignored its switch or skipped the next day.");
+        if (autoUpdateRuns != 2)
+            throw new InvalidOperationException("Auto-update ignored its switch or skipped the next day.");
     }
+
     var autoUpdateDefaultsPath = Path.Combine(tempRoot, "auto-update-defaults.toml");
     var autoUpdateDefaults = await new ConfigManager(autoUpdateDefaultsPath).LoadCoreConfig();
     var autoUpdateToml = File.ReadAllText(autoUpdateDefaultsPath);
-    if (autoUpdateDefaults.Update.Any || !autoUpdateDefaults.Update.RestartOnPending || autoUpdateDefaults.Update.Time != "02:00" ||
+    if (autoUpdateDefaults.Update.Any || !autoUpdateDefaults.Update.RestartOnPending ||
+        autoUpdateDefaults.Update.Time != "02:00" ||
         !autoUpdateToml.Contains("[update]") || !autoUpdateToml.Contains("skip_major = true") ||
         autoUpdateToml.Contains("auto_update_") || autoUpdateToml.Contains("any =") ||
-        autoUpdateToml.IndexOf("avalonia_theme", StringComparison.Ordinal) > autoUpdateToml.IndexOf("[update]", StringComparison.Ordinal))
-        throw new InvalidOperationException("Auto-update defaults are wrong, or the [update] table is not written as expected.");
+        autoUpdateToml.IndexOf("avalonia_theme", StringComparison.Ordinal) >
+        autoUpdateToml.IndexOf("[update]", StringComparison.Ordinal))
+        throw new InvalidOperationException(
+            "Auto-update defaults are wrong, or the [update] table is not written as expected.");
     Console.WriteLine("Daily auto-update schedule verification passed.");
 
     var listenerCommands = new CommandRouter<MessageEvent>();
@@ -2285,7 +2686,8 @@ try
     var listenerRoutes = listenerCommands.Routes;
     if (listenerRoutes[0] != new MessageRouteDescriptor(MessageRouteMatchType.Prefix, "/签到") ||
         listenerRoutes[1].MatchType != MessageRouteMatchType.Exact ||
-        listenerRoutes[2].Condition != MessageRouteCondition.Mention || listenerRoutes[2].ConditionArgument is not null ||
+        listenerRoutes[2].Condition != MessageRouteCondition.Mention ||
+        listenerRoutes[2].ConditionArgument is not null ||
         listenerRoutes[3].ConditionArgument != "10001" ||
         listenerRoutes[4].Condition != MessageRouteCondition.MentionAll ||
         listenerRoutes[5].Condition != MessageRouteCondition.Reply ||
@@ -2293,23 +2695,26 @@ try
         listenerRoutes[7].Condition != MessageRouteCondition.Custom || listenerRoutes[7].Description is not null ||
         listenerRoutes[8].Description != "包含关键词 天气" ||
         listenerRoutes.Skip(2).Any(route => route.MatchType != MessageRouteMatchType.All))
-        throw new InvalidOperationException("Message route descriptors lost what the routes listen to, or changed their dispatch type.");
+        throw new InvalidOperationException(
+            "Message route descriptors lost what the routes listen to, or changed their dispatch type.");
     var listenerEvents = new EventRouter();
     listenerEvents.Map<MessageEvent>(_ => Task.CompletedTask);
     listenerEvents.MapPlatform("poke", _ => Task.CompletedTask);
     listenerEvents.MapWhen<MessageEvent>(_ => true, "仅图片消息", _ => Task.CompletedTask);
-    if (listenerEvents.Routes.Count != 3 || listenerEvents.Routes[0] != new EventRouteDescriptor(typeof(MessageEvent)) ||
-        listenerEvents.Routes[1].PlatformKind != "poke" || listenerEvents.Routes[1].EventType != typeof(PlatformEvent) ||
+    if (listenerEvents.Routes.Count != 3 ||
+        listenerEvents.Routes[0] != new EventRouteDescriptor(typeof(MessageEvent)) ||
+        listenerEvents.Routes[1].PlatformKind != "poke" ||
+        listenerEvents.Routes[1].EventType != typeof(PlatformEvent) ||
         !listenerEvents.Routes[2].Filtered || listenerEvents.Routes[2].Description != "仅图片消息" ||
         !listenerEvents.EventTypes.SequenceEqual([typeof(MessageEvent), typeof(PlatformEvent)]))
         throw new InvalidOperationException("Event route descriptors are wrong.");
     Console.WriteLine("Plugin listener descriptor verification passed.");
 
-    if (ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("# kept\nname = \"bot\"\n[api]\nkey = 1\n") is not null ||
-        ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("") is not null ||
-        ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("name = ") is null ||
-        ShiroBot.Hosting.Http.HostHttpServer.ValidateToml("a = 1\na = 2\n") is null ||
-        ShiroBot.Hosting.Http.HostHttpServer.GetRawConfigRevision("a = 1") == ShiroBot.Hosting.Http.HostHttpServer.GetRawConfigRevision("a = 2"))
+    if (HostHttpServer.ValidateToml("# kept\nname = \"bot\"\n[api]\nkey = 1\n") is not null ||
+        HostHttpServer.ValidateToml("") is not null ||
+        HostHttpServer.ValidateToml("name = ") is null ||
+        HostHttpServer.ValidateToml("a = 1\na = 2\n") is null ||
+        HostHttpServer.GetRawConfigRevision("a = 1") == HostHttpServer.GetRawConfigRevision("a = 2"))
         throw new InvalidOperationException("Raw config.toml validation accepted invalid TOML or rejected valid TOML.");
     Console.WriteLine("Raw config.toml validation verification passed.");
 
@@ -2318,13 +2723,19 @@ try
     if (loginApi.GetDashboardLoginUrl() != "http://127.0.0.1:7001/dashboard/?token=a%20b%2Bc" ||
         publicLoginApi.GetDashboardLoginUrl() != "https://bot.example.com/shiro/dashboard/?token=k" ||
         new ApiHostConfig { Token = "" }.GetDashboardLoginUrl() != "http://127.0.0.1:7001/dashboard/")
-        throw new InvalidOperationException("Dashboard login link is not browsable or does not carry an escaped token.");
+        throw new InvalidOperationException(
+            "Dashboard login link is not browsable or does not carry an escaped token.");
     Console.WriteLine("Dashboard login link verification passed.");
 
     var overviewState = new HostRuntimeState(scheduledDay);
     overviewState.RecordEvent("plugin crashed", "error", scheduledDay);
-    string OverviewHealth(DateTimeOffset now) =>
-        System.Text.Json.JsonSerializer.SerializeToElement(overviewState.CreateOverview(now)).GetProperty("health_status").GetString()!;
+
+    string OverviewHealth(DateTimeOffset now)
+    {
+        return JsonSerializer.SerializeToElement(overviewState.CreateOverview(now)).GetProperty("health_status")
+            .GetString()!;
+    }
+
     if (OverviewHealth(scheduledDay.AddMinutes(59)) != "异常" || OverviewHealth(scheduledDay.AddHours(1)) != "正常")
         throw new InvalidOperationException("Overview kept reporting an old error, or dropped a recent one.");
     Console.WriteLine("Overview error expiry verification passed.");
@@ -2344,15 +2755,19 @@ try
         string.IsNullOrEmpty(hostStatus.Runtime.Architecture) || hostStatus.SdkAbiVersion != "1.4.0.0")
         throw new InvalidOperationException("Host status snapshot does not match the overview data.");
     var statusBot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
-    using var statusPlugin = new PluginContext(statusBot, "status-plugin", Path.Combine(tempRoot, "status-plugin"), new HostLogHub(), new PluginServiceRegistry());
+    using var statusPlugin = new PluginContext(statusBot, "status-plugin", Path.Combine(tempRoot, "status-plugin"),
+        new HostLogHub(), new PluginServiceRegistry());
     IBotContext statusContext = statusPlugin;
-    if (statusContext.GetHostStatus() is not null) throw new InvalidOperationException("Host status was reported before the host attached it.");
+    if (statusContext.GetHostStatus() is not null)
+        throw new InvalidOperationException("Host status was reported before the host attached it.");
     statusBot.AttachRuntimeState(statusState);
-    if (statusContext.GetHostStatus()?.PluginCount != 3) throw new InvalidOperationException("Plugins cannot read the host status.");
+    if (statusContext.GetHostStatus()?.PluginCount != 3)
+        throw new InvalidOperationException("Plugins cannot read the host status.");
     Console.WriteLine("Plugin host status verification passed.");
 
     var publicUrlsPath = Path.Combine(tempRoot, "public-urls.toml");
-    File.WriteAllText(publicUrlsPath, "[api]\npublic_base_url = [\"https://primary.example.com\"]\ntoken = \"test-token\"\n");
+    File.WriteAllText(publicUrlsPath,
+        "[api]\npublic_base_url = [\"https://primary.example.com\"]\ntoken = \"test-token\"\n");
     var publicUrlsManager = new ConfigManager(publicUrlsPath);
     var publicUrlsConfig = await publicUrlsManager.LoadCoreConfig();
     if (!publicUrlsConfig.Api.PublicBaseUrl.SequenceEqual(["https://primary.example.com"]) ||
@@ -2361,10 +2776,11 @@ try
     publicUrlsConfig.Api.PublicBaseUrl = ["https://primary.example.com", "https://backup.example.com"];
     publicUrlsManager.SaveConfig(publicUrlsPath, publicUrlsConfig);
     publicUrlsConfig = await publicUrlsManager.LoadCoreConfig();
-    if (publicUrlsConfig.Api.PublicBaseUrl.Length != 2 || publicUrlsConfig.Api.GetPrimaryBaseUrl() != "https://primary.example.com")
+    if (publicUrlsConfig.Api.PublicBaseUrl.Length != 2 ||
+        publicUrlsConfig.Api.GetPrimaryBaseUrl() != "https://primary.example.com")
         throw new InvalidOperationException("Multiple public URLs did not round-trip or select their primary address.");
     var authorize = typeof(HostHttpServer).GetMethod("IsAuthorized", BindingFlags.Static | BindingFlags.NonPublic)!;
-    var anonymous = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+    var anonymous = new DefaultHttpContext();
     if ((bool)authorize.Invoke(null, [anonymous, publicUrlsConfig.Api])!)
         throw new InvalidOperationException("Anonymous API access must always be denied.");
     anonymous.Request.Headers.Authorization = "Bearer test-token";
@@ -2388,9 +2804,7 @@ try
     AssertContains(newCoreToml, "listen_urls = [\"http://127.0.0.1:7001\"]");
     if (newCoreToml.Contains("protocol =", StringComparison.Ordinal) ||
         newCoreToml.Contains("listen_url =", StringComparison.Ordinal))
-    {
         throw new InvalidOperationException("New core TOML contains legacy single-value keys.");
-    }
 
     var invalidPublicUrlsPath = Path.Combine(tempRoot, "invalid-public-urls.toml");
     File.WriteAllText(invalidPublicUrlsPath, "[api]\npublic_base_url = \"https://legacy.example.com\"\n");
@@ -2399,7 +2813,9 @@ try
         await new ConfigManager(invalidPublicUrlsPath).LoadCoreConfig();
         throw new InvalidOperationException("Old scalar public URLs must not be accepted.");
     }
-    catch (Exception error) when (error.Message.StartsWith("加载配置时出错:", StringComparison.Ordinal)) { }
+    catch (Exception error) when (error.Message.StartsWith("加载配置时出错:", StringComparison.Ordinal))
+    {
+    }
 
     async Task<LoadedPluginHandle> CreatePluginHandleAsync(
         IBotPlugin plugin,
@@ -2435,37 +2851,35 @@ try
 }
 finally
 {
-    if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+    if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, true);
 }
 
-static Dictionary<string, JsonElement> ReadConfigSchema(object[] schema) =>
-    JsonSerializer.SerializeToElement(schema).EnumerateArray()
+return;
+
+static Dictionary<string, JsonElement> ReadConfigSchema(object[] schema)
+{
+    return JsonSerializer.SerializeToElement(schema).EnumerateArray()
         .ToDictionary(item => item.GetProperty("key").GetString()!, item => item, StringComparer.Ordinal);
+}
 
 static void AssertBefore(string text, string comment, string key)
 {
     var commentIndex = text.IndexOf(comment, StringComparison.Ordinal);
     var keyIndex = text.IndexOf(key, StringComparison.Ordinal);
     if (commentIndex < 0 || keyIndex < 0 || commentIndex > keyIndex)
-    {
         throw new InvalidOperationException($"Expected '{comment}' above '{key}'.\n{text}");
-    }
 }
 
 static void AssertSingle(string text, string value)
 {
     if (text.Split(value).Length - 1 != 1)
-    {
         throw new InvalidOperationException($"Expected exactly one '{value}' comment.\n{text}");
-    }
 }
 
 static void AssertContains(string text, string value)
 {
     if (!text.Contains(value, StringComparison.Ordinal))
-    {
         throw new InvalidOperationException($"Expected '{value}'.\n{text}");
-    }
 }
 
 static void AssertThrows<TException>(Action action) where TException : Exception
@@ -2500,10 +2914,8 @@ static void AssertAssemblyVersion(Assembly assembly, string expectedVersion)
 {
     var actualVersion = assembly.GetName().Version?.ToString();
     if (!string.Equals(actualVersion, expectedVersion, StringComparison.Ordinal))
-    {
         throw new InvalidOperationException(
             $"Unexpected shared contract ABI for {assembly.GetName().Name}: expected {expectedVersion}, got {actualVersion}.");
-    }
 }
 
 static void AssertUnloadTimedOut(PluginUnloadResult result, string expectedPhase)
@@ -2513,26 +2925,28 @@ static void AssertUnloadTimedOut(PluginUnloadResult result, string expectedPhase
         result.Error is not TimeoutException timeoutException ||
         !timeoutException.Message.Contains(expectedPhase, StringComparison.Ordinal) ||
         !timeoutException.Message.Contains("restarted", StringComparison.Ordinal))
-    {
-        throw new InvalidOperationException($"Unload did not report the expected restart-required {expectedPhase} timeout.");
-    }
+        throw new InvalidOperationException(
+            $"Unload did not report the expected restart-required {expectedPhase} timeout.");
 }
 
-static MemberJoinedEvent CreateMemberJoinedEvent(string userId) => new()
+static MemberJoinedEvent CreateMemberJoinedEvent(string userId)
 {
-    Platform = "verification",
-    Channel = Channel.Group("group"),
-    UserId = userId
-};
+    return new MemberJoinedEvent
+    {
+        Platform = "verification",
+        Channel = Channel.Group("group"),
+        UserId = userId
+    };
+}
 
 async Task SendInAdapterScopeAsync(VerificationAdapter adapter, string text)
 {
     using var _ = AdapterExecutionContext.Enter(adapter.Platform);
-    await botContext.Message.SendMessageAsync(Channel.Group("channel"), [new TextSegment(text)]);
+    await botContext.Message.SendMessageAsync(Channel.Group("channel"), new TextSegment(text));
 }
 
-[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-static WeakReference? ProbeQQAdapterJson(string assemblyPath, out Dictionary<string, WeakReference> references)
+[MethodImpl(MethodImplOptions.NoInlining)]
+static WeakReference? ProbeQqAdapterJson(string assemblyPath, out Dictionary<string, WeakReference> references)
 {
     var loader = new DllLoader<IBotAdapter>(true, new SharedAssemblyResolver());
     var adapter = loader.Load(Path.GetFullPath(assemblyPath));
@@ -2540,24 +2954,26 @@ static WeakReference? ProbeQQAdapterJson(string assemblyPath, out Dictionary<str
     var config = Activator.CreateInstance(assembly.GetType("ShiroBot.Adapter.QQPlatform.QQPlatformConfig")!)!;
     config.GetType().GetProperty("AppId")!.SetValue(config, "probe");
     config.GetType().GetProperty("AppSecret")!.SetValue(config, "probe");
-    using var http = new HttpClient(new QQTokenProbeHandler());
+    using var http = new HttpClient(new QqTokenProbeHandler());
     var providerType = assembly.GetType("ShiroBot.Adapter.QQPlatform.Protocol.QQTokenProvider")!;
-    var provider = Activator.CreateInstance(providerType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+    var provider = Activator.CreateInstance(providerType,
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
         null, [http, config], null)!;
     var result = (Task<string>)providerType.GetMethod("GetAsync")!.Invoke(provider, [false, CancellationToken.None])!;
     if (result.GetAwaiter().GetResult() != "probe-token") throw new InvalidOperationException("QQ token probe failed.");
     var apiType = assembly.GetType("ShiroBot.Adapter.QQPlatform.Protocol.QQOpenApiClient")!;
-    var api = Activator.CreateInstance(apiType, [http, config, provider, null])!;
+    var api = Activator.CreateInstance(apiType, http, config, provider, null)!;
     ((Task)apiType.GetMethod("GetCurrentUserAsync")!.Invoke(api, [CancellationToken.None])!).GetAwaiter().GetResult();
     var messagesType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQMessageService")!;
-    var messages = (IMessageService)Activator.CreateInstance(messagesType, [api, null, null])!;
+    var messages = (IMessageService)Activator.CreateInstance(messagesType, api, null, null)!;
     var sent = messages.SendMessageAsync(Channel.Direct("probe-user"),
         [new ImageSegment("https://example.org/probe.png")]).GetAwaiter().GetResult();
     if (sent.MessageId != "probe-sent") throw new InvalidOperationException("QQ media serialization probe failed.");
     // Exercise new group contracts and nested keyboard metadata before checking collection.
     var groupType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQOfficialGroupService")!;
-    var groupApi = (IQGroupApi)Activator.CreateInstance(groupType, [api])!;
-    adapter.GetType().GetField("_officialGroups", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(adapter, groupApi);
+    var groupApi = (IQGroupApi)Activator.CreateInstance(groupType, api)!;
+    adapter.GetType().GetField("_officialGroups", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(adapter,
+        groupApi);
     if (!ReferenceEquals(groupApi, adapter.GetExtension<IQGroupApi>()))
         throw new InvalidOperationException("QQ group extension discovery failed.");
     var page = groupApi.GetJoinRequestsAsync("probe-group").GetAwaiter().GetResult();
@@ -2566,44 +2982,53 @@ static WeakReference? ProbeQQAdapterJson(string assemblyPath, out Dictionary<str
     groupApi.SetMemberMutesAsync("probe-group", [new QMemberMute { UserId = "probe-member", Duration = TimeSpan.Zero }])
         .GetAwaiter().GetResult();
     var officialType = assembly.GetType("ShiroBot.Adapter.QQPlatform.AdapterImpl.QQOfficialMessageService")!;
-    var official = (IQOfficialMessageApi)Activator.CreateInstance(officialType, [api, messages, null, null])!;
+    var official = (IQOfficialMessageApi)Activator.CreateInstance(officialType, api, messages, null, null)!;
     official.SendMarkdownAsync(new QOfficialMessageTarget(QOfficialMessageScene.Group, "probe-group"),
         new QCustomMarkdown("probe") { ForceVerifyImageResource = true },
-        new QInlineKeyboard([new QKeyboardRow([new QKeyboardButton
-        {
-            Id = "probe", GroupId = "probe-group",
-            RenderData = new QKeyboardRenderData("Probe", "Done", QKeyboardButtonStyle.Red),
-            Action = new QKeyboardAction
-            {
-                Type = QKeyboardActionType.Callback, Data = "probe", UnsupportTips = "upgrade",
-                Permission = new QKeyboardPermission { Type = QKeyboardPermissionType.Everyone },
-                Modal = new QKeyboardModal("Confirm", "Yes", "No")
-            }
-        }])])).GetAwaiter().GetResult();
-    references = new()
+        new QInlineKeyboard([
+            new QKeyboardRow([
+                new QKeyboardButton
+                {
+                    Id = "probe", GroupId = "probe-group",
+                    RenderData = new QKeyboardRenderData("Probe", "Done", QKeyboardButtonStyle.Red),
+                    Action = new QKeyboardAction
+                    {
+                        Type = QKeyboardActionType.Callback, Data = "probe", UnsupportTips = "upgrade",
+                        Permission = new QKeyboardPermission { Type = QKeyboardPermissionType.Everyone },
+                        Modal = new QKeyboardModal("Confirm", "Yes", "No")
+                    }
+                }
+            ])
+        ])).GetAwaiter().GetResult();
+    references = new Dictionary<string, WeakReference>
     {
         ["adapter"] = new(adapter), ["config"] = new(config), ["provider"] = new(provider),
         ["token-task"] = new(result), ["http"] = new(http),
-        ["options"] = new(assembly.GetType("ShiroBot.Adapter.QQPlatform.Protocol.QQJson")?.GetProperty("Options")?.GetValue(null))
+        ["options"] = new(assembly.GetType("ShiroBot.Adapter.QQPlatform.Protocol.QQJson")?.GetProperty("Options")
+            ?.GetValue(null))
     };
     return loader.BeginUnload();
 }
 
-internal sealed class QQTokenProbeHandler : HttpMessageHandler
+internal sealed class QqTokenProbeHandler : HttpMessageHandler
 {
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(request.RequestUri!.AbsolutePath switch
             {
                 "/app/getAppAccessToken" => """{"access_token":"probe-token","expires_in":7200}""",
                 "/users/@me" => """{"id":"probe-bot","username":"Probe"}""",
                 var path when path.EndsWith("/files") => """{"file_info":"probe-file"}""",
-                var path when path.EndsWith("/join_request_list") => """{"list":[{"member_openid":"probe-member","join_request_id":"probe-request"}]}""",
+                var path when path.EndsWith("/join_request_list") =>
+                    """{"list":[{"member_openid":"probe-member","join_request_id":"probe-request"}]}""",
                 var path when path.EndsWith("/restrict_chat_setting") => "{}",
                 _ => """{"id":"probe-sent"}"""
-            }, System.Text.Encoding.UTF8, "application/json")
+            }, Encoding.UTF8, "application/json")
         });
+    }
 }
 
 internal sealed class VerificationConfig
@@ -2627,9 +3052,13 @@ internal sealed class VerificationComponentConfig
 {
     public static int Constructions;
 
-    public VerificationComponentConfig() => Interlocked.Increment(ref Constructions);
+    public VerificationComponentConfig()
+    {
+        Interlocked.Increment(ref Constructions);
+    }
 
-    [ConfigField("Retry count", Min = 0, Max = 10, Group = "network", GroupLabel = "Network", GroupOrder = 10, Order = 10)]
+    [ConfigField("Retry count", Min = 0, Max = 10, Group = "network", GroupLabel = "Network", GroupOrder = 10,
+        Order = 10)]
     public int RetryCount { get; set; } = 3;
 
     [ConfigField("Mode", Options = ["fast", "safe"], Default = "safe")]
@@ -2650,7 +3079,12 @@ internal sealed class VerificationComponentConfig
     public int? OptionalLimit { get; set; }
 
     internal string InternalValue { get; set; } = "internal";
+
+    // Deliberately absent from public reflection-based configuration fingerprints.
+    // ReSharper disable once UnusedMember.Local
     private string PrivateValue { get; set; } = "private";
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "The reflection fixture must test an instance computed property separately from StaticValue.")]
     public string ComputedValue => "computed";
     public static string StaticValue { get; set; } = "static";
     public string PrivateSetter { get; private set; } = "private setter";
@@ -2705,7 +3139,11 @@ internal sealed class ConfigurableVerificationPlugin : PluginBase<VerificationCo
         VerificationComponentConfig current,
         CancellationToken cancellationToken)
     {
-        lock (Changes) Changes.Add((previous.RetryCount, current.RetryCount));
+        lock (Changes)
+        {
+            Changes.Add((previous.RetryCount, current.RetryCount));
+        }
+
         return Task.CompletedTask;
     }
 }
@@ -2723,8 +3161,6 @@ internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
     public int Starts { get; private set; }
     public int Stops { get; private set; }
     public bool IsRunning { get; private set; } = true;
-    public VerificationAdapterConfig CurrentConfigValue { get; private set; } = new();
-    public ConfigApplyMode ApplyMode { get; } = applyMode;
     public string Platform => "configurable-verification";
     public IMessageService Message { get; } = new VerificationMessageService();
     public IChannelService Channel { get; init; } = new VerificationChannelService();
@@ -2732,7 +3168,11 @@ internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
     public IEventService Event { get; } = new VerificationEventService();
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
-    public TService? GetExtension<TService>() where TService : class => this as TService;
+
+    public TService? GetExtension<TService>() where TService : class
+    {
+        return this as TService;
+    }
 
     public Task StartAsync()
     {
@@ -2750,6 +3190,9 @@ internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
         return Task.CompletedTask;
     }
 
+    public ConfigApplyMode ApplyMode { get; } = applyMode;
+    public VerificationAdapterConfig CurrentConfigValue { get; private set; } = new();
+
     public Task OnConfigChangedAsync(
         VerificationAdapterConfig previous,
         VerificationAdapterConfig current,
@@ -2761,17 +3204,25 @@ internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
 }
 
 
-
 internal sealed class DirectSubscriberPlugin : IBotPlugin, IBotEventSubscriber
 {
-    public string Name => nameof(DirectSubscriberPlugin);
     public List<BotEvent> Events { get; } = [];
-    public Task OnLoad(IBotContext context) => Task.CompletedTask;
-    public Task OnUnload() => Task.CompletedTask;
 
     public Task OnEventAsync(BotEvent e)
     {
         Events.Add(e);
+        return Task.CompletedTask;
+    }
+
+    public string Name => nameof(DirectSubscriberPlugin);
+
+    public Task OnLoad(IBotContext context)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task OnUnload()
+    {
         return Task.CompletedTask;
     }
 }
@@ -2806,19 +3257,24 @@ internal sealed class BlockingDispatchPlugin : IBotPlugin, IBlockingDispatchPlug
     public TaskCompletionSource DispatchStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource ReleaseDispatch { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource UnloadCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public string Name => nameof(BlockingDispatchPlugin);
-    public Task OnLoad(IBotContext context) => Task.CompletedTask;
-
-    public Task OnUnload()
-    {
-        UnloadCompleted.TrySetResult();
-        return Task.CompletedTask;
-    }
 
     public async Task DispatchAsync()
     {
         DispatchStarted.TrySetResult();
         await ReleaseDispatch.Task;
+    }
+
+    public string Name => nameof(BlockingDispatchPlugin);
+
+    public Task OnLoad(IBotContext context)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task OnUnload()
+    {
+        UnloadCompleted.TrySetResult();
+        return Task.CompletedTask;
     }
 }
 
@@ -2827,7 +3283,11 @@ internal sealed class BlockingUnloadPlugin : IBotPlugin
     public TaskCompletionSource ReleaseUnload { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource UnloadCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public string Name => nameof(BlockingUnloadPlugin);
-    public Task OnLoad(IBotContext context) => Task.CompletedTask;
+
+    public Task OnLoad(IBotContext context)
+    {
+        return Task.CompletedTask;
+    }
 
     public async Task OnUnload()
     {
@@ -2839,28 +3299,38 @@ internal sealed class BlockingUnloadPlugin : IBotPlugin
 internal sealed class ConcurrentDispatchPlugin : IBotPlugin, IBotEventSubscriber
 {
     public TaskCompletionSource FirstDispatchStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public TaskCompletionSource SecondDispatchStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public TaskCompletionSource SecondDispatchStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public TaskCompletionSource ReleaseFirstDispatch { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public string Name => nameof(ConcurrentDispatchPlugin);
-    public Task OnLoad(IBotContext context) => Task.CompletedTask;
-    public Task OnUnload() => Task.CompletedTask;
 
     public async Task OnEventAsync(BotEvent e)
     {
-        if (e is not MemberJoinedEvent memberJoined)
-        {
-            return;
-        }
+        if (e is not MemberJoinedEvent memberJoined) return;
 
-        if (memberJoined.UserId == "first")
+        switch (memberJoined.UserId)
         {
-            FirstDispatchStarted.TrySetResult();
-            await ReleaseFirstDispatch.Task;
+            case "first":
+                FirstDispatchStarted.TrySetResult();
+                await ReleaseFirstDispatch.Task;
+                break;
+            case "second":
+                SecondDispatchStarted.TrySetResult();
+                break;
         }
-        else if (memberJoined.UserId == "second")
-        {
-            SecondDispatchStarted.TrySetResult();
-        }
+    }
+
+    public string Name => nameof(ConcurrentDispatchPlugin);
+
+    public Task OnLoad(IBotContext context)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task OnUnload()
+    {
+        return Task.CompletedTask;
     }
 }
 
@@ -2879,65 +3349,106 @@ internal sealed class VerificationAdapter(string platform) : IBotAdapter
     public IEventService Event { get; } = new VerificationEventService();
     public IConfigContext Config { get; set; } = null!;
     public IConsoleLogger Logger { get; set; } = null!;
-    public TService? GetExtension<TService>() where TService : class => this as TService ?? MessageService as TService;
-    public Task StartAsync() => Task.CompletedTask;
-    public Task StopAsync() => Task.CompletedTask;
+
+    public TService? GetExtension<TService>() where TService : class
+    {
+        return this as TService ?? MessageService as TService;
+    }
+
+    public Task StartAsync()
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync()
+    {
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class VerificationMessageService : IMessageService, IMessageReactionService
 {
-    public MessageCapabilities GetMessageCapabilities(Channel channel) => new() { NativeFeatures = MessageFeatures.Text | MessageFeatures.Quote };
     public List<MessageReference> Reactions { get; } = [];
-    public ReactionCapabilities GetReactionCapabilities(Channel channel) => ReactionCapabilities.Unicode | ReactionCapabilities.PlatformEmoji;
-    public Task SetReactionAsync(MessageReference message, ReactionEmoji emoji, bool isAdd = true, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Reactions.Add(message);
-        return Task.CompletedTask;
-    }
     public List<string> Messages { get; } = [];
     public List<(Channel Channel, IReadOnlyList<MessageSegment> Segments)> Sent { get; } = [];
     public Func<Task>? BeforeSend { get; set; }
     public Func<Task>? BeforeQuery { get; set; }
     public MessageEvent? QueryResult { get; set; }
     public List<(Channel Channel, string MessageId)> Deleted { get; } = [];
+
+    public ReactionCapabilities GetReactionCapabilities(Channel channel)
+    {
+        return ReactionCapabilities.Unicode | ReactionCapabilities.PlatformEmoji;
+    }
+
+    public Task SetReactionAsync(MessageReference message, ReactionEmoji emoji, bool isAdd = true,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Reactions.Add(message);
+        return Task.CompletedTask;
+    }
+
+    public MessageCapabilities GetMessageCapabilities(Channel channel)
+    {
+        return new MessageCapabilities { NativeFeatures = MessageFeatures.Text | MessageFeatures.Quote };
+    }
+
     public Task DeleteMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Deleted.Add((channel, messageId));
         return Task.CompletedTask;
     }
-    public async Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
+
+    public async Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (BeforeQuery is { } beforeQuery) await beforeQuery();
         return QueryResult;
     }
-    public async Task<IReadOnlyList<MessageEvent>> GetHistoryMessagesAsync(Channel channel, string? beforeMessageId = null, int limit = 20, CancellationToken cancellationToken = default)
+
+    public async Task<IReadOnlyList<MessageEvent>> GetHistoryMessagesAsync(Channel channel,
+        string? beforeMessageId = null, int limit = 20, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (BeforeQuery is { } beforeQuery) await beforeQuery();
         return QueryResult is { } result ? [result] : [];
     }
-    public async Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments, CancellationToken cancellationToken = default)
+
+    public async Task<SentMessage> SendMessageAsync(Channel channel, IReadOnlyList<MessageSegment> segments,
+        CancellationToken cancellationToken = default)
     {
         if (BeforeSend is { } beforeSend) await beforeSend();
         lock (Messages)
         {
             Messages.Add(string.Concat(segments.OfType<TextSegment>().Select(segment => segment.Text)));
-            Sent.Add((channel, segments.ToArray()));
+            Sent.Add((channel, [.. segments]));
         }
+
         return new SentMessage("sent");
     }
 }
 
 internal sealed class VerificationChannelService : IChannelService;
+
 internal sealed class VerificationUserService : IUserService
 {
     public int ApprovalRequests { get; private set; }
     public CancellationToken LastToken { get; private set; }
-    public Task AcceptFriendRequestAsync(string token, CancellationToken cancellationToken = default) => Approve(cancellationToken);
-    public Task RejectFriendRequestAsync(string token, string? reason = null, CancellationToken cancellationToken = default) => Approve(cancellationToken);
+
+    public Task AcceptFriendRequestAsync(string token, CancellationToken cancellationToken = default)
+    {
+        return Approve(cancellationToken);
+    }
+
+    public Task RejectFriendRequestAsync(string token, string? reason = null,
+        CancellationToken cancellationToken = default)
+    {
+        return Approve(cancellationToken);
+    }
+
     private Task Approve(CancellationToken token)
     {
         LastToken = token;
@@ -2946,6 +3457,7 @@ internal sealed class VerificationUserService : IUserService
         return Task.CompletedTask;
     }
 }
+
 internal sealed class VerificationEventService : IEventService
 {
     public event Func<BotEvent, Task>? EventReceived;
@@ -2954,24 +3466,47 @@ internal sealed class VerificationEventService : IEventService
     {
         if (EventReceived is null) return;
 
-        foreach (var handler in EventReceived.GetInvocationList().Cast<Func<BotEvent, Task>>())
-        {
-            await handler(botEvent);
-        }
+        foreach (var handler in EventReceived.GetInvocationList().Cast<Func<BotEvent, Task>>()) await handler(botEvent);
     }
 }
 
 internal sealed class AutoUpdateTestClock(DateTimeOffset now) : TimeProvider
 {
     private DateTimeOffset _now = now;
-    public override DateTimeOffset GetUtcNow() => _now;
+
     public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-    public void Advance(TimeSpan duration) => _now += duration;
+
+    public override DateTimeOffset GetUtcNow()
+    {
+        return _now;
+    }
+
+    public void Advance(TimeSpan duration)
+    {
+        _now += duration;
+    }
 }
 
 internal sealed class TemporaryFilesTestClock : TimeProvider
 {
     private DateTimeOffset _now = new(2026, 10, 10, 0, 0, 0, TimeSpan.Zero);
-    public override DateTimeOffset GetUtcNow() => _now;
-    public void Advance(TimeSpan duration) => _now += duration;
+
+    public override DateTimeOffset GetUtcNow()
+    {
+        return _now;
+    }
+
+    public void Advance(TimeSpan duration)
+    {
+        _now += duration;
+    }
+}
+
+internal partial class Program
+{
+    private static readonly string[] PatchedTags = ["x#y", "z"];
+    private static readonly string[] ReservedRuntimeDirectories = ["data", "cache", "tmp", "logs"];
+
+    [GeneratedRegex("^/plugin/JmParser/[a-z0-9]{4,8}$", RegexOptions.None)]
+    private static partial Regex CompiledPattern1();
 }

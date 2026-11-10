@@ -1,15 +1,14 @@
 using System.Collections.Concurrent;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Terminal;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
+using ShiroBot.Terminal;
 
 namespace ShiroBot.Hosting.Events;
 
 internal sealed class ReplySubscriptionManager
 {
-    private readonly ConcurrentDictionary<Guid, ReplySubscription> _subscriptions = [];
     private readonly Lock _expirationTimerLock = new();
+    private readonly ConcurrentDictionary<Guid, ReplySubscription> _subscriptions = [];
     private Timer? _expirationTimer;
 
     private void EnsureExpirationTimer()
@@ -29,7 +28,8 @@ internal sealed class ReplySubscriptionManager
     {
         var now = DateTimeOffset.UtcNow;
         foreach (var (_, subscription) in _subscriptions)
-            if (subscription.ExpiresAt is { } expiry && expiry <= now) subscription.Dispose();
+            if (subscription.ExpiresAt is { } expiry && expiry <= now)
+                subscription.Dispose();
     }
 
     public IReplySubscription Subscribe(
@@ -61,12 +61,8 @@ internal sealed class ReplySubscriptionManager
         if (string.IsNullOrWhiteSpace(ownerId)) return;
 
         foreach (var (_, subscription) in _subscriptions)
-        {
             if (string.Equals(subscription.OwnerId, ownerId, StringComparison.OrdinalIgnoreCase))
-            {
                 subscription.Dispose();
-            }
-        }
     }
 
     /// <summary>Delivers a quote-reply to its subscriptions; returns true when any subscription received it.</summary>
@@ -87,17 +83,12 @@ internal sealed class ReplySubscriptionManager
             }
 
             if (subscription.Reference.Matches(reference) && subscription.Handler is { } handler)
-            {
                 matches.Add((subscription, handler));
-            }
         }
 
         foreach (var (subscription, handler) in matches)
         {
-            if (subscription.DisposeOnReply)
-            {
-                subscription.Dispose();
-            }
+            if (subscription.DisposeOnReply) subscription.Dispose();
 
             try
             {
@@ -105,14 +96,18 @@ internal sealed class ReplySubscriptionManager
             }
             catch (Exception ex)
             {
-                ConsoleOutput.Error($"回复订阅处理失败: {subscription.OwnerId} messageId={subscription.Reference.MessageId} - {ex.Message}");
+                ConsoleOutput.Error(
+                    $"回复订阅处理失败: {subscription.OwnerId} messageId={subscription.Reference.MessageId} - {ex.Message}");
             }
         }
 
         return matches.Count > 0;
     }
 
-    private void Remove(Guid id) => _subscriptions.TryRemove(id, out _);
+    private void Remove(Guid id)
+    {
+        _subscriptions.TryRemove(id, out _);
+    }
 
     private sealed class ReplySubscription(
         Guid id,
@@ -127,18 +122,16 @@ internal sealed class ReplySubscriptionManager
         private ReplyMessageHandler? _handler = handler;
 
         public string OwnerId { get; } = ownerId;
-        public MessageReference Reference { get; } = reference;
-        public DateTimeOffset? ExpiresAt { get; } = expiresAt;
         public ReplyMessageHandler? Handler => Volatile.Read(ref _handler);
         public bool DisposeOnReply { get; } = disposeOnReply;
+        public MessageReference Reference { get; } = reference;
+        public DateTimeOffset? ExpiresAt { get; } = expiresAt;
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
-            {
-                Interlocked.Exchange(ref _handler, null);
-                remove(id);
-            }
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            Interlocked.Exchange(ref _handler, null);
+            remove(id);
         }
     }
 }

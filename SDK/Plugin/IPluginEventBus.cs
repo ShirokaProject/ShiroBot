@@ -3,8 +3,8 @@ using System.Text.Json.Nodes;
 namespace ShiroBot.SDK.Plugin;
 
 /// <summary>
-/// 插件之间的事件总线：按主题发布和订阅 JSON 消息，双方不需要引用任何共享程序集。
-/// 订阅随插件卸载自动取消；每个订阅者收到的是独立的副本。
+///     插件之间的事件总线：按主题发布和订阅 JSON 消息，双方不需要引用任何共享程序集。
+///     订阅随插件卸载自动取消；每个订阅者收到的是独立的副本。
 /// </summary>
 public interface IPluginEventBus
 {
@@ -15,10 +15,14 @@ public interface IPluginEventBus
     Task<int> EmitAsync(string topic, JsonNode? payload = null, CancellationToken cancellationToken = default);
 
     /// <summary>以 UTF-8 JSON 字节订阅，供强类型封装使用。</summary>
-    IDisposable OnUtf8(string topic, PluginUtf8EventHandler handler) =>
+    IDisposable OnUtf8(string topic, PluginUtf8EventHandler handler)
+    {
         throw new NotSupportedException("This host does not support the plugin event bus.");
+    }
 
     /// <summary>以 UTF-8 JSON 字节发布，供强类型封装使用。</summary>
-    Task<int> EmitUtf8Async(string topic, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default) =>
+    Task<int> EmitUtf8Async(string topic, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
+    {
         throw new NotSupportedException("This host does not support the plugin event bus.");
+    }
 }
