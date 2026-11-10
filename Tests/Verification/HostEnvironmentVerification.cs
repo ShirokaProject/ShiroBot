@@ -5,6 +5,7 @@ internal static class HostEnvironmentVerification
     public static void Run()
     {
         const string id = "0123456789abcdef0123456789abcdef";
+        const int processId = 4242;
         var cases = 0;
         HostExecutionEnvironment Check(string mode, bool container, Dictionary<string, string>? files = null,
             Dictionary<string, string>? env = null, string? engine = null, string? sandbox = null,
@@ -12,7 +13,7 @@ internal static class HostEnvironmentVerification
         {
             var found = HostEnvironmentDetector.Detect(
                 p => files?.GetValueOrDefault(p), p => files?.ContainsKey(p) == true,
-                key => env?.GetValueOrDefault(key), linux);
+                key => env?.GetValueOrDefault(key), linux, processId);
             var expected = new HostExecutionEnvironment(mode, container, engine, sandbox, host, orchestrator);
             if (found != expected) throw new Exception($"Environment case {cases}: expected {expected}, got {found}");
             if (found.IsSupervised != (container || mode == "systemd")) throw new Exception("Incorrect restart supervision");
@@ -21,7 +22,54 @@ internal static class HostEnvironmentVerification
         }
 
         Check("native", false);
-        Check("systemd", false, env: new() { ["INVOCATION_ID"] = "unit" });
+        Check("native", false, env: new() { ["INVOCATION_ID"] = id });
+        Check("native", false, env: new() { ["INVOCATION_ID"] = "unit", ["SYSTEMD_EXEC_PID"] = "4242" });
+        Check("native", false, new() { ["/proc/1/cgroup"] = "0::/system.slice/sshd.service" },
+            new() { ["INVOCATION_ID"] = id });
+        foreach (var cgroup in new[]
+        {
+            "0::/user.slice/user-1000.slice/session-3.scope",
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-terminal.scope",
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-terminal.service",
+            "0::/system.slice/sshd.service", "0::/system.slice/tmux.service"
+        })
+            Check("native", false, new() { ["/proc/self/cgroup"] = cgroup,
+                ["/proc/self/stat"] = "4242 (ShiroBot) S 4000 4000 4000", ["/proc/4000/comm"] = "bash" },
+                new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = "3000" });
+        foreach (var cgroup in new[]
+        {
+            "0::/system.slice/shirobot.service", "0::/system.slice/shirobot@main.service/workers",
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/shirobot.service",
+            "2:cpu:/\n1:name=systemd:/system.slice/shirobot.service"
+        })
+            Check("systemd", false, new() { ["/proc/self/cgroup"] = cgroup },
+                new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = "4242" });
+        // Strong launch metadata still works when the cgroup hierarchy is hidden.
+        Check("systemd", false, env: new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = "4242" });
+        Check("systemd", false, new() { ["/proc/self/cgroup"] = "0::/system.slice/shirobot.service",
+            ["/proc/self/stat"] = "4242 (ShiroBot) S 4000 4000 4000 0", ["/proc/4000/comm"] = "bash" },
+            new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = "4000" });
+        Check("native", false, new() { ["/proc/self/cgroup"] = "0::/system.slice/terminal.service",
+            ["/proc/self/stat"] = "4242 (ShiroBot) S 4000 4000 4000 34816", ["/proc/4000/comm"] = "bash" },
+            new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = "4000" });
+        foreach (var execPid in new[] { "1", "invalid", "-1" })
+            Check("native", false, new() { ["/proc/self/cgroup"] = "0::/system.slice/shirobot.service",
+                ["/proc/self/stat"] = "4242 (ShiroBot) S 1 1 1", ["/proc/1/comm"] = "systemd" },
+                new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = execPid });
+        Check("native", false, new() { ["/proc/self/cgroup"] = "0::/user.slice/user-1000.slice/user@1000.service" },
+            new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = "4242" });
+        Check("native", false, new() { ["/proc/self/cgroup"] = "0::/session-3.scope" },
+            new() { ["INVOCATION_ID"] = id, ["SYSTEMD_EXEC_PID"] = "4242" });
+        Check("systemd", false, new() { ["/proc/self/cgroup"] = "0::/system.slice/shirobot.service",
+            ["/proc/self/stat"] = "4242 (Shiro)Bot runner) S 1 1 1", ["/proc/1/comm"] = "systemd\n" },
+            new() { ["INVOCATION_ID"] = id });
+        Check("native", false, new() { ["/proc/self/cgroup"] = "0::/system.slice/sshd.service",
+            ["/proc/self/stat"] = "4242 (ShiroBot) S 4000 1 1", ["/proc/4000/comm"] = "bash" },
+            new() { ["INVOCATION_ID"] = id });
+        Check("native", false, new() { ["/proc/self/cgroup"] = "0::/system.slice/shirobot.service",
+            ["/proc/self/stat"] = "invalid" }, new() { ["INVOCATION_ID"] = id });
+        Check("native", false, new() { ["/proc/self/stat"] = "4242 (ShiroBot) S 1 1 1",
+            ["/proc/1/comm"] = "systemd" }, new() { ["INVOCATION_ID"] = id });
         Check("container", true, env: new() { ["DOTNET_RUNNING_IN_CONTAINER"] = "true" });
         Check("container", true, env: new() { ["DOTNET_RUNNING_IN_CONTAINERS"] = "1" });
         Check("docker", true, new() { ["/.dockerenv"] = "" }, engine: "docker");

@@ -15,11 +15,11 @@ internal static class HostEnvironmentDetector
 {
     internal static HostExecutionEnvironment Detect() => Detect(
         ReadBounded, path => File.Exists(path) || Directory.Exists(path),
-        Environment.GetEnvironmentVariable, OperatingSystem.IsLinux());
+        Environment.GetEnvironmentVariable, OperatingSystem.IsLinux(), Environment.ProcessId);
 
     internal static HostExecutionEnvironment Detect(
         Func<string, string?> readFile, Func<string, bool> exists,
-        Func<string, string?> environment, bool linux)
+        Func<string, string?> environment, bool linux, int processId = 0)
     {
         string Read(string path)
         {
@@ -93,8 +93,54 @@ internal static class HostEnvironmentDetector
         var isContainer = genericContainer || declaration.Length > 0 || engine is not null ||
             sandbox is not null || kubernetes || podman || docker;
         var mode = isContainer ? engine ?? sandbox ?? "container"
-            : !string.IsNullOrEmpty(environment("INVOCATION_ID")) ? "systemd" : "native";
+            : IsSystemdService(Read, environment, processId == 0 ? Environment.ProcessId : processId) ? "systemd" : "native";
         return new(mode, isContainer, engine, sandbox, host, kubernetes ? "kubernetes" : null);
+    }
+
+    private static bool IsSystemdService(Func<string, string> read, Func<string, string?> environment, int processId)
+    {
+        // Shells, SSH, tmux and desktop terminals can inherit a service's INVOCATION_ID.
+        // It identifies the original invocation, not necessarily this application's supervisor.
+        if (!Guid.TryParseExact(environment("INVOCATION_ID"), "N", out var invocation) || invocation == Guid.Empty)
+            return false;
+
+        var lines = read("/proc/self/cgroup").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var hierarchy = lines.FirstOrDefault(line => line.StartsWith("0::", StringComparison.Ordinal))
+            ?? lines.FirstOrDefault(line => line.Split(':', 3) is [_, var controllers, _] &&
+                controllers.Split(',').Contains("name=systemd", StringComparer.Ordinal));
+        var path = hierarchy?.Split(':', 3).ElementAtOrDefault(2);
+        var unit = path?.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault(part =>
+            part.EndsWith(".service", StringComparison.Ordinal) || part.EndsWith(".scope", StringComparison.Ordinal));
+        if (unit is not null && (!unit.EndsWith(".service", StringComparison.Ordinal) ||
+                Regex.IsMatch(unit, @"^user@\d+\.service$"))) return false;
+
+        var execPid = environment("SYSTEMD_EXEC_PID");
+        if (!string.IsNullOrEmpty(execPid))
+        {
+            if (!int.TryParse(execPid, out var launchedPid) || launchedPid <= 0) return false;
+            if (launchedPid == processId) return true;
+            // ExecStart may use a shell script without exec. Accept only its immediate,
+            // non-interactive child in the same service, not commands typed into a terminal.
+            var parent = ProcessParent(read);
+            return unit is not null && parent.Pid == launchedPid && parent.Terminal == 0 &&
+                read($"/proc/{parent.Pid}/comm").Trim() is "sh" or "bash" or "dash" or "zsh" or "ksh";
+        }
+
+        // Older managers without SYSTEMD_EXEC_PID need both a service cgroup and a
+        // direct systemd parent. Do not reuse PID 1's cgroup or merely detect systemd on the OS.
+        if (unit is null) return false;
+        var legacyParent = ProcessParent(read).Pid;
+        return legacyParent > 0 && read($"/proc/{legacyParent}/comm").Trim() == "systemd";
+    }
+
+    private static (int Pid, int? Terminal) ProcessParent(Func<string, string> read)
+    {
+        var stat = read("/proc/self/stat");
+        var end = stat.LastIndexOf(')');
+        if (end < 0) return (0, null);
+        var fields = stat[(end + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length < 2 || !int.TryParse(fields[1], out var parentPid)) return (0, null);
+        return (parentPid, fields.Length >= 5 && int.TryParse(fields[4], out var terminal) ? terminal : null);
     }
 
     private static string? CgroupEngine(string text)
