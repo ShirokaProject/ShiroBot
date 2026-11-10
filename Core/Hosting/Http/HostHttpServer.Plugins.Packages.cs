@@ -15,7 +15,7 @@ internal sealed partial class HostHttpServer
 
     private static void DisablePluginFile(string assemblyPath)
     {
-        var disabledPath = GetDisabledPluginPath(assemblyPath);
+        var disabledPath = assemblyPath + DisabledPluginSuffix;
         if (File.Exists(disabledPath)) File.Delete(disabledPath);
         File.Move(assemblyPath, disabledPath);
     }
@@ -160,11 +160,6 @@ internal sealed partial class HostHttpServer
         if (aliases.Contains(candidate)) return true;
         return candidate.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
                aliases.Contains(candidate["ShiroBot.".Length..]);
-    }
-
-    private static string GetDisabledPluginPath(string assemblyPath)
-    {
-        return assemblyPath + DisabledPluginSuffix;
     }
 
     private static IEnumerable<string> GetPluginIdAliases(string id)

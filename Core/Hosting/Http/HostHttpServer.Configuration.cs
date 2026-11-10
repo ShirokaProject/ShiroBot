@@ -20,51 +20,57 @@ internal sealed partial class HostHttpServer
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private static void MapConfigurationEndpoints(RouteGroupBuilder api, ApiHostConfig config,
-        ConfigManager configManager, string configPath)
+    internal sealed partial class SystemEndpoints
     {
-        api.MapGet("/config",
-            async () => Results.Ok(CreateConfigResponse(await configManager.LoadCoreConfig().ConfigureAwait(false))));
-        api.MapPatch("/config", async (HttpContext context) =>
+        private void MapConfiguration(RouteGroupBuilder api)
         {
-            JsonDocument document;
-            try
-            {
-                document = await JsonDocument
-                    .ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
-                    .ConfigureAwait(false);
-            }
-            catch (JsonException)
-            {
-                return Results.BadRequest(new { ok = false, message = "配置格式不是有效 JSON", msg = "配置格式不是有效 JSON" });
-            }
+            var config = options.Value;
+            var configPath = configManager.CoreConfigPath;
 
-            using (document)
+            api.MapGet("/config",
+                async () => Results.Ok(
+                    CreateConfigResponse(await configManager.LoadCoreConfig().ConfigureAwait(false))));
+            api.MapPatch("/config", async (HttpContext context) =>
             {
-                if (document.RootElement.ValueKind != JsonValueKind.Object)
-                    return Results.BadRequest(new { ok = false, message = "配置更新内容必须是对象", msg = "配置更新内容必须是对象" });
-
+                JsonDocument document;
                 try
                 {
-                    if (!document.RootElement.TryGetProperty("config", out var configPatch) ||
-                        configPatch.ValueKind != JsonValueKind.Object)
-                        return Results.BadRequest(new
-                            { ok = false, message = "请求必须包含 config 对象。", msg = "请求必须包含 config 对象。" });
-
-                    ApplyConfigPatch(configPatch, config, configManager, configPath);
-                    return Results.Ok(new
-                    {
-                        ok = true,
-                        msg = "配置更新成功",
-                        schema = GetCoreConfigSchema()
-                    });
+                    document = await JsonDocument
+                        .ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
+                        .ConfigureAwait(false);
                 }
-                catch (InvalidOperationException ex)
+                catch (JsonException)
                 {
-                    return Results.BadRequest(new { ok = false, message = ex.Message, msg = ex.Message });
+                    return Results.BadRequest(new { ok = false, message = "配置格式不是有效 JSON", msg = "配置格式不是有效 JSON" });
                 }
-            }
-        });
+
+                using (document)
+                {
+                    if (document.RootElement.ValueKind != JsonValueKind.Object)
+                        return Results.BadRequest(new { ok = false, message = "配置更新内容必须是对象", msg = "配置更新内容必须是对象" });
+
+                    try
+                    {
+                        if (!document.RootElement.TryGetProperty("config", out var configPatch) ||
+                            configPatch.ValueKind != JsonValueKind.Object)
+                            return Results.BadRequest(new
+                                { ok = false, message = "请求必须包含 config 对象。", msg = "请求必须包含 config 对象。" });
+
+                        ApplyConfigPatch(configPatch, config, configManager, configPath);
+                        return Results.Ok(new
+                        {
+                            ok = true,
+                            msg = "配置更新成功",
+                            schema = GetCoreConfigSchema()
+                        });
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        return Results.BadRequest(new { ok = false, message = ex.Message, msg = ex.Message });
+                    }
+                }
+            });
+        }
     }
 
     private static object[] GetCoreConfigSchema()

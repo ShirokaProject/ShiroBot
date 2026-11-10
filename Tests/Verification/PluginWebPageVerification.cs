@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -87,8 +88,9 @@ internal static class PluginWebPageVerification
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             await using var app = builder.Build();
-            typeof(HostHttpServer).GetMethod("MapPluginPageEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
-                .Invoke(null, [app.MapGroup("/api/v1"), new ApiHostConfig { Token = "web-test-key" }, manager]);
+            new HostHttpServer.PluginPageEndpoints(Options.Create(new ApiHostConfig { Token = "web-test-key" }),
+                    manager)
+                .Map(app.MapGroup("/api/v1"));
             await app.StartAsync(CancellationToken.None);
             // Assign settings after taking ownership so a setter failure also disposes the client.
             // ReSharper disable once UseObjectOrCollectionInitializer, ShortLivedHttpClient

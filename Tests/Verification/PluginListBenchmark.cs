@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -31,8 +30,7 @@ internal static class PluginListBenchmark
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var app = builder.Build();
-        typeof(HostHttpServer).GetMethod("MapPluginCatalogEndpoints", BindingFlags.NonPublic | BindingFlags.Static)!
-            .Invoke(null, [app.MapGroup("/api/v1"), manager]);
+        new HostHttpServer.PluginCatalogEndpoints(manager).Map(app.MapGroup("/api/v1"));
         await app.StartAsync();
         // Assign settings after taking ownership so a setter failure also disposes the client.
         // ReSharper disable once UseObjectOrCollectionInitializer, ShortLivedHttpClient

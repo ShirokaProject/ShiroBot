@@ -6,21 +6,20 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
 using ShiroBot.Configuration;
 using ShiroBot.Hosting.Context;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Logging;
-using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
-using ShiroBot.Plugins;
 using ShiroBot.Plugins.Marketplace;
 using ShiroBot.SDK.Abstractions;
 
 namespace ShiroBot.Hosting.Http;
 
-internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposable
+internal sealed partial class HostHttpServer(
+    IOptions<ApiHostConfig> options,
+    IEnumerable<IHostApiEndpoints> endpoints,
+    WebHostContext webHostContext,
+    HostHttpServer.DiagnosticsEndpoints diagnostics) : IHostedService, IAsyncDisposable
 {
     private const string ApiCorsPolicyName = "ShiroBotApiCors";
     private const string DisabledPluginSuffix = ".disable";
@@ -46,11 +45,65 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
     private static readonly AdapterMarketplaceCache AdapterMarketplaceCache = AdapterMarketplaceCache.Shared;
     private static readonly TimeSpan PluginUploadTtl = TimeSpan.FromMinutes(5);
 
-    public async ValueTask DisposeAsync()
+    private WebApplication? _app;
+
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
+        if (_app is not null) return;
+        var config = options.Value;
+        if (!config.Enable) return;
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ApplicationName = typeof(Program).Assembly.GetName().Name,
+            ContentRootPath = AppContext.BaseDirectory
+        });
+        builder.Logging.ClearProviders();
+        var listenUrls = GetListenUrls(config).ToArray();
+        builder.WebHost.UseUrls(listenUrls);
+        builder.WebHost.ConfigureKestrel(settings => settings.Limits.MaxRequestBodySize = MaxPluginUploadBytes);
+        builder.Services.AddCors(cors => cors.AddPolicy(ApiCorsPolicyName,
+            policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+        // These instances belong to the process, not to the nested HTTP host.
+        builder.Services.AddSingleton(webHostContext);
+        var app = builder.Build();
+        _app = app;
         try
         {
-            await app.StopAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            app.UseWebSockets();
+            app.UseCors(ApiCorsPolicyName);
+            if (config.EnableDashboard) MapDashboardAssets(app);
+            var api = app.MapGroup("/api/v1");
+            api.AddEndpointFilter(async (context, next) =>
+            {
+                if (!IsAuthorized(context.HttpContext, options.Value))
+                    return Results.Json(new ApiError("unauthorized", "Missing or invalid API key."),
+                        statusCode: StatusCodes.Status401Unauthorized);
+                return await next(context).ConfigureAwait(false);
+            });
+            foreach (var module in endpoints) module.Map(api);
+            diagnostics.MapDebug(app, config);
+            app.MapFallback((HttpContext context, WebHostContext registry) => registry.HandleRequest(context));
+            await app.StartAsync(cancellationToken).ConfigureAwait(false);
+            BotLog.Info("宿主 API 服务已启动: " + string.Join(", ", listenUrls));
+        }
+        catch
+        {
+            await DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        var app = Interlocked.Exchange(ref _app, null);
+        if (app is null) return;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(3));
+        try
+        {
+            await app.StopAsync(deadline.Token).ConfigureAwait(false);
         }
         finally
         {
@@ -58,63 +111,7 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
         }
     }
 
-    public static async Task<HostHttpServer?> StartAsync(
-        ApiHostConfig config,
-        ConfigManager configManager,
-        string configPath,
-        PluginManager pluginManager,
-        HostEventDispatcher eventDispatcher,
-        PluginRouteConfig routePolicy,
-        WebHostContext webHostContext,
-        HostRuntimeState runtimeState,
-        HostLogHub logHub,
-        BotContext botContext,
-        ModelPackageRegistry modelPackages,
-        AdapterManager adapterManager,
-        ComponentReloadCoordinator reloadCoordinator,
-        AdapterPackageManager adapterPackages,
-        HostPowerControl powerControl)
-    {
-        if (!config.Enable) return null;
-
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
-        {
-            ApplicationName = typeof(Program).Assembly.GetName().Name,
-            ContentRootPath = AppContext.BaseDirectory
-        });
-
-        builder.Logging.ClearProviders();
-        var listenUrls = GetListenUrls(config).ToArray();
-        builder.WebHost.UseUrls(listenUrls);
-        builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = MaxPluginUploadBytes);
-        builder.Services.AddCors(options =>
-        {
-            options.AddPolicy(ApiCorsPolicyName, policy => policy
-                .AllowAnyOrigin()
-                .AllowAnyHeader()
-                .AllowAnyMethod());
-        });
-        builder.Services.AddSingleton(webHostContext);
-        builder.Services.AddSingleton(runtimeState);
-        builder.Services.AddSingleton(logHub);
-
-        var app = builder.Build();
-
-        app.UseWebSockets();
-        app.UseCors(ApiCorsPolicyName);
-        if (config.EnableDashboard) MapDashboardAssets(app);
-        MapApiEndpoints(
-            app, config, configManager, configPath, pluginManager, eventDispatcher,
-            routePolicy, runtimeState, logHub, modelPackages, adapterManager, reloadCoordinator, adapterPackages,
-            powerControl, botContext);
-        MapDebugEndpoints(app, config, botContext, eventDispatcher);
-
-        app.MapFallback((HttpContext context, WebHostContext registry) => registry.HandleRequest(context));
-
-        await app.StartAsync().ConfigureAwait(false);
-        BotLog.Info("宿主 API 服务已启动: " + string.Join(", ", listenUrls));
-        return new HostHttpServer(app);
-    }
+    public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
     private static void MapDashboardAssets(WebApplication app)
     {
@@ -154,97 +151,6 @@ internal sealed partial class HostHttpServer(WebApplication app) : IAsyncDisposa
 
             return Results.File(stream, contentType, enableRangeProcessing: true);
         }
-    }
-
-    private static void MapApiEndpoints(
-        WebApplication app,
-        ApiHostConfig config,
-        ConfigManager configManager,
-        string configPath,
-        PluginManager pluginManager,
-        HostEventDispatcher eventDispatcher,
-        PluginRouteConfig routePolicy,
-        HostRuntimeState runtimeState,
-        HostLogHub logHub,
-        ModelPackageRegistry modelPackages,
-        AdapterManager adapterManager,
-        ComponentReloadCoordinator reloadCoordinator,
-        AdapterPackageManager adapterPackages,
-        HostPowerControl powerControl,
-        BotContext botContext)
-    {
-        var api = app.MapGroup("/api/v1");
-        api.AddEndpointFilter(async (context, next) =>
-        {
-            if (!IsAuthorized(context.HttpContext, config))
-                return Results.Json(new ApiError("unauthorized", "Missing or invalid API key."),
-                    statusCode: StatusCodes.Status401Unauthorized);
-
-            return await next(context).ConfigureAwait(false);
-        });
-
-        //鉴权
-        api.MapGet("/auth", () => Results.Ok(new { ok = true }));
-
-        //概览
-        api.MapGet("/overview", () => Results.Ok(runtimeState.CreateOverview()));
-        api.MapGet("/restart-notice", (string? scope) =>
-            scope is null or "plugin" or "adapter"
-                ? Results.Ok(runtimeState.CreateRestartNotice(scope))
-                : Results.BadRequest(new { error = "invalid_scope", message = "scope 必须为 plugin 或 adapter。" }));
-
-        // 重启 / 关机
-        api.MapPost("/system/{action}", (string action) =>
-        {
-            var result = action.ToLowerInvariant() switch
-            {
-                "restart" => powerControl.Restart(),
-                "shutdown" => powerControl.Shutdown(),
-                _ => null
-            };
-            if (result is null) return Results.NotFound(new { ok = false, message = $"不支持的操作: {action}" });
-            return result.Ok
-                ? Results.Ok(new { ok = true, message = result.Message })
-                : Results.Conflict(new { ok = false, message = result.Message });
-        });
-
-        api.MapGet("/models/list", () => Results.Ok(modelPackages.GetPackages().Select(model => new
-        {
-            id = model.Id,
-            version = model.Version,
-            assembly = model.AssemblyName,
-            path = model.AssemblyPath,
-            source = model.Source,
-            reloadable = model.Reloadable
-        })));
-
-        MapHostUpdateEndpoints(api, configManager, powerControl);
-
-        MapAdapterEndpoints(api, runtimeState, configManager, adapterManager, reloadCoordinator, adapterPackages);
-        MapRawConfigEndpoints(api, pluginManager, adapterPackages, adapterManager, reloadCoordinator);
-
-        MapConfigurationEndpoints(api, config, configManager, configPath);
-
-        MapLogEndpoints(api, logHub);
-        MapDirectoryEndpoints(api, new ContactDirectory(botContext));
-
-        MapPluginCatalogEndpoints(api, pluginManager);
-        MapPluginInstallEndpoints(api, pluginManager, eventDispatcher, routePolicy, runtimeState);
-        MapPluginManagementEndpoints(api, config, configManager, configPath, pluginManager, eventDispatcher,
-            routePolicy, runtimeState);
-        MapPluginPageEndpoints(api, config, pluginManager);
-
-        api.MapGet("/status", () => Results.Ok(new
-        {
-            name = "ShiroBot",
-            started_at = AppStartedAt,
-            uptime_seconds = (long)(DateTimeOffset.UtcNow - AppStartedAt).TotalSeconds,
-            api = new
-            {
-                enabled = config.Enable,
-                auth_enabled = true
-            }
-        }));
     }
 
     private static bool IsAuthorized(HttpContext context, ApiHostConfig config)

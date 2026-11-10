@@ -7,35 +7,38 @@ namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapPluginCatalogEndpoints(RouteGroupBuilder api, PluginManager pluginManager)
+    internal sealed class PluginCatalogEndpoints(PluginManager pluginManager) : IHostApiEndpoints
     {
-        api.MapGet("/plugins/contract-abi", () => Results.Ok(PluginManager.GetContractAbiVersions()));
-        api.MapGet("/plugins/list", () => Results.Ok(GetPluginListItems(pluginManager)));
-
-        api.MapGet("/plugin-market/plugins", async (HttpContext context) =>
+        public void Map(RouteGroupBuilder api)
         {
-            try
+            api.MapGet("/plugins/contract-abi", () => Results.Ok(PluginManager.GetContractAbiVersions()));
+            api.MapGet("/plugins/list", () => Results.Ok(GetPluginListItems(pluginManager)));
+
+            api.MapGet("/plugin-market/plugins", async (HttpContext context) =>
             {
-                var forceRefresh = context.Request.Query.TryGetValue("refresh", out var refreshValue) &&
-                                   (refreshValue == "1" || string.Equals(refreshValue, "true",
-                                       StringComparison.OrdinalIgnoreCase));
-                var marketplace = await MarketplaceCache.GetAsync(
-                    GetMarketplaceInstalledPlugins(pluginManager),
-                    context.RequestAborted,
-                    forceRefresh).ConfigureAwait(false);
-                return Results.Json(marketplace);
-            }
-            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
-            {
-                return Results.StatusCode(499);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.Json(
-                    new { error = "marketplace_unavailable", message = ex.Message },
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
-        });
+                try
+                {
+                    var forceRefresh = context.Request.Query.TryGetValue("refresh", out var refreshValue) &&
+                                       (refreshValue == "1" || string.Equals(refreshValue, "true",
+                                           StringComparison.OrdinalIgnoreCase));
+                    var marketplace = await MarketplaceCache.GetAsync(
+                        GetMarketplaceInstalledPlugins(pluginManager),
+                        context.RequestAborted,
+                        forceRefresh).ConfigureAwait(false);
+                    return Results.Json(marketplace);
+                }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+                {
+                    return Results.StatusCode(499);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Json(
+                        new { error = "marketplace_unavailable", message = ex.Message },
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+                }
+            });
+        }
     }
 
     private static PluginListItem[] GetPluginListItems(PluginManager pluginManager)

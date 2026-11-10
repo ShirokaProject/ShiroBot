@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -15,385 +16,404 @@ namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapPluginManagementEndpoints(RouteGroupBuilder api, ApiHostConfig config,
-        ConfigManager configManager, string configPath, PluginManager pluginManager,
-        HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy, HostRuntimeState runtimeState)
+    internal sealed class PluginManagementEndpoints(
+        IOptions<ApiHostConfig> options,
+        ConfigManager configManager,
+        PluginManager pluginManager,
+        HostEventDispatcher eventDispatcher,
+        PluginRouteConfig routePolicy,
+        HostRuntimeState runtimeState) : IHostApiEndpoints
     {
-        api.MapGet("/plugins/{id}", (string id) =>
+        public void Map(RouteGroupBuilder api)
         {
-            var plugin = FindPluginListItem(pluginManager, id);
-            if (plugin is null) return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
+            var config = options.Value;
+            var configPath = configManager.CoreConfigPath;
 
-            return Results.Ok(new
+            api.MapGet("/plugins/{id}", (string id) =>
             {
-                id = plugin.Id,
-                name = plugin.Name,
-                version = plugin.Version,
-                enabled = plugin.Enable,
-                author = plugin.Author,
-                repo = plugin.Repo,
-                description = plugin.Description,
-                category = plugin.Category,
-                listeners = FindLoadedPlugin(pluginManager, plugin.Id) is { } loaded
-                    ? CreatePluginListeners(loaded)
-                    : null
-            });
-        });
+                var plugin = FindPluginListItem(pluginManager, id);
+                if (plugin is null)
+                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
 
-        api.MapGet("/plugins/{id}/config", (string id) =>
-        {
-            var plugin = FindPluginForConfig(pluginManager, id);
-            if (plugin is null) return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
-
-            var pluginConfigPath = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
-            return Results.Ok(new
-            {
-                plugin_id = plugin.Id,
-                config = LoadTomlObject(pluginConfigPath),
-                schema = GetComponentConfigSchema(plugin.AssemblyPath,
-                    FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly),
-                routes = CreatePluginRouteResponse(routePolicy, plugin.Id, GetDeclaredPriority(pluginManager, plugin)),
-                // Whether the raw config.toml editor applies; a plugin without config has nothing to edit.
-                raw_config = PluginHasConfig(pluginManager, plugin, pluginConfigPath)
-            });
-        });
-
-        api.MapGet("/plugins/{id}/actions", async (string id, HttpContext context) =>
-        {
-            if (!IsBearerAuthorized(context, config))
-                return Results.Json(new ApiError("unauthorized", "A Bearer API key is required."),
-                    statusCode: StatusCodes.Status401Unauthorized);
-
-            var plugin = FindLoadedPlugin(pluginManager, id);
-            if (plugin is null)
-                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-
-            try
-            {
-                var listed = await PluginActions.ListAsync(plugin).ConfigureAwait(false);
-                if (listed is null)
-                    return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
-
-                var actions = listed
-                    .Select(action => new
-                    {
-                        id = action.Id,
-                        label = action.Label,
-                        description = action.Description,
-                        tone = NormalizePluginActionTone(action.Tone),
-                        requires_confirmation = action.RequiresConfirmation,
-                        confirmation_text = action.ConfirmationText
-                    })
-                    .ToArray();
-
-                return Results.Ok(new { actions });
-            }
-            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
-            {
-                return Results.StatusCode(499);
-            }
-            catch (Exception ex)
-            {
-                BotLog.Error($"读取插件 Dashboard actions 失败: {plugin.Name} - {ex.Message}");
-                return Results.Json(
-                    new { error = "action_provider_failed", message = $"插件操作列表读取失败: {ex.Message}" },
-                    statusCode: StatusCodes.Status500InternalServerError);
-            }
-        });
-
-        api.MapPost("/plugins/{id}/actions/{actionId}", async (string id, string actionId, HttpContext context) =>
-        {
-            if (!IsBearerAuthorized(context, config))
-                return Results.Json(new ApiError("unauthorized", "A Bearer API key is required."),
-                    statusCode: StatusCodes.Status401Unauthorized);
-
-            var plugin = FindLoadedPlugin(pluginManager, id);
-            if (plugin is null || !plugin.Supports<IPluginActionProvider>())
-                return Results.NotFound(new { error = "action_not_found", message = $"插件 {id} 未提供该操作。" });
-
-            try
-            {
-                var outcome = await PluginActions.ExecuteAsync(plugin, actionId, context.RequestAborted)
-                    .ConfigureAwait(false);
-                return outcome.Status switch
+                return Results.Ok(new
                 {
-                    PluginActionStatus.Done => Results.Ok(new
-                    {
-                        ok = outcome.Result!.Ok,
-                        message = outcome.Message,
-                        refresh = outcome.Result.Refresh,
-                        title = outcome.Result.Title ?? outcome.Action!.Label,
-                        details = outcome.Result.Details
-                    }),
-                    PluginActionStatus.ActionNotFound => Results.NotFound(new
-                        { error = "action_not_found", message = outcome.Message }),
-                    PluginActionStatus.Unloading => Results.Conflict(new
-                        { error = "plugin_unloading", message = outcome.Message }),
-                    _ => Results.Json(new { ok = false, message = outcome.Message, refresh = false },
-                        statusCode: StatusCodes.Status500InternalServerError)
-                };
-            }
-            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
-            {
-                return Results.StatusCode(499);
-            }
-        });
+                    id = plugin.Id,
+                    name = plugin.Name,
+                    version = plugin.Version,
+                    enabled = plugin.Enable,
+                    author = plugin.Author,
+                    repo = plugin.Repo,
+                    description = plugin.Description,
+                    category = plugin.Category,
+                    listeners = FindLoadedPlugin(pluginManager, plugin.Id) is { } loaded
+                        ? CreatePluginListeners(loaded)
+                        : null
+                });
+            });
 
-        api.MapPatch("/plugins/{id}/config", async (string id, HttpContext context) =>
-        {
-            JsonDocument document;
-            try
+            api.MapGet("/plugins/{id}/config", (string id) =>
             {
-                document = await JsonDocument
-                    .ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
-                    .ConfigureAwait(false);
-            }
-            catch (JsonException)
-            {
-                return Results.BadRequest(new { error = "invalid_json", message = "插件配置更新内容不是有效 JSON。" });
-            }
-
-            using (document)
-            {
-                if (document.RootElement.ValueKind != JsonValueKind.Object)
-                    return Results.BadRequest(new { error = "invalid_request", message = "插件配置更新内容必须是对象。" });
-
                 var plugin = FindPluginForConfig(pluginManager, id);
                 if (plugin is null)
                     return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
 
+                var pluginConfigPath = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
+                return Results.Ok(new
+                {
+                    plugin_id = plugin.Id,
+                    config = LoadTomlObject(pluginConfigPath),
+                    schema = GetComponentConfigSchema(plugin.AssemblyPath,
+                        FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly),
+                    routes = CreatePluginRouteResponse(routePolicy, plugin.Id,
+                        GetDeclaredPriority(pluginManager, plugin)),
+                    // Whether the raw config.toml editor applies; a plugin without config has nothing to edit.
+                    raw_config = PluginHasConfig(pluginManager, plugin, pluginConfigPath)
+                });
+            });
+
+            api.MapGet("/plugins/{id}/actions", async (string id, HttpContext context) =>
+            {
+                if (!IsBearerAuthorized(context, config))
+                    return Results.Json(new ApiError("unauthorized", "A Bearer API key is required."),
+                        statusCode: StatusCodes.Status401Unauthorized);
+
+                var plugin = FindLoadedPlugin(pluginManager, id);
+                if (plugin is null)
+                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+
                 try
                 {
-                    var pluginConfigPath = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
-                    string? configApplyStatus = null;
+                    var listed = await PluginActions.ListAsync(plugin).ConfigureAwait(false);
+                    if (listed is null)
+                        return Results.Conflict(new { error = "plugin_unloading", message = $"插件 {id} 正在卸载。" });
 
-                    if (document.RootElement.TryGetProperty("config", out var configPatch))
-                    {
-                        ApplyComponentConfigPatch(configManager, pluginConfigPath, configPatch,
-                            GetComponentConfigSchema(plugin.AssemblyPath,
-                                FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly));
-                        var applied = await pluginManager.ApplyConfigByIdAsync(plugin.Id).ConfigureAwait(false);
-                        configApplyStatus = applied ? "applied" :
-                            FindLoadedPlugin(pluginManager, plugin.Id) is null ? "pending_start" : "legacy_saved_only";
-                    }
+                    var actions = listed
+                        .Select(action => new
+                        {
+                            id = action.Id,
+                            label = action.Label,
+                            description = action.Description,
+                            tone = NormalizePluginActionTone(action.Tone),
+                            requires_confirmation = action.RequiresConfirmation,
+                            confirmation_text = action.ConfirmationText
+                        })
+                        .ToArray();
 
-                    if (document.RootElement.TryGetProperty("routes", out var routePatch))
-                        ApplyPluginRoutePatch(configManager, configPath, routePolicy, plugin.Id, routePatch);
-
-                    return Results.Ok(new
-                    {
-                        ok = true,
-                        plugin_id = plugin.Id,
-                        config = LoadTomlObject(pluginConfigPath),
-                        schema = GetComponentConfigSchema(plugin.AssemblyPath,
-                            FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly),
-                        config_apply_status = configApplyStatus,
-                        routes = CreatePluginRouteResponse(routePolicy, plugin.Id,
-                            GetDeclaredPriority(pluginManager, plugin))
-                    });
+                    return Results.Ok(new { actions });
                 }
-                catch (InvalidOperationException ex)
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
                 {
-                    return Results.BadRequest(new { error = "invalid_config", message = ex.Message });
+                    return Results.StatusCode(499);
                 }
                 catch (Exception ex)
                 {
-                    return Results.Conflict(new
+                    BotLog.Error($"读取插件 Dashboard actions 失败: {plugin.Name} - {ex.Message}");
+                    return Results.Json(
+                        new { error = "action_provider_failed", message = $"插件操作列表读取失败: {ex.Message}" },
+                        statusCode: StatusCodes.Status500InternalServerError);
+                }
+            });
+
+            api.MapPost("/plugins/{id}/actions/{actionId}", async (string id, string actionId, HttpContext context) =>
+            {
+                if (!IsBearerAuthorized(context, config))
+                    return Results.Json(new ApiError("unauthorized", "A Bearer API key is required."),
+                        statusCode: StatusCodes.Status401Unauthorized);
+
+                var plugin = FindLoadedPlugin(pluginManager, id);
+                if (plugin is null || !plugin.Supports<IPluginActionProvider>())
+                    return Results.NotFound(new { error = "action_not_found", message = $"插件 {id} 未提供该操作。" });
+
+                try
+                {
+                    var outcome = await PluginActions.ExecuteAsync(plugin, actionId, context.RequestAborted)
+                        .ConfigureAwait(false);
+                    return outcome.Status switch
                     {
-                        error = "config_apply_failed", message = ex.Message,
-                        saved = document.RootElement.TryGetProperty("config", out _)
-                    });
-                }
-            }
-        });
-
-
-        api.MapPost("/plugins/{id}/enable", async (string id) =>
-        {
-            var gate = GetPluginOperationLock(id);
-            await gate.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                if (FindLoadedPlugin(pluginManager, id) is not null)
-                    return Results.Ok(new { ok = true, message = $"插件 {id} 已启用" });
-
-                RestoreDisabledPluginFile(pluginManager, id);
-                if (pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).Count == 0)
-                    return Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
-
-                await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
-                var loaded = FindLoadedPlugin(pluginManager, id);
-                return loaded is null
-                    ? Results.Conflict(new
-                        { ok = false, error = "plugin_load_failed", message = $"插件 {id} 未能加载，请检查运行日志。" })
-                    : Results.Ok(new { ok = true, message = $"插件 {loaded.Name} 已启用" });
-            }
-            finally
-            {
-                gate.Release();
-            }
-        });
-
-        api.MapPost("/plugins/{id}/disable", async (string id) =>
-        {
-            var gate = GetPluginOperationLock(id);
-            await gate.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                var plugin = FindLoadedPlugin(pluginManager, id);
-                var targetPath = plugin?.AssemblyPath
-                                 ?? pluginManager.ResolveFirstPluginLoadCandidate(id);
-                if (targetPath is null && FindDisabledPluginFile(pluginManager, id) is not null)
-                    return Results.Ok(new { ok = true, message = $"插件 {id} 已禁用" });
-
-                if (string.IsNullOrWhiteSpace(targetPath))
-                    return Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
-
-                if (plugin is not null)
-                    await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name).ConfigureAwait(false);
-
-                try
-                {
-                    DisablePluginFile(targetPath);
-                }
-                catch (IOException ex)
-                {
-                    return Results.Conflict(new { ok = false, message = $"插件已卸载，但 DLL 文件仍被占用，请稍后重试: {ex.Message}" });
-                }
-                catch (UnauthorizedAccessException ex)
-                {
-                    return Results.Conflict(new { ok = false, message = $"插件已卸载，但 DLL 文件仍被占用，请稍后重试: {ex.Message}" });
-                }
-
-                return Results.Ok(new { ok = true, message = $"插件 {plugin?.Name ?? id} 已禁用" });
-            }
-            finally
-            {
-                gate.Release();
-            }
-        });
-
-        api.MapPost("/plugins/{id}/delete", async (string id) =>
-        {
-            var gate = GetPluginOperationLock(id);
-            await gate.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                var plugin = FindLoadedPlugin(pluginManager, id);
-                var targetPath = plugin?.AssemblyPath
-                                 ?? pluginManager.ResolveFirstPluginLoadCandidate(id)
-                                 ?? FindDisabledPluginFile(pluginManager, id);
-                if (string.IsNullOrWhiteSpace(targetPath))
-                    return StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, id)
-                        ? Results.Ok(new
+                        PluginActionStatus.Done => Results.Ok(new
                         {
-                            ok = true, pending_restart = true, pending_delete = true,
-                            message = $"插件 {id} 已登记删除任务，将在下次重启宿主时删除。"
-                        })
-                        : Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
+                            ok = outcome.Result!.Ok,
+                            message = outcome.Message,
+                            refresh = outcome.Result.Refresh,
+                            title = outcome.Result.Title ?? outcome.Action!.Label,
+                            details = outcome.Result.Details
+                        }),
+                        PluginActionStatus.ActionNotFound => Results.NotFound(new
+                            { error = "action_not_found", message = outcome.Message }),
+                        PluginActionStatus.Unloading => Results.Conflict(new
+                            { error = "plugin_unloading", message = outcome.Message }),
+                        _ => Results.Json(new { ok = false, message = outcome.Message, refresh = false },
+                            statusCode: StatusCodes.Status500InternalServerError)
+                    };
+                }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+                {
+                    return Results.StatusCode(499);
+                }
+            });
 
-                var canonicalId = plugin?.Name ?? pluginManager.TryProbePluginInfoFile(targetPath)?.Id ?? id;
-                var deletion = GetPluginDeleteTarget(pluginManager.PluginRootPath, targetPath, canonicalId);
-                // Persist intent before unloading, so interruption cannot resurrect a staged package.
-                StagedComponentUpdates.StageDeletion(pluginManager.PluginRootPath, canonicalId, deletion.Path,
-                    deletion.Directory);
-                foreach (var request in Updater.GetPendingUpdates().Where(request =>
-                             request.Target == UpdateTarget.Plugin &&
-                             string.Equals(request.Name, canonicalId, StringComparison.OrdinalIgnoreCase)))
-                    Updater.CancelUpdate(request.Id);
-
-                if (plugin is not null && !await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name)
-                        .ConfigureAwait(false))
-                    return PendingDeletion("当前版本无法卸载，可能仍被其他插件依赖或 OnUnload 执行失败。");
-
-                pluginManager.SuppressWatcherPath(deletion.Path);
+            api.MapPatch("/plugins/{id}/config", async (string id, HttpContext context) =>
+            {
+                JsonDocument document;
                 try
                 {
-                    if (deletion.Directory) Directory.Delete(deletion.Path, true);
-                    else File.Delete(deletion.Path);
+                    document = await JsonDocument
+                        .ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
+                        .ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                catch (JsonException)
                 {
-                    return PendingDeletion(ex.Message);
+                    return Results.BadRequest(new { error = "invalid_json", message = "插件配置更新内容不是有效 JSON。" });
                 }
+
+                using (document)
+                {
+                    if (document.RootElement.ValueKind != JsonValueKind.Object)
+                        return Results.BadRequest(new { error = "invalid_request", message = "插件配置更新内容必须是对象。" });
+
+                    var plugin = FindPluginForConfig(pluginManager, id);
+                    if (plugin is null)
+                        return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
+
+                    try
+                    {
+                        var pluginConfigPath = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
+                        string? configApplyStatus = null;
+
+                        if (document.RootElement.TryGetProperty("config", out var configPatch))
+                        {
+                            ApplyComponentConfigPatch(configManager, pluginConfigPath, configPatch,
+                                GetComponentConfigSchema(plugin.AssemblyPath,
+                                    FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly));
+                            var applied = await pluginManager.ApplyConfigByIdAsync(plugin.Id).ConfigureAwait(false);
+                            configApplyStatus = applied ? "applied" :
+                                FindLoadedPlugin(pluginManager, plugin.Id) is null ? "pending_start" :
+                                "legacy_saved_only";
+                        }
+
+                        if (document.RootElement.TryGetProperty("routes", out var routePatch))
+                            ApplyPluginRoutePatch(configManager, configPath, routePolicy, plugin.Id, routePatch);
+
+                        return Results.Ok(new
+                        {
+                            ok = true,
+                            plugin_id = plugin.Id,
+                            config = LoadTomlObject(pluginConfigPath),
+                            schema = GetComponentConfigSchema(plugin.AssemblyPath,
+                                FindLoadedPlugin(pluginManager, plugin.Id)?.PluginAssembly),
+                            config_apply_status = configApplyStatus,
+                            routes = CreatePluginRouteResponse(routePolicy, plugin.Id,
+                                GetDeclaredPriority(pluginManager, plugin))
+                        });
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        return Results.BadRequest(new { error = "invalid_config", message = ex.Message });
+                    }
+                    catch (Exception ex)
+                    {
+                        return Results.Conflict(new
+                        {
+                            error = "config_apply_failed", message = ex.Message,
+                            saved = document.RootElement.TryGetProperty("config", out _)
+                        });
+                    }
+                }
+            });
+
+
+            api.MapPost("/plugins/{id}/enable", async (string id) =>
+            {
+                var gate = GetPluginOperationLock(id);
+                await gate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    if (FindLoadedPlugin(pluginManager, id) is not null)
+                        return Results.Ok(new { ok = true, message = $"插件 {id} 已启用" });
+
+                    RestoreDisabledPluginFile(pluginManager, id);
+                    if (pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).Count == 0)
+                        return Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
+
+                    await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id)
+                        .ConfigureAwait(false);
+                    var loaded = FindLoadedPlugin(pluginManager, id);
+                    return loaded is null
+                        ? Results.Conflict(new
+                            { ok = false, error = "plugin_load_failed", message = $"插件 {id} 未能加载，请检查运行日志。" })
+                        : Results.Ok(new { ok = true, message = $"插件 {loaded.Name} 已启用" });
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+
+            api.MapPost("/plugins/{id}/disable", async (string id) =>
+            {
+                var gate = GetPluginOperationLock(id);
+                await gate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    var plugin = FindLoadedPlugin(pluginManager, id);
+                    var targetPath = plugin?.AssemblyPath
+                                     ?? pluginManager.ResolveFirstPluginLoadCandidate(id);
+                    if (targetPath is null && FindDisabledPluginFile(pluginManager, id) is not null)
+                        return Results.Ok(new { ok = true, message = $"插件 {id} 已禁用" });
+
+                    if (string.IsNullOrWhiteSpace(targetPath))
+                        return Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
+
+                    if (plugin is not null)
+                        await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, plugin.Name)
+                            .ConfigureAwait(false);
+
+                    try
+                    {
+                        DisablePluginFile(targetPath);
+                    }
+                    catch (IOException ex)
+                    {
+                        return Results.Conflict(new
+                            { ok = false, message = $"插件已卸载，但 DLL 文件仍被占用，请稍后重试: {ex.Message}" });
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        return Results.Conflict(new
+                            { ok = false, message = $"插件已卸载，但 DLL 文件仍被占用，请稍后重试: {ex.Message}" });
+                    }
+
+                    return Results.Ok(new { ok = true, message = $"插件 {plugin?.Name ?? id} 已禁用" });
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+
+            api.MapPost("/plugins/{id}/delete", async (string id) =>
+            {
+                var gate = GetPluginOperationLock(id);
+                await gate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    var plugin = FindLoadedPlugin(pluginManager, id);
+                    var targetPath = plugin?.AssemblyPath
+                                     ?? pluginManager.ResolveFirstPluginLoadCandidate(id)
+                                     ?? FindDisabledPluginFile(pluginManager, id);
+                    if (string.IsNullOrWhiteSpace(targetPath))
+                        return StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, id)
+                            ? Results.Ok(new
+                            {
+                                ok = true, pending_restart = true, pending_delete = true,
+                                message = $"插件 {id} 已登记删除任务，将在下次重启宿主时删除。"
+                            })
+                            : Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
+
+                    var canonicalId = plugin?.Name ?? pluginManager.TryProbePluginInfoFile(targetPath)?.Id ?? id;
+                    var deletion = GetPluginDeleteTarget(pluginManager.PluginRootPath, targetPath, canonicalId);
+                    // Persist intent before unloading, so interruption cannot resurrect a staged package.
+                    StagedComponentUpdates.StageDeletion(pluginManager.PluginRootPath, canonicalId, deletion.Path,
+                        deletion.Directory);
+                    foreach (var request in Updater.GetPendingUpdates().Where(request =>
+                                 request.Target == UpdateTarget.Plugin &&
+                                 string.Equals(request.Name, canonicalId, StringComparison.OrdinalIgnoreCase)))
+                        Updater.CancelUpdate(request.Id);
+
+                    if (plugin is not null && !await pluginManager
+                            .ScheduleUnloadPluginByName(eventDispatcher, plugin.Name)
+                            .ConfigureAwait(false))
+                        return PendingDeletion("当前版本无法卸载，可能仍被其他插件依赖或 OnUnload 执行失败。");
+
+                    pluginManager.SuppressWatcherPath(deletion.Path);
+                    try
+                    {
+                        if (deletion.Directory) Directory.Delete(deletion.Path, true);
+                        else File.Delete(deletion.Path);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        return PendingDeletion(ex.Message);
+                    }
+
+                    try
+                    {
+                        StagedComponentUpdates.DiscardStaged(pluginManager.PluginRootPath, canonicalId);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        return PendingDeletion(ex.Message);
+                    }
+
+                    return Results.Ok(new { ok = true, message = $"插件 {canonicalId} 已删除" });
+
+                    IResult PendingDeletion(string reason)
+                    {
+                        runtimeState.RecommendRestart("plugin-delete:" + canonicalId,
+                            $"插件 {canonicalId} 的删除任务尚未完成，需要重启宿主完成清理。");
+                        return Results.Ok(new
+                        {
+                            ok = true,
+                            pending_restart = true,
+                            pending_delete = true,
+                            reason,
+                            message = $"插件 {canonicalId} 暂时无法删除，已登记删除任务，将在下次重启宿主时删除。"
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return Results.Conflict(new { ok = false, error = "plugin_delete_failed", message = ex.Message });
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+
+            api.MapPost("/plugins/{id}/update", async (string id, HttpContext context) =>
+            {
+                var plugin = FindLoadedPlugin(pluginManager, id);
+                if (plugin is null) return Results.NotFound(new { ok = false, message = $"未找到已加载插件: {id}" });
+
+                if (string.IsNullOrWhiteSpace(plugin.GithubRepo))
+                    return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 未配置 GithubRepo" });
+
+                var update = await Updater.CheckGitHubPluginPackageUpdateAsync(
+                    plugin.GithubRepo,
+                    plugin.Version,
+                    cancellationToken: context.RequestAborted).ConfigureAwait(false);
+                if (update is null) return Results.Ok(new { ok = true, message = $"插件 {plugin.Name} 已是最新版本" });
+
+                if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) || string.IsNullOrWhiteSpace(update.AssetName))
+                    return Results.BadRequest(new
+                        { ok = false, message = $"插件 {plugin.Name} 有新版本，但 release 中没有可用的 zip 或 dll 插件包" });
 
                 try
                 {
-                    StagedComponentUpdates.DiscardStaged(pluginManager.PluginRootPath, canonicalId);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    return PendingDeletion(ex.Message);
-                }
-
-                return Results.Ok(new { ok = true, message = $"插件 {canonicalId} 已删除" });
-
-                IResult PendingDeletion(string reason)
-                {
-                    runtimeState.RecommendRestart("plugin-delete:" + canonicalId,
-                        $"插件 {canonicalId} 的删除任务尚未完成，需要重启宿主完成清理。");
+                    var result = await PluginUpdateService.ApplyAsync(pluginManager, eventDispatcher, routePolicy,
+                        plugin.Name, update.AssetDownloadUrl, update.AssetName, update.LatestVersion,
+                        context.RequestAborted).ConfigureAwait(false);
+                    if (result.PendingRestart)
+                        runtimeState.RecommendRestart("plugin-update:" + plugin.Name, result.Message);
                     return Results.Ok(new
                     {
                         ok = true,
-                        pending_restart = true,
-                        pending_delete = true,
-                        reason,
-                        message = $"插件 {canonicalId} 暂时无法删除，已登记删除任务，将在下次重启宿主时删除。"
+                        pending_restart = result.PendingRestart,
+                        reason = result.Reason,
+                        message = result.Message,
+                        current_version = update.CurrentVersion,
+                        latest_version = update.LatestVersion,
+                        release_url = update.ReleaseUrl
                     });
                 }
-            }
-            catch (Exception ex)
-            {
-                return Results.Conflict(new { ok = false, error = "plugin_delete_failed", message = ex.Message });
-            }
-            finally
-            {
-                gate.Release();
-            }
-        });
-
-        api.MapPost("/plugins/{id}/update", async (string id, HttpContext context) =>
-        {
-            var plugin = FindLoadedPlugin(pluginManager, id);
-            if (plugin is null) return Results.NotFound(new { ok = false, message = $"未找到已加载插件: {id}" });
-
-            if (string.IsNullOrWhiteSpace(plugin.GithubRepo))
-                return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 未配置 GithubRepo" });
-
-            var update = await Updater.CheckGitHubPluginPackageUpdateAsync(
-                plugin.GithubRepo,
-                plugin.Version,
-                cancellationToken: context.RequestAborted).ConfigureAwait(false);
-            if (update is null) return Results.Ok(new { ok = true, message = $"插件 {plugin.Name} 已是最新版本" });
-
-            if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) || string.IsNullOrWhiteSpace(update.AssetName))
-                return Results.BadRequest(new
-                    { ok = false, message = $"插件 {plugin.Name} 有新版本，但 release 中没有可用的 zip 或 dll 插件包" });
-
-            try
-            {
-                var result = await PluginUpdateService.ApplyAsync(pluginManager, eventDispatcher, routePolicy,
-                    plugin.Name, update.AssetDownloadUrl, update.AssetName, update.LatestVersion,
-                    context.RequestAborted).ConfigureAwait(false);
-                if (result.PendingRestart)
-                    runtimeState.RecommendRestart("plugin-update:" + plugin.Name, result.Message);
-                return Results.Ok(new
+                catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException
+                                               or HttpRequestException)
                 {
-                    ok = true,
-                    pending_restart = result.PendingRestart,
-                    reason = result.Reason,
-                    message = result.Message,
-                    current_version = update.CurrentVersion,
-                    latest_version = update.LatestVersion,
-                    release_url = update.ReleaseUrl
-                });
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException
-                                           or HttpRequestException)
-            {
-                return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 更新失败: {ex.Message}" });
-            }
-        });
+                    return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 更新失败: {ex.Message}" });
+                }
+            });
+        }
     }
 
     /// <summary>What a loaded plugin listens to, for its Dashboard details page.</summary>

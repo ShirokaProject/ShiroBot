@@ -1,4 +1,7 @@
 using System.CommandLine;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
@@ -114,7 +117,8 @@ public static class Program
         var modelPackages = new ModelPackageRegistry(sharedAssemblies);
         PluginManager? pluginManager = null;
         CoreConfigWatcher? configWatcher = null;
-        HostHttpServer? hostHttpServer = null;
+        ServiceProvider? runtimeServices = null;
+        IHostedService? hostHttpServer = null;
         TemporaryFileManager? temporaryFiles = null;
         AdapterManager? adapterManager = null;
         ComponentFileWatcher? componentWatcher = null;
@@ -327,27 +331,35 @@ public static class Program
             commandHandler.SetAdapterCommands(adapterManager, reloadCoordinator, adapterPackages, runtimeState);
             commandHandler.SetPowerControl(powerControl);
             componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
-            hostHttpServer = await HostHttpServer.StartAsync(
-                coreConfig.Api,
-                coreConfigManager,
-                coreConfigPath,
-                pluginManager,
-                hostEventDispatcher,
-                groupRoutePolicy,
-                webHostContext,
-                runtimeState,
-                logHub,
-                botContext,
-                modelPackages,
-                adapterManager,
-                reloadCoordinator,
-                adapterPackages,
-                powerControl);
-            var autoUpdateRunner = new AutoUpdateRunner(coreConfig, pluginManager, hostEventDispatcher,
-                groupRoutePolicy,
-                adapterPackages, adapterManager, reloadCoordinator, runtimeState, powerControl,
-                ownerNotifier.NotifyAsync,
-                new SkippedMajorNotices(Path.Combine(BasePath, "cache", "auto-update-skipped-major.json")));
+            var services = new ServiceCollection();
+            // Borrow process-owned instances; DI owns the HTTP service, route modules and update runner.
+            // The existing TOML watcher updates this same instance. Options must not create a
+            // second configuration snapshot or apply listener changes before the next restart.
+            services.AddSingleton(Options.Create(coreConfig.Api));
+            services.AddSingleton(coreConfigManager);
+            services.AddSingleton(pluginManager);
+            services.AddSingleton(hostEventDispatcher);
+            services.AddSingleton(groupRoutePolicy);
+            services.AddSingleton(webHostContext);
+            services.AddSingleton(runtimeState);
+            services.AddSingleton(logHub);
+            services.AddSingleton(botContext);
+            services.AddSingleton(modelPackages);
+            services.AddSingleton(adapterManager);
+            services.AddSingleton(reloadCoordinator);
+            services.AddSingleton(adapterPackages);
+            services.AddSingleton(powerControl);
+            services.AddSingleton(coreConfig);
+            services.AddSingleton<OwnerNotify>(ownerNotifier.NotifyAsync);
+            services.AddSingleton(new SkippedMajorNotices(
+                Path.Combine(BasePath, "cache", "auto-update-skipped-major.json")));
+            services.AddSingleton<AutoUpdateRunner>();
+            services.AddHostHttpServer();
+            runtimeServices = services.BuildServiceProvider(new ServiceProviderOptions
+                { ValidateScopes = true, ValidateOnBuild = true });
+            hostHttpServer = runtimeServices.GetRequiredService<IHostedService>();
+            await hostHttpServer.StartAsync(CancellationToken.None).ConfigureAwait(false);
+            var autoUpdateRunner = runtimeServices.GetRequiredService<AutoUpdateRunner>();
             autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
                 Path.Combine(BasePath, "cache", "auto-update-last-run"));
             if (coreConfig.Update.Any)
@@ -418,11 +430,21 @@ public static class Program
             if (hostHttpServer is not null)
                 try
                 {
-                    await hostHttpServer.DisposeAsync();
+                    await hostHttpServer.StopAsync(CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     CH.Warning("停止宿主 API 服务时出现异常: " + ex.Message);
+                }
+
+            if (runtimeServices is not null)
+                try
+                {
+                    await runtimeServices.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    CH.Warning("释放宿主服务时出现异常: " + ex.Message);
                 }
 
             if (adapterManager is not null)

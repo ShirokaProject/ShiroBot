@@ -327,7 +327,7 @@ public class PluginRouteRuleConfig
 
 public class ConfigManager(string? coreConfigPath = null)
 {
-    private readonly string _coreConfigPath = string.IsNullOrWhiteSpace(coreConfigPath)
+    internal string CoreConfigPath { get; } = string.IsNullOrWhiteSpace(coreConfigPath)
         ? Path.Combine(HostPaths.Root, "config.toml")
         : Path.GetFullPath(coreConfigPath);
 
@@ -344,8 +344,8 @@ public class ConfigManager(string? coreConfigPath = null)
     {
         try
         {
-            if (!File.Exists(_coreConfigPath)) return await CreateDefaultConfig();
-            var tomlString = await File.ReadAllTextAsync(_coreConfigPath);
+            if (!File.Exists(CoreConfigPath)) return await CreateDefaultConfig();
+            var tomlString = await File.ReadAllTextAsync(CoreConfigPath);
             if (string.IsNullOrWhiteSpace(tomlString)) return await CreateDefaultConfig();
             var config = TomlSerializer.Deserialize<CoreConfig>(tomlString, _options);
             return config ?? await CreateDefaultConfig();
@@ -361,8 +361,8 @@ public class ConfigManager(string? coreConfigPath = null)
             BotLog.Info("未找到配置文件，正在创建默认配置...");
             var defaultConfig = CreateConfigDefaults<CoreConfig>();
             var tomlString = SerializeToml(defaultConfig, _options);
-            Directory.CreateDirectory(Path.GetDirectoryName(_coreConfigPath)!);
-            await File.WriteAllTextAsync(_coreConfigPath, tomlString);
+            Directory.CreateDirectory(Path.GetDirectoryName(CoreConfigPath)!);
+            await File.WriteAllTextAsync(CoreConfigPath, tomlString);
             return defaultConfig;
         }
     }

@@ -14,319 +14,328 @@ namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapPluginInstallEndpoints(RouteGroupBuilder api, PluginManager pluginManager,
-        HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy, HostRuntimeState runtimeState)
+    internal sealed class PluginInstallEndpoints(
+        PluginManager pluginManager,
+        HostEventDispatcher eventDispatcher,
+        PluginRouteConfig routePolicy,
+        HostRuntimeState runtimeState) : IHostApiEndpoints
     {
-        api.MapPost("/plugins/upload", async (HttpContext context) =>
+        public void Map(RouteGroupBuilder api)
         {
-            if (!context.Request.HasFormContentType)
-                return Results.BadRequest(
-                    new { error = "invalid_request", message = "请使用 multipart/form-data 上传插件文件。" });
-
-            var form = await context.Request.ReadFormAsync(context.RequestAborted).ConfigureAwait(false);
-            var file = form.Files.GetFile("file") ?? (form.Files is [var firstFile, ..] ? firstFile : null);
-            if (file is null || file.Length == 0)
-                return Results.BadRequest(new { error = "missing_file", message = "未收到插件文件。" });
-
-            if (file.Length > MaxPluginUploadBytes)
-                return Results.BadRequest(new { error = "file_too_large", message = "插件文件不能超过 100MB。" });
-
-            var extension = Path.GetExtension(file.FileName);
-            if (!extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
-                !extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
-                return Results.BadRequest(new { error = "unsupported_file", message = "只支持上传 .dll 或 .zip 插件。" });
-
-            var uploadId = Guid.NewGuid().ToString("N");
-            var uploadRoot = GetPluginUploadRoot(uploadId);
-            Directory.CreateDirectory(uploadRoot);
-
-            try
+            api.MapPost("/plugins/upload", async (HttpContext context) =>
             {
-                var safeFileName = Path.GetFileName(file.FileName);
-                var packagePath = Path.Combine(uploadRoot, safeFileName);
-                await using (var stream = File.Create(packagePath))
-                {
-                    await file.CopyToAsync(stream, context.RequestAborted).ConfigureAwait(false);
-                }
+                if (!context.Request.HasFormContentType)
+                    return Results.BadRequest(
+                        new { error = "invalid_request", message = "请使用 multipart/form-data 上传插件文件。" });
 
-                var package = PreparePluginUploadPackage(pluginManager, packagePath);
-                var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
-                SchedulePluginUploadCleanup(uploadRoot);
-                return Results.Ok(new
-                {
-                    upload_id = uploadId,
-                    status = "parsed",
-                    plugin = CreatePluginInfoResponse(package.Info),
-                    package = new
-                    {
-                        file_name = safeFileName,
-                        type = package.Type,
-                        size = file.Length
-                    },
-                    conflict = new
-                    {
-                        exists = installed is not null,
-                        installed_version = installed?.Version,
-                        uploaded_version = package.Info.Version,
-                        action = installed is null ? "install" : "replace"
-                    }
-                });
-            }
-            catch (InvalidOperationException ex)
-            {
-                TryDeleteDirectory(uploadRoot);
-                return Results.BadRequest(new { error = "invalid_plugin", message = ex.Message });
-            }
-            catch
-            {
-                TryDeleteDirectory(uploadRoot);
-                throw;
-            }
-        });
+                var form = await context.Request.ReadFormAsync(context.RequestAborted).ConfigureAwait(false);
+                var file = form.Files.GetFile("file") ?? (form.Files is [var firstFile, ..] ? firstFile : null);
+                if (file is null || file.Length == 0)
+                    return Results.BadRequest(new { error = "missing_file", message = "未收到插件文件。" });
 
-        api.MapPost("/plugins/upload/{uploadId}/confirm", async (string uploadId, HttpContext context) =>
-        {
-            PluginUploadConfirmRequest request;
-            try
-            {
-                request = await JsonSerializer.DeserializeAsync<PluginUploadConfirmRequest>(
-                              context.Request.Body,
-                              JsonSerializerOptions.Web,
-                              context.RequestAborted).ConfigureAwait(false)
-                          ?? new PluginUploadConfirmRequest();
-            }
-            catch (JsonException)
-            {
-                return Results.BadRequest(new { error = "invalid_json", message = "确认安装请求不是有效 JSON。" });
-            }
+                if (file.Length > MaxPluginUploadBytes)
+                    return Results.BadRequest(new { error = "file_too_large", message = "插件文件不能超过 100MB。" });
 
-            var uploadRoot = GetPluginUploadRoot(uploadId);
-            if (!Directory.Exists(uploadRoot))
-                return Results.NotFound(new { error = "upload_not_found", message = "上传记录不存在或已过期。" });
+                var extension = Path.GetExtension(file.FileName);
+                if (!extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
+                    !extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                    return Results.BadRequest(new { error = "unsupported_file", message = "只支持上传 .dll 或 .zip 插件。" });
 
-            try
-            {
-                var package = LoadPreparedPluginUploadPackage(pluginManager, uploadId);
-                var gate = GetPluginOperationLock(package.Info.Id);
-                await gate.WaitAsync(context.RequestAborted).ConfigureAwait(false);
+                var uploadId = Guid.NewGuid().ToString("N");
+                var uploadRoot = GetPluginUploadRoot(uploadId);
+                Directory.CreateDirectory(uploadRoot);
+
                 try
                 {
-                    if (StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, package.Info.Id))
-                        return Results.Conflict(new
-                            { error = "plugin_pending_delete", message = "插件已登记删除任务，请先重启宿主完成删除，再重新安装。" });
-                    var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
-                    if (installed is not null && !request.Replace)
-                        return Results.Conflict(new { error = "plugin_exists", message = "插件已存在，请确认替换。" });
-
-                    var loaded = FindLoadedPlugin(pluginManager, package.Info.Id);
-
-
-                    if (installed is not null)
+                    var safeFileName = Path.GetFileName(file.FileName);
+                    var packagePath = Path.Combine(uploadRoot, safeFileName);
+                    await using (var stream = File.Create(packagePath))
                     {
-                        var replacement = await ReplaceInstalledPluginAsync(
-                                pluginManager, eventDispatcher, routePolicy, package, installed, loaded)
-                            .ConfigureAwait(false);
-                        if (replacement.PendingReason is not null)
-                        {
-                            runtimeState.RecommendRestart("plugin-update:" + package.Info.Id,
-                                $"插件 {package.Info.Id} 的新版本 {package.Info.Version} 已暂存，需要重启宿主完成更新。");
-                            TryDeleteDirectory(uploadRoot);
-                            return Results.Ok(new
-                            {
-                                success = true,
-                                pending_restart = true,
-                                reason = replacement.PendingReason,
-                                message = $"当前版本无法热替换，新版本 {package.Info.Version} 已暂存，将在下次重启宿主时替换。重启前当前版本继续运行。",
-                                plugin = new { id = package.Info.Id, enable = request.Enable }
-                            });
-                        }
-
-                        await FinishPluginInstallAsync(replacement.EntryPath!).ConfigureAwait(false);
-                        TryDeleteDirectory(uploadRoot);
-                        return Results.Ok(new
-                            { success = true, plugin = new { id = package.Info.Id, enable = request.Enable } });
+                        await file.CopyToAsync(stream, context.RequestAborted).ConfigureAwait(false);
                     }
 
-                    var installedAssemblyPath = InstallUploadedPlugin(pluginManager, package);
-                    await FinishPluginInstallAsync(installedAssemblyPath).ConfigureAwait(false);
-
-                    TryDeleteDirectory(uploadRoot);
+                    var package = PreparePluginUploadPackage(pluginManager, packagePath);
+                    var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
+                    SchedulePluginUploadCleanup(uploadRoot);
                     return Results.Ok(new
                     {
-                        success = true,
-                        plugin = new
+                        upload_id = uploadId,
+                        status = "parsed",
+                        plugin = CreatePluginInfoResponse(package.Info),
+                        package = new
                         {
-                            id = package.Info.Id,
-                            enable = request.Enable
+                            file_name = safeFileName,
+                            type = package.Type,
+                            size = file.Length
+                        },
+                        conflict = new
+                        {
+                            exists = installed is not null,
+                            installed_version = installed?.Version,
+                            uploaded_version = package.Info.Version,
+                            action = installed is null ? "install" : "replace"
                         }
                     });
+                }
+                catch (InvalidOperationException ex)
+                {
+                    TryDeleteDirectory(uploadRoot);
+                    return Results.BadRequest(new { error = "invalid_plugin", message = ex.Message });
+                }
+                catch
+                {
+                    TryDeleteDirectory(uploadRoot);
+                    throw;
+                }
+            });
 
-                    async Task FinishPluginInstallAsync(string entryPath)
+            api.MapPost("/plugins/upload/{uploadId}/confirm", async (string uploadId, HttpContext context) =>
+            {
+                PluginUploadConfirmRequest request;
+                try
+                {
+                    request = await JsonSerializer.DeserializeAsync<PluginUploadConfirmRequest>(
+                                  context.Request.Body,
+                                  JsonSerializerOptions.Web,
+                                  context.RequestAborted).ConfigureAwait(false)
+                              ?? new PluginUploadConfirmRequest();
+                }
+                catch (JsonException)
+                {
+                    return Results.BadRequest(new { error = "invalid_json", message = "确认安装请求不是有效 JSON。" });
+                }
+
+                var uploadRoot = GetPluginUploadRoot(uploadId);
+                if (!Directory.Exists(uploadRoot))
+                    return Results.NotFound(new { error = "upload_not_found", message = "上传记录不存在或已过期。" });
+
+                try
+                {
+                    var package = LoadPreparedPluginUploadPackage(pluginManager, uploadId);
+                    var gate = GetPluginOperationLock(package.Info.Id);
+                    await gate.WaitAsync(context.RequestAborted).ConfigureAwait(false);
+                    try
                     {
-                        if (request.Enable)
+                        if (StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, package.Info.Id))
+                            return Results.Conflict(new
+                                { error = "plugin_pending_delete", message = "插件已登记删除任务，请先重启宿主完成删除，再重新安装。" });
+                        var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
+                        if (installed is not null && !request.Replace)
+                            return Results.Conflict(new { error = "plugin_exists", message = "插件已存在，请确认替换。" });
+
+                        var loaded = FindLoadedPlugin(pluginManager, package.Info.Id);
+
+
+                        if (installed is not null)
                         {
-                            await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id)
+                            var replacement = await ReplaceInstalledPluginAsync(
+                                    pluginManager, eventDispatcher, routePolicy, package, installed, loaded)
                                 .ConfigureAwait(false);
+                            if (replacement.PendingReason is not null)
+                            {
+                                runtimeState.RecommendRestart("plugin-update:" + package.Info.Id,
+                                    $"插件 {package.Info.Id} 的新版本 {package.Info.Version} 已暂存，需要重启宿主完成更新。");
+                                TryDeleteDirectory(uploadRoot);
+                                return Results.Ok(new
+                                {
+                                    success = true,
+                                    pending_restart = true,
+                                    reason = replacement.PendingReason,
+                                    message = $"当前版本无法热替换，新版本 {package.Info.Version} 已暂存，将在下次重启宿主时替换。重启前当前版本继续运行。",
+                                    plugin = new { id = package.Info.Id, enable = request.Enable }
+                                });
+                            }
+
+                            await FinishPluginInstallAsync(replacement.EntryPath!).ConfigureAwait(false);
+                            TryDeleteDirectory(uploadRoot);
+                            return Results.Ok(new
+                                { success = true, plugin = new { id = package.Info.Id, enable = request.Enable } });
                         }
-                        else
+
+                        var installedAssemblyPath = InstallUploadedPlugin(pluginManager, package);
+                        await FinishPluginInstallAsync(installedAssemblyPath).ConfigureAwait(false);
+
+                        TryDeleteDirectory(uploadRoot);
+                        return Results.Ok(new
                         {
-                            pluginManager.SuppressWatcherPath(entryPath);
-                            DisablePluginFile(entryPath);
+                            success = true,
+                            plugin = new
+                            {
+                                id = package.Info.Id,
+                                enable = request.Enable
+                            }
+                        });
+
+                        async Task FinishPluginInstallAsync(string entryPath)
+                        {
+                            if (request.Enable)
+                            {
+                                await pluginManager
+                                    .ScheduleLoadPluginByName(eventDispatcher, routePolicy, package.Info.Id)
+                                    .ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                pluginManager.SuppressWatcherPath(entryPath);
+                                DisablePluginFile(entryPath);
+                            }
                         }
                     }
-                }
-                finally
-                {
-                    gate.Release();
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.BadRequest(new { error = "install_failed", message = ex.Message });
-            }
-        });
-
-        api.MapDelete("/plugins/upload/{uploadId}", (string uploadId) =>
-        {
-            TryDeleteDirectory(GetPluginUploadRoot(uploadId));
-            return Results.Ok(new { success = true });
-        });
-
-        api.MapPost("/plugins/install/github", async (HttpContext context) =>
-        {
-            GitHubPluginInstallRequest request;
-            try
-            {
-                request = await JsonSerializer.DeserializeAsync<GitHubPluginInstallRequest>(
-                              context.Request.Body,
-                              JsonSerializerOptions.Web,
-                              context.RequestAborted).ConfigureAwait(false)
-                          ?? new GitHubPluginInstallRequest(string.Empty);
-            }
-            catch (JsonException)
-            {
-                return Results.BadRequest(new { error = "invalid_json", message = "GitHub 插件安装请求不是有效 JSON。" });
-            }
-
-            var hasRepository = TryNormalizeGitHubRepository(request.Repository, out var repository);
-            var hasAssetUrl = !string.IsNullOrWhiteSpace(request.AssetUrl);
-            switch (hasRepository, hasAssetUrl)
-            {
-                case (false, true):
-                    return Results.BadRequest(new
-                        { error = "missing_repository", message = "使用 assetUrl 安装时必须提供对应的 GitHub repository。" });
-                case (false, false):
-                    return Results.BadRequest(new
-                        { error = "invalid_repository", message = "repository 必须是 owner/repo 或 GitHub 仓库 URL。" });
-            }
-
-            string assetDownloadUrl;
-            string assetName;
-            string? releaseName = null;
-            string? releaseVersion = null;
-            string? releaseUrl = null;
-
-            if (hasAssetUrl)
-            {
-                if (!TryNormalizeSha256(request.AssetSha256, out var assetSha256))
-                    return Results.BadRequest(new
-                        { error = "invalid_asset_digest", message = "assetSha256 必须是 sha256: 后跟 64 位十六进制摘要。" });
-                if (!TryNormalizeGitHubAssetUrl(
-                        request.AssetUrl,
-                        request.AssetName,
-                        hasRepository ? repository : null,
-                        out assetDownloadUrl,
-                        out assetName))
-                    return Results.BadRequest(new
+                    finally
                     {
-                        error = "invalid_asset_url",
-                        message = "assetUrl 必须属于 repository 对应的 GitHub Release，且是 .zip 或 .dll HTTPS URL。"
-                    });
-
-                request = request with { AssetSha256 = assetSha256 };
-            }
-            else
-            {
-                var packageInfo = await Updater.GetLatestPluginPackageAsync(
-                    repository,
-                    request.IncludePrerelease,
-                    context.RequestAborted).ConfigureAwait(false);
-                if (packageInfo is null)
-                    return Results.NotFound(new
-                        { error = "release_not_found", message = $"仓库 {repository} 没有可用 release。" });
-
-                if (string.IsNullOrWhiteSpace(packageInfo.AssetDownloadUrl) ||
-                    string.IsNullOrWhiteSpace(packageInfo.AssetName))
-                    return Results.BadRequest(new
-                        { error = "asset_not_found", message = $"仓库 {repository} 的最新 release 没有 .zip 或 .dll 插件资源。" });
-
-                assetDownloadUrl = packageInfo.AssetDownloadUrl;
-                assetName = packageInfo.AssetName;
-                repository = packageInfo.Repository;
-                releaseName = packageInfo.ReleaseName;
-                releaseVersion = packageInfo.Version;
-                releaseUrl = packageInfo.ReleaseUrl;
-            }
-
-            var uploadId = Guid.NewGuid().ToString("N");
-            var uploadRoot = GetPluginUploadRoot(uploadId);
-            Directory.CreateDirectory(uploadRoot);
-
-            try
-            {
-                var safeAssetName = Path.GetFileName(assetName);
-                var packagePath = Path.Combine(uploadRoot, safeAssetName);
-                await Updater.DownloadFileAsync(
-                    assetDownloadUrl,
-                    packagePath,
-                    context.RequestAborted,
-                    MaxPluginUploadBytes,
-                    hasAssetUrl ? request.AssetSha256 : null).ConfigureAwait(false);
-
-                var package = PreparePluginUploadPackage(pluginManager, packagePath);
-                var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
-                SchedulePluginUploadCleanup(uploadRoot);
-
-                return Results.Ok(new
-                {
-                    upload_id = uploadId,
-                    status = "parsed",
-                    source = new
-                    {
-                        type = "github",
-                        repository = hasRepository ? repository : null,
-                        release_name = releaseName,
-                        release_version = releaseVersion,
-                        release_url = releaseUrl,
-                        asset_name = assetName,
-                        asset_type = Path.GetExtension(assetName).TrimStart('.').ToLowerInvariant()
-                    },
-                    plugin = CreatePluginInfoResponse(package.Info),
-                    package = new
-                    {
-                        file_name = safeAssetName,
-                        type = package.Type,
-                        size = new FileInfo(packagePath).Length
-                    },
-                    conflict = new
-                    {
-                        exists = installed is not null,
-                        installed_version = installed?.Version,
-                        uploaded_version = package.Info.Version,
-                        action = installed is null ? "install" : "replace"
+                        gate.Release();
                     }
-                });
-            }
-            catch (InvalidOperationException ex)
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.BadRequest(new { error = "install_failed", message = ex.Message });
+                }
+            });
+
+            api.MapDelete("/plugins/upload/{uploadId}", (string uploadId) =>
             {
-                TryDeleteDirectory(uploadRoot);
-                return Results.BadRequest(new { error = "invalid_plugin", message = ex.Message });
-            }
-            catch
+                TryDeleteDirectory(GetPluginUploadRoot(uploadId));
+                return Results.Ok(new { success = true });
+            });
+
+            api.MapPost("/plugins/install/github", async (HttpContext context) =>
             {
-                TryDeleteDirectory(uploadRoot);
-                throw;
-            }
-        });
+                GitHubPluginInstallRequest request;
+                try
+                {
+                    request = await JsonSerializer.DeserializeAsync<GitHubPluginInstallRequest>(
+                                  context.Request.Body,
+                                  JsonSerializerOptions.Web,
+                                  context.RequestAborted).ConfigureAwait(false)
+                              ?? new GitHubPluginInstallRequest(string.Empty);
+                }
+                catch (JsonException)
+                {
+                    return Results.BadRequest(new { error = "invalid_json", message = "GitHub 插件安装请求不是有效 JSON。" });
+                }
+
+                var hasRepository = TryNormalizeGitHubRepository(request.Repository, out var repository);
+                var hasAssetUrl = !string.IsNullOrWhiteSpace(request.AssetUrl);
+                switch (hasRepository, hasAssetUrl)
+                {
+                    case (false, true):
+                        return Results.BadRequest(new
+                            { error = "missing_repository", message = "使用 assetUrl 安装时必须提供对应的 GitHub repository。" });
+                    case (false, false):
+                        return Results.BadRequest(new
+                            { error = "invalid_repository", message = "repository 必须是 owner/repo 或 GitHub 仓库 URL。" });
+                }
+
+                string assetDownloadUrl;
+                string assetName;
+                string? releaseName = null;
+                string? releaseVersion = null;
+                string? releaseUrl = null;
+
+                if (hasAssetUrl)
+                {
+                    if (!TryNormalizeSha256(request.AssetSha256, out var assetSha256))
+                        return Results.BadRequest(new
+                            { error = "invalid_asset_digest", message = "assetSha256 必须是 sha256: 后跟 64 位十六进制摘要。" });
+                    if (!TryNormalizeGitHubAssetUrl(
+                            request.AssetUrl,
+                            request.AssetName,
+                            hasRepository ? repository : null,
+                            out assetDownloadUrl,
+                            out assetName))
+                        return Results.BadRequest(new
+                        {
+                            error = "invalid_asset_url",
+                            message = "assetUrl 必须属于 repository 对应的 GitHub Release，且是 .zip 或 .dll HTTPS URL。"
+                        });
+
+                    request = request with { AssetSha256 = assetSha256 };
+                }
+                else
+                {
+                    var packageInfo = await Updater.GetLatestPluginPackageAsync(
+                        repository,
+                        request.IncludePrerelease,
+                        context.RequestAborted).ConfigureAwait(false);
+                    if (packageInfo is null)
+                        return Results.NotFound(new
+                            { error = "release_not_found", message = $"仓库 {repository} 没有可用 release。" });
+
+                    if (string.IsNullOrWhiteSpace(packageInfo.AssetDownloadUrl) ||
+                        string.IsNullOrWhiteSpace(packageInfo.AssetName))
+                        return Results.BadRequest(new
+                        {
+                            error = "asset_not_found", message = $"仓库 {repository} 的最新 release 没有 .zip 或 .dll 插件资源。"
+                        });
+
+                    assetDownloadUrl = packageInfo.AssetDownloadUrl;
+                    assetName = packageInfo.AssetName;
+                    repository = packageInfo.Repository;
+                    releaseName = packageInfo.ReleaseName;
+                    releaseVersion = packageInfo.Version;
+                    releaseUrl = packageInfo.ReleaseUrl;
+                }
+
+                var uploadId = Guid.NewGuid().ToString("N");
+                var uploadRoot = GetPluginUploadRoot(uploadId);
+                Directory.CreateDirectory(uploadRoot);
+
+                try
+                {
+                    var safeAssetName = Path.GetFileName(assetName);
+                    var packagePath = Path.Combine(uploadRoot, safeAssetName);
+                    await Updater.DownloadFileAsync(
+                        assetDownloadUrl,
+                        packagePath,
+                        context.RequestAborted,
+                        MaxPluginUploadBytes,
+                        hasAssetUrl ? request.AssetSha256 : null).ConfigureAwait(false);
+
+                    var package = PreparePluginUploadPackage(pluginManager, packagePath);
+                    var installed = FindInstalledPlugin(pluginManager, package.Info.Id);
+                    SchedulePluginUploadCleanup(uploadRoot);
+
+                    return Results.Ok(new
+                    {
+                        upload_id = uploadId,
+                        status = "parsed",
+                        source = new
+                        {
+                            type = "github",
+                            repository = hasRepository ? repository : null,
+                            release_name = releaseName,
+                            release_version = releaseVersion,
+                            release_url = releaseUrl,
+                            asset_name = assetName,
+                            asset_type = Path.GetExtension(assetName).TrimStart('.').ToLowerInvariant()
+                        },
+                        plugin = CreatePluginInfoResponse(package.Info),
+                        package = new
+                        {
+                            file_name = safeAssetName,
+                            type = package.Type,
+                            size = new FileInfo(packagePath).Length
+                        },
+                        conflict = new
+                        {
+                            exists = installed is not null,
+                            installed_version = installed?.Version,
+                            uploaded_version = package.Info.Version,
+                            action = installed is null ? "install" : "replace"
+                        }
+                    });
+                }
+                catch (InvalidOperationException ex)
+                {
+                    TryDeleteDirectory(uploadRoot);
+                    return Results.BadRequest(new { error = "invalid_plugin", message = ex.Message });
+                }
+                catch
+                {
+                    TryDeleteDirectory(uploadRoot);
+                    throw;
+                }
+            });
+        }
     }
 }

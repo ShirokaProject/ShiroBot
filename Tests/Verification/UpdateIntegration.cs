@@ -9,6 +9,9 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ShiroBot.Adapters;
 using ShiroBot.Components.Reloading;
 using ShiroBot.Components.Updates;
@@ -757,12 +760,14 @@ internal static class UpdateIntegration
         public required AdapterPackageManager AdapterPackages { get; init; }
         public required PluginRouteConfig Policy { get; init; }
         public required HostCommandHandler Commands { get; init; }
-        public required HostHttpServer Server { get; init; }
+        public required IHostedService Server { get; init; }
+        public required ServiceProvider HttpServices { get; init; }
         public required HttpClient Client { get; init; }
 
         public async ValueTask DisposeAsync()
         {
-            await Server.DisposeAsync();
+            await Server.StopAsync(CancellationToken.None);
+            await HttpServices.DisposeAsync();
             await Plugins.UnloadAllAsync(Dispatcher);
             Plugins.BeginShutdown();
             await Adapters.StopForShutdownAsync();
@@ -805,9 +810,35 @@ internal static class UpdateIntegration
                     request.LatestVersion, token);
                 Console.WriteLine(result.Message);
             };
-            var server = await HostHttpServer.StartAsync(config.Api, configManager, configPath, plugins, dispatcher,
-                config.PluginRoutes,
-                web, runtime, logs, context, models, adapters, coordinator, packages, new HostPowerControl(() => { }));
+            var services = new ServiceCollection();
+            services.AddSingleton(Options.Create(config.Api));
+            services.AddSingleton(configManager);
+            services.AddSingleton(plugins);
+            services.AddSingleton(dispatcher);
+            services.AddSingleton(config.PluginRoutes);
+            services.AddSingleton(web);
+            services.AddSingleton(runtime);
+            services.AddSingleton(logs);
+            services.AddSingleton(context);
+            services.AddSingleton(models);
+            services.AddSingleton(adapters);
+            services.AddSingleton(coordinator);
+            services.AddSingleton(packages);
+            services.AddSingleton(new HostPowerControl(() => { }));
+            services.AddHostHttpServer();
+            var httpServices = services.BuildServiceProvider(new ServiceProviderOptions
+                { ValidateScopes = true, ValidateOnBuild = true });
+            var server = httpServices.GetRequiredService<IHostedService>();
+            try
+            {
+                await server.StartAsync(CancellationToken.None);
+            }
+            catch
+            {
+                await httpServices.DisposeAsync();
+                throw;
+            }
+
             var client = new HttpClient
                 { BaseAddress = new Uri(origin + "/api/v1/"), Timeout = TimeSpan.FromSeconds(60) };
             client.DefaultRequestHeaders.Authorization =
@@ -815,7 +846,8 @@ internal static class UpdateIntegration
             return new TestHost
             {
                 Root = root, Plugins = plugins, Dispatcher = dispatcher, Adapters = adapters,
-                AdapterPackages = packages, Policy = config.PluginRoutes, Commands = commands, Server = server!,
+                AdapterPackages = packages, Policy = config.PluginRoutes, Commands = commands, Server = server,
+                HttpServices = httpServices,
                 Client = client
             };
         }

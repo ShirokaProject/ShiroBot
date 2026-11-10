@@ -192,6 +192,11 @@ switch (args)
         ConsoleOutputVerification.Probe();
         return;
     }
+    case ["--http-lifecycle"]:
+    {
+        await HostHttpLifecycleVerification.RunAsync();
+        return;
+    }
     case ["--console-output"]:
     {
         await ConsoleOutputVerification.RunAsync();
@@ -243,6 +248,7 @@ TomlFormattingVerification.Run();
 await PluginPriorityVerification.RunAsync();
 await MessagePrefixVerification.RunAsync();
 HostEnvironmentVerification.Run();
+await HostHttpLifecycleVerification.RunAsync();
 await ConsoleOutputVerification.RunAsync();
 await LocalLogVerification.RunAsync();
 await PluginActionsVerification.RunAsync();
@@ -3083,9 +3089,11 @@ internal sealed class VerificationComponentConfig
     // Deliberately absent from public reflection-based configuration fingerprints.
     // ReSharper disable once UnusedMember.Local
     private string PrivateValue { get; set; } = "private";
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
         Justification = "The reflection fixture must test an instance computed property separately from StaticValue.")]
     public string ComputedValue => "computed";
+
     public static string StaticValue { get; set; } = "static";
     public string PrivateSetter { get; private set; } = "private setter";
     public VerificationRecordSection RecordSection { get; set; } = new();

@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
 using ShiroBot.Plugins;
 using Tomlyn;
 using Tomlyn.Parsing;
@@ -21,84 +20,84 @@ internal sealed partial class HostHttpServer
 {
     private const int MaxRawConfigLength = 1024 * 1024;
 
-    private static void MapRawConfigEndpoints(
-        RouteGroupBuilder api,
-        PluginManager pluginManager,
-        AdapterPackageManager adapterPackages,
-        AdapterManager adapterManager,
-        ComponentReloadCoordinator reloadCoordinator)
+    internal sealed partial class ComponentEndpoints
     {
-        api.MapGet("/plugins/{id}/config/raw", (string id) =>
+        private void MapRawConfig(RouteGroupBuilder api)
         {
-            var plugin = FindPluginForConfig(pluginManager, id);
-            if (plugin is null) return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
-            var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
-            return !PluginHasConfig(pluginManager, plugin, path)
-                ? NoConfigResult("插件")
-                : Results.Ok(CreateRawConfigResponse(File.Exists(path) ? File.ReadAllText(path) : string.Empty));
-        });
-
-        api.MapPut("/plugins/{id}/config/raw", async (string id, HttpContext context) =>
-        {
-            var plugin = FindPluginForConfig(pluginManager, id);
-            if (plugin is null) return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
-            var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
-            // Writing would create a config.toml the plugin never reads.
-            if (!PluginHasConfig(pluginManager, plugin, path)) return NoConfigResult("插件");
-            var (request, error) =
-                await ReadRawConfigRequestAsync(context,
-                    File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty).ConfigureAwait(false);
-            if (error is not null) return error;
-
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllTextAsync(path, request!.Content, context.RequestAborted).ConfigureAwait(false);
-            try
+            api.MapGet("/plugins/{id}/config/raw", (string id) =>
             {
-                var applied = await pluginManager.ApplyConfigByIdAsync(plugin.Id).ConfigureAwait(false);
-                return Results.Ok(CreateRawConfigResponse(request.Content!, applied ? "applied" :
-                    FindLoadedPlugin(pluginManager, plugin.Id) is null ? "pending_start" : "legacy_saved_only"));
-            }
-            catch (Exception ex)
-            {
-                return Results.Conflict(new { error = "config_apply_failed", message = ex.Message, saved = true });
-            }
-        });
+                var plugin = FindPluginForConfig(pluginManager, id);
+                if (plugin is null)
+                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
+                var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
+                return !PluginHasConfig(pluginManager, plugin, path)
+                    ? NoConfigResult("插件")
+                    : Results.Ok(CreateRawConfigResponse(File.Exists(path) ? File.ReadAllText(path) : string.Empty));
+            });
 
-        api.MapGet("/adapters/{id}/config/raw", (string id) =>
-        {
-            var instance = adapterPackages.GetInstance(id);
-            if (instance is null)
-                return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
-            return !AdapterHasConfig(adapterPackages, adapterManager, instance)
-                ? NoConfigResult("适配器")
-                : Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance)));
-        });
-
-        api.MapPut("/adapters/{id}/config/raw", async (string id, HttpContext context) =>
-        {
-            var instance = adapterPackages.GetInstance(id);
-            if (instance is null)
-                return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
-            if (!AdapterHasConfig(adapterPackages, adapterManager, instance)) return NoConfigResult("适配器");
-            var (request, error) = await ReadRawConfigRequestAsync(context, ReadAdapterRawConfig(instance))
-                .ConfigureAwait(false);
-            if (error is not null) return error;
-
-            // Patch hands a declared instance's own table to the writer as a temporary file.
-            AdapterInstanceStore.Patch(instance.ConfigPath, id, path => File.WriteAllText(path, request!.Content));
-            try
+            api.MapPut("/plugins/{id}/config/raw", async (string id, HttpContext context) =>
             {
-                var applied = await reloadCoordinator
-                    .ExecuteAdapterStartAsync(() => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
-                return Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance), applied ? "applied" :
-                    adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase) ? "legacy_saved_only" :
-                    "pending_start"));
-            }
-            catch (Exception ex)
+                var plugin = FindPluginForConfig(pluginManager, id);
+                if (plugin is null)
+                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到插件: {id}" });
+                var path = GetPluginConfigPath(pluginManager, plugin.AssemblyPath, plugin.Id);
+                // Writing would create a config.toml the plugin never reads.
+                if (!PluginHasConfig(pluginManager, plugin, path)) return NoConfigResult("插件");
+                var (request, error) =
+                    await ReadRawConfigRequestAsync(context,
+                        File.Exists(path) ? await File.ReadAllTextAsync(path) : string.Empty).ConfigureAwait(false);
+                if (error is not null) return error;
+
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                await File.WriteAllTextAsync(path, request!.Content, context.RequestAborted).ConfigureAwait(false);
+                try
+                {
+                    var applied = await pluginManager.ApplyConfigByIdAsync(plugin.Id).ConfigureAwait(false);
+                    return Results.Ok(CreateRawConfigResponse(request.Content!, applied ? "applied" :
+                        FindLoadedPlugin(pluginManager, plugin.Id) is null ? "pending_start" : "legacy_saved_only"));
+                }
+                catch (Exception ex)
+                {
+                    return Results.Conflict(new { error = "config_apply_failed", message = ex.Message, saved = true });
+                }
+            });
+
+            api.MapGet("/adapters/{id}/config/raw", (string id) =>
             {
-                return Results.Conflict(new { error = "config_apply_failed", message = ex.Message, saved = true });
-            }
-        });
+                var instance = adapterPackages.GetInstance(id);
+                if (instance is null)
+                    return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+                return !AdapterHasConfig(adapterPackages, adapterManager, instance)
+                    ? NoConfigResult("适配器")
+                    : Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance)));
+            });
+
+            api.MapPut("/adapters/{id}/config/raw", async (string id, HttpContext context) =>
+            {
+                var instance = adapterPackages.GetInstance(id);
+                if (instance is null)
+                    return Results.NotFound(new { error = "adapter_not_found", message = $"未找到 Adapter: {id}" });
+                if (!AdapterHasConfig(adapterPackages, adapterManager, instance)) return NoConfigResult("适配器");
+                var (request, error) = await ReadRawConfigRequestAsync(context, ReadAdapterRawConfig(instance))
+                    .ConfigureAwait(false);
+                if (error is not null) return error;
+
+                // Patch hands a declared instance's own table to the writer as a temporary file.
+                AdapterInstanceStore.Patch(instance.ConfigPath, id, path => File.WriteAllText(path, request!.Content));
+                try
+                {
+                    var applied = await reloadCoordinator
+                        .ExecuteAdapterStartAsync(() => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
+                    return Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance), applied ? "applied" :
+                        adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase) ? "legacy_saved_only" :
+                        "pending_start"));
+                }
+                catch (Exception ex)
+                {
+                    return Results.Conflict(new { error = "config_apply_failed", message = ex.Message, saved = true });
+                }
+            });
+        }
     }
 
     /// <summary>A plugin has a config when it declares a config model or already has a config.toml.</summary>

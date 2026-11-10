@@ -1,34 +1,36 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using ShiroBot.Hosting.Logging;
 
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapLogEndpoints(RouteGroupBuilder api, HostLogHub logHub)
+    internal sealed partial class DiagnosticsEndpoints
     {
-        api.MapGet("/logs/sources", () => Results.Ok(logHub.GetSources()));
-        api.MapGet("/logs/stream", async context =>
+        private void MapLogs(RouteGroupBuilder api)
         {
-            if (!context.WebSockets.IsWebSocketRequest)
+            api.MapGet("/logs/sources", () => Results.Ok(logHub.GetSources()));
+            api.MapGet("/logs/stream", async context =>
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await context.Response.WriteAsync("Expected WebSocket request.").ConfigureAwait(false);
-                return;
-            }
+                if (!context.WebSockets.IsWebSocketRequest)
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsync("Expected WebSocket request.").ConfigureAwait(false);
+                    return;
+                }
 
-            var source = context.Request.Query.TryGetValue("source", out var sourceValues)
-                ? sourceValues.ToString()
-                : "all";
-            var tail = context.Request.Query.TryGetValue("tail", out var tailValues) &&
-                       int.TryParse(tailValues.ToString(), out var parsedTail)
-                ? parsedTail
-                : 100;
+                var source = context.Request.Query.TryGetValue("source", out var sourceValues)
+                    ? sourceValues.ToString()
+                    : "all";
+                var tail = context.Request.Query.TryGetValue("tail", out var tailValues) &&
+                           int.TryParse(tailValues.ToString(), out var parsedTail)
+                    ? parsedTail
+                    : 100;
 
-            using var webSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-            await logHub.StreamAsync(webSocket, source, tail, context.RequestAborted).ConfigureAwait(false);
-        });
+                using var webSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+                await logHub.StreamAsync(webSocket, source, tail, context.RequestAborted).ConfigureAwait(false);
+            });
+        }
     }
 }

@@ -177,7 +177,7 @@ public static class Updater
                     throw new InvalidOperationException("宿主更新服务尚未初始化或缺少下载地址。");
             });
 
-        await NotifyOwnersAsync(
+        await _notifyOwners(
             $"检测到宿主更新: {update.CurrentVersion} -> {update.LatestVersion}\n" +
             $"来源: {update.Repository}\n" +
             (string.IsNullOrWhiteSpace(update.AssetName) ? string.Empty : $"文件: {update.AssetName}\n") +
@@ -214,7 +214,7 @@ public static class Updater
             request.ReleaseUrl,
             executeAsync);
 
-        await NotifyOwnersAsync(
+        await _notifyOwners(
             $"检测到插件更新: {request.PluginName} {request.CurrentVersion} -> {request.LatestVersion}\n" +
             (string.IsNullOrWhiteSpace(request.ReleaseUrl) ? string.Empty : $"来源: {request.ReleaseUrl}\n") +
             (string.IsNullOrWhiteSpace(request.AssetDownloadUrl) ? string.Empty : $"文件: {request.AssetDownloadUrl}\n") +
@@ -293,7 +293,7 @@ public static class Updater
         try
         {
             if (entry.Target == UpdateTarget.Host)
-                await NotifyOwnersAsync($"宿主更新即将执行并重启: {entry.Name} ({entry.Id})", cancellationToken);
+                await _notifyOwners($"宿主更新即将执行并重启: {entry.Name} ({entry.Id})", null, cancellationToken);
             await entry.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
@@ -304,7 +304,7 @@ public static class Updater
 
         if (entry.Target == UpdateTarget.Host) return true;
 
-        await NotifyOwnersAsync($"更新任务已执行: {entry.Name} ({entry.Id})", cancellationToken);
+        await _notifyOwners($"更新任务已执行: {entry.Name} ({entry.Id})", null, cancellationToken);
         return true;
     }
 
@@ -487,26 +487,7 @@ public static class Updater
         return id;
     }
 
-    private static Task NotifyOwnersAsync(string content, CancellationToken cancellationToken)
-    {
-        return _notifyOwners(content, null, cancellationToken);
-    }
-
-    private static Task NotifyOwnersAsync(string content, OwnerReplyHandler onReply,
-        CancellationToken cancellationToken)
-    {
-        return _notifyOwners(content, onReply, cancellationToken);
-    }
-
     private static async Task<GitHubRelease?> GetLatestReleaseAsync(
-        string repository,
-        bool includePrerelease,
-        CancellationToken cancellationToken)
-    {
-        return await GetLatestReleaseFromApiAsync(repository, includePrerelease, cancellationToken);
-    }
-
-    private static async Task<GitHubRelease?> GetLatestReleaseFromApiAsync(
         string repository,
         bool includePrerelease,
         CancellationToken cancellationToken)
