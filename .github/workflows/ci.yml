@@ -39,7 +39,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: '22'
+          node-version: '24.20.0'
           cache: npm
           cache-dependency-path: artifacts/dashboard-source/package-lock.json
 
@@ -52,7 +52,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          global-json-file: global.json
           dotnet-quality: ga
 
       - name: Check SDK ABI version map
@@ -69,6 +69,9 @@ jobs:
             fi
           done
 
+      - name: Verify release ZIP tooling
+        run: python3 -m unittest discover -s .github/scripts -p test_release_zip.py -v
+
       - name: Build and verify core
         shell: bash
         run: |
@@ -76,6 +79,8 @@ jobs:
           dotnet build Shirobot.slnx -c Release
           # Building with a newer SDK must not raise the minimum installed .NET 10 patch.
           jq -e '
+            .runtimeOptions.configProperties["System.Diagnostics.Debugger.IsSupported"] == true and
+            .runtimeOptions.configProperties["System.Diagnostics.StackTrace.IsSupported"] == true and
             .runtimeOptions.rollForward == "LatestMinor" and
             (.runtimeOptions.frameworks | length == 2 and
               all(.[]; .version == "10.0.0") and
@@ -312,6 +317,22 @@ jobs:
             http://127.0.0.1:17081/dashboard/ \
             -o /dev/null
 
+      - name: Verify host rebuild in a different checkout directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$RUNNER_TEMP/shirobot-repro-source"
+          output_dir="$RUNNER_TEMP/shirobot-repro-publish"
+          git clone --quiet --shared "$GITHUB_WORKSPACE" "$source_dir"
+          git -C "$source_dir" remote set-url origin "$(git remote get-url origin)"
+          dotnet publish "$source_dir/Core/ShiroBot.csproj" -c Release -r linux-x64 \
+            --self-contained true -o "$output_dir" \
+            /p:RequireDashboard=true \
+            /p:PublishSingleFile=true \
+            /p:IncludeNativeLibrariesForSelfExtract=true
+          cmp "$RUNNER_TEMP/shirobot-single-file/ShiroBot" "$output_dir/ShiroBot"
+          sha256sum "$output_dir/ShiroBot"
+
       - name: Reject old ABI plugin in single-file host
         shell: bash
         run: |
@@ -370,7 +391,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          global-json-file: global.json
           dotnet-quality: ga
       - name: Verify deferred shadow cleanup with a Windows file lock
         run: dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release -- --shadow-cleanup

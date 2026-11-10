@@ -43,8 +43,11 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          global-json-file: global.json
           dotnet-quality: ga
+
+      - name: Verify release ZIP tooling
+        run: python3 -m unittest discover -s .github/scripts -p test_release_zip.py -v
 
       - name: Pack NuGet packages
         run: |
@@ -69,6 +72,8 @@ jobs:
             --no-restore
 
       - name: Download dashboard dist
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -78,12 +83,16 @@ jobs:
             exit 1
           fi
 
-          base="https://github.com/ShirokaProject/Shirobot.Dashboard/releases/download/v${version}"
           archive="shirobot-dashboard-${version}.zip"
-
-          curl -fsSL "$base/$archive" -o "/tmp/$archive"
-          curl -fsSL "$base/$archive.sha256" -o "/tmp/$archive.sha256"
-          (cd /tmp && sha256sum -c "$archive.sha256")
+          release="$(gh api "repos/ShirokaProject/Shirobot.Dashboard/releases/tags/v${version}")"
+          url="$(jq -r --arg name "$archive" '.assets[] | select(.name == $name) | .browser_download_url' <<< "$release")"
+          digest="$(jq -r --arg name "$archive" '.assets[] | select(.name == $name) | .digest // empty' <<< "$release")"
+          if [ -z "$url" ] || [[ ! "$digest" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::Dashboard archive is missing or has no GitHub SHA-256 digest"
+            exit 1
+          fi
+          curl -fsSL "$url" -o "/tmp/$archive"
+          printf '%s  %s\n' "${digest#sha256:}" "$archive" | (cd /tmp && sha256sum -c -)
 
           mkdir -p Core/Assets/dashboard
           unzip -q -o "/tmp/$archive" -d Core/Assets/dashboard
@@ -116,7 +125,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          global-json-file: global.json
           dotnet-quality: ga
 
       - name: Download dashboard assets
@@ -164,7 +173,8 @@ jobs:
           test ! -f "$output_dir/ShiroBot.SDK.dll"
 
           chmod +x "$output_dir/$host_exe"
-          (cd "$output_dir" && zip -9 -j "$archive_path" "$host_exe")
+          python3 .github/scripts/release_zip.py --root "$output_dir" --output "$archive_path" \
+            --file "$host_exe" --executable "$host_exe"
 
       - name: Upload host archive
         uses: actions/upload-artifact@v7.0.2

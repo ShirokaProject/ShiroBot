@@ -49,7 +49,8 @@
         <PublishAot>false</PublishAot>
         <PublishTrimmed>false</PublishTrimmed>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-        <DebuggerSupport>false</DebuggerSupport>
+        <DebuggerSupport>true</DebuggerSupport>
+        <StackTraceSupport>true</StackTraceSupport>
     </PropertyGroup>
 
     <ItemGroup>

@@ -1,4 +1,10 @@
 <Project>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap Condition="'$(PathMap)' != ''">$(MSBuildThisFileDirectory)=/_/,$(PathMap)</PathMap>
+    <PathMap Condition="'$(PathMap)' == ''">$(MSBuildThisFileDirectory)=/_/</PathMap>
+  </PropertyGroup>
   <PropertyGroup>
     <ShiroBotProductVersion>1.0.2</ShiroBotProductVersion>
     <ShiroBotFileVersion>1.0.2.0</ShiroBotFileVersion>

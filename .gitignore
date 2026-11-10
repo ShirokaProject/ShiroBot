@@ -15,3 +15,6 @@ MilkyModelGenerator.Net/output/
 MilkyModelGenerator.Net/QBotSharp.Model/
 .playwright-mcp/
 *.binlog
+
+# Python release tooling cache
+__pycache__/
