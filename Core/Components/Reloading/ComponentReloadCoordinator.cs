@@ -41,14 +41,4 @@ internal sealed class ComponentReloadCoordinator(AdapterManager adapterManager)
             _gate.Release();
         }
     }
-
-    public Task ExecuteAdapterStartAsync(Func<Task> mutation)
-    {
-        return ExecuteAdapterMutationAsync(mutation);
-    }
-
-    public Task<T> ExecuteAdapterStartAsync<T>(Func<Task<T>> mutation)
-    {
-        return ExecuteAdapterMutationAsync(mutation);
-    }
 }

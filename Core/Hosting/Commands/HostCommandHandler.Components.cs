@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using ShiroBot.Adapters;
 using ShiroBot.Components.Updates;
 using ShiroBot.Hosting.Http;
+using ShiroBot.Plugins;
 using ShiroBot.Plugins.Marketplace;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Update;
@@ -73,12 +74,6 @@ internal sealed partial class HostCommandHandler
             default:
                 return PluginUsage;
         }
-    }
-
-    /// <summary>update is the host's alone; plugin updates are plugin update.</summary>
-    private Task<string> HandleUpdateCommandAsync(string[] input)
-    {
-        return HandlePendingUpdateAsync(UpdateTarget.Host, [.. input.Skip(1)], CheckHostUpdateAsync);
     }
 
     /// <summary>Nothing or "check" looks for updates; "confirm|cancel &lt;ID&gt;" handles one waiting for this target.</summary>
@@ -156,7 +151,7 @@ internal sealed partial class HostCommandHandler
         {
             var result = await PluginUpdateService.InstallFromAssetAsync(pluginManager, eventDispatcher, routePolicy,
                 release.AssetUrl, release.AssetName, release.Sha256, null).ConfigureAwait(false);
-            if (result.PendingRestart) _runtimeState?.RecommendRestart("plugin-update:" + id, result.Message);
+            if (result.PendingRestart) runtimeState.RecommendRestart("plugin-update:" + id, result.Message);
             RefreshMarketsInBackground();
             return result.Message;
         }
@@ -168,9 +163,6 @@ internal sealed partial class HostCommandHandler
 
     private async Task<string> InstallAdapterFromMarketAsync(string id)
     {
-        if (_adapterManager is not { } manager || _reloadCoordinator is not { } coordinator ||
-            _adapterPackages is not { } packages || _runtimeState is not { } runtime)
-            return "适配器管理器尚未就绪。";
         var entry = FindMarketEntry(await LoadAdapterMarketAsync().ConfigureAwait(false), id);
         if (entry is null) return $"适配器市场中没有 {id}，可用 adapter market 查看。";
         if (MarketRelease.From(entry) is not { } release) return $"{id} 在适配器市场中没有可下载的发布包。";
@@ -178,9 +170,9 @@ internal sealed partial class HostCommandHandler
         CH.Info($"正在安装适配器 {id} {release.Version}…");
         try
         {
-            var existed = packages.Get(id) is not null;
-            var (probe, outcome) = await AdapterPackageInstaller.InstallFromAssetAsync(packages, manager, coordinator,
-                runtime,
+            var existed = adapterPackages.Get(id) is not null;
+            var (probe, outcome) = await AdapterPackageInstaller.InstallFromAssetAsync(adapterPackages, adapterManager,
+                reloadCoordinator, runtimeState,
                 release.AssetUrl, release.AssetName, release.Sha256, null, true).ConfigureAwait(false);
             RefreshMarketsInBackground();
             if (outcome.PendingRestart) return $"适配器 {probe.Id} 当前版本无法热替换，{probe.Version} 已暂存，将在重启宿主时替换。";
@@ -204,7 +196,7 @@ internal sealed partial class HostCommandHandler
 
     private string? InstalledAdapterVersion(string? id)
     {
-        return id is null ? null : _adapterPackages?.Get(id)?.Version;
+        return id is null ? null : adapterPackages.Get(id)?.Version;
     }
 
     /// <param name="forceRefresh">Skip the market's 24-hour cache, as plugin refresh does.</param>
@@ -292,7 +284,7 @@ internal sealed partial class HostCommandHandler
 
         foreach (var option in BuildPendingUpdateCompletions(UpdateTarget.Plugin, "plugin update")) yield return option;
 
-        var actions = CollectPluginActionsAsync().GetAwaiter().GetResult();
+        var actions = PluginActions.ListAllAsync(pluginManager).GetAwaiter().GetResult();
         var displayNames = loaded.ToDictionary(plugin => plugin.Name, plugin => plugin.DisplayName,
             StringComparer.OrdinalIgnoreCase);
         foreach (var plugin in actions.GroupBy(entry => entry.PluginId, StringComparer.OrdinalIgnoreCase))
@@ -332,11 +324,11 @@ internal sealed partial class HostCommandHandler
                 $"{entry["name"]?.GetValue<string>() ?? id} · {state}");
         }
 
-        foreach (var package in _adapterPackages?.List() ?? [])
+        foreach (var package in adapterPackages.List())
             yield return new CH.ConsoleCommandOption($"adapter create {package.Id}",
                 $"用适配器包 {package.Id} 创建实例，后接新实例 ID");
-        var loaded = _adapterManager?.LoadedIds ?? [];
-        foreach (var instance in _adapterPackages?.ListInstances() ?? [])
+        var loaded = adapterManager.LoadedIds;
+        foreach (var instance in adapterPackages.ListInstances())
         {
             if (loaded.Contains(instance.Id, StringComparer.OrdinalIgnoreCase))
             {

@@ -87,7 +87,7 @@ internal sealed partial class HostHttpServer
                 try
                 {
                     var applied = await reloadCoordinator
-                        .ExecuteAdapterStartAsync(() => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
+                        .ExecuteAdapterMutationAsync(() => adapterManager.ApplyConfigByIdAsync(id)).ConfigureAwait(false);
                     return Results.Ok(CreateRawConfigResponse(ReadAdapterRawConfig(instance), applied ? "applied" :
                         adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase) ? "legacy_saved_only" :
                         "pending_start"));

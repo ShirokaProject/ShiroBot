@@ -284,13 +284,6 @@ public static class Program
             pluginManager.EnableFileHotReload(hostEventDispatcher, groupRoutePolicy);
 
             // ─── 适配器事件桥接 ───
-            var commandHandler = new HostCommandHandler(
-                pluginManager,
-                hostEventDispatcher,
-                groupRoutePolicy,
-                coreConfig,
-                coreConfigManager,
-                coreConfigPath);
             var adapterBridge = new AdapterEventBridge(hostEventDispatcher);
             adapterManager = new AdapterManager(
                 adapterRoot,
@@ -299,9 +292,7 @@ public static class Program
                 botContext,
                 adapterBridge,
                 runtimeState,
-                logHub,
-                commandHandler.HandleDirectMessageAsync);
-            commandHandler.SetAdapterCommands(adapterManager, null, adapterPackages);
+                logHub);
             if (adapterPaths.Length > 0 || adapterPackages.ListInstances().Any(instance => instance.Active))
             {
                 var instances = adapterPackages.ListInstances().Where(instance => instance.Active).ToArray();
@@ -328,11 +319,9 @@ public static class Program
             }
 
             var reloadCoordinator = new ComponentReloadCoordinator(adapterManager);
-            commandHandler.SetAdapterCommands(adapterManager, reloadCoordinator, adapterPackages, runtimeState);
-            commandHandler.SetPowerControl(powerControl);
             componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
             var services = new ServiceCollection();
-            // Borrow process-owned instances; DI owns the HTTP service, route modules and update runner.
+            // Borrow process-owned instances; DI owns the HTTP service, route modules, command handler and update runner.
             // The existing TOML watcher updates this same instance. Options must not create a
             // second configuration snapshot or apply listener changes before the next restart.
             services.AddSingleton(Options.Create(coreConfig.Api));
@@ -354,6 +343,7 @@ public static class Program
             services.AddSingleton(new SkippedMajorNotices(
                 Path.Combine(BasePath, "cache", "auto-update-skipped-major.json")));
             services.AddSingleton<AutoUpdateRunner>();
+            services.AddSingleton<HostCommandHandler>();
             services.AddHostHttpServer();
             runtimeServices = services.BuildServiceProvider(new ServiceProviderOptions
                 { ValidateScopes = true, ValidateOnBuild = true });
@@ -380,6 +370,7 @@ public static class Program
 
             if (enableConsoleInput)
             {
+                var commandHandler = runtimeServices.GetRequiredService<HostCommandHandler>();
                 var exitRequested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var consoleReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 _ = Task.Run(() => commandHandler.RunConsoleLoop(exitRequested, consoleReady));

@@ -498,8 +498,7 @@ internal static class PluginInteropVerification
         var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
         var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
         var manager = new AdapterManager(root, resolver, models, context, new AdapterEventBridge(dispatcher), runtime,
-            logs,
-            _ => Task.CompletedTask);
+            logs);
         try
         {
             await manager.LoadByIdAsync(id, path).WaitAsync(TimeSpan.FromSeconds(60));

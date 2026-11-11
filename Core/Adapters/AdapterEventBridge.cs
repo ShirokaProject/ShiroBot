@@ -15,14 +15,12 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
     public IAsyncDisposable Bridge(
         string adapterId,
         string platform,
-        IEventService eventService,
-        Func<MessageEvent, Task> directMessageHandler)
+        IEventService eventService)
     {
         var subscription = new Subscription(
             adapterId,
             platform,
             eventDispatcher,
-            directMessageHandler,
             DefaultQueueCapacity);
         var handler = subscription.EnqueueAsync;
         eventService.EventReceived += handler;
@@ -36,7 +34,6 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
 
         private readonly string _adapterId;
         private readonly Task _consumer;
-        private readonly Func<MessageEvent, Task> _directMessageHandler;
         private readonly HostEventDispatcher _eventDispatcher;
         private readonly Channel<BotEvent> _events;
         private readonly string _platform;
@@ -54,13 +51,11 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
             string adapterId,
             string platform,
             HostEventDispatcher eventDispatcher,
-            Func<MessageEvent, Task> directMessageHandler,
             int capacity)
         {
             _adapterId = adapterId;
             _platform = platform;
             _eventDispatcher = eventDispatcher;
-            _directMessageHandler = directMessageHandler;
             _events = Channel.CreateBounded<BotEvent>(new BoundedChannelOptions(capacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
@@ -149,9 +144,7 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
                 if (botEvent is MessageReactionEvent { Emoji: PlatformReactionEmoji emoji } reaction)
                     botEvent = reaction with { Emoji = emoji with { InstanceId = _adapterId } };
                 using var _ = AdapterExecutionContext.Enter(_adapterId);
-                await (botEvent is MessageEvent { IsDirect: true } directMessage
-                    ? _directMessageHandler(directMessage)
-                    : _eventDispatcher.PublishAsync(botEvent)).ConfigureAwait(false);
+                await _eventDispatcher.PublishAsync(botEvent).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

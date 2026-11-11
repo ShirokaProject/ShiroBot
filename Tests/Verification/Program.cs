@@ -1120,7 +1120,7 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
     var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
     var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
     var manager = new AdapterManager(root, resolver, new ModelPackageRegistry(resolver), context,
-        new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
+        new AdapterEventBridge(dispatcher), runtime, logs);
     var lifecycleDumpCaptured = false;
 
     async Task LifecycleStep(string name, Func<Task> action)
@@ -1686,18 +1686,28 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
     Console.WriteLine(
         "Single/history query source stamping, reference deletion/reply and default-instance change verification passed.");
 
+    using var ingressLogs = new HostLogHub();
     var dispatcher = new HostEventDispatcher(new Lock(), instances.ReplySubscriptions,
-        new HostRuntimeState(DateTimeOffset.UtcNow), new HostLogHub());
+        new HostRuntimeState(DateTimeOffset.UtcNow), ingressLogs);
     var bridge = new AdapterEventBridge(dispatcher);
     MessageEvent? received = null;
-    await using (bridge.Bridge("first-qq", "qq", first.Event, async incoming =>
-                 {
-                     received = incoming;
-                     if (context.InstanceId != "first-qq")
-                         throw new InvalidOperationException("Event scope did not select its source instance.");
-                     await context.Message.ReplyAsync(incoming, "first-event-reply");
-                     await instances.ReplySubscriptions.PublishAsync(incoming);
-                 }))
+    var ingressPlugin = new DirectSubscriberPlugin(async incoming =>
+    {
+        received = (MessageEvent)incoming;
+        if (context.InstanceId != "first-qq")
+            throw new InvalidOperationException("Event scope did not select its source instance.");
+        await context.Message.ReplyAsync(received, "first-event-reply");
+    });
+    var ingressContext = new PluginContext(instances, "event-ingress", Path.Combine(directory, "event-ingress"),
+        ingressLogs, new PluginServiceRegistry());
+    await ingressPlugin.OnLoad(ingressContext);
+    var ingressHandle = new LoadedPluginHandle(ingressPlugin, ingressContext, new DllLoader<IBotPlugin>(),
+        typeof(Program).Assembly.Location,
+        new PluginProbeInfo(typeof(DirectSubscriberPlugin).FullName!, "event-ingress", "event-ingress", "1.0.0",
+            null, null, PluginCategory.Other, null, false, [], []), ingressLogs);
+    dispatcher.RegisterPlugin(ingressHandle);
+    dispatcher.MarkInitialPluginsReady();
+    await using (bridge.Bridge("first-qq", "qq", first.Event))
     {
         await ((VerificationEventService)first.Event).RaiseAsync(message with
         {
@@ -1705,8 +1715,10 @@ Console.WriteLine("Multi-adapter message routing verification passed.");
         });
     }
 
+    dispatcher.UnregisterPlugin(ingressHandle);
+    await ingressHandle.UnloadAsync();
     if (received is not { InstanceId: "first-qq", Platform: "qq", SelfId: "same-account" } || firstReplies != 1 ||
-        secondReplies != 1)
+        secondReplies != 1 || first.MessageService.Messages.LastOrDefault() != "first-event-reply")
         throw new InvalidOperationException(
             "Event ingress trusted adapter-supplied identity or crossed reply subscriptions.");
     instances.UnregisterAdapter(second);
@@ -2290,7 +2302,7 @@ try
         eventLogHub);
     eventDispatcher.RegisterPlugin(concurrentDispatchHandle);
     var bridgeSubscription =
-        eventBridge.Bridge("verification", "verification", queuedEventService, _ => Task.CompletedTask);
+        eventBridge.Bridge("verification", "verification", queuedEventService);
     await queuedEventService.RaiseAsync(CreateMemberJoinedEvent("first"));
     await concurrentDispatchPlugin.FirstDispatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
     await queuedEventService.RaiseAsync(CreateMemberJoinedEvent("second"));
@@ -3212,14 +3224,14 @@ internal sealed class ConfigurableVerificationAdapter(ConfigApplyMode applyMode)
 }
 
 
-internal sealed class DirectSubscriberPlugin : IBotPlugin, IBotEventSubscriber
+internal sealed class DirectSubscriberPlugin(Func<BotEvent, Task>? onEvent = null) : IBotPlugin, IBotEventSubscriber
 {
     public List<BotEvent> Events { get; } = [];
 
     public Task OnEventAsync(BotEvent e)
     {
         Events.Add(e);
-        return Task.CompletedTask;
+        return onEvent?.Invoke(e) ?? Task.CompletedTask;
     }
 
     public string Name => nameof(DirectSubscriberPlugin);

@@ -35,7 +35,7 @@ internal static class AdapterReloadIsolationVerification
         var context = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
         var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
         var adapters = new AdapterManager(root, shared, models, context, new AdapterEventBridge(dispatcher),
-            runtime, logs, _ => Task.CompletedTask);
+            runtime, logs);
         var plugins = new PluginManager(context, shared, models, runtime, logs) { PluginRootPath = pluginRoot };
         var coordinator = new ComponentReloadCoordinator(adapters);
         var configPath = Path.Combine(root, "config.toml");
@@ -53,15 +53,15 @@ internal static class AdapterReloadIsolationVerification
             });
             var handle = plugins.GetLoadedPluginSnapshot().Single();
             dispatcher.MarkInitialPluginsReady();
-            await coordinator.ExecuteAdapterStartAsync(() => adapters.LoadInstanceAsync(first));
-            await coordinator.ExecuteAdapterStartAsync(() => adapters.LoadInstanceAsync(second));
+            await coordinator.ExecuteAdapterMutationAsync(() => adapters.LoadInstanceAsync(first));
+            await coordinator.ExecuteAdapterMutationAsync(() => adapters.LoadInstanceAsync(second));
             var secondAssembly = adapters.GetLoadedAssembly("b");
             await coordinator.ReloadAdapterByIdAsync("a");
             await AssertPlugin(1);
             if (!ReferenceEquals(secondAssembly, adapters.GetLoadedAssembly("b")))
                 throw new InvalidOperationException("Reloading a replaced another adapter instance.");
             await coordinator.ExecuteAdapterMutationAsync(() => adapters.StopByIdAsync("a"));
-            await coordinator.ExecuteAdapterStartAsync(() => adapters.LoadInstanceAsync(first));
+            await coordinator.ExecuteAdapterMutationAsync(() => adapters.LoadInstanceAsync(first));
             var result = await coordinator.ExecuteAdapterMutationAsync(async () =>
             {
                 await adapters.ReloadByIdAsync("a");
@@ -95,7 +95,7 @@ internal static class AdapterReloadIsolationVerification
                 throw new InvalidOperationException("Unload failure was not marked as requiring a restart.");
             try
             {
-                await coordinator.ExecuteAdapterStartAsync(() => adapters.LoadInstanceAsync(first));
+                await coordinator.ExecuteAdapterMutationAsync(() => adapters.LoadInstanceAsync(first));
                 throw new InvalidOperationException("Pending adapter instance was started again.");
             }
             catch (ComponentUnloadPendingException)

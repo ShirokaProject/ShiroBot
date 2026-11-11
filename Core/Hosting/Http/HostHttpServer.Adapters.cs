@@ -69,7 +69,7 @@ internal sealed partial class HostHttpServer
                             configPatch,
                             GetComponentConfigSchema(package.AssemblyPath, adapterManager.GetLoadedAssembly(id))));
                         var applied = await reloadCoordinator
-                            .ExecuteAdapterStartAsync(() => adapterManager.ApplyConfigByIdAsync(id))
+                            .ExecuteAdapterMutationAsync(() => adapterManager.ApplyConfigByIdAsync(id))
                             .ConfigureAwait(false);
                         return Results.Ok(new
                         {
@@ -389,7 +389,7 @@ internal sealed partial class HostHttpServer
                             ok = false, error = "adapter_package_disabled", message = "适配器已关闭，请先打开适配器。",
                             restartRequired = false
                         });
-                    await reloadCoordinator.ExecuteAdapterStartAsync(async () =>
+                    await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                     {
                         await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false);
                         adapterPackages.SetInstanceEnabled(instance.Id, true);
@@ -440,7 +440,7 @@ internal sealed partial class HostHttpServer
                             ok = false, error = "adapter_not_found", message = $"未找到适配器: {id}", restartRequired = false
                         });
                     var failed = new List<string>();
-                    await reloadCoordinator.ExecuteAdapterStartAsync(async () =>
+                    await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                     {
                         adapterPackages.SetPackageEnabled(id, true);
                         foreach (var instance in adapterPackages.ListInstances().Where(item =>

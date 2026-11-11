@@ -45,7 +45,7 @@ internal static class HostHttpLifecycleVerification
         var plugins = new PluginManager(bot, shared, models, runtime, logs)
             { PluginRootPath = Path.Combine(root, "plugins") };
         var adapters = new AdapterManager(Path.Combine(root, "adapters"), shared, models, bot,
-            new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
+            new AdapterEventBridge(dispatcher), runtime, logs);
         var services = new ServiceCollection();
         services.AddSingleton(Options.Create(config.Api));
         services.AddSingleton(manager);

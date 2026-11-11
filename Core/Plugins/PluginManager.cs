@@ -189,7 +189,7 @@ internal sealed class PluginManager(
 
         foreach (var assemblyPath in EnumerateLoadableCandidateAssemblies(pluginRoot))
         {
-            var pluginInfo = TryProbePluginInfoCached(assemblyPath);
+            var pluginInfo = TryProbePluginInfoFile(assemblyPath);
             if (pluginInfo is null) continue;
             if (!seenPluginIds.Add(pluginInfo.Id)) continue;
 
@@ -315,7 +315,7 @@ internal sealed class PluginManager(
                     return;
                 }
 
-                var info = TryProbePluginInfoCached(fullPath);
+                var info = TryProbePluginInfoFile(fullPath);
                 if (info is not null)
                 {
                     await ScheduleLoadPluginByName(_hotReloadEventDispatcher, _hotReloadRoutePolicy, fullPath)
@@ -387,7 +387,7 @@ internal sealed class PluginManager(
             await WaitForFileReadyAsync(fullPath).ConfigureAwait(false);
             if (IsWatcherPathSuppressed(fullPath)) return;
 
-            var info = TryProbePluginInfoCached(fullPath);
+            var info = TryProbePluginInfoFile(fullPath);
             if (info is null)
             {
                 CH.Info($"检测到新 DLL，非插件已忽略: {Path.GetFileName(fullPath)}");
@@ -1043,7 +1043,7 @@ internal sealed class PluginManager(
         foreach (var path in pluginDlls)
         {
             var fullPath = Path.GetFullPath(path);
-            var info = TryProbePluginInfoCached(fullPath);
+            var info = TryProbePluginInfoFile(fullPath);
             if (info is null)
             {
                 CH.Warning($"DLL 不包含有效插件入口，已跳过: {fullPath}");
@@ -1290,7 +1290,7 @@ internal sealed class PluginManager(
                 {
                     var fileName = Path.GetFileNameWithoutExtension(path);
                     var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
-                    var pluginName = TryProbePluginInfoCached(path)?.Id;
+                    var pluginName = TryProbePluginInfoFile(path)?.Id;
                     return NameMatches(fileName, inputAliases) ||
                            (NameMatches(directoryName, inputAliases) &&
                             string.Equals(fileName, directoryName, StringComparison.OrdinalIgnoreCase)) ||
@@ -1318,7 +1318,7 @@ internal sealed class PluginManager(
                 var fileName = Path.GetFileNameWithoutExtension(path);
                 if (NameMatches(fileName, aliases)) return true;
 
-                var pluginName = TryProbePluginInfoCached(path)?.Id;
+                var pluginName = TryProbePluginInfoFile(path)?.Id;
                 return NameMatches(pluginName, aliases);
             })
             .Select(Path.GetFullPath)
@@ -1329,16 +1329,11 @@ internal sealed class PluginManager(
 
         var loadableDlls = Directory.EnumerateFiles(pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .Where(path => TryProbePluginInfoCached(path) is not null)
+            .Where(path => TryProbePluginInfoFile(path) is not null)
             .Select(Path.GetFullPath)
             .ToList();
 
         return loadableDlls.Count == 1 ? loadableDlls : [];
-    }
-
-    internal PluginProbeInfo? TryProbePluginInfoFile(string assemblyPath)
-    {
-        return TryProbePluginInfoCached(assemblyPath);
     }
 
     private static IEnumerable<string> GetPluginNameAliases(string name)
@@ -1363,12 +1358,13 @@ internal sealed class PluginManager(
 
     private PluginProbeInfo ProbePluginInfo(string assemblyPath)
     {
-        return TryProbePluginInfoCached(assemblyPath)
+        return TryProbePluginInfoFile(assemblyPath)
                ?? throw new InvalidOperationException(
                    $"No {nameof(BotPluginAttribute)} found on IBotPlugin type in DLL");
     }
 
-    private PluginProbeInfo? TryProbePluginInfoCached(string assemblyPath)
+    /// <summary>Probes metadata without loading the assembly; file changes invalidate cached results.</summary>
+    internal PluginProbeInfo? TryProbePluginInfoFile(string assemblyPath)
     {
         var fullPath = Path.GetFullPath(assemblyPath);
         if (!File.Exists(fullPath))

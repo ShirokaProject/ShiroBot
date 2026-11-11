@@ -98,6 +98,62 @@ internal static class UpdateIntegration
                 host.AssertAdapterVersion("1.0.0");
                 return new { dll_uploaded = true, preview_confirmed = true, running_version = "1.0.0" };
             });
+            await Scenario("console-adapter-lifecycle", async host =>
+            {
+                await host.InstallOldAsync("adapters",
+                    Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"));
+                var command = typeof(HostCommandHandler).GetMethod("HandleAdapterCommandAsync",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var created = await RunCommand("adapter", "create", AdapterId, "console-work");
+                Check(created.Contains("已创建停用实例", StringComparison.Ordinal), "Console create failed: " + created);
+                var work = host.AdapterPackages.GetInstance("console-work")!;
+                Check(!work.Enabled && host.Adapters.LoadedIds.SequenceEqual([AdapterId]),
+                    "Creating an instance unexpectedly started it or affected a sibling");
+                AdapterInstanceStore.Update(work.ConfigPath, work.Id, item => item.Config["bot"] = "console-config");
+                var duplicate = await RunCommand("adapter", "create", AdapterId, work.Id);
+                Check(duplicate.StartsWith("Adapter 操作失败:", StringComparison.Ordinal),
+                    "Duplicate create was not reported as a command error");
+                Check(await RunCommand("adapter", "config", work.Id) == work.ConfigPath,
+                    "Console config resolved a different path");
+                var started = await RunCommand("adapter", "start", work.Id);
+                Check(started.StartsWith("已启动 Adapter:", StringComparison.Ordinal) &&
+                      host.Adapters.LoadedIds.Count == 2 && host.AdapterPackages.GetInstance(work.Id)!.Enabled,
+                    "Console start failed or a prior failure held the mutation gate: " + started);
+                var reloaded = await RunCommand("adapter", "reload", work.Id);
+                Check(reloaded.StartsWith("已重载 Adapter:", StringComparison.Ordinal) &&
+                      host.Adapters.LoadedIds.Count == 2 &&
+                      AdapterInstanceStore.GetConfig(work.ConfigPath, work.Id)["bot"] is "console-config",
+                    "Console reload lost an instance or its configuration: " + reloaded);
+                var stopped = await RunCommand("adapter", "stop", work.Id);
+                Check(stopped.StartsWith("已停止 Adapter:", StringComparison.Ordinal) &&
+                      host.Adapters.LoadedIds.SequenceEqual([AdapterId]) &&
+                      !host.AdapterPackages.GetInstance(work.Id)!.Enabled, "Console stop affected a sibling: " + stopped);
+                var removed = await RunCommand("adapter", "remove", work.Id);
+                Check(removed.StartsWith("已删除 Adapter 实例:", StringComparison.Ordinal) &&
+                      host.AdapterPackages.GetInstance(work.Id) is null &&
+                      host.Adapters.LoadedIds.SequenceEqual([AdapterId]), "Console remove failed: " + removed);
+                return new { create_start_reload_stop_remove = true, configs_preserved = true,
+                    sibling_unchanged = true, failure_releases_gate = true };
+
+                Task<string> RunCommand(params string[] arguments) =>
+                    (Task<string>)command.Invoke(host.Commands, [arguments])!;
+            });
+            await Scenario("console-api-token", async host =>
+            {
+                var token = "console-" + Guid.NewGuid().ToString("N");
+                typeof(HostCommandHandler).GetMethod("HandleApiCommand",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host.Commands,
+                    [new[] { "api", "token", token }]);
+                var persisted = await new ConfigManager(Path.Combine(host.Root, "config.toml")).LoadCoreConfig();
+                Check(persisted.Api.Token == token, "Console token saved to a different config file");
+                using var rejected = await host.Client.GetAsync("auth");
+                Check(rejected.StatusCode == HttpStatusCode.Unauthorized, "Old API token remained accepted");
+                host.Client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+                using var accepted = await host.Client.GetAsync("auth");
+                Check(accepted.IsSuccessStatusCode, "Console token did not update the running HTTP host");
+                return new { configured_path_preserved = true, live_token_updated = true };
+            });
             await Scenario("same-platform-adapters", async host =>
             {
                 await host.InstallOldAsync("adapters",
@@ -795,12 +851,9 @@ internal static class UpdateIntegration
             var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
             var plugins = new PluginManager(context, shared, models, runtime, logs) { PluginRootPath = pluginRoot };
             var adapters = new AdapterManager(adapterRoot, shared, models, context, new AdapterEventBridge(dispatcher),
-                runtime, logs, _ => Task.CompletedTask);
+                runtime, logs);
             var packages = new AdapterPackageManager(adapterRoot);
             var coordinator = new ComponentReloadCoordinator(adapters);
-            var commands = new HostCommandHandler(plugins, dispatcher, config.PluginRoutes, config, configManager,
-                configPath);
-            commands.SetAdapterCommands(adapters, coordinator, packages);
             plugins.EnableFileHotReload(dispatcher, config.PluginRoutes);
             Updater.PluginUpdateApplier = async (request, token) =>
             {
@@ -825,10 +878,13 @@ internal static class UpdateIntegration
             services.AddSingleton(coordinator);
             services.AddSingleton(packages);
             services.AddSingleton(new HostPowerControl(() => { }));
+            services.AddSingleton(config);
+            services.AddSingleton<HostCommandHandler>();
             services.AddHostHttpServer();
             var httpServices = services.BuildServiceProvider(new ServiceProviderOptions
                 { ValidateScopes = true, ValidateOnBuild = true });
             var server = httpServices.GetRequiredService<IHostedService>();
+            var commands = httpServices.GetRequiredService<HostCommandHandler>();
             try
             {
                 await server.StartAsync(CancellationToken.None);
@@ -925,7 +981,7 @@ internal static class UpdateIntegration
             var runtime = new HostRuntimeState(DateTimeOffset.UtcNow);
             var dispatcher = new HostEventDispatcher(new Lock(), context.ReplySubscriptions, runtime, logs);
             var adapters = new AdapterManager(Path.Combine(Root, "adapters"), shared, models, context,
-                new AdapterEventBridge(dispatcher), runtime, logs, _ => Task.CompletedTask);
+                new AdapterEventBridge(dispatcher), runtime, logs);
             try
             {
                 foreach (var instance in AdapterPackages.ListInstances().Where(item => item.Enabled))

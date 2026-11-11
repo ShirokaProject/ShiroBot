@@ -15,7 +15,6 @@ using ShiroBot.Plugins.Services;
 using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Core;
-using ShiroBot.SDK.Models;
 
 namespace ShiroBot.Adapters;
 
@@ -26,8 +25,7 @@ internal sealed class AdapterManager(
     BotContext botContext,
     AdapterEventBridge eventBridge,
     HostRuntimeState runtimeState,
-    HostLogHub logHub,
-    Func<MessageEvent, Task> directMessageHandler)
+    HostLogHub logHub)
 {
     private readonly Dictionary<string, AdapterEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _errors = new(StringComparer.OrdinalIgnoreCase);
@@ -540,7 +538,7 @@ internal sealed class AdapterManager(
             TraceLoad("instance registration");
             botContext.RegisterAdapter(adapter, instanceId, instanceName ?? metadata.Name);
             registered = true;
-            subscription = eventBridge.Bridge(instanceId, adapter.Platform, adapter.Event, directMessageHandler);
+            subscription = eventBridge.Bridge(instanceId, adapter.Platform, adapter.Event);
             TraceLoad("start");
             using (BotLog.BeginScope(adapter.Logger))
             {
