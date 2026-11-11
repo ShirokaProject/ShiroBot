@@ -76,6 +76,24 @@
         </AssemblyAttribute>
     </ItemGroup>
 
+    <!-- Record the target framework's latest runtime shipped by the build SDK as an advisory baseline.
+         Keep RuntimeFrameworkVersion at 11.0.0 so older patches can still start. -->
+    <Target Name="RecordBuildRuntimeBaseline" BeforeTargets="GetAssemblyAttributes">
+        <ItemGroup>
+            <_BuildRuntimeFramework Include="@(KnownFrameworkReference)"
+                Condition="'%(KnownFrameworkReference.Identity)' == 'Microsoft.NETCore.App' and '%(KnownFrameworkReference.TargetFramework)' == '$(TargetFramework)'" />
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>ShiroBot.BuildRuntimeVersion</_Parameter1>
+                <_Parameter2>@(_BuildRuntimeFramework->'%(LatestRuntimeFrameworkVersion)')</_Parameter2>
+            </AssemblyAttribute>
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>ShiroBot.BuildSdkVersion</_Parameter1>
+                <_Parameter2>$(NETCoreSdkVersion)</_Parameter2>
+            </AssemblyAttribute>
+        </ItemGroup>
+        <Error Condition="'@(_BuildRuntimeFramework)' == ''" Text="Cannot determine build runtime baseline for $(TargetFramework)." />
+    </Target>
+
     <Target Name="AcquireDashboardAssets" BeforeTargets="PrepareForBuild">
         <PropertyGroup>
             <_DashboardStampFile>$(_DashboardResolvedDir)/.dashboard-version</_DashboardStampFile>

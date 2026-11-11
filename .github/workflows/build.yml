@@ -49,6 +49,9 @@ jobs:
             latest
           dotnet-quality: ga
 
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
+
       - name: Verify release ZIP tooling
         run: python3 -m unittest discover -s .github/scripts -p test_release_zip.py -v
 
@@ -133,6 +136,9 @@ jobs:
             11.0.x
             latest
           dotnet-quality: ga
+
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
 
       - name: Download dashboard assets
         uses: actions/download-artifact@v8.0.2

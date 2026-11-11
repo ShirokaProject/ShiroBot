@@ -111,6 +111,7 @@ public static class Program
 
         CH.Info("ShiroBot 启动中...");
         CH.Info(BotMetadataProvider.StartupVersionText);
+        RuntimeVersionBaseline.ReportIfOlder();
 
         var sharedAssemblies = new SharedAssemblyResolver();
         sharedAssemblies.Register(["ShiroBot.SDK"], AssemblyLoadContext.Default);

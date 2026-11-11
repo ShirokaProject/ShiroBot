@@ -241,6 +241,7 @@ switch (args)
     }
 }
 
+RuntimeVersionBaselineVerification.Run();
 RestartNoticeVerification.Run();
 DeferredShadowCleanupVerification.Run();
 await HostDirectoryLockVerification.RunAsync();

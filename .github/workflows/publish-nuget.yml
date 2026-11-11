@@ -77,6 +77,9 @@ jobs:
             latest
           dotnet-quality: ga
 
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
+
       - name: Verify release gate regressions
         run: python -m unittest discover -s .github/scripts -p test_verify_nuget_release.py -v
 

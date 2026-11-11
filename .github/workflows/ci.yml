@@ -58,6 +58,9 @@ jobs:
             latest
           dotnet-quality: ga
 
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
+
       - name: Check SDK ABI version map
         shell: bash
         run: |
@@ -406,5 +409,8 @@ jobs:
             11.0.x
             latest
           dotnet-quality: ga
+
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
       - name: Verify deferred shadow cleanup with a Windows file lock
         run: dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release -- --shadow-cleanup
