@@ -2,7 +2,7 @@
 # CI (.github/workflows/build.yml) uses the `prebuilt` target with the framework-dependent single-file
 # release binary in artifacts/container/<arch>/ShiroBot and publishes a linux/amd64 + linux/arm64 image to ghcr.io.
 # The image binary is the same file the Dashboard self-update downloads; newer ones go to /data/host.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.402 AS publish
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0.100 AS publish
 ARG TARGETARCH
 WORKDIR /src
 COPY . .
@@ -19,7 +19,7 @@ RUN dotnet publish Core/ShiroBot.csproj \
     -p:RequireDashboard=true
 RUN install -D -m 755 /out/ShiroBot /layers/ShiroBot && touch -t 197001010000.00 /layers/ShiroBot
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime-base
+FROM mcr.microsoft.com/dotnet/aspnet:11.0-alpine AS runtime-base
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 RUN apk add --no-cache libstdc++ libgcc icu-libs icu-data-full tzdata fontconfig font-noto-cjk
 RUN apk add --no-cache font-noto-emoji

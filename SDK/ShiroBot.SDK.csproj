@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <IsPackable>false</IsPackable>
@@ -9,7 +9,7 @@
         <FileVersion>$(ShiroBotFileVersion)</FileVersion>
         <EnablePackageValidation>true</EnablePackageValidation>
         <NoWarn>$(NoWarn);NU5104</NoWarn>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>

@@ -45,7 +45,7 @@ if (-not (Test-Path $hostExe) -or $installedVersion -ne $sdkVersion) {
 }
 
 $adapterDir = Join-Path $cacheDir 'adapters/AdapterTemplate'
-$buildDir = (Resolve-Path 'bin/Debug/net10.0').Path
+$buildDir = (Resolve-Path 'bin/Debug/net11.0').Path
 $manifest = Join-Path $adapterDir '.shirobot-dev-files'
 New-Item -ItemType Directory -Force $adapterDir | Out-Null
 # Remove files copied by the previous run that the build no longer produces. Files the
@@ -67,7 +67,7 @@ Get-ChildItem -LiteralPath $buildDir -Recurse -File | Where-Object { $_.Name -ne
 # The host discovers the adapter entry from DLL metadata; no package-local manifest is needed.
 
 $pluginDir = Join-Path $cacheDir 'plugins/AdapterTemplate.TestPlugin'
-$buildDir = (Resolve-Path 'TestPlugin/bin/Debug/net10.0').Path
+$buildDir = (Resolve-Path 'TestPlugin/bin/Debug/net11.0').Path
 $manifest = Join-Path $pluginDir '.shirobot-dev-files'
 New-Item -ItemType Directory -Force $pluginDir | Out-Null
 # Remove files copied by the previous run that the build no longer produces. Files the

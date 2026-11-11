@@ -14,7 +14,15 @@ internal static class AutoUpdateSchedule
 
     public static bool TryParseTime(string? value, out TimeOnly time)
     {
-        return TimeOnly.TryParseExact(value?.Trim(), ["H:mm", "HH:mm"], CultureInfo.InvariantCulture,
+        value = value?.Trim();
+        // .NET 11 accepts 24:00 as midnight; configuration hours must remain within 00–23.
+        if (value?.StartsWith("24:", StringComparison.Ordinal) == true)
+        {
+            time = default;
+            return false;
+        }
+
+        return TimeOnly.TryParseExact(value, ["H:mm", "HH:mm"], CultureInfo.InvariantCulture,
             DateTimeStyles.None, out time);
     }
 

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ShiroBot.Adapters;
 using ShiroBot.Components.Reloading;
 using ShiroBot.Components.Updates;
@@ -17,6 +18,19 @@ namespace ShiroBot.Verification;
 
 internal static class AdapterReloadIsolationVerification
 {
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference GetAssemblyReference(AdapterManager adapters, string id)
+    {
+        return new WeakReference(adapters.GetLoadedAssembly(id));
+    }
+
+    // Keep Assembly targets out of the async frame that later requests their collection.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool IsSameAssembly(WeakReference expected, AdapterManager adapters, string id)
+    {
+        return expected.Target is { } assembly && ReferenceEquals(assembly, adapters.GetLoadedAssembly(id));
+    }
+
     internal static async Task RunAsync()
     {
         var root = Path.Combine(Path.GetTempPath(), "ShiroBot.ReloadIsolation", Guid.NewGuid().ToString("N"));
@@ -55,10 +69,10 @@ internal static class AdapterReloadIsolationVerification
             dispatcher.MarkInitialPluginsReady();
             await coordinator.ExecuteAdapterMutationAsync(() => adapters.LoadInstanceAsync(first));
             await coordinator.ExecuteAdapterMutationAsync(() => adapters.LoadInstanceAsync(second));
-            var secondAssembly = adapters.GetLoadedAssembly("b");
+            var secondAssembly = GetAssemblyReference(adapters, "b");
             await coordinator.ReloadAdapterByIdAsync("a");
             await AssertPlugin(1);
-            if (!ReferenceEquals(secondAssembly, adapters.GetLoadedAssembly("b")))
+            if (!IsSameAssembly(secondAssembly, adapters, "b"))
                 throw new InvalidOperationException("Reloading a replaced another adapter instance.");
             await coordinator.ExecuteAdapterMutationAsync(() => adapters.StopByIdAsync("a"));
             await coordinator.ExecuteAdapterMutationAsync(() => adapters.LoadInstanceAsync(first));
@@ -103,13 +117,10 @@ internal static class AdapterReloadIsolationVerification
             }
 
             await AssertPlugin(3);
-            if (!ReferenceEquals(secondAssembly, adapters.GetLoadedAssembly("b")))
+            if (!IsSameAssembly(secondAssembly, adapters, "b"))
                 throw new InvalidOperationException("Unload failure disrupted another instance.");
             // Failure must release the coordinator gate and keep the remaining adapter operable.
             await CallPlugin("ClearAdapter");
-            // Release references held by the async state machine before collectible-assembly or memory-retention checks.
-            // ReSharper disable once RedundantAssignment
-            secondAssembly = null;
             await coordinator.ReloadAdapterByIdAsync("b");
             await AssertPlugin(4);
             Console.WriteLine(

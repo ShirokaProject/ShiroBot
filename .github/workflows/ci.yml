@@ -52,7 +52,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          global-json-file: global.json
+          dotnet-version: '11.0.100'
           dotnet-quality: ga
 
       - name: Check SDK ABI version map
@@ -77,19 +77,26 @@ jobs:
         run: |
           set -euo pipefail
           dotnet build Shirobot.slnx -c Release
-          # Building with a newer SDK must not raise the minimum installed .NET 10 patch.
+          # Building with a newer SDK must not raise the minimum installed .NET 11 patch.
           jq -e '
             .runtimeOptions.configProperties["System.Diagnostics.Debugger.IsSupported"] == true and
             .runtimeOptions.configProperties["System.Diagnostics.StackTrace.IsSupported"] == true and
             .runtimeOptions.rollForward == "LatestMinor" and
             (.runtimeOptions.frameworks | length == 2 and
-              all(.[]; .version == "10.0.0") and
+              all(.[]; .version == "11.0.0") and
               (map(.name) | sort) == ["Microsoft.AspNetCore.App", "Microsoft.NETCore.App"])
-          ' Core/bin/Release/net10.0/ShiroBot.runtimeconfig.json
+          ' Core/bin/Release/net11.0/ShiroBot.runtimeconfig.json
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build -- --memory-retention
           dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build -- --avalonia-lazy
           dotnet run --project Tests/ApiBaseline/ShiroBot.ApiBaseline.csproj -c Release
+
+      - name: Verify Runtime Async
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build Tests/Verification/ShiroBot.Verification.csproj -c Release -t:Rebuild -p:Features=runtime-async=on
+          dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release --no-build
 
       - name: Pack SDK and smoke-test NuGet consumer
         shell: bash
@@ -102,15 +109,15 @@ jobs:
           test -n "$avalonia_version"
           unzip -p artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg ShiroBot.SDK.nuspec | grep -Fq "<dependency id=\"Avalonia\" version=\"$avalonia_version\""
           test "$(find artifacts/nuget -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 2
-          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.SDK.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Discord.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.QQ.dll'
-          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net10.0/ShiroBot.Model.Telegram.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net11.0/ShiroBot.SDK.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net11.0/ShiroBot.Model.Discord.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net11.0/ShiroBot.Model.QQ.dll'
+          unzip -l artifacts/nuget/ShiroBot.SDK.${SHIROBOT_PRODUCT_VERSION}.nupkg | grep -q 'lib/net11.0/ShiroBot.Model.Telegram.dll'
 
           cat > "$RUNNER_TEMP/package-smoke/Smoke.csproj" <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
             <PropertyGroup>
-              <TargetFramework>net10.0</TargetFramework>
+              <TargetFramework>net11.0</TargetFramework>
               <ImplicitUsings>enable</ImplicitUsings>
               <Nullable>enable</Nullable>
               <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
@@ -164,9 +171,9 @@ jobs:
             -p:ShiroBotPluginPackagingEnabled=false \
             --source "$GITHUB_WORKSPACE/artifacts/nuget" \
             --source https://api.nuget.org/v3/index.json
-          test -f "$RUNNER_TEMP/package-smoke/bin/Debug/net10.0/Smoke.runtimeconfig.json"
-          test -f "$RUNNER_TEMP/package-smoke/bin/Debug/net10.0/Avalonia.DesignerSupport.dll"
-          test -f "$RUNNER_TEMP/package-smoke/obj/Debug/net10.0/ShiroBot.AvaloniaSdk.DesignerPreviewEntryPoint.g.cs"
+          test -f "$RUNNER_TEMP/package-smoke/bin/Debug/net11.0/Smoke.runtimeconfig.json"
+          test -f "$RUNNER_TEMP/package-smoke/bin/Debug/net11.0/Avalonia.DesignerSupport.dll"
+          test -f "$RUNNER_TEMP/package-smoke/obj/Debug/net11.0/ShiroBot.AvaloniaSdk.DesignerPreviewEntryPoint.g.cs"
 
           dotnet publish "$RUNNER_TEMP/package-smoke/Smoke.csproj" -c Release \
             -o "$RUNNER_TEMP/package-smoke/publish" \
@@ -221,21 +228,21 @@ jobs:
           for component in TemplatePlugin TemplateAdapter; do
             component_root="$template_root/$component"
             dotnet run --project "$component_root/scripts/version-check/VersionCheck.csproj" -c Release -- \
-              "$component_root/bin/Release/net10.0/$component.dll" 1.0.0 1.0.0
+              "$component_root/bin/Release/net11.0/$component.dll" 1.0.0 1.0.0
             if dotnet run --project "$component_root/scripts/version-check/VersionCheck.csproj" -c Release --no-build -- \
-              "$component_root/bin/Release/net10.0/$component.dll" 1.0.0 9.9.9; then
+              "$component_root/bin/Release/net11.0/$component.dll" 1.0.0 9.9.9; then
               echo "Version verifier accepted an incorrect release tag for $component" >&2
               exit 1
             fi
           done
-          test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.SDK.dll"
-          test ! -f "$template_root/TemplatePlugin/bin/Release/net10.0/ShiroBot.Model.QQ.dll"
+          test ! -f "$template_root/TemplatePlugin/bin/Release/net11.0/ShiroBot.SDK.dll"
+          test ! -f "$template_root/TemplatePlugin/bin/Release/net11.0/ShiroBot.Model.QQ.dll"
           dotnet build "$template_root/TemplateAdapter/TestPlugin/TemplateAdapter.TestPlugin.csproj" -c Release \
             --source "$GITHUB_WORKSPACE/artifacts/nuget" \
             --source https://api.nuget.org/v3/index.json
-          test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/TemplateAdapter.TestPlugin.dll"
-          test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/ShiroBot.SDK.dll"
-          test ! -f "$template_root/TemplateAdapter/bin/Release/net10.0/ShiroBot.Model.Discord.dll"
+          test ! -f "$template_root/TemplateAdapter/bin/Release/net11.0/TemplateAdapter.TestPlugin.dll"
+          test ! -f "$template_root/TemplateAdapter/bin/Release/net11.0/ShiroBot.SDK.dll"
+          test ! -f "$template_root/TemplateAdapter/bin/Release/net11.0/ShiroBot.Model.Discord.dll"
 
       - name: Smoke-test single-file built-in Model
         shell: bash
@@ -391,7 +398,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          global-json-file: global.json
+          dotnet-version: '11.0.100'
           dotnet-quality: ga
       - name: Verify deferred shadow cleanup with a Windows file lock
         run: dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release -- --shadow-cleanup

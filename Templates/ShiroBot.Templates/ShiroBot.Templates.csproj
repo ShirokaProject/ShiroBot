@@ -13,7 +13,7 @@
     <RepositoryUrl>https://github.com/ShirokaProject/ShiroBot</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>dotnet-new;templates;ShiroBot;plugin;adapter</PackageTags>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <ContentTargetFolders>content</ContentTargetFolders>
     <!-- Generated projects need their dotfiles, including .gitignore. -->

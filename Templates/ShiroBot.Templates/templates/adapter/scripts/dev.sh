@@ -54,7 +54,7 @@ if [ ! -f "$host_exe" ] || [ "$installed_version" != "$sdk_version" ]; then
 fi
 
 adapter_dir="$cache_dir/adapters/AdapterTemplate"
-build_dir="bin/Debug/net10.0"
+build_dir="bin/Debug/net11.0"
 manifest="$adapter_dir/.shirobot-dev-files"
 mkdir -p "$adapter_dir"
 # Remove files copied by the previous run that the build no longer produces. Files the
@@ -71,7 +71,7 @@ cp -R "$build_dir/." "$adapter_dir/"
 # The host discovers the adapter entry from DLL metadata; no package-local manifest is needed.
 
 plugin_dir="$cache_dir/plugins/AdapterTemplate.TestPlugin"
-build_dir="TestPlugin/bin/Debug/net10.0"
+build_dir="TestPlugin/bin/Debug/net11.0"
 manifest="$plugin_dir/.shirobot-dev-files"
 mkdir -p "$plugin_dir"
 # Remove files copied by the previous run that the build no longer produces. Files the

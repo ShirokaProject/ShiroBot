@@ -71,7 +71,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          global-json-file: global.json
+          dotnet-version: '11.0.100'
           dotnet-quality: ga
 
       - name: Verify release gate regressions
@@ -161,7 +161,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6.0.0
         with:
-          global-json-file: global.json
+          dotnet-version: '11.0.100'
           dotnet-quality: ga
 
       - name: Download verified packages

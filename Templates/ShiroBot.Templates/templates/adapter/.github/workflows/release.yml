@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.100'
       - name: Restore
         run: dotnet restore AdapterTemplate.csproj
       - name: Build
@@ -33,14 +33,14 @@ jobs:
             expected="${GITHUB_REF_NAME#v}"
           fi
           dotnet run --project scripts/version-check/VersionCheck.csproj -c Release -- \
-            "bin/Release/net10.0/AdapterTemplate.dll" "$version" "$expected"
+            "bin/Release/net11.0/AdapterTemplate.dll" "$version" "$expected"
       - name: Package
         run: |
-          test -f bin/Release/net10.0/AdapterTemplate.dll
-          test ! -f bin/Release/net10.0/AdapterTemplate.TestPlugin.dll
+          test -f bin/Release/net11.0/AdapterTemplate.dll
+          test ! -f bin/Release/net11.0/AdapterTemplate.TestPlugin.dll
           mkdir -p artifacts
-          (cd bin/Release/net10.0 && zip -qr "$GITHUB_WORKSPACE/artifacts/AdapterTemplate.zip" . -x '*.[pP][dD][bB]')
-          cp bin/Release/net10.0/AdapterTemplate.dll artifacts/AdapterTemplate.dll
+          (cd bin/Release/net11.0 && zip -qr "$GITHUB_WORKSPACE/artifacts/AdapterTemplate.zip" . -x '*.[pP][dD][bB]')
+          cp bin/Release/net11.0/AdapterTemplate.dll artifacts/AdapterTemplate.dll
       - uses: actions/upload-artifact@v4
         with:
           name: adapter-package

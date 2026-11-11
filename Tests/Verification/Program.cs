@@ -1186,7 +1186,7 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
     try
     {
         await LifecycleStep("initial load", () => manager.LoadByIdAsync("lifecycle-probe", path));
-        var loadedPath = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
+        var loadedPath = GetAdapterAssemblyPath(manager, "lifecycle-probe");
         if (string.Equals(loadedPath, path, StringComparison.OrdinalIgnoreCase) || !File.Exists(loadedPath))
             throw new InvalidOperationException("The active adapter maps the replaceable installed DLL.");
 
@@ -1204,7 +1204,7 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
                 throw new InvalidOperationException("Adapter hot reload lost the active instance.");
         }
 
-        var finalShadow = manager.GetLoadedAssembly("lifecycle-probe")!.Location;
+        var finalShadow = GetAdapterAssemblyPath(manager, "lifecycle-probe");
         // 配置热重载会比较新旧配置的指纹；比较时不能让宿主的 JSON 缓存记住适配器的配置类型。
         await LifecycleStep("ApplyConfigByIdAsync lifecycle-probe", async () =>
         {
@@ -2622,7 +2622,10 @@ try
         "Host-managed temporary directory isolation, expiry, shutdown and crash recovery verification passed.");
 
     if (!AutoUpdateSchedule.TryParseTime("2:00", out var parsedTime) || parsedTime != new TimeOnly(2, 0) ||
-        !AutoUpdateSchedule.TryParseTime("23:59", out _) || AutoUpdateSchedule.TryParseTime("24:00", out _) ||
+        !AutoUpdateSchedule.TryParseTime("23:59", out _) ||
+        !AutoUpdateSchedule.TryParseTime("00:00", out var midnight) || midnight != TimeOnly.MinValue ||
+        AutoUpdateSchedule.TryParseTime("24:00", out _) || AutoUpdateSchedule.TryParseTime(" 24:00 ", out _) ||
+        AutoUpdateSchedule.TryParseTime("24:01", out _) ||
         AutoUpdateSchedule.TryParseTime("2点", out _))
         throw new InvalidOperationException(
             "Auto-update time parsing accepted an invalid value or rejected a valid one.");
@@ -2934,6 +2937,13 @@ static void AssertAssemblyVersion(Assembly assembly, string expectedVersion)
     if (!string.Equals(actualVersion, expectedVersion, StringComparison.Ordinal))
         throw new InvalidOperationException(
             $"Unexpected shared contract ABI for {assembly.GetName().Name}: expected {expectedVersion}, got {actualVersion}.");
+}
+
+// Reading a collectible Assembly in an async frame can keep a JIT temporary alive across await.
+[MethodImpl(MethodImplOptions.NoInlining)]
+static string GetAdapterAssemblyPath(AdapterManager manager, string id)
+{
+    return manager.GetLoadedAssembly(id)!.Location;
 }
 
 static void AssertUnloadTimedOut(PluginUnloadResult result, string expectedPhase)
