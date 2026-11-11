@@ -17,7 +17,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '11.0.100'
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
       - name: Restore
         run: dotnet restore AdapterTemplate.csproj
       - name: Build

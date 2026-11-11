@@ -13,7 +13,7 @@
         <!-- Framework-dependent hosts accept every .NET 11 patch, regardless of the build SDK. -->
         <TargetLatestRuntimePatch Condition="'$(SelfContained)' != 'true'">false</TargetLatestRuntimePatch>
         <RuntimeFrameworkVersion Condition="'$(SelfContained)' != 'true'">11.0.0</RuntimeFrameworkVersion>
-        <RollForward>LatestMinor</RollForward>
+        <RollForward>LatestPatch</RollForward>
         <!-- Self-contained hosts still bundle the latest runtime patch supplied by the SDK. -->
         <TargetLatestRuntimePatch Condition="'$(SelfContained)' == 'true'">true</TargetLatestRuntimePatch>
         <!-- Prefer Workstation GC for typical bot workloads and lower idle memory use. -->

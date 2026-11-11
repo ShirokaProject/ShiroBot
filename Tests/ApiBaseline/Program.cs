@@ -9,7 +9,16 @@ using ShiroBot.Model.Telegram;
 var assemblies = new[] { typeof(IBotContext).Assembly, typeof(IQGroupApi).Assembly, typeof(DiscordUser).Assembly, typeof(TelegramUser).Assembly };
 var lines = new SortedSet<string>(StringComparer.Ordinal);
 var nullability = new NullabilityInfoContext();
-string TypeName(Type type) => type.IsGenericType ? type.GetGenericTypeDefinition().FullName!.Split('`')[0] + "<" + string.Join(",", type.GetGenericArguments().Select(TypeName)) + ">" : type.FullName ?? type.Name;
+// Format element types recursively so by-ref/array generic types do not embed runtime assembly versions.
+string TypeName(Type type)
+{
+    if (type.IsByRef) return TypeName(type.GetElementType()!) + "&";
+    if (type.IsPointer) return TypeName(type.GetElementType()!) + "*";
+    if (type.IsArray) return TypeName(type.GetElementType()!) + "[" + new string(',', type.GetArrayRank() - 1) + "]";
+    return type.IsGenericType
+        ? type.GetGenericTypeDefinition().FullName!.Split('`')[0] + "<" + string.Join(",", type.GetGenericArguments().Select(TypeName)) + ">"
+        : type.FullName ?? type.Name;
+}
 string Parameters(MethodBase method) => string.Join(",", method.GetParameters().Select(p => TypeName(p.ParameterType) + " " + p.Name + (p.HasDefaultValue ? "=" + (p.DefaultValue ?? "null") : "")));
 foreach (var assembly in assemblies)
 {

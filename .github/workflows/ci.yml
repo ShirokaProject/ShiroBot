@@ -52,7 +52,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: '11.0.100'
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
 
       - name: Check SDK ABI version map
@@ -81,7 +84,7 @@ jobs:
           jq -e '
             .runtimeOptions.configProperties["System.Diagnostics.Debugger.IsSupported"] == true and
             .runtimeOptions.configProperties["System.Diagnostics.StackTrace.IsSupported"] == true and
-            .runtimeOptions.rollForward == "LatestMinor" and
+            .runtimeOptions.rollForward == "LatestPatch" and
             (.runtimeOptions.frameworks | length == 2 and
               all(.[]; .version == "11.0.0") and
               (map(.name) | sort) == ["Microsoft.AspNetCore.App", "Microsoft.NETCore.App"])
@@ -398,7 +401,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: '11.0.100'
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
       - name: Verify deferred shadow cleanup with a Windows file lock
         run: dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release -- --shadow-cleanup

@@ -71,7 +71,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: '11.0.100'
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
 
       - name: Verify release gate regressions
@@ -161,7 +164,10 @@ jobs:
 
       - uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: '11.0.100'
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
 
       - name: Download verified packages
