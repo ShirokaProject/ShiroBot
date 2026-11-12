@@ -186,13 +186,34 @@ internal static class MessagePrefixVerification
         if (await File.ReadAllTextAsync(path) != savedText)
             throw new Exception("Invalid custom prefix patch changed config");
 
+        // The Dashboard must treat punctuation in plugin IDs as literal TOML keys.
+        foreach (var id in new[] { "Shirobot.Plugin.KotoSub", "plugin.with.\"quotes\"", "plugin space" })
+        {
+            Patch("{\"mode\":\"whitelist\",\"groups\":[\"allowed\"],\"prefix_mode\":\"required\",\"custom_prefix\":\"k:\",\"priority\":7}", id);
+            loaded = (await manager.LoadCoreConfig()).PluginRoutes;
+            if (loaded.PrefixModes[id] != "required" || loaded.Prefixes[id] != "k:" ||
+                loaded.Priorities[id] != 7 || loaded.Plugins[id].Mode != "whitelist" ||
+                !loaded.Plugins[id].Groups.SequenceEqual(["allowed"]) ||
+                !loaded.Plugins.ContainsKey("Example"))
+                throw new Exception("Dashboard route settings did not round-trip a literal plugin ID");
+            Patch("{\"prefix_mode\":\"disabled\",\"custom_prefix\":\"changed\",\"priority\":8}", id);
+            loaded = (await manager.LoadCoreConfig()).PluginRoutes;
+            if (loaded.PrefixModes[id] != "disabled" || loaded.Prefixes[id] != "changed" || loaded.Priorities[id] != 8)
+                throw new Exception("Updating a literal plugin ID left stale route settings");
+            Patch("{\"prefix_mode\":\"default\",\"custom_prefix\":\"\",\"priority\":null}", id);
+            loaded = (await manager.LoadCoreConfig()).PluginRoutes;
+            if (loaded.PrefixModes.ContainsKey(id) || loaded.Prefixes.ContainsKey(id) ||
+                loaded.Priorities.ContainsKey(id) || !loaded.Plugins.ContainsKey(id))
+                throw new Exception("Resetting a literal plugin ID lost routes or retained overrides");
+        }
+
         return;
 
-        void Patch(string json)
+        void Patch(string json, string pluginId = "Example")
         {
             using var document = JsonDocument.Parse(json);
             typeof(HostHttpServer).GetMethod("ApplyPluginRoutePatch", BindingFlags.Static | BindingFlags.NonPublic)!
-                .Invoke(null, [manager, path, routes, "Example", document.RootElement]);
+                .Invoke(null, [manager, path, routes, pluginId, document.RootElement]);
         }
 
         void PatchCore(string json)

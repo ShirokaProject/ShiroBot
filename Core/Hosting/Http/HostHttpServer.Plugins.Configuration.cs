@@ -979,36 +979,33 @@ internal sealed partial class HostHttpServer
         if (prefixMode is not null)
         {
             var modes = new Dictionary<string, string>(routePolicy.PrefixModes, StringComparer.OrdinalIgnoreCase);
-            var key = $"plugin_routes.prefix_modes.{pluginId}";
             if (prefixMode == "default")
             {
                 modes.Remove(pluginId);
-                configManager.RemoveConfigValue(coreConfigPath, key);
             }
             else
             {
                 modes[pluginId] = prefixMode;
-                configManager.SetConfigValue(coreConfigPath, key, prefixMode);
             }
 
+            // Plugin IDs are literal dictionary keys, including dots and quotes.
+            configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.prefix_modes", modes);
             routePolicy.PrefixModes = modes;
         }
 
         if (customPrefix is not null)
         {
             var prefixes = new Dictionary<string, string>(routePolicy.Prefixes, StringComparer.OrdinalIgnoreCase);
-            var key = $"plugin_routes.prefixes.{pluginId}";
             if (string.IsNullOrWhiteSpace(customPrefix))
             {
                 prefixes.Remove(pluginId);
-                configManager.RemoveConfigValue(coreConfigPath, key);
             }
             else
             {
                 prefixes[pluginId] = customPrefix;
-                configManager.SetConfigValue(coreConfigPath, key, customPrefix);
             }
 
+            configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.prefixes", prefixes);
             routePolicy.Prefixes = prefixes;
         }
 
@@ -1016,8 +1013,12 @@ internal sealed partial class HostHttpServer
 
         var rule = new PluginRouteRuleConfig { Mode = mode, Groups = groups };
         routePolicy.Plugins[pluginId] = rule;
-        configManager.SetConfigValue(coreConfigPath, $"plugin_routes.plugins.{pluginId}.mode", rule.Mode);
-        configManager.SetConfigValue(coreConfigPath, $"plugin_routes.plugins.{pluginId}.groups", rule.Groups);
+        configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.plugins",
+            routePolicy.Plugins.ToDictionary(pair => pair.Key, pair => new Dictionary<string, object?>
+            {
+                ["mode"] = pair.Value.Mode,
+                ["groups"] = pair.Value.Groups
+            }));
     }
 
     /// <summary>A number overrides the plugin's declared priority; null removes the override.</summary>
@@ -1030,12 +1031,11 @@ internal sealed partial class HostHttpServer
     {
         // Replaced rather than mutated: dispatch reads the dictionary without a lock.
         var priorities = new Dictionary<string, int>(routePolicy.Priorities, StringComparer.OrdinalIgnoreCase);
-        var key = $"plugin_routes.priorities.{pluginId}";
         if (priority.ValueKind == JsonValueKind.Null)
         {
             priorities.Remove(pluginId);
             routePolicy.Priorities = priorities;
-            configManager.RemoveConfigValue(coreConfigPath, key);
+            configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.priorities", priorities);
             return;
         }
 
@@ -1044,7 +1044,7 @@ internal sealed partial class HostHttpServer
 
         priorities[pluginId] = value;
         routePolicy.Priorities = priorities;
-        configManager.SetConfigValue(coreConfigPath, key, value);
+        configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.priorities", priorities);
     }
 
     private static int GetDeclaredPriority(PluginManager pluginManager, PluginConfigTarget plugin)
