@@ -224,7 +224,7 @@ public static class Program
             modelPackages.RegisterBuiltIn(typeof(TelegramUser).Assembly);
             runtimeState.SetModelsCount(modelPackages.GetPackages().Count);
 
-            // ─── 适配器加载 ───
+            // ─── 适配器目录与元数据（此处不启动适配器） ───
             var adapterRoot = Path.Combine(BasePath, "adapters");
             if (!Directory.Exists(adapterRoot))
             {
@@ -280,9 +280,8 @@ public static class Program
             // ─── 配置热重载 ───
             configWatcher = new CoreConfigWatcher(coreConfigPath, coreConfig, botContext, logHub, BasePath);
 
-            // ─── 插件加载 ───
+            // ─── 插件目录（宿主就绪后才加载） ───
             pluginManager.PluginRootPath = pluginRootPath;
-            pluginManager.EnableFileHotReload(hostEventDispatcher, groupRoutePolicy);
 
             // ─── 适配器事件桥接 ───
             var adapterBridge = new AdapterEventBridge(hostEventDispatcher);
@@ -294,33 +293,7 @@ public static class Program
                 adapterBridge,
                 runtimeState,
                 logHub);
-            if (adapterPaths.Length > 0 || adapterPackages.ListInstances().Any(instance => instance.Active))
-            {
-                var instances = adapterPackages.ListInstances().Where(instance => instance.Active).ToArray();
-                var installedPaths = adapterPackages.List().Select(package => package.AssemblyPath)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                await adapterManager.LoadAsync(adapterPaths.Where(path => !installedPaths.Contains(path)))
-                    .ConfigureAwait(false);
-                foreach (var instance in instances)
-                    try
-                    {
-                        await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        BotLog.Error($"Adapter 实例 {instance.Id} 加载失败: {ex.Message}");
-                    }
-
-                CH.Success($"已加载 {adapterManager.LoadedIds.Count} 个 Adapter。 ");
-            }
-            else
-            {
-                runtimeState.SetAdapter("none", "not_loaded");
-                runtimeState.RecordEvent("以无 adapter 模式启动");
-            }
-
             var reloadCoordinator = new ComponentReloadCoordinator(adapterManager);
-            componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
             var services = new ServiceCollection();
             // Borrow process-owned instances; DI owns the HTTP service, route modules, command handler and update runner.
             // The existing TOML watcher updates this same instance. Options must not create a
@@ -350,12 +323,6 @@ public static class Program
                 { ValidateScopes = true, ValidateOnBuild = true });
             hostHttpServer = runtimeServices.GetRequiredService<IHostedService>();
             await hostHttpServer.StartAsync(CancellationToken.None).ConfigureAwait(false);
-            var autoUpdateRunner = runtimeServices.GetRequiredService<AutoUpdateRunner>();
-            autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
-                Path.Combine(BasePath, "cache", "auto-update-last-run"));
-            if (coreConfig.Update.Any)
-                CH.Info($"已开启自动更新，每天 {coreConfig.Update.Time} 检查更新。");
-
             if (coreConfig.Api.Enable)
             {
                 CH.Success("API 地址: " + webPublicBaseUrl);
@@ -363,6 +330,52 @@ public static class Program
                     CH.Success("Dashboard 地址（点击直接登录）: " + coreConfig.Api.GetDashboardLoginUrl());
                 CH.Warning("API 鉴权密钥: " + coreConfig.Api.Token);
             }
+
+            if (shutdownRequested.Task.IsCompleted) return;
+            CH.Info("宿主服务已就绪，开始逐个加载适配器...");
+            await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
+            {
+                if (adapterPaths.Length > 0 || adapterPackages.ListInstances().Any(instance => instance.Active))
+                {
+                    var instances = adapterPackages.ListInstances().Where(instance => instance.Active).ToArray();
+                    var installedPaths = adapterPackages.List().Select(package => package.AssemblyPath)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (var path in adapterPaths.Where(path => !installedPaths.Contains(path)))
+                    {
+                        if (shutdownRequested.Task.IsCompleted) break;
+                        await adapterManager.LoadAsync([path]).ConfigureAwait(false);
+                    }
+                    foreach (var instance in instances)
+                    {
+                        if (shutdownRequested.Task.IsCompleted) break;
+                        try
+                        {
+                            await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            BotLog.Error($"Adapter 实例 {instance.Id} 加载失败: {ex.Message}");
+                        }
+                    }
+
+                    CH.Success($"已加载 {adapterManager.LoadedIds.Count} 个 Adapter。 ");
+                }
+                else
+                {
+                    runtimeState.SetAdapter("none", "not_loaded");
+                    runtimeState.RecordEvent("以无 adapter 模式启动");
+                }
+            }).ConfigureAwait(false);
+            if (shutdownRequested.Task.IsCompleted) return;
+
+            // Watchers and scheduled updates must not race the initial component load.
+            componentWatcher = new ComponentFileWatcher(adapterPaths, reloadCoordinator);
+            pluginManager.EnableFileHotReload(hostEventDispatcher, groupRoutePolicy);
+            var autoUpdateRunner = runtimeServices.GetRequiredService<AutoUpdateRunner>();
+            autoUpdates = new AutoUpdateScheduler(coreConfig, autoUpdateRunner.RunAsync,
+                Path.Combine(BasePath, "cache", "auto-update-last-run"));
+            if (coreConfig.Update.Any)
+                CH.Info($"已开启自动更新，每天 {coreConfig.Update.Time} 检查更新。");
 
             // ─── 控制台交互 ───
             var configuredConsoleOption = parserResult.GetValue(noConsoleOption);

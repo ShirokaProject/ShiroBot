@@ -41,6 +41,10 @@ using ShiroBot.Verification;
 [assembly: ShiroBotApiCompatibility("legacy-ignored", "legacy-ignored")]
 switch (args)
 {
+    case ["--startup-order", .. var startupArgs]:
+        await HostStartupOrderVerification.RunAsync(startupArgs.FirstOrDefault());
+        return;
+
     case ["--adapter-actions"]:
         await AdapterActionsVerification.RunAsync();
         return;
@@ -254,6 +258,7 @@ await PluginPriorityVerification.RunAsync();
 await MessagePrefixVerification.RunAsync();
 HostEnvironmentVerification.Run();
 await HostHttpLifecycleVerification.RunAsync();
+await HostStartupOrderVerification.RunAsync();
 await ConsoleOutputVerification.RunAsync();
 await LocalLogVerification.RunAsync();
 await PluginActionsVerification.RunAsync();

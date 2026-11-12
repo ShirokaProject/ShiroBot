@@ -82,3 +82,5 @@ dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -- --local-
 ```
 
 覆盖本地文件、保留清理、配置热更新、历史快照与实时边界、突发批量发送、慢客户端，以及真实 HTTP 下的鉴权、SSE 帧、多行与中文、心跳、断开释放和重连历史。
+
+启动顺序回归：`dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -- --startup-order`。以独立宿主进程验证端口占用时不启动组件，以及 HTTP 就绪、适配器逐个启动、插件加载和正常退出的顺序。

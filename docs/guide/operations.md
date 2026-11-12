@@ -33,6 +33,8 @@
 
 插件可实现 `IPluginActionProvider`，把操作同时提供给控制台与已鉴权的 Dashboard。`plugin actions` 列出插件操作，输入 `plugin action <插件 ID> <操作 ID>` 执行。带 `RequiresConfirmation` 的操作会在控制台提示确认。写法见[插件操作与控制台](/plugin/actions)。
 
+宿主先初始化配置、基础设施并完成 HTTP 监听，再逐个启动适配器，最后加载插件。端口占用等宿主启动错误会在适配器登录前直接退出；单个适配器加载失败不会阻止后续实例加载。
+
 ## 实时日志
 
 Dashboard 通过 `GET /api/v1/logs/stream` 接收 SSE（`text/event-stream`），前后端需一起更新；该接口不再使用 WebSocket。接口沿用 API 鉴权，原生 `EventSource` 可通过 `token` 查询参数传入密钥。可选参数 `source` 默认 `all`，`tail` 默认 100、最大 1000。
