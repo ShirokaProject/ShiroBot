@@ -33,6 +33,16 @@
 
 插件可实现 `IPluginActionProvider`，把操作同时提供给控制台与已鉴权的 Dashboard。`plugin actions` 列出插件操作，输入 `plugin action <插件 ID> <操作 ID>` 执行。带 `RequiresConfirmation` 的操作会在控制台提示确认。写法见[插件操作与控制台](/plugin/actions)。
 
+## 实时日志
+
+Dashboard 通过 `GET /api/v1/logs/stream` 接收 SSE（`text/event-stream`），前后端需一起更新；该接口不再使用 WebSocket。接口沿用 API 鉴权，原生 `EventSource` 可通过 `token` 查询参数传入密钥。可选参数 `source` 默认 `all`，`tail` 默认 100、最大 1000。
+
+事件使用 `data: <JSON>` 格式，`type` 为 `connected`、`history` 或 `logs`。`history` 和 `logs` 的 `data` 是日志数组。连接建立或重连时，前端用历史快照替换当前列表，再追加实时日志；重连恢复受 `tail` 上限限制。服务端每 15 秒发送注释心跳，并禁用响应和 Nginx 代理缓冲；其他反向代理也应对该路径关闭缓冲。
+
+日志突发时服务端每批最多推送 100 条已入队日志，前端每约 16 毫秒合并更新，页面保留最近 1000 条。慢客户端的队列同样有界，发送超时或队列满时断开，由浏览器重连。
+
+本地日志默认开启，保留 3 个自然日，可在 Dashboard 日志配置中修改。文件写入使用缓冲，每 250 毫秒刷新；读取历史、切换配置和正常释放日志服务时也会刷新。异常退出时，尚未刷新的日志可能丢失。历史文件扫描在发布锁外进行，不阻塞新日志入队。
+
 ## 热加载与热卸载
 
 把插件 DLL 放入插件目录后，可以执行：

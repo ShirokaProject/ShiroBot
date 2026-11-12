@@ -15,6 +15,7 @@ internal sealed partial class HostHttpServer
     {
         private void MapAdapters(RouteGroupBuilder api)
         {
+            MapAdapterActions(api);
             api.MapGet("/adapter", () => Results.Ok(adapterManager.CreateStatus()));
 
             api.MapGet("/adapters/{id}/config", (string id) =>

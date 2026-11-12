@@ -51,8 +51,10 @@ internal sealed class LocalLogStore : IDisposable
         if (_stream is null || _date != date || _stream.Length >= SegmentBytes) OpenWriter(date);
         JsonSerializer.Serialize(_stream!, entry, JsonOptions);
         _stream!.WriteByte((byte)'\n');
-        _stream.Flush();
+
     }
+
+    internal void Flush() => _stream?.Flush();
 
     private void OpenWriter(DateTime today)
     {
@@ -84,18 +86,34 @@ internal sealed class LocalLogStore : IDisposable
 
     internal HostLogHub.LogEntry[] ReadHistory(string source, int tail)
     {
+        return CaptureHistory(source, tail)();
+    }
+
+    internal Func<HostLogHub.LogEntry[]> CaptureHistory(string source, int tail)
+    {
+        if (tail == 0) return () => [];
+        Flush();
+        var cutoff = _clock.GetLocalNow().Date.AddDays(1 - RetentionDays);
+        var files = Files().Where(file => file.Date >= cutoff)
+            .OrderByDescending(file => file.Name, StringComparer.Ordinal)
+            .Select(file => (file.Path, Length: new FileInfo(file.Path).Length)).ToArray();
+        return () => ReadSnapshot(files, source, tail);
+    }
+
+    private static HostLogHub.LogEntry[] ReadSnapshot((string Path, long Length)[] files, string source, int tail)
+    {
         if (tail == 0) return [];
         var result = new List<HostLogHub.LogEntry>(tail);
-        var cutoff = _clock.GetLocalNow().Date.AddDays(1 - RetentionDays);
-        foreach (var file in Files().Where(file => file.Date >= cutoff)
-                     .OrderByDescending(file => file.Name, StringComparer.Ordinal))
+        foreach (var file in files)
         {
-            using var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
+            FileStream stream;
+            try { stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); }
+            catch (FileNotFoundException) { continue; } // Retention may delete a captured file.
+            using var owned = stream;
             var buffer = new byte[8192];
             var line = new List<byte>(256);
             var oversized = false;
-            var position = stream.Length;
+            var position = Math.Min(file.Length, stream.Length);
             while (position > 0)
             {
                 var count = (int)Math.Min(buffer.Length, position);

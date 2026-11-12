@@ -18,7 +18,7 @@ using ShiroBot.SDK.Core;
 
 namespace ShiroBot.Adapters;
 
-internal sealed class AdapterManager(
+internal sealed partial class AdapterManager(
     string adapterRoot,
     SharedAssemblyResolver sharedAssemblies,
     ModelPackageRegistry modelPackages,

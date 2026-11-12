@@ -41,6 +41,10 @@ using ShiroBot.Verification;
 [assembly: ShiroBotApiCompatibility("legacy-ignored", "legacy-ignored")]
 switch (args)
 {
+    case ["--adapter-actions"]:
+        await AdapterActionsVerification.RunAsync();
+        return;
+
     case ["--plugin-list-benchmark", var fixtures, var requestCount]:
     {
         await PluginListBenchmark.RunAsync(fixtures, int.Parse(requestCount));

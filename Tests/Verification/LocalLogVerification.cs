@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Net.WebSockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -28,6 +27,7 @@ internal static class LocalLogVerification
             VerifyFailure(Path.Combine(root, "failure"));
             await VerifyConfigAsync(Path.Combine(root, "config"));
             await VerifyStreamAsync(Path.Combine(root, "stream"));
+            await LogSseVerification.RunAsync();
         }
         finally
         {
@@ -35,7 +35,7 @@ internal static class LocalLogVerification
         }
 
         Console.WriteLine(
-            "PASS local logs: disk-only history, migration, restart, filters, UTF-8/multiline, rotation, retention/cleanup, failure fallback, hot config, WebSocket history/live boundary and bounded clients.");
+            "PASS local logs: disk-only history, migration, restart, filters, UTF-8/multiline, rotation, retention/cleanup, failure fallback, hot config, SSE history/live boundary and bounded clients.");
     }
 
     private static void VerifyStorage(string root)
@@ -83,7 +83,7 @@ internal static class LocalLogVerification
         var files = Directory.GetFiles(Path.Combine(root, "logs"));
         var first = File.ReadLines(files[0]).First();
         if (JsonDocument.Parse(first).RootElement.TryGetProperty("sequence", out _))
-            throw new Exception("Internal WebSocket sequence leaked into the log format");
+            throw new Exception("Internal SSE sequence leaked into the log format");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -219,21 +219,32 @@ internal static class LocalLogVerification
         using var cancellation = new CancellationTokenSource();
         var streaming = hub.StreamAsync(socket, "all", 10, cancellation.Token);
         await socket.InitialSendStarted.Task;
-        // Log while the initial WebSocket response is blocked: the subscriber must
+        // Log while the initial SSE response is blocked: the subscriber must
         // already exist so the history/live boundary cannot lose this message.
         hub.Record("system", "info", "between-history-and-live");
+        for (var i = 0; i < 250; i++) hub.Record("system", "info", "burst-" + i);
         socket.AllowInitialSend.TrySetResult();
         await socket.LiveReceived.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken: CancellationToken.None);
+        await socket.BurstReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var liveFrames = socket.Messages.Select(text => JsonDocument.Parse(text[6..])).ToArray();
+        try
+        {
+            var batches = liveFrames.Where(frame => frame.RootElement.GetProperty("type").GetString() == "logs")
+                .Select(frame => frame.RootElement.GetProperty("data").GetArrayLength()).ToArray();
+            if (!batches.SequenceEqual(new[] { 100, 100, 51 })) throw new Exception("SSE burst was not drained into bounded batches.");
+        }
+        finally { foreach (var frame in liveFrames) frame.Dispose(); }
         if (!socket.Messages.Any(text => text.Contains("disk-history", StringComparison.Ordinal)) ||
             socket.Messages.Count(text => text.Contains("between-history-and-live", StringComparison.Ordinal)) != 1 ||
             hub.MemoryHistoryCount != 0)
             throw new Exception("Disk history/live streaming lost or duplicated entries");
-        socket.ReceiveCloseRequested.TrySetResult();
-        await streaming.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken: CancellationToken.None);
+        await cancellation.CancelAsync();
+        try { await streaming.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken: CancellationToken.None); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         var remaining =
             (IDictionary)typeof(HostLogHub).GetField("_subscribers", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(hub)!;
-        if (remaining.Count != 0) throw new Exception("Closing the WebSocket retained its live log queue");
+        if (remaining.Count != 0) throw new Exception("Closing the SSE retained its live log queue");
 
         using var slow = new FixtureSocket { BlockLive = true };
         using var stopSlow = new CancellationTokenSource();
@@ -275,7 +286,7 @@ internal static class LocalLogVerification
         }
     }
 
-    private sealed class FixtureSocket : WebSocket
+    private sealed class FixtureSocket : MemoryStream
     {
         public readonly TaskCompletionSource AllowInitialSend = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -284,46 +295,13 @@ internal static class LocalLogVerification
 
         public readonly TaskCompletionSource LiveBlocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource LiveReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource BurstReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly List<string> Messages = [];
 
-        public readonly TaskCompletionSource ReceiveCloseRequested =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
         public bool BlockLive { get; init; }
-        public override WebSocketCloseStatus? CloseStatus => null;
-        public override string? CloseStatusDescription => null;
-        public override string? SubProtocol => null;
-        public override WebSocketState State => WebSocketState.Open;
-
-        public override void Abort()
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default)
         {
-        }
-
-        public override void Dispose()
-        {
-        }
-
-        public override Task CloseAsync(WebSocketCloseStatus status, string? description, CancellationToken token)
-        {
-            return Task.CompletedTask;
-        }
-
-        public override Task CloseOutputAsync(WebSocketCloseStatus status, string? description, CancellationToken token)
-        {
-            return Task.CompletedTask;
-        }
-
-        public override async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer,
-            CancellationToken token)
-        {
-            await ReceiveCloseRequested.Task.WaitAsync(token);
-            return new WebSocketReceiveResult(0, WebSocketMessageType.Close, true);
-        }
-
-        public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType type, bool end,
-            CancellationToken token)
-        {
-            var text = Encoding.UTF8.GetString(buffer);
+            var text = Encoding.UTF8.GetString(buffer.Span);
             if (Messages.Count == 0)
             {
                 InitialSendStarted.TrySetResult();
@@ -337,6 +315,7 @@ internal static class LocalLogVerification
             }
 
             Messages.Add(text);
+            if (text.Contains("burst-249", StringComparison.Ordinal)) BurstReceived.TrySetResult();
             if (text.Contains("between-history-and-live", StringComparison.Ordinal)) LiveReceived.TrySetResult();
         }
     }

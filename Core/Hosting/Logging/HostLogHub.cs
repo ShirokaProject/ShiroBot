@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.Net.WebSockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
@@ -19,6 +19,7 @@ internal sealed class HostLogHub : IDisposable
     private readonly ConcurrentDictionary<string, LogSourceInfo> _sources = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, Channel<LogEntry>> _subscribers = new();
     private ITimer? _cleanupTimer;
+    private ITimer? _flushTimer;
     private bool _disposed;
     private LocalLogStore? _files;
     private long _sequence;
@@ -59,6 +60,8 @@ internal sealed class HostLogHub : IDisposable
             _disposed = true;
             _cleanupTimer?.Dispose();
             _cleanupTimer = null;
+            _flushTimer?.Dispose();
+            _flushTimer = null;
             try
             {
                 _files?.Dispose();
@@ -85,6 +88,8 @@ internal sealed class HostLogHub : IDisposable
             {
                 _cleanupTimer?.Dispose();
                 _cleanupTimer = null;
+                _flushTimer?.Dispose();
+                _flushTimer = null;
                 try
                 {
                     _files?.Dispose();
@@ -108,6 +113,10 @@ internal sealed class HostLogHub : IDisposable
                     _history.Clear();
                 }
 
+                _flushTimer ??= _clock.CreateTimer(static state =>
+                {
+                    if (((WeakReference<HostLogHub>)state!).TryGetTarget(out var hub)) hub.FlushFiles();
+                }, new WeakReference<HostLogHub>(this), TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
                 _files.RetentionDays = config.RetentionDays;
                 _files.Cleanup();
                 _cleanupTimer ??= _clock.CreateTimer(static state =>
@@ -138,6 +147,19 @@ internal sealed class HostLogHub : IDisposable
         }
     }
 
+    private void FlushFiles()
+    {
+        lock (_lock)
+        {
+            if (_disposed || _files is null) return;
+            try { _files.Flush(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                FallBackToMemory(error);
+            }
+        }
+    }
+
     private void FallBackToMemory(Exception error)
     {
         try
@@ -151,6 +173,8 @@ internal sealed class HostLogHub : IDisposable
         _files = null;
         _cleanupTimer?.Dispose();
         _cleanupTimer = null;
+        _flushTimer?.Dispose();
+        _flushTimer = null;
         // Never log through BotLog here: that would recurse into the failed writer.
         Console.Error.WriteLine($"[日志] 本地日志写入失败，已退回最近 {MaxHistory} 条内存历史：{error.Message}");
     }
@@ -174,6 +198,14 @@ internal sealed class HostLogHub : IDisposable
                 // Bound both disk lines and slow-client queues; avoid retaining huge payload logs.
                 Message = message.Length <= 32768 ? message : message[..32768] + " [日志过长，已截断]"
             };
+            foreach (var (id, subscriber) in _subscribers)
+                if (!subscriber.Writer.TryWrite(entry))
+                {
+                    subscriber.Writer.TryComplete(
+                        new IOException("Log client is too slow; reconnect to retrieve recent history."));
+                    _subscribers.TryRemove(id, out _);
+                }
+
             if (_files is not null)
                 try
                 {
@@ -189,14 +221,6 @@ internal sealed class HostLogHub : IDisposable
                 _history.Enqueue(entry);
                 while (_history.Count > MaxHistory) _history.Dequeue();
             }
-
-            foreach (var (id, subscriber) in _subscribers)
-                if (!subscriber.Writer.TryWrite(entry))
-                {
-                    subscriber.Writer.TryComplete(
-                        new IOException("Log client is too slow; reconnect to retrieve recent history."));
-                    _subscribers.TryRemove(id, out _);
-                }
         }
     }
 
@@ -239,138 +263,117 @@ internal sealed class HostLogHub : IDisposable
 
     public LogEntry[] GetHistory(string source, int tail)
     {
-        lock (_lock)
-        {
-            tail = Math.Clamp(tail, 0, MaxHistory);
-            if (_files is null)
-            {
-                return
-                [
-                    .. _history.Where(entry => source.Equals("all", StringComparison.OrdinalIgnoreCase) ||
-                                               entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase))
-                        .TakeLast(tail)
-                ];
-            }
+        Func<LogEntry[]> read;
+        lock (_lock) read = CaptureHistory(source, Math.Clamp(tail, 0, MaxHistory));
+        return read();
+    }
 
+    // Capture file lengths under the publication lock; scan them after releasing it.
+    // Records appended during the scan are delivered only through the live queue.
+    private Func<LogEntry[]> CaptureHistory(string source, int tail)
+    {
+        if (_files is not null)
+        {
+            var files = _files;
             try
             {
-                return _files.ReadHistory(source, tail);
+                var snapshot = files.CaptureHistory(source, tail);
+                return () =>
+                {
+                    try { return snapshot(); }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                    {
+                        lock (_lock)
+                        {
+                            if (ReferenceEquals(_files, files)) FallBackToMemory(error);
+                            return ReadMemoryHistory(source, tail);
+                        }
+                    }
+                };
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 FallBackToMemory(error);
             }
-
-            return
-            [
-                .. _history.Where(entry => source.Equals("all", StringComparison.OrdinalIgnoreCase) ||
-                                           entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase))
-                    .TakeLast(tail)
-            ];
         }
+
+        var memory = ReadMemoryHistory(source, tail);
+        return () => memory;
     }
 
-    public async Task StreamAsync(WebSocket webSocket, string source, int tail, CancellationToken cancellationToken)
+    private LogEntry[] ReadMemoryHistory(string source, int tail) =>
+        [.. _history.Where(entry => source.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+                                   entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase)).TakeLast(tail)];
+
+    public async Task StreamAsync(Stream stream, string source, int tail, CancellationToken cancellationToken)
     {
-        using var disconnected = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var streamToken = disconnected.Token;
+        using var stopped = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = stopped.Token;
         source = string.IsNullOrWhiteSpace(source) ? "all" : source.Trim();
         tail = Math.Clamp(tail, 0, MaxHistory);
-
         var id = Guid.NewGuid();
         var channel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(MaxHistory)
         {
-            SingleReader = true,
-            SingleWriter = false,
-            FullMode = BoundedChannelFullMode.Wait
+            SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait
         });
-        LogEntry[] history;
+        Func<LogEntry[]> readHistory;
         long boundary;
         lock (_lock)
         {
             if (_disposed) return;
-            _subscribers[id] = channel;
-            history = GetHistory(source, tail);
+            readHistory = CaptureHistory(source, tail);
             boundary = _sequence;
+            _subscribers[id] = channel;
         }
-
-        var closed = WatchCloseAsync(webSocket, disconnected);
 
         try
         {
-            await SendAsync(webSocket, new { type = "connected", source, tail }, streamToken).ConfigureAwait(false);
-            await SendAsync(webSocket, new { type = "history", data = history }, streamToken).ConfigureAwait(false);
-            // Release references held by the async state machine before collectible-assembly or memory-retention checks.
-            // ReSharper disable once RedundantAssignment
+            await SendAsync(stream, new { type = "connected", source, tail }, token).ConfigureAwait(false);
+            var history = readHistory();
+            readHistory = null!; // Release snapshot references during an idle connection.
+            await SendAsync(stream, new { type = "history", data = history }, token).ConfigureAwait(false);
             history = [];
-            await foreach (var entry in channel.Reader.ReadAllAsync(streamToken).ConfigureAwait(false))
+            var batch = new List<LogEntry>(100);
+            var available = channel.Reader.WaitToReadAsync(token).AsTask();
+            using var heartbeat = new PeriodicTimer(TimeSpan.FromSeconds(15));
+            var tick = heartbeat.WaitForNextTickAsync(token).AsTask();
+            while (true)
             {
-                if (webSocket.State != WebSocketState.Open) break;
-                if (entry.Sequence <= boundary) continue;
-                if (!source.Equals("all", StringComparison.OrdinalIgnoreCase) &&
-                    !entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase))
+                if (await Task.WhenAny(available, tick).ConfigureAwait(false) == tick)
+                {
+                    if (!await tick.ConfigureAwait(false)) break;
+                    await SendAsync(stream, null, token).ConfigureAwait(false);
+                    tick = heartbeat.WaitForNextTickAsync(token).AsTask();
                     continue;
+                }
 
-                await SendAsync(webSocket, new { type = "logs", data = new[] { entry } }, streamToken)
-                    .ConfigureAwait(false);
+                if (!await available.ConfigureAwait(false)) break;
+                while (batch.Count < 100 && channel.Reader.TryRead(out var entry))
+                    if (entry.Sequence > boundary && (source.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+                        entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase))) batch.Add(entry);
+                if (batch.Count > 0)
+                {
+                    await SendAsync(stream, new { type = "logs", data = batch }, token).ConfigureAwait(false);
+                    batch.Clear();
+                }
+                available = channel.Reader.WaitToReadAsync(token).AsTask();
             }
-        }
-        catch (OperationCanceledException) when (disconnected.IsCancellationRequested &&
-                                                 !cancellationToken.IsCancellationRequested)
-        {
         }
         finally
         {
             _subscribers.TryRemove(id, out _);
             channel.Writer.TryComplete();
-            await disconnected.CancelAsync();
-            await closed.ConfigureAwait(false);
-            if (webSocket.State == WebSocketState.CloseReceived)
-            {
-                using var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-                try
-                {
-                    await webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, closeTimeout.Token)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception error) when (error is WebSocketException or OperationCanceledException
-                                                  or ObjectDisposedException)
-                {
-                }
-            }
+            await stopped.CancelAsync().ConfigureAwait(false);
         }
     }
 
-    private static async Task WatchCloseAsync(WebSocket socket, CancellationTokenSource disconnected)
+    private static async Task SendAsync(Stream stream, object? payload, CancellationToken cancellationToken)
     {
-        try
-        {
-            var buffer = new byte[256];
-            while (!disconnected.IsCancellationRequested && socket.State == WebSocketState.Open)
-            {
-                var frame = await socket.ReceiveAsync(buffer.AsMemory(), disconnected.Token).ConfigureAwait(false);
-                if (frame.MessageType == WebSocketMessageType.Close) break;
-            }
-
-            await disconnected.CancelAsync();
-        }
-        catch (NotSupportedException)
-        {
-            /* Send-only test WebSockets have no receive side. */
-        }
-        catch (OperationCanceledException) when (disconnected.IsCancellationRequested)
-        {
-        }
-        catch (Exception error) when (error is WebSocketException or ObjectDisposedException)
-        {
-            await disconnected.CancelAsync();
-        }
-    }
-
-    private static async Task SendAsync(WebSocket webSocket, object payload, CancellationToken cancellationToken)
-    {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
-        await webSocket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var frame = payload is null ? ": keepalive\n\n" : "data: " + JsonSerializer.Serialize(payload, JsonOptions) + "\n\n";
+        await stream.WriteAsync(Encoding.UTF8.GetBytes(frame), timeout.Token).ConfigureAwait(false);
+        await stream.FlushAsync(timeout.Token).ConfigureAwait(false);
     }
 
     private static string NormalizeLevel(string level)

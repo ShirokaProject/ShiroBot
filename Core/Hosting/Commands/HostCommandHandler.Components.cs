@@ -21,7 +21,7 @@ internal sealed partial class HostCommandHandler
         "用法: plugin list | market | refresh | install <市场 ID> | load <插件> | unload <插件> | update [confirm|cancel <ID>] | actions | action <插件> <操作>";
 
     private const string AdapterUsage =
-        "用法: adapter list | market | refresh | install <市场 ID> | create <包 ID> <实例 ID> | config|start|stop|reload|remove <实例 ID>";
+        "用法: adapter list | market | refresh | install <市场 ID> | create <包 ID> <实例 ID> | config|start|stop|reload|remove|actions <实例 ID> | action <实例 ID> <操作 ID>";
 
     /// <summary>Commands that moved under plugin and adapter, with what to type now.</summary>
     private static readonly Dictionary<string, string> MovedCommands = new(StringComparer.OrdinalIgnoreCase)
@@ -314,6 +314,8 @@ internal sealed partial class HostCommandHandler
         yield return new CH.ConsoleCommandOption("adapter reload", "重载运行中的实例");
         yield return new CH.ConsoleCommandOption("adapter config", "显示实例的配置文件路径");
         yield return new CH.ConsoleCommandOption("adapter remove", "删除实例及其配置");
+        yield return new CH.ConsoleCommandOption("adapter actions", "显示实例注册的操作: <实例 ID>");
+        yield return new CH.ConsoleCommandOption("adapter action", "执行适配器操作: <实例 ID> <操作 ID>");
 
         foreach (var entry in _adapterMarket?.OfType<JsonObject>() ?? [])
         {
@@ -328,6 +330,27 @@ internal sealed partial class HostCommandHandler
             yield return new CH.ConsoleCommandOption($"adapter create {package.Id}",
                 $"用适配器包 {package.Id} 创建实例，后接新实例 ID");
         var loaded = adapterManager.LoadedIds;
+        foreach (var id in loaded.OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
+        {
+            IReadOnlyList<PluginActionDescriptor> actions;
+            try
+            {
+                actions = adapterManager.GetActionsAsync(id).GetAwaiter().GetResult();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // A stopped or failing provider must not break the console's completion menu.
+                continue;
+            }
+
+            yield return new CH.ConsoleCommandOption($"adapter actions {id}", $"显示 {id} 注册的操作");
+            if (actions.Count == 0) continue;
+            yield return new CH.ConsoleCommandOption($"adapter action {id}", $"{actions.Count} 个操作");
+            foreach (var action in actions)
+                yield return new CH.ConsoleCommandOption($"adapter action {id} {action.Id}",
+                    string.IsNullOrWhiteSpace(action.Description) ? action.Label : action.Description);
+        }
+
         foreach (var instance in adapterPackages.ListInstances())
         {
             if (loaded.Contains(instance.Id, StringComparer.OrdinalIgnoreCase))

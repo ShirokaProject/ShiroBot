@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Net.WebSockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -110,44 +109,16 @@ internal static class MemoryRetentionVerification
         GC.Collect();
     }
 
-    private sealed class SlowSocket : WebSocket
+    private sealed class SlowSocket : MemoryStream
     {
         private int _sent;
         public TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public override WebSocketCloseStatus? CloseStatus => null;
-        public override string? CloseStatusDescription => null;
-        public override string? SubProtocol => null;
-        public override WebSocketState State => WebSocketState.Open;
-
-        public override void Abort()
-        {
-        }
-
-        public override void Dispose()
-        {
-        }
-
-        public override Task CloseAsync(WebSocketCloseStatus s, string? d, CancellationToken ct)
-        {
-            return Task.CompletedTask;
-        }
-
-        public override Task CloseOutputAsync(WebSocketCloseStatus s, string? d, CancellationToken ct)
-        {
-            return Task.CompletedTask;
-        }
-
-        public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> b, CancellationToken ct)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override async Task SendAsync(ArraySegment<byte> b, WebSocketMessageType t, bool e, CancellationToken ct)
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default)
         {
             if (Interlocked.Increment(ref _sent) > 2)
             {
                 Blocked.TrySetResult();
-                await Task.Delay(Timeout.Infinite, ct);
+                await Task.Delay(Timeout.Infinite, token);
             }
         }
     }

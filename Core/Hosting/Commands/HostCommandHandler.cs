@@ -29,7 +29,7 @@ internal sealed partial class HostCommandHandler(
     private static readonly IReadOnlyList<CH.ConsoleCommandOption> ConsoleCommands =
     [
         new("plugin", "插件: list|market|refresh|install|load|unload|update|actions|action"),
-        new("adapter", "适配器: list|market|refresh|install|create|start|stop|reload|config|remove"),
+        new("adapter", "适配器: list|market|refresh|install|create|start|stop|reload|config|remove|actions|action"),
         new("update", "检查或更新主程序"),
         new("restart", "重启程序"),
         new("api", "显示或设置 API 鉴权信息"),
@@ -203,6 +203,14 @@ internal sealed partial class HostCommandHandler(
         {
             switch (input[1].ToLowerInvariant())
             {
+                case "actions":
+                    return string.Join(Environment.NewLine, (await adapterManager.GetActionsAsync(input[2]))
+                        .Select(x => $"{x.Id}: {x.Label} - {x.Description}"));
+                case "action":
+                    if (input.Length < 4) return "用法: adapter action <实例 ID> <操作 ID>";
+                    var actionResult = await adapterManager.ExecuteActionAsync(input[2], input[3]);
+                    return actionResult.Message + (string.IsNullOrWhiteSpace(actionResult.Details) ? "" : Environment.NewLine + actionResult.Details);
+
                 case "create":
                     if (input.Length < 4) return "用法: adapter create <包 ID> <实例 ID>";
                     var created = await reloadCoordinator.ExecuteAdapterMutationAsync(() =>

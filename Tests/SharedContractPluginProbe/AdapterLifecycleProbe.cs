@@ -8,7 +8,7 @@ namespace ShiroBot.SharedContractPluginProbe;
 // A real collectible adapter for testing the host's load/config/watch/unload boundary.
 [BotAdapter("lifecycle-probe")]
 public sealed class AdapterLifecycleProbe : IBotAdapter, IConfigurableAdapter,
-    IConfigurableComponent<AdapterLifecycleProbeConfig>, ILifetimeAwareAdapter
+    IConfigurableComponent<AdapterLifecycleProbeConfig>, ILifetimeAwareAdapter, IPluginActionProvider
 {
     public string Platform => "lifecycle-probe";
     public IMessageService Message { get; } = new ProbeMessages();
@@ -20,6 +20,13 @@ public sealed class AdapterLifecycleProbe : IBotAdapter, IConfigurableAdapter,
     public AdapterLifecycleProbeConfig CurrentConfigValue { get; private set; } = new();
     public ConfigApplyMode ApplyMode => ConfigApplyMode.Live;
     public IPluginLifetime Lifetime { get; set; } = null!;
+    public IReadOnlyList<PluginActionDescriptor> Actions =>
+        [new("ping", "Ping"), new("ping", "Duplicate"), new("", "Invalid")];
+    public async Task<PluginActionResult> ExecuteActionAsync(string actionId, CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(50, cancellationToken);
+        return new PluginActionResult(true, actionId) { Details = CurrentConfigValue.Endpoint };
+    }
     private int _ticks;
 
     // 模拟接收循环和心跳：只登记到 Lifetime，StopAsync 不做清理。宿主没停掉它们的话，

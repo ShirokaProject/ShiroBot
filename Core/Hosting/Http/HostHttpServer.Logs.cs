@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 
 namespace ShiroBot.Hosting.Http;
@@ -13,13 +14,6 @@ internal sealed partial class HostHttpServer
             api.MapGet("/logs/sources", () => Results.Ok(logHub.GetSources()));
             api.MapGet("/logs/stream", async context =>
             {
-                if (!context.WebSockets.IsWebSocketRequest)
-                {
-                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                    await context.Response.WriteAsync("Expected WebSocket request.").ConfigureAwait(false);
-                    return;
-                }
-
                 var source = context.Request.Query.TryGetValue("source", out var sourceValues)
                     ? sourceValues.ToString()
                     : "all";
@@ -28,8 +22,19 @@ internal sealed partial class HostHttpServer
                     ? parsedTail
                     : 100;
 
-                using var webSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-                await logHub.StreamAsync(webSocket, source, tail, context.RequestAborted).ConfigureAwait(false);
+                context.Response.ContentType = "text/event-stream";
+                context.Response.Headers.CacheControl = "no-cache, no-transform";
+                context.Response.Headers["X-Accel-Buffering"] = "no";
+                context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+                try
+                {
+                    await logHub.StreamAsync(context.Response.Body, source, tail, context.RequestAborted).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
+                catch (Exception error) when (error is IOException or OperationCanceledException)
+                {
+                    context.Abort(); // Slow/disconnected clients reconnect and receive a fresh bounded history.
+                }
             });
         }
     }

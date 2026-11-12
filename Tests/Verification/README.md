@@ -74,3 +74,11 @@ dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release 
 ```
 
 覆盖无消息时到期清理、保留订阅句柄不再保留回调、卸载所属插件释放回调、定时器不保留临时上下文，以及慢日志订阅者的有界缓存。此验证中的强制 GC 仅用于检查对象可回收性。
+
+日志持久化与 SSE 集成回归：
+
+```bash
+dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -- --local-logs
+```
+
+覆盖本地文件、保留清理、配置热更新、历史快照与实时边界、突发批量发送、慢客户端，以及真实 HTTP 下的鉴权、SSE 帧、多行与中文、心跳、断开释放和重连历史。

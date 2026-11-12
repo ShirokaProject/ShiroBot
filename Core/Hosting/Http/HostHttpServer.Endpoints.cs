@@ -103,6 +103,7 @@ internal sealed partial class HostHttpServer
     }
 
     internal sealed partial class ComponentEndpoints(
+        IOptions<ApiHostConfig> options,
         HostRuntimeState runtimeState,
         ConfigManager configManager,
         AdapterManager adapterManager,
