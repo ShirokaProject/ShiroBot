@@ -2,10 +2,11 @@
 
 ## 当前版本
 
-当前源码中的宿主和 `ShiroBot.SDK` 版本均为 **1.0.2**。各共享程序集的 ABI 如下，版本值由仓库根目录的 `Directory.Build.props` 维护。
+当前源码中的宿主和 `ShiroBot.SDK` 版本均为 **1.0.3**。各共享程序集的 ABI 如下，版本值由仓库根目录的 `Directory.Build.props` 维护。
 
 | 宿主 / ShiroBot.SDK | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
+| 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.2 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
 产品版本与 ABI 版本用途不同：产品版本标识宿主和 SDK 包，ABI 版本标识程序集公开契约。`ShiroBot.SDK` 包同时包含 SDK 与内置 QQ、Discord、Telegram Model；每个程序集分别维护自己的 ABI。

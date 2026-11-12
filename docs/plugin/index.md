@@ -183,7 +183,7 @@ Run、Debug 和脚本启动默认允许控制台交互；需要关闭输入时�
 
 1. 从同一份源码构建 SDK 和 Templates NuGet 包，将模板包用 `dotnet new install <模板包路径>` 安装；给生成项目配置本地 NuGet 源，确保 SDK 从该目录还原。已有同版本本地 SDK 缓存时，确认没有继续使用旧构建。
 2. 从对应源码发布当前系统/架构的宿主，将发布目录中的文件放入项目的 `.shirobot-dev/host/<RID>/`，保留可执行权限。
-3. 在该目录创建 `.host-version` 文本文件，内容为 `Directory.Packages.props` 中的 SDK 产品版本，当前为 `1.0.2`。脚本仅在可执行文件存在且版本标记匹配时跳过自动下载。
+3. 在该目录创建 `.host-version` 文本文件，内容为 `Directory.Build.props` 中的 SDK 产品版本，当前为 `1.0.3`。脚本仅在可执行文件存在且版本标记匹配时跳过自动下载。
 4. 再执行 Debug 构建并使用同一个 **ShiroBot** 配置调试。宿主可执行文件应与该 SDK 版本匹配。
 
 使用 `dotnet new shirobot-plugin` 生成的项目会带 `.github/workflows/release.yml`。推送代码或提交 PR 时自动构建；将 `src/Plugin.cs` 中的 `Version` 改为目标版本后推送同版本 tag（如 `v1.0.0`），Action 会把 Release 构建输出的 ZIP 和入口 DLL 上传到 GitHub Release。

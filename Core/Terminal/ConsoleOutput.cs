@@ -7,6 +7,13 @@ namespace ShiroBot.Terminal;
 
 public static class ConsoleOutput
 {
+    static ConsoleOutput()
+    {
+        // Pipes do not carry a console code page. Keep logs lossless on Windows too,
+        // where the inherited OEM encoding cannot represent Chinese or emoji.
+        if (Console.IsOutputRedirected) Console.OutputEncoding = new UTF8Encoding(false);
+    }
+
     private const int MenuRows = 8;
     private const int ScreenRowLimit = 500;
 

@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Diagnostics;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using ShiroBot.Terminal;
 
@@ -13,6 +14,8 @@ internal static partial class ConsoleOutputVerification
     public static void Probe()
     {
         if (!Console.IsOutputRedirected) throw new Exception("Probe requires redirected stdout.");
+        // Reproduce a Windows runner's legacy console encoding on every test platform.
+        Console.OutputEncoding = Encoding.ASCII;
         ConsoleOutput.Info(LongLine);
         ConsoleOutput.Warning("multiline first\n多行 second");
         ConsoleOutput.IsEnabled = false;
@@ -32,6 +35,8 @@ internal static partial class ConsoleOutputVerification
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = true,
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
             UseShellExecute = false
         };
         if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
