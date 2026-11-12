@@ -604,48 +604,44 @@ internal sealed partial class AdapterManager(
 
     private async Task StopEntryAsync(AdapterEntry entry, bool waitForAssemblyRelease = true)
     {
-        var adapterId = entry.Id;
-        var adapterName = entry.Metadata.Name;
-        var assemblyPath = entry.AssemblyPath;
-        var startedAt = Stopwatch.StartNew();
-        // Return from the frame holding adapter objects before checking collectible ALC collection.
-        // Assigning null in that frame does not release all Runtime Async/JIT temporaries.
-        var (weakReference, references) = await BeginAdapterUnloadAsync(entry, startedAt).ConfigureAwait(false);
+        // Run the resource-holding part in its own method. Under Runtime Async the evaluating frame
+        // may keep locals alive across an await even after they are set to null, which would pin the
+        // collectible adapter assembly. Returning from that method releases its frame before the check.
+        var pending = await BeginAdapterUnloadAsync(entry).ConfigureAwait(false);
         if (!waitForAssemblyRelease)
         {
-            RecordAdapterLifecycle(adapterId, "info",
+            RecordAdapterLifecycle(pending.Id, "info",
                 "adapter stopped for process exit; assembly collection will be left to process teardown");
-            runtimeState.RecordEvent($"{adapterName} Adapter stopped");
+            runtimeState.RecordEvent($"{pending.Name} Adapter stopped");
             return;
         }
 
-        RecordAdapterLifecycle(adapterId, "info",
+        RecordAdapterLifecycle(pending.Id, "info",
             "collectible AssemblyLoadContext.Unload requested; waiting for collection");
         await Task.Delay(200).ConfigureAwait(false);
-        if (!WaitForAdapterUnload(weakReference))
+        if (!WaitForAdapterUnload(pending.AlcReference))
         {
-            var survivors = references.GetAliveReferences();
-            var diagnostic = $"Adapter ALC unload timed out after {startedAt.ElapsedMilliseconds} ms; " +
-                             $"alc_alive={weakReference?.IsAlive == true}; surviving_refs=[{string.Join(", ", survivors)}]; " +
-                             $"assembly={assemblyPath}";
-            RecordAdapterLifecycle(adapterId, "error", diagnostic);
+            var survivors = pending.References.GetAliveReferences();
+            var diagnostic = $"Adapter ALC unload timed out after {pending.Started.ElapsedMilliseconds} ms; " +
+                             $"alc_alive={pending.AlcReference?.IsAlive == true}; surviving_refs=[{string.Join(", ", survivors)}]; " +
+                             $"assembly={pending.AssemblyPath}";
+            RecordAdapterLifecycle(pending.Id, "error", diagnostic);
             var holder = survivors.Count > 0
                 ? $"仍存活的宿主侧引用: {string.Join(", ", survivors)}"
                 : "宿主侧没有发现残留引用，引用可能由组件自身持有（静态字段、计时器、未释放的连接等）";
-            var pending = new ComponentUnloadPendingException(
-                $"Adapter {adapterName} 已停止，但程序集仍被引用，重启宿主后才能完成卸载。{holder}。");
-            RecordError(adapterId, pending);
-            throw pending;
+            var error = new ComponentUnloadPendingException(
+                $"Adapter {pending.Name} 已停止，但程序集仍被引用，重启宿主后才能完成卸载。{holder}。");
+            RecordError(pending.Id, error);
+            throw error;
         }
 
-        RecordAdapterLifecycle(adapterId, "info",
-            $"Adapter ALC collected successfully after {startedAt.ElapsedMilliseconds} ms");
-        runtimeState.RecordEvent($"{adapterName} Adapter unloaded");
+        RecordAdapterLifecycle(pending.Id, "info",
+            $"Adapter ALC collected successfully after {pending.Started.ElapsedMilliseconds} ms");
+        runtimeState.RecordEvent($"{pending.Name} Adapter unloaded");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private async Task<(WeakReference? Context, AdapterUnloadReferences References)> BeginAdapterUnloadAsync(
-        AdapterEntry entry, Stopwatch startedAt)
+    private async Task<AdapterUnloadPending> BeginAdapterUnloadAsync(AdapterEntry entry)
     {
         var adapter = entry.Adapter ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
         var subscription = entry.EventSubscription ??
@@ -653,6 +649,7 @@ internal sealed partial class AdapterManager(
         var loader = entry.Loader ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
 
         var adapterId = entry.Id;
+        var adapterName = entry.Metadata.Name;
         var assemblyPath = entry.AssemblyPath;
         var references = new AdapterUnloadReferences(
             new WeakReference(adapter),
@@ -660,6 +657,7 @@ internal sealed partial class AdapterManager(
             entry.ConfigWatch is null ? null : new WeakReference(entry.ConfigWatch),
             entry.Configurable is null ? null : new WeakReference(entry.Configurable),
             entry.CurrentConfig is null ? null : new WeakReference(entry.CurrentConfig));
+        var startedAt = Stopwatch.StartNew();
         RecordAdapterLifecycle(adapterId, "info",
             $"unload begin; assembly={assemblyPath}; adapter_ref={RuntimeHelpers.GetHashCode(adapter)}; subscription_ref={RuntimeHelpers.GetHashCode(subscription)}");
 
@@ -698,7 +696,10 @@ internal sealed partial class AdapterManager(
         RecordAdapterLifecycle(adapterId, "info", "adapter removed from BotContext");
         entry.ReleaseRuntimeReferences();
         RecordAdapterLifecycle(adapterId, "info", "AdapterEntry runtime references cleared");
-        return (loader.BeginUnload(), references);
+        var weakReference = loader.BeginUnload();
+        // This frame, including adapter/subscription/loader, is discarded when the method returns,
+        // before StopEntryAsync waits for the collectible context to be released.
+        return new AdapterUnloadPending(adapterId, adapterName, assemblyPath, references, weakReference, startedAt);
     }
 
     private void RecordAdapterLifecycle(string adapterId, string level, string message)
@@ -792,7 +793,12 @@ internal sealed partial class AdapterManager(
     /// <summary>每次启动换一个新的生命周期作用域，配置触发的重启也拿到干净的作用域。</summary>
     internal static Task StartAdapterAsync(IBotAdapter adapter)
     {
-        if (adapter is ILifetimeAwareAdapter aware) aware.Lifetime = new PluginLifetimeScope();
+        if (adapter is ILifetimeAwareAdapter aware)
+        {
+            var lifetime = new PluginLifetimeScope();
+            aware.Lifetime = lifetime;
+            RegisterDashboard(adapter, lifetime);
+        }
         return adapter.StartAsync();
     }
 
@@ -808,6 +814,7 @@ internal sealed partial class AdapterManager(
         if (scope is null) return;
         await scope.StopTasksAsync().ConfigureAwait(false);
         await scope.DisposeResourcesAsync().ConfigureAwait(false);
+        DashboardOwners.Remove(adapter);
     }
 
     /// <summary>
@@ -880,6 +887,14 @@ internal sealed partial class AdapterManager(
         {
         }
     }
+
+    private sealed record AdapterUnloadPending(
+        string Id,
+        string Name,
+        string AssemblyPath,
+        AdapterUnloadReferences References,
+        WeakReference? AlcReference,
+        Stopwatch Started);
 
     private sealed record AdapterUnloadReferences(
         WeakReference Adapter,

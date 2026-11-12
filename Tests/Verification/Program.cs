@@ -45,6 +45,10 @@ switch (args)
         await HostStartupOrderVerification.RunAsync(startupArgs.FirstOrDefault());
         return;
 
+    case ["--adapter-login-page", var loginAdapterPath]:
+        await AdapterLoginPageVerification.RunAsync(loginAdapterPath);
+        return;
+
     case ["--adapter-actions"]:
         await AdapterActionsVerification.RunAsync();
         return;

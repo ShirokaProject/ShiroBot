@@ -23,6 +23,6 @@ if args.dashboard_dist:
     command.append(f"-p:DashboardDistPath={args.dashboard_dist.resolve()}")
 subprocess.run(command, cwd=repository, check=True)
 subprocess.run([
-    "dotnet", str(repository / "Tests/Verification/bin/Debug/net10.0/ShiroBot.Verification.dll"),
+    "dotnet", str(repository / "Tests/Verification/bin/Debug/net11.0/ShiroBot.Verification.dll"),
     "--update-integration", str(fixtures),
 ], cwd=repository, check=True)

@@ -114,6 +114,7 @@ internal sealed partial class HostHttpServer
         public void Map(RouteGroupBuilder api)
         {
             MapAdapters(api);
+            MapDashboardPages(api, options.Value, "/adapters", adapterManager.GetDashboardOwner);
             MapRawConfig(api);
         }
     }

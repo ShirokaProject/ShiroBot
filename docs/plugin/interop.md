@@ -72,7 +72,7 @@ MyPlugin/
 
 ```xml
 <ItemGroup>
-  <PluginContract Include="../Shirobot.Plugin.Weather/bin/Release/net10.0/WeatherPlugin.dll" />
+  <PluginContract Include="../Shirobot.Plugin.Weather/bin/Release/net11.0/WeatherPlugin.dll" />
 </ItemGroup>
 ```
 

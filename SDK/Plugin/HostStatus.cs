@@ -48,7 +48,7 @@ public sealed record HostRuntimeInfo
     /// <summary>进程架构：x64、arm64 等。</summary>
     public string Architecture { get; init; } = string.Empty;
 
-    /// <summary>.NET 运行时描述，例如 ".NET 10.0.0"。</summary>
+    /// <summary>.NET 运行时描述，例如 ".NET 11.0.0"。</summary>
     public string Framework { get; init; } = string.Empty;
 
     /// <summary>容器镜像标签；未提供时为 null。</summary>

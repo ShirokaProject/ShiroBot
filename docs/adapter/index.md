@@ -120,3 +120,11 @@ flowchart LR
 dotnet run --project Tests/Verification -- --adapter-unload-check path/to/YourAdapter.dll
 ```
 
+
+## Dashboard 页面与操作（可选）
+
+适配器可额外实现 `IPluginActionProvider`，用 `Actions` 和 `ExecuteActionAsync` 声明操作。操作出现在 Dashboard 适配器详情中，也可通过控制台 `adapter actions <实例 ID>` 查看、`adapter action <实例 ID> <操作 ID>` 执行；控制台会逐词补全实例和操作 ID。
+
+自定义页面复用 [Dashboard 页面](/plugin/dashboard-pages)的 `IPluginDashboard`、`AddPage` 和 `AddWebPage`。适配器实现 `ILifetimeAwareAdapter`，并从 `GetExtension<Action<IPluginDashboard>>()` 返回页面注册委托；宿主在每次 `StartAsync()` 前调用委托，页面随当前实例的生命周期注册和释放。
+
+页面显示在适配器配置页，组件渲染、事件、文件上传和沙箱网页桥接通过 `/api/v1/adapters/{实例 ID}/pages` 下的接口访问，沿用宿主 API 鉴权。停止或重载实例时，旧页面停止接受调用；不同实例分别注册自己的页面与状态。

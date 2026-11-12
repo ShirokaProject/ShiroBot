@@ -49,7 +49,7 @@ internal static partial class PluginDashboard
         return true;
     }
 
-    public static Task<PluginPageOutcome<bool>> WebRequestAsync(LoadedPluginHandle plugin, string pageId, string target,
+    public static Task<PluginPageOutcome<bool>> WebRequestAsync(IDashboardOwner plugin, string pageId, string target,
         HttpContext http)
     {
         return RunAsync(plugin, pageId, "处理网页请求", async page =>

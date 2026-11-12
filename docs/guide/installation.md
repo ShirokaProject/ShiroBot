@@ -16,7 +16,7 @@
 ### 运行时类型
 
 - `self-contained`：自带 .NET 运行时，**推荐**，下载即可运行。
-- `framework-dependent`：体积更小，但需要预装 [ASP.NET Core 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)。
+- `framework-dependent`：体积更小，但需要预装 [ASP.NET Core 11 Runtime](https://dotnet.microsoft.com/download/dotnet/11.0)。
 
 ::: tip 不确定怎么选？
 - Windows 电脑：`win-x64-self-contained`
@@ -119,7 +119,7 @@ chmod +x ./ShiroBot
 ./ShiroBot
 ```
 
-framework-dependent 发布包也直接运行 `ShiroBot` / `ShiroBot.exe`，启动时使用系统安装的 .NET 10 Runtime。
+framework-dependent 发布包也直接运行 `ShiroBot` / `ShiroBot.exe`，启动时使用系统安装的 .NET 11 Runtime。
 
 首次启动后检查以下内容：
 

@@ -409,7 +409,7 @@ jobs:
             echo "- Linux: $(host_link linux-x64 self-contained x64) | $(host_link linux-arm64 self-contained ARM64)"
             echo "- Linux musl / Alpine: $(host_link linux-musl-x64 self-contained x64) | $(host_link linux-musl-arm64 self-contained ARM64)"
             echo
-            echo "#### 不自带运行时 framework-dependent（需要安装 ASP.NET Core 10 Runtime）"
+            echo "#### 不自带运行时 framework-dependent（需要安装 ASP.NET Core 11 Runtime）"
             echo
             echo "- Windows: $(host_link win-x64 framework-dependent x64) | $(host_link win-arm64 framework-dependent ARM64)"
             echo "- macOS: $(host_link osx-arm64 framework-dependent Apple芯片) | $(host_link osx-x64 framework-dependent Intel芯片)"

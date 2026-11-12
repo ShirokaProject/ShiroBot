@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    .NET 11 runtime-native async (Runtime Async V2). The compiler emits runtime-managed
+    suspension instead of async state machines, and the .NET 11 runtime executes it.
+    Opt out per project with <UseRuntimeAsync>false</UseRuntimeAsync>.
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net11.0' and '$(UseRuntimeAsync)' != 'false'">
+    <Features Condition="'$(Features)' == ''">runtime-async=on</Features>
+    <Features Condition="'$(Features)' != '' and !$(Features.Contains('runtime-async'))">$(Features),runtime-async=on</Features>
+  </PropertyGroup>
+</Project>

@@ -1,6 +1,6 @@
 # 认识 ShiroBot
 
-ShiroBot 是基于 C# 和 .NET 10 的机器人宿主，通过适配器接入协议、用插件实现业务：
+ShiroBot 是基于 C# 和 .NET 11 的机器人宿主，通过适配器接入协议、用插件实现业务：
 
 - **适配器**连接实际机器人协议，负责收发消息、调用协议 API 和上报事件。
 - **插件**通过统一 SDK 实现业务功能。
@@ -35,8 +35,8 @@ flowchart LR
 
 ## 开发技术栈
 
-- .NET SDK 10
-- C# 14 / `net10.0`
+- .NET SDK 11
+- C# 15 / `net11.0`
 - TOML 配置
 - NuGet 插件 SDK
 - 内置 Avalonia 12.1 Headless 渲染

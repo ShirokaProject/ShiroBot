@@ -4,7 +4,7 @@ layout: home
 hero:
   name: ShiroBot
   text: 轻量、可扩展的 .NET 机器人框架
-  tagline: 使用 C# 与 .NET 10 构建插件和协议适配器，支持事件路由、热加载、自动单 DLL 打包与跨平台 native 依赖。
+  tagline: 使用 C# 与 .NET 11 构建插件和协议适配器，支持事件路由、热加载、自动单 DLL 打包与跨平台 native 依赖。
   actions:
     - theme: brand
       text: 安装 ShiroBot

@@ -4,8 +4,8 @@
 
 ## 环境要求
 
-- .NET SDK 10
-- 支持 `net10.0` 的 IDE，例如 Rider 或 Visual Studio
+- .NET SDK 11
+- 支持 `net11.0` 的 IDE，例如 Rider 或 Visual Studio
 - 与目标宿主版本一致的 `ShiroBot.SDK` NuGet 包（由模板项目引用）
 
 ## 创建项目
@@ -132,7 +132,7 @@ protected override Task OnUnloadAsync()
 dotnet build -c Release
 ```
 
-SDK 识别带有 `BotPluginAttribute` 的程序集并自动处理依赖。将 `bin/Release/net10.0/HelloPlugin.dll` 复制为宿主目录中的 `plugins/HelloPlugin.dll`，然后启动宿主。
+SDK 识别带有 `BotPluginAttribute` 的程序集并自动处理依赖。将 `bin/Release/net11.0/HelloPlugin.dll` 复制为宿主目录中的 `plugins/HelloPlugin.dll`，然后启动宿主。
 
 ### 本地调试
 

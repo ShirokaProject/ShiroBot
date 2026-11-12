@@ -53,7 +53,7 @@ internal static partial class PluginDashboard
     private const int MaxStateKeys = 64;
     private const int MaxStateValue = 2000;
 
-    public static IReadOnlyList<DashboardPageRegistration> List(LoadedPluginHandle plugin)
+    public static IReadOnlyList<DashboardPageRegistration> List(IDashboardOwner plugin)
     {
         return plugin.Dashboard?.Pages ?? [];
     }
@@ -67,7 +67,7 @@ internal static partial class PluginDashboard
             .ToDictionary(pair => pair.Key, pair => pair.Value!, StringComparer.Ordinal);
     }
 
-    public static Task<PluginPageOutcome<PluginPageView>> RenderAsync(LoadedPluginHandle plugin, string pageId,
+    public static Task<PluginPageOutcome<PluginPageView>> RenderAsync(IDashboardOwner plugin, string pageId,
         Dictionary<string, string> state, CancellationToken cancellationToken)
     {
         return RunAsync(plugin, pageId, "渲染页面", async page =>
@@ -80,7 +80,7 @@ internal static partial class PluginDashboard
         });
     }
 
-    public static Task<PluginPageOutcome<PluginPageEventResponse>> EventAsync(LoadedPluginHandle plugin, string pageId,
+    public static Task<PluginPageOutcome<PluginPageEventResponse>> EventAsync(IDashboardOwner plugin, string pageId,
         Dictionary<string, string> state, PluginPageEvent pageEvent, CancellationToken cancellationToken)
     {
         return RunAsync(plugin, pageId, "执行页面操作", async page =>
@@ -120,7 +120,7 @@ internal static partial class PluginDashboard
     }
 
     /// <summary>上传：先渲染找到上传组件和它的限制，按限制读取请求体，再交给处理函数。</summary>
-    public static Task<PluginPageOutcome<PluginPageEventResponse>> UploadAsync(LoadedPluginHandle plugin, string pageId,
+    public static Task<PluginPageOutcome<PluginPageEventResponse>> UploadAsync(IDashboardOwner plugin, string pageId,
         Dictionary<string, string> state, string elementId, string fileName, string contentType, Stream body,
         long? contentLength,
         CancellationToken cancellationToken)
@@ -169,7 +169,7 @@ internal static partial class PluginDashboard
     }
 
     /// <summary>在插件调用结束前打开宿主拥有的流，文件删除或热卸载不影响正在发送的响应。</summary>
-    public static Task<PluginPageOutcome<PluginPageFile>> OpenFileAsync(LoadedPluginHandle plugin, string pageId,
+    public static Task<PluginPageOutcome<PluginPageFile>> OpenFileAsync(IDashboardOwner plugin, string pageId,
         string fileId,
         CancellationToken cancellationToken)
     {
@@ -210,7 +210,7 @@ internal static partial class PluginDashboard
         return new PluginPageEventResponse(result, next, view);
     }
 
-    private static async Task<PluginPageOutcome<T>> RunAsync<T>(LoadedPluginHandle plugin, string pageId,
+    private static async Task<PluginPageOutcome<T>> RunAsync<T>(IDashboardOwner plugin, string pageId,
         string operation,
         Func<DashboardPageRegistration, Task<PluginPageOutcome<T>>> work)
     {

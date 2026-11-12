@@ -36,7 +36,7 @@ The Dashboard path is optional. Two actual loadable component builds (`1.0.0` an
 
 The checks also cover deferred plugin deletion, cancellation of staged/console updates on deletion, blocking reinstalls while deletion is pending, and avoiding resurrection at startup. The checks cover plugin HTTP updates, console `update check plugins` / `update confirm`, plugin unload failure and staged application, adapter HTTP updates, pinned adapter assemblies and staged application, adapter startup failure with rollback, and process shutdown without waiting for a pinned assembly. Assertions inspect the running component version, installed files, obsolete file removal, and preservation of user configuration and data. Staged application uses the same startup applier after stopping the component; it does not reboot the machine or restart the host process.
 
-The runner prints an artifact directory containing the old/new packages, each isolated installation, and `report.json`. Keep that directory to inspect a failure. For Windows verification, run the same Python script with .NET 10 installed (`python` may be the appropriate command there).
+The runner prints an artifact directory containing the old/new packages, each isolated installation, and `report.json`. Keep that directory to inspect a failure. For Windows verification, run the same Python script with .NET 11 installed (`python` may be the appropriate command there).
 
 For actual macOS arm64 host self-update and terminal restart checks, publish two
 single-file, framework-dependent hosts from the current source into separate

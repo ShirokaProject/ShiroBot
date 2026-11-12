@@ -15,7 +15,7 @@ using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Plugins;
 
-internal sealed class LoadedPluginHandle
+internal sealed class LoadedPluginHandle : IDashboardOwner
 {
     private static readonly TimeSpan DefaultActiveDispatchDrainTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultPluginOnUnloadTimeout = TimeSpan.FromSeconds(30);
@@ -101,6 +101,7 @@ internal sealed class LoadedPluginHandle
     }
 
     /// <summary>插件注册的 Dashboard 页面；卸载后为 null。</summary>
+    PluginDashboardScope? IDashboardOwner.Dashboard => Dashboard;
     internal PluginDashboardScope? Dashboard => _context?.DashboardScope;
 
     public string Name { get; }

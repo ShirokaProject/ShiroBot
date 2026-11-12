@@ -17,7 +17,7 @@ internal static partial class PluginDashboard
                path.Split('/').All(part => part.Length > 0 && part is not "." and not "..");
     }
 
-    public static Task<PluginPageOutcome<string>> WebDocumentAsync(LoadedPluginHandle plugin, string pageId,
+    public static Task<PluginPageOutcome<string>> WebDocumentAsync(IDashboardOwner plugin, string pageId,
         CancellationToken ct)
     {
         return RunAsync(plugin, pageId, "读取网页", async page =>
@@ -28,7 +28,7 @@ internal static partial class PluginDashboard
         });
     }
 
-    public static Task<PluginPageOutcome<PluginPageFile>> WebAssetAsync(LoadedPluginHandle plugin, string pageId,
+    public static Task<PluginPageOutcome<PluginPageFile>> WebAssetAsync(IDashboardOwner plugin, string pageId,
         string path, CancellationToken ct)
     {
         return RunAsync(plugin, pageId, "读取网页资源", async page =>
@@ -42,7 +42,7 @@ internal static partial class PluginDashboard
         });
     }
 
-    public static Task<PluginPageOutcome<JsonNode?>> WebCallAsync(LoadedPluginHandle plugin, string pageId,
+    public static Task<PluginPageOutcome<JsonNode?>> WebCallAsync(IDashboardOwner plugin, string pageId,
         string action,
         JsonNode? arguments, CancellationToken ct)
     {

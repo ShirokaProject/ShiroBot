@@ -16,7 +16,7 @@ dotnet build Templates/Examples/PluginInterop/Greeter/ShiroBot.Samples.Greeter.c
 dotnet build Templates/Examples/PluginInterop/GreeterClient/ShiroBot.Samples.GreeterClient.csproj
 ```
 
-把两个 `bin/Debug/net10.0/*.dll` 放进宿主的 `plugins` 目录后，在群里发 `#greet 小白`，会回复“你好，小白！”。
+把两个 `bin/Debug/net11.0/*.dll` 放进宿主的 `plugins` 目录后，在群里发 `#greet 小白`，会回复“你好，小白！”。
 然后只卸载 `sample-greeter`，再发 `#greet`，会回复“问候服务没有加载。”；重新加载后不需要重新加载调用方就能恢复。
 
 `Tests/Verification` 中的 `PluginInteropVerification` 会在真实的可回收 ALC 中自动跑一遍这个流程，并检查两个插件卸载后程序集都能回收：

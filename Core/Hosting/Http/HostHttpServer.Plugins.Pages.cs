@@ -23,109 +23,112 @@ internal sealed partial class HostHttpServer
     {
         public void Map(RouteGroupBuilder api)
         {
-            var config = options.Value;
-
-            api.MapGet("/plugins/{id}/pages", (string id, HttpContext context) =>
-            {
-                if (Unauthorized(context, config) is { } denied) return denied;
-                if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
-                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-                return Results.Ok(new
-                {
-                    pages = PluginDashboard.List(plugin).Select(page => new
-                    {
-                        id = page.Id, title = page.Title, icon = page.Icon, description = page.Description,
-                        kind = page.Web is null ? null : "web",
-                        // Dashboard 在网页之外弹出确认框，并按 strict_dom 给网页加上 Trusted Types 策略。
-                        confirmations = page.Web is null ? null : page.WebConfirmations,
-                        strict_dom = page.Web?.StrictDom
-                    })
-                });
-            });
-
-            MapPluginWebPageEndpoints(api, config, pluginManager);
-
-            api.MapPost("/plugins/{id}/pages/{pageId}/render", async (string id, string pageId, HttpContext context) =>
-            {
-                if (Unauthorized(context, config) is { } denied) return denied;
-                if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
-                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-                if (await ReadPageRequestAsync(context).ConfigureAwait(false) is not { } body)
-                    return Results.BadRequest(new { error = "invalid_request", message = "请求内容无效。" });
-
-                var outcome = await PluginDashboard
-                    .RenderAsync(plugin, pageId, ReadState(body["state"]), context.RequestAborted)
-                    .ConfigureAwait(false);
-                return outcome.Status == PluginPageStatus.Done
-                    ? Results.Text(
-                        new JsonObject { ["view"] = outcome.Value!.View, ["state"] = StateJson(outcome.Value.State) }
-                            .ToJsonString(),
-                        "application/json; charset=utf-8")
-                    : PageFailure(outcome.Status, outcome.Message, outcome.Errors);
-            });
-
-            api.MapPost("/plugins/{id}/pages/{pageId}/events", async (string id, string pageId, HttpContext context) =>
-            {
-                if (Unauthorized(context, config) is { } denied) return denied;
-                if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
-                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-                if (await ReadPageRequestAsync(context).ConfigureAwait(false) is not { } body ||
-                    body["event"] is not JsonObject e || PageString(e["kind"]) is not { } kind ||
-                    PageString(e["element"]) is not { } element)
-                    return Results.BadRequest(new { error = "invalid_request", message = "请求内容无效。" });
-
-                var outcome = await PluginDashboard.EventAsync(plugin, pageId, ReadState(body["state"]),
-                    new PluginPageEvent(kind, element, PageString(e["action"]), PageString(e["item"]),
-                        e["values"] as JsonObject),
-                    context.RequestAborted).ConfigureAwait(false);
-                return EventResponse(outcome);
-            });
-
-            api.MapPost("/plugins/{id}/pages/{pageId}/upload", async (string id, string pageId, HttpContext context) =>
-            {
-                if (Unauthorized(context, config) is { } denied) return denied;
-                if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
-                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-                var query = context.Request.Query;
-                JsonNode? state;
-                try
-                {
-                    state = query.TryGetValue("state", out var raw) && raw.ToString().Length > 0
-                        ? JsonNode.Parse(raw.ToString())
-                        : null;
-                }
-                catch (JsonException)
-                {
-                    return Results.BadRequest(new { error = "invalid_request", message = "状态无效。" });
-                }
-
-                var outcome = await PluginDashboard.UploadAsync(plugin, pageId, ReadState(state),
-                    query["element"].ToString(),
-                    query["name"].ToString(), context.Request.ContentType ?? "application/octet-stream",
-                    context.Request.Body,
-                    context.Request.ContentLength, context.RequestAborted).ConfigureAwait(false);
-                return EventResponse(outcome);
-            });
-
-            api.MapGet("/plugins/{id}/pages/{pageId}/files", async (string id, string pageId, HttpContext context) =>
-            {
-                if (Unauthorized(context, config) is { } denied) return denied;
-                if (FindLoadedPlugin(pluginManager, id) is not { } plugin)
-                    return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
-                var fileId = context.Request.Query["id"].ToString();
-                if (string.IsNullOrWhiteSpace(fileId))
-                    return Results.BadRequest(new { error = "file_required", message = "缺少文件 ID。" });
-
-                var outcome = await PluginDashboard.OpenFileAsync(plugin, pageId, fileId, context.RequestAborted)
-                    .ConfigureAwait(false);
-                if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message, null);
-                var file = outcome.Value!;
-                // 文件随条目变化很少；短时间缓存，切换页面时不必重新读取。
-                context.Response.Headers.CacheControl = "private, max-age=300";
-                context.Response.RegisterForDispose(file.Content);
-                return Results.File(file.Content, file.ContentType, enableRangeProcessing: true);
-            });
+            MapDashboardPages(api, options.Value, "/plugins", id => FindLoadedPlugin(pluginManager, id));
         }
+    }
+
+    private static void MapDashboardPages(RouteGroupBuilder api, ApiHostConfig config, string prefix, Func<string, IDashboardOwner?> find)
+    {
+        api.MapGet($"{prefix}/{{id}}/pages", (string id, HttpContext context) =>
+        {
+            if (Unauthorized(context, config) is { } denied) return denied;
+            if (find(id) is not { } plugin)
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            return Results.Ok(new
+            {
+                pages = PluginDashboard.List(plugin).Select(page => new
+                {
+                    id = page.Id, title = page.Title, icon = page.Icon, description = page.Description,
+                    kind = page.Web is null ? null : "web",
+                    // Dashboard 在网页之外弹出确认框，并按 strict_dom 给网页加上 Trusted Types 策略。
+                    confirmations = page.Web is null ? null : page.WebConfirmations,
+                    strict_dom = page.Web?.StrictDom
+                })
+            });
+        });
+
+        MapDashboardWebPageEndpoints(api, config, prefix, find);
+
+        api.MapPost($"{prefix}/{{id}}/pages/{{pageId}}/render", async (string id, string pageId, HttpContext context) =>
+        {
+            if (Unauthorized(context, config) is { } denied) return denied;
+            if (find(id) is not { } plugin)
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            if (await ReadPageRequestAsync(context).ConfigureAwait(false) is not { } body)
+                return Results.BadRequest(new { error = "invalid_request", message = "请求内容无效。" });
+
+            var outcome = await PluginDashboard
+                .RenderAsync(plugin, pageId, ReadState(body["state"]), context.RequestAborted)
+                .ConfigureAwait(false);
+            return outcome.Status == PluginPageStatus.Done
+                ? Results.Text(
+                    new JsonObject { ["view"] = outcome.Value!.View, ["state"] = StateJson(outcome.Value.State) }
+                        .ToJsonString(),
+                    "application/json; charset=utf-8")
+                : PageFailure(outcome.Status, outcome.Message, outcome.Errors);
+        });
+
+        api.MapPost($"{prefix}/{{id}}/pages/{{pageId}}/events", async (string id, string pageId, HttpContext context) =>
+        {
+            if (Unauthorized(context, config) is { } denied) return denied;
+            if (find(id) is not { } plugin)
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            if (await ReadPageRequestAsync(context).ConfigureAwait(false) is not { } body ||
+                body["event"] is not JsonObject e || PageString(e["kind"]) is not { } kind ||
+                PageString(e["element"]) is not { } element)
+                return Results.BadRequest(new { error = "invalid_request", message = "请求内容无效。" });
+
+            var outcome = await PluginDashboard.EventAsync(plugin, pageId, ReadState(body["state"]),
+                new PluginPageEvent(kind, element, PageString(e["action"]), PageString(e["item"]),
+                    e["values"] as JsonObject),
+                context.RequestAborted).ConfigureAwait(false);
+            return EventResponse(outcome);
+        });
+
+        api.MapPost($"{prefix}/{{id}}/pages/{{pageId}}/upload", async (string id, string pageId, HttpContext context) =>
+        {
+            if (Unauthorized(context, config) is { } denied) return denied;
+            if (find(id) is not { } plugin)
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            var query = context.Request.Query;
+            JsonNode? state;
+            try
+            {
+                state = query.TryGetValue("state", out var raw) && raw.ToString().Length > 0
+                    ? JsonNode.Parse(raw.ToString())
+                    : null;
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "invalid_request", message = "状态无效。" });
+            }
+
+            var outcome = await PluginDashboard.UploadAsync(plugin, pageId, ReadState(state),
+                query["element"].ToString(),
+                query["name"].ToString(), context.Request.ContentType ?? "application/octet-stream",
+                context.Request.Body,
+                context.Request.ContentLength, context.RequestAborted).ConfigureAwait(false);
+            return EventResponse(outcome);
+        });
+
+        api.MapGet($"{prefix}/{{id}}/pages/{{pageId}}/files", async (string id, string pageId, HttpContext context) =>
+        {
+            if (Unauthorized(context, config) is { } denied) return denied;
+            if (find(id) is not { } plugin)
+                return Results.NotFound(new { error = "plugin_not_found", message = $"未找到已加载插件: {id}" });
+            var fileId = context.Request.Query["id"].ToString();
+            if (string.IsNullOrWhiteSpace(fileId))
+                return Results.BadRequest(new { error = "file_required", message = "缺少文件 ID。" });
+
+            var outcome = await PluginDashboard.OpenFileAsync(plugin, pageId, fileId, context.RequestAborted)
+                .ConfigureAwait(false);
+            if (outcome.Status != PluginPageStatus.Done) return PageFailure(outcome.Status, outcome.Message, null);
+            var file = outcome.Value!;
+            // 文件随条目变化很少；短时间缓存，切换页面时不必重新读取。
+            context.Response.Headers.CacheControl = "private, max-age=300";
+            context.Response.RegisterForDispose(file.Content);
+            return Results.File(file.Content, file.ContentType, enableRangeProcessing: true);
+        });
     }
 
     private static IResult EventResponse(PluginPageOutcome<PluginPageEventResponse> outcome)
