@@ -480,6 +480,41 @@ internal static class UpdateIntegration
                     immediately_deleted = true, staged_update_cleared = true, not_reinstalled_at_startup = true
                 };
             });
+            await Scenario("plugin-update-rollback", async host =>
+            {
+                await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));
+                host.SeedUserFiles("plugins", PluginId);
+                var pluginFolder = Path.Combine(host.Root, "plugins", PluginId);
+                var blocker = Path.Combine(pluginFolder, "fail-load-2.0.0");
+                await File.WriteAllTextAsync(blocker, "fail");
+                var failed = await host.PostAsync($"/plugins/{PluginId}/update", new { }, true);
+                Check(failed.GetProperty("message").GetString()!.Contains("已恢复并重新加载旧版本"),
+                    "A new version that failed to load was not rolled back: " + failed);
+                host.AssertPluginVersion("1.0.0");
+                Check(!Directory.EnumerateFiles(pluginFolder, "*.shirobot-old", SearchOption.AllDirectories).Any() &&
+                      !StagedComponentUpdates.HasStaged(Path.Combine(host.Root, "plugins"), PluginId),
+                    "Rollback left backup or staged files behind");
+                // The plugin stays updatable: the same release installs once it can load.
+                File.Delete(blocker);
+                await host.PostAsync($"/plugins/{PluginId}/update", new { });
+                host.AssertPluginVersion("2.0.0");
+                host.AssertPackage("plugins", PluginId);
+                return new { failed_version_rolled_back = true, old_version_running = true, retry_updated = true };
+            });
+            await Scenario("plugin-delete-failed-unload", async host =>
+            {
+                await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));
+                var pluginRoot = Path.Combine(host.Root, "plugins");
+                var pluginFolder = Path.Combine(pluginRoot, PluginId);
+                await File.WriteAllTextAsync(Path.Combine(pluginFolder, "hold-unload"), "hold");
+                var deleted = await host.PostAsync($"/plugins/{PluginId}/delete", new { });
+                Check(!deleted.TryGetProperty("pending_delete", out var pending) || !pending.GetBoolean(),
+                    "A plugin whose OnUnload threw was not deleted right away");
+                Check(!Directory.Exists(pluginFolder) && !StagedComponentUpdates.HasStaged(pluginRoot, PluginId) &&
+                      host.Plugins.GetLoadedPluginSnapshot().Count == 0,
+                    "A plugin whose OnUnload threw left files, a deletion marker or a loaded instance");
+                return new { unload_threw = true, immediately_deleted = true };
+            });
             await Scenario("plugin-pending-delete", async host =>
             {
                 await host.InstallOldAsync("plugins", Path.Combine(packages, "v1.zip"));
@@ -489,11 +524,13 @@ internal static class UpdateIntegration
                 await host.PostAsync($"/plugins/{PluginId}/update", new { });
                 var requestId =
                     await Updater.RequestPluginUpdateAsync(new PluginUpdateRequest(PluginId, "1.0.0", "2.0.0"));
+                // Code that is still running when the host stops waiting: its files stay until the restart.
+                await File.WriteAllTextAsync(Path.Combine(pluginFolder, "hang-unload"), "hang");
                 var deleted = await host.PostAsync($"/plugins/{PluginId}/delete", new { });
                 Check(
                     deleted.GetProperty("pending_delete").GetBoolean() &&
                     deleted.GetProperty("pending_restart").GetBoolean(),
-                    "Failed unload did not return deferred deletion");
+                    "Timed-out unload did not return deferred deletion");
                 Check(Directory.Exists(pluginFolder) && StagedComponentUpdates.HasStagedDeletion(pluginRoot, PluginId),
                     "Deferred deletion was not persisted");
                 Check(Updater.GetPendingUpdates().All(request => request.Id != requestId),
@@ -606,6 +643,68 @@ internal static class UpdateIntegration
 
                 return new { files_deleted = true, ghost_removed = true, restart_required = true };
             });
+            await Scenario("adapter-delete-failed-stop", async host =>
+            {
+                await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
+                var folder = Path.Combine(host.Root, "adapters", AdapterId);
+                await File.WriteAllTextAsync(Path.Combine(folder, "fail-stop"), "fail");
+                using var deleted = await host.Client.DeleteAsync($"adapter-packages/{AdapterId}");
+                var text = await deleted.Content.ReadAsStringAsync();
+                Check(deleted.IsSuccessStatusCode, "A failing StopAsync blocked deleting the adapter package: " + text);
+                using var response = JsonDocument.Parse(text);
+                Check(response.RootElement.GetProperty("restartRequired").GetBoolean(),
+                    "Force-removed adapter did not ask for a restart");
+                Check(!Directory.Exists(folder) && host.AdapterPackages.Get(AdapterId) is null &&
+                      host.Adapters.LoadedIds.Count == 0 &&
+                      host.Adapters.GetSnapshot().All(item => item.Id != AdapterId),
+                    "Force-removed adapter left files, a loaded instance or ghost state");
+                return new { stop_failed = true, package_deleted = true, restart_required = true };
+            });
+            if (!OperatingSystem.IsWindows())
+                await Scenario("adapter-delete-deferred", async host =>
+                {
+                    await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
+                    var adapterRoot = Path.Combine(host.Root, "adapters");
+                    var folder = Path.Combine(adapterRoot, AdapterId);
+                    // Stands in for a file the process keeps mapped: its directory refuses removals.
+                    var locked = Path.Combine(folder, "locked");
+                    Directory.CreateDirectory(locked);
+                    await File.WriteAllTextAsync(Path.Combine(locked, "native.so"), "in use");
+                    File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+                    try
+                    {
+                        using var deleted = await host.Client.DeleteAsync($"adapter-packages/{AdapterId}");
+                        var text = await deleted.Content.ReadAsStringAsync();
+                        Check(deleted.IsSuccessStatusCode, "Files in use failed the adapter deletion: " + text);
+                        using var response = JsonDocument.Parse(text);
+                        Check(response.RootElement.GetProperty("pendingDelete").GetBoolean() &&
+                              response.RootElement.GetProperty("restartRequired").GetBoolean(),
+                            "Files in use did not defer the adapter deletion");
+                        Check(host.AdapterPackages.Get(AdapterId) is null && host.Adapters.LoadedIds.Count == 0 &&
+                              host.AdapterPackages.HasStagedDeletion(AdapterId),
+                            "A package waiting for removal is still listed, loaded or not recorded");
+                        using var repeated = await host.Client.DeleteAsync($"adapter-packages/{AdapterId}");
+                        Check(repeated.IsSuccessStatusCode, "Repeating a deferred adapter deletion failed");
+                        using var upload = new MultipartFormDataContent();
+                        upload.Add(new ByteArrayContent(await File.ReadAllBytesAsync(Path.Combine(packages, "v2.zip"))),
+                            "file", "v2.zip");
+                        using var uploaded = await host.Client.PostAsync("adapters/upload", upload);
+                        var preview = JsonDocument.Parse(await uploaded.Content.ReadAsStringAsync()).RootElement;
+                        await host.PostAsync($"/adapters/upload/{preview.GetProperty("upload_id").GetString()}/confirm",
+                            new { replace = true, enable = true }, true);
+                    }
+                    finally
+                    {
+                        File.SetUnixFileMode(locked,
+                            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                    }
+
+                    var applied = host.AdapterPackages.ApplyStagedDeletions();
+                    Check(applied.Applied.Contains(AdapterId) && applied.Failed.Count == 0 && !Directory.Exists(folder),
+                        "Startup did not finish the deferred adapter deletion");
+                    return new { pending_delete = true, hidden_until_restart = true, reinstall_blocked = true,
+                        deleted_at_startup = true };
+                });
             await Scenario("adapter-staged", async host =>
             {
                 await host.InstallOldAsync("adapters", Path.Combine(packages, "v1.zip"));
