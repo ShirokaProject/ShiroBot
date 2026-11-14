@@ -134,6 +134,15 @@ internal static class StagedComponentUpdates
     /// </summary>
     public static void ApplyPackage(string packageDirectory, string targetDirectory)
     {
+        BeginApplyPackage(packageDirectory, targetDirectory).Commit();
+    }
+
+    /// <summary>
+    ///     Like <see cref="ApplyPackage" />, but keeps the replaced files aside until the caller decides: commit once
+    ///     the new version runs, or roll back to the previous files when it does not.
+    /// </summary>
+    public static PackageApplication BeginApplyPackage(string packageDirectory, string targetDirectory)
+    {
         var source = Path.GetFullPath(packageDirectory);
         var target = Path.GetFullPath(targetDirectory);
         Directory.CreateDirectory(target);
@@ -141,14 +150,12 @@ internal static class StagedComponentUpdates
         var newFiles = EnumeratePackageFiles(source).ToArray();
         var previousFiles = ReadPackageFiles(target);
         // Never adopt an existing user file merely because a later package ships the same path.
-        // Legacy installs without a manifest still need their managed program assemblies replaced.
+        // Legacy installs without a manifest still need their program files replaced: assemblies, native
+        // libraries and deps/runtimeconfig at any depth, or the new entry DLL runs against a stale deps.json.
         var legacyWithoutManifest = !File.Exists(Path.Combine(target, PackageFilesName));
         var collisions = newFiles.Where(file => File.Exists(Path.Combine(target, file)) &&
                                                 !previousFiles.Contains(file, StringComparer.OrdinalIgnoreCase) &&
-                                                !(legacyWithoutManifest &&
-                                                  string.IsNullOrEmpty(Path.GetDirectoryName(file)) &&
-                                                  string.Equals(Path.GetExtension(file), ".dll",
-                                                      StringComparison.OrdinalIgnoreCase)))
+                                                !(legacyWithoutManifest && IsProgramFile(file)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var removedFiles = previousFiles.Except(newFiles, StringComparer.OrdinalIgnoreCase)
             .Where(file => !IsPreservedUserFile(file))
@@ -205,8 +212,19 @@ internal static class StagedComponentUpdates
             throw;
         }
 
-        // Old copies of files still loaded by the running process may refuse deletion; the next start removes them.
-        foreach (var path in movedAside) TryDelete(path + BackupSuffix);
+        return new PackageApplication(movedAside, written);
+    }
+
+    private static bool IsProgramFile(string relative)
+    {
+        if (IsPreservedUserFile(relative)) return false;
+        var extension = Path.GetExtension(relative);
+        return extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".pdb", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".so", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".dylib", StringComparison.OrdinalIgnoreCase) ||
+               relative.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase) ||
+               relative.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -336,4 +354,38 @@ internal static class StagedComponentUpdates
     }
 
     private sealed record DeleteTarget(string Path, bool Directory);
+
+    /// <summary>A package copied over an install whose replaced files are still kept next to the new ones.</summary>
+    internal sealed class PackageApplication(IReadOnlyList<string> movedAside, IReadOnlyList<string> written)
+    {
+        private bool _completed;
+
+        /// <summary>Drops the replaced files. Copies still locked by the process are removed at the next start.</summary>
+        public void Commit()
+        {
+            if (_completed) return;
+            _completed = true;
+            foreach (var path in movedAside) TryDelete(path + BackupSuffix);
+        }
+
+        /// <summary>Removes the new files and puts the replaced ones back.</summary>
+        public void Rollback()
+        {
+            if (_completed) return;
+            _completed = true;
+            foreach (var path in written) TryDelete(path);
+            List<Exception>? failures = null;
+            foreach (var path in movedAside)
+                try
+                {
+                    File.Move(path + BackupSuffix, path, true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    (failures ??= []).Add(ex);
+                }
+
+            if (failures is not null) throw new IOException("恢复旧版本文件失败: " + failures[0].Message, failures[0]);
+        }
+    }
 }

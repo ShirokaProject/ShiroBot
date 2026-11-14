@@ -129,7 +129,7 @@ internal sealed partial class HostHttpServer
                         if (installed is not null)
                         {
                             var replacement = await ReplaceInstalledPluginAsync(
-                                    pluginManager, eventDispatcher, routePolicy, package, installed, loaded)
+                                    pluginManager, eventDispatcher, routePolicy, package, installed, loaded, true)
                                 .ConfigureAwait(false);
                             if (replacement.PendingReason is not null)
                             {
@@ -146,7 +146,19 @@ internal sealed partial class HostHttpServer
                                 });
                             }
 
-                            await FinishPluginInstallAsync(replacement.EntryPath!).ConfigureAwait(false);
+                            if (request.Enable)
+                            {
+                                // A new version that does not load must not replace a working one.
+                                await PluginUpdateService.LoadReplacementAsync(pluginManager, eventDispatcher,
+                                    routePolicy, package.Info.Id, package.Info.Version, replacement,
+                                    loaded is not null).ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                replacement.Commit();
+                                await FinishPluginInstallAsync(replacement.EntryPath!).ConfigureAwait(false);
+                            }
+
                             TryDeleteDirectory(uploadRoot);
                             return Results.Ok(new
                                 { success = true, plugin = new { id = package.Info.Id, enable = request.Enable } });

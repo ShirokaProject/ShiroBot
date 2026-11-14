@@ -81,22 +81,23 @@ internal static class PluginUpdateService
                 {
                     var replacement = await ReplaceInstalledPluginAsync(pluginManager, eventDispatcher, routePolicy,
                         package,
-                        new InstalledPluginInfo(installedPath, loaded?.Version ?? ""), loaded).ConfigureAwait(false);
+                        new InstalledPluginInfo(installedPath, loaded?.Version ?? ""), loaded, true)
+                        .ConfigureAwait(false);
                     if (replacement.PendingReason is not null)
                         return new PluginUpdateResult(true, $"插件 {id} 当前版本无法热替换，{version} 已暂存，将在下次重启宿主时替换",
                             replacement.PendingReason);
-                }
-                else
-                {
-                    InstallUploadedPlugin(pluginManager, package);
+                    await LoadReplacementAsync(pluginManager, eventDispatcher, routePolicy, id, version, replacement,
+                        loaded is not null).ConfigureAwait(false);
+                    return new PluginUpdateResult(false, $"插件 {id} 已更新到 {version}");
                 }
 
+                InstallUploadedPlugin(pluginManager, package);
                 await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
                 return pluginManager.GetLoadedPluginSnapshot().All(plugin =>
                     !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))
-                    ? throw new InvalidOperationException($"插件 {id} 的包已安装，但加载失败，请检查宿主日志。")
-                    : new PluginUpdateResult(false,
-                        installedPath is null ? $"插件 {id} {version} 已安装并加载" : $"插件 {id} 已更新到 {version}");
+                    ? throw new InvalidOperationException(
+                        $"插件 {id} 的包已安装，但加载失败: {pluginManager.GetPluginLoadError(id) ?? "请检查宿主日志。"}")
+                    : new PluginUpdateResult(false, $"插件 {id} {version} 已安装并加载");
             }
             finally
             {
@@ -106,6 +107,45 @@ internal static class PluginUpdateService
         finally
         {
             TryDeleteDirectory(uploadRoot);
+        }
+    }
+
+    /// <summary>
+    ///     Loads a plugin whose files were just replaced. When the new version does not load, the previous files
+    ///     are put back and, if it was running, the previous version is loaded again; the failure is then thrown.
+    /// </summary>
+    internal static async Task LoadReplacementAsync(
+        PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy,
+        string id, string version, PluginReplacement replacement, bool wasLoaded)
+    {
+        await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
+        if (IsLoaded())
+        {
+            replacement.Commit();
+            return;
+        }
+
+        var loadError = pluginManager.GetPluginLoadError(id) ?? "请检查宿主日志";
+        try
+        {
+            replacement.Rollback();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"插件 {id} 的新版本 {version} 加载失败（{loadError}），恢复旧版本文件也失败: {ex.Message}");
+        }
+
+        if (!wasLoaded)
+            throw new InvalidOperationException($"插件 {id} 的新版本 {version} 加载失败，已恢复旧版本文件: {loadError}");
+        await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
+        throw new InvalidOperationException(IsLoaded()
+            ? $"插件 {id} 的新版本 {version} 加载失败，已恢复并重新加载旧版本: {loadError}"
+            : $"插件 {id} 的新版本 {version} 加载失败，旧版本文件已恢复但未能重新加载: {loadError}");
+
+        bool IsLoaded()
+        {
+            return pluginManager.GetLoadedPluginSnapshot().Any(plugin =>
+                string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase));
         }
     }
 
@@ -172,13 +212,18 @@ internal static class PluginUpdateService
     ///     config.toml stay. The package is staged first; when the running version cannot be unloaded or its
     ///     files are locked, the staged package waits for the next start and the current version keeps running.
     /// </summary>
+    /// <param name="keepPrevious">
+    ///     Keep the replaced files until the caller commits or rolls back the returned replacement; otherwise
+    ///     they are dropped before returning.
+    /// </param>
     internal static async Task<PluginReplacement> ReplaceInstalledPluginAsync(
         PluginManager pluginManager,
         HostEventDispatcher eventDispatcher,
         PluginRouteConfig routePolicy,
         PluginUploadPackage package,
         InstalledPluginInfo installed,
-        LoadedPluginHandle? loaded)
+        LoadedPluginHandle? loaded,
+        bool keepPrevious = false)
     {
         pluginManager.ValidateInstallCompatibility(package.EntryAssemblyPath);
         var root = pluginManager.PluginRootPath;
@@ -204,6 +249,7 @@ internal static class PluginUpdateService
             !await pluginManager.ScheduleUnloadPluginByName(eventDispatcher, loaded.Name).ConfigureAwait(false))
             return await KeepCurrentAsync("当前版本无法卸载（被其他插件依赖，或 OnUnload 执行失败）").ConfigureAwait(false);
 
+        StagedComponentUpdates.PackageApplication applied;
         try
         {
             if (isRootLevelFile)
@@ -214,7 +260,7 @@ internal static class PluginUpdateService
             }
 
             pluginManager.SuppressWatcherPath(targetDirectory);
-            StagedComponentUpdates.ApplyPackage(staging, targetDirectory);
+            applied = StagedComponentUpdates.BeginApplyPackage(staging, targetDirectory);
             pluginManager.SuppressWatcherPath(entryPath);
             TryDeleteDirectory(staging);
         }
@@ -225,30 +271,42 @@ internal static class PluginUpdateService
             return await KeepCurrentAsync(ex.Message).ConfigureAwait(false);
         }
 
-        // A disabled install is a renamed copy of the entry DLL, not one of the package's files.
-        if (!isRootLevelFile && installedPath.EndsWith(DisabledPluginSuffix, StringComparison.OrdinalIgnoreCase))
+        var replacement = new PluginReplacement(entryPath, null, Commit, Rollback);
+        if (!keepPrevious) replacement.Commit();
+        return replacement;
+
+        void Commit()
+        {
+            applied.Commit();
+            // A disabled install is a renamed copy of the entry DLL, not one of the package's files.
+            if (!isRootLevelFile && installedPath.EndsWith(DisabledPluginSuffix, StringComparison.OrdinalIgnoreCase))
+                TryDeleteFile(installedPath);
+            if (isRootLevelFile) TryDeleteFile(installedPath + ".shirobot-old");
+        }
+
+        void Rollback()
+        {
+            pluginManager.SuppressWatcherPath(targetDirectory);
+            applied.Rollback();
+            if (isRootLevelFile && File.Exists(installedPath + ".shirobot-old"))
+            {
+                pluginManager.SuppressWatcherPath(installedPath);
+                File.Move(installedPath + ".shirobot-old", installedPath, true);
+            }
+
+            pluginManager.SuppressWatcherPath(targetDirectory);
+        }
+
+        static void TryDeleteFile(string path)
+        {
             try
             {
-                File.Delete(installedPath);
+                File.Delete(path);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
             }
-
-        if (!isRootLevelFile)
-        {
-            return new PluginReplacement(entryPath, null);
         }
-
-        try
-        {
-            File.Delete(installedPath + ".shirobot-old");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-        }
-
-        return new PluginReplacement(entryPath, null);
 
         async Task<PluginReplacement> KeepCurrentAsync(string reason)
         {
@@ -361,5 +419,24 @@ internal static class PluginUpdateService
 
     internal sealed record PluginUpdateResult(bool PendingRestart, string Message, string? Reason = null);
 
-    internal sealed record PluginReplacement(string? EntryPath, string? PendingReason);
+    /// <summary>
+    ///     Outcome of replacing an installed plugin's files. With <c>keepPrevious</c>, call <see cref="Commit" />
+    ///     once the new version runs or <see cref="Rollback" /> to put the previous files back.
+    /// </summary>
+    internal sealed record PluginReplacement(
+        string? EntryPath,
+        string? PendingReason,
+        Action? CommitAction = null,
+        Action? RollbackAction = null)
+    {
+        public void Commit()
+        {
+            CommitAction?.Invoke();
+        }
+
+        public void Rollback()
+        {
+            RollbackAction?.Invoke();
+        }
+    }
 }
