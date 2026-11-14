@@ -233,6 +233,9 @@ public static class Program
             }
 
             var adapterPackages = new AdapterPackageManager(adapterRoot, coreConfigPath);
+            var deletedAdapters = adapterPackages.ApplyStagedDeletions();
+            foreach (var id in deletedAdapters.Applied) CH.Success($"已删除待卸载适配器: {id}");
+            foreach (var (id, error) in deletedAdapters.Failed) CH.Warning($"删除适配器 {id} 失败，下次启动将重试: {error}");
             ReportStagedUpdates("Adapter", adapterPackages.ApplyStagedUpdates());
             adapterPackages.InitializeInstances();
             var adapterPaths = ResolveAdapterPaths(coreConfig, parserResult.GetValue(adapterOption), adapterPackages);
@@ -598,8 +601,9 @@ public static class Program
                     break;
                 case "remove-package":
                     var removePackageId = GetCommandArgument(args, 2);
-                    packages.Uninstall(removePackageId);
-                    Console.WriteLine($"Removed adapter package and all its instances: {removePackageId}.");
+                    Console.WriteLine(packages.Uninstall(removePackageId)
+                        ? $"Removed adapter package and all its instances: {removePackageId}."
+                        : $"Adapter package {removePackageId} is uninstalled; files still in use are removed at the next start.");
                     break;
                 case "verify":
                     var verifyPath = GetCommandArgument(args, 2);

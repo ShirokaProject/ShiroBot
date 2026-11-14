@@ -297,7 +297,12 @@ internal sealed partial class AdapterManager(
         }
     }
 
-    public async Task StopByIdAsync(string id)
+    /// <param name="id">Instance to stop.</param>
+    /// <param name="force">
+    ///     Remove the instance even when its StopAsync fails or times out, for deleting it: the host drops its
+    ///     own references and reports <see cref="ComponentUnloadPendingException" />, since adapter code may still run.
+    /// </param>
+    public async Task StopByIdAsync(string id, bool force = false)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
         try
@@ -310,8 +315,53 @@ internal sealed partial class AdapterManager(
             }
 
             if (entry is null) return;
-            await StopAndRemoveAsync(entry).ConfigureAwait(false);
+            try
+            {
+                await StopAndRemoveAsync(entry, force: force).ConfigureAwait(false);
+            }
+            finally
+            {
+                UpdateRuntimeState();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    ///     Reloads the instances of <paramref name="assemblyPath" /> when the installed file differs from the one
+    ///     they were loaded from. Installs, updates and removals made by the host itself also raise file events;
+    ///     those leave nothing to reload, and must not restart adapters.
+    /// </summary>
+    public async Task<bool> ReloadChangedAsync(string assemblyPath)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var path = Path.GetFullPath(assemblyPath);
+            AdapterEntry[] entries;
+            lock (_sync)
+            {
+                entries =
+                [
+                    .. _entries.Values.Where(entry =>
+                        string.Equals(entry.AssemblyPath, path, StringComparison.OrdinalIgnoreCase))
+                ];
+            }
+
+            var source = new FileInfo(path);
+            if (!source.Exists || source.Length == 0) return false;
+            entries =
+            [
+                .. entries.Where(entry => entry.SourceLength != source.Length ||
+                                          entry.SourceLastWriteTimeUtc != source.LastWriteTimeUtc)
+            ];
+            if (entries.Length == 0) return false;
+            foreach (var entry in entries) await ReloadEntryAsync(entry).ConfigureAwait(false);
             UpdateRuntimeState();
+            return true;
         }
         finally
         {
@@ -447,11 +497,11 @@ internal sealed partial class AdapterManager(
         }
     }
 
-    private async Task StopAndRemoveAsync(AdapterEntry entry, bool waitForAssemblyRelease = true)
+    private async Task StopAndRemoveAsync(AdapterEntry entry, bool waitForAssemblyRelease = true, bool force = false)
     {
         try
         {
-            await StopEntryAsync(entry, waitForAssemblyRelease).ConfigureAwait(false);
+            await StopEntryAsync(entry, waitForAssemblyRelease, force).ConfigureAwait(false);
             if (waitForAssemblyRelease) TryDeleteDirectory(entry.ShadowRoot);
         }
         finally
@@ -602,12 +652,20 @@ internal sealed partial class AdapterManager(
         }
     }
 
-    private async Task StopEntryAsync(AdapterEntry entry, bool waitForAssemblyRelease = true)
+    private async Task StopEntryAsync(AdapterEntry entry, bool waitForAssemblyRelease = true, bool force = false)
     {
         // Run the resource-holding part in its own method. Under Runtime Async the evaluating frame
         // may keep locals alive across an await even after they are set to null, which would pin the
         // collectible adapter assembly. Returning from that method releases its frame before the check.
-        var pending = await BeginAdapterUnloadAsync(entry).ConfigureAwait(false);
+        var pending = await BeginAdapterUnloadAsync(entry, force).ConfigureAwait(false);
+        if (pending.StopError is { } stopError)
+        {
+            var error = new ComponentUnloadPendingException(
+                $"Adapter {pending.Name} 的 StopAsync 未能完成（{stopError}），已强制移除；它的代码可能仍在运行，重启宿主后才能完全卸载。");
+            RecordError(pending.Id, error);
+            throw error;
+        }
+
         if (!waitForAssemblyRelease)
         {
             RecordAdapterLifecycle(pending.Id, "info",
@@ -641,7 +699,7 @@ internal sealed partial class AdapterManager(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private async Task<AdapterUnloadPending> BeginAdapterUnloadAsync(AdapterEntry entry)
+    private async Task<AdapterUnloadPending> BeginAdapterUnloadAsync(AdapterEntry entry, bool force = false)
     {
         var adapter = entry.Adapter ?? throw new InvalidOperationException($"Adapter {entry.Metadata.Name} 已进入卸载状态。");
         var subscription = entry.EventSubscription ??
@@ -658,6 +716,7 @@ internal sealed partial class AdapterManager(
             entry.Configurable is null ? null : new WeakReference(entry.Configurable),
             entry.CurrentConfig is null ? null : new WeakReference(entry.CurrentConfig));
         var startedAt = Stopwatch.StartNew();
+        string? stopError = null;
         RecordAdapterLifecycle(adapterId, "info",
             $"unload begin; assembly={assemblyPath}; adapter_ref={RuntimeHelpers.GetHashCode(adapter)}; subscription_ref={RuntimeHelpers.GetHashCode(subscription)}");
 
@@ -673,15 +732,20 @@ internal sealed partial class AdapterManager(
             // Start unloading only after StopAsync succeeds so a failed stop remains retryable.
             RecordAdapterLifecycle(adapterId, "error",
                 $"unload aborted in StopAsync after {startedAt.ElapsedMilliseconds} ms: {ex}");
-            throw;
+            if (!force) throw;
+            // The instance is being deleted: a stop that fails or hangs must not keep it installed forever.
+            stopError = ex is TimeoutException ? "超时" : ex.Message;
+            await ReleaseFailedStopAsync(adapter).ConfigureAwait(false);
         }
 
-        RecordAdapterLifecycle(adapterId, "info", $"StopAsync completed in {startedAt.ElapsedMilliseconds} ms");
+        if (stopError is null)
+            RecordAdapterLifecycle(adapterId, "info", $"StopAsync completed in {startedAt.ElapsedMilliseconds} ms");
         try
         {
             entry.ConfigWatch?.Dispose();
             RecordAdapterLifecycle(adapterId, "info", "config watcher disposed");
-            await subscription.DisposeAsync().ConfigureAwait(false);
+            var drained = subscription.DisposeAsync().AsTask();
+            await (force ? drained.WaitAsync(TimeSpan.FromSeconds(10)) : drained).ConfigureAwait(false);
             RecordAdapterLifecycle(adapterId, "info",
                 $"event subscription drained in {startedAt.ElapsedMilliseconds} ms");
         }
@@ -689,7 +753,8 @@ internal sealed partial class AdapterManager(
         {
             RecordAdapterLifecycle(adapterId, "error",
                 $"unload cleanup failed after {startedAt.ElapsedMilliseconds} ms: {ex}");
-            throw;
+            if (!force) throw;
+            stopError ??= ex is TimeoutException ? "事件订阅清理超时" : ex.Message;
         }
 
         botContext.UnregisterAdapter(adapter);
@@ -699,7 +764,24 @@ internal sealed partial class AdapterManager(
         var weakReference = loader.BeginUnload();
         // This frame, including adapter/subscription/loader, is discarded when the method returns,
         // before StopEntryAsync waits for the collectible context to be released.
-        return new AdapterUnloadPending(adapterId, adapterName, assemblyPath, references, weakReference, startedAt);
+        return new AdapterUnloadPending(adapterId, adapterName, assemblyPath, references, weakReference, startedAt,
+            stopError);
+    }
+
+    /// <summary>Best-effort release of what a successful stop would have released.</summary>
+    private static async Task ReleaseFailedStopAsync(IBotAdapter adapter)
+    {
+        try
+        {
+            if ((adapter as ILifetimeAwareAdapter)?.Lifetime is PluginLifetimeScope scope)
+                await scope.DisposeResourcesAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            BotLog.Warning($"强制移除 Adapter 时释放资源失败: {ex.Message}");
+        }
+
+        DashboardOwners.Remove(adapter);
     }
 
     private void RecordAdapterLifecycle(string adapterId, string level, string message)
@@ -894,7 +976,8 @@ internal sealed partial class AdapterManager(
         string AssemblyPath,
         AdapterUnloadReferences References,
         WeakReference? AlcReference,
-        Stopwatch Started);
+        Stopwatch Started,
+        string? StopError = null);
 
     private sealed record AdapterUnloadReferences(
         WeakReference Adapter,
@@ -943,6 +1026,12 @@ internal sealed partial class AdapterManager(
         public object? CurrentConfig { get; set; } = currentConfig;
         public string? ShadowRoot { get; } = shadowRoot;
         public string? ShadowAssemblyPath { get; } = shadowAssemblyPath;
+
+        // The installed file this instance was loaded from, to tell a real change from the host's own writes.
+        public long SourceLength { get; } = File.Exists(assemblyPath) ? new FileInfo(assemblyPath).Length : 0;
+
+        public DateTime SourceLastWriteTimeUtc { get; } =
+            File.Exists(assemblyPath) ? File.GetLastWriteTimeUtc(assemblyPath) : default;
 
         public void ReleaseRuntimeReferences()
         {

@@ -5,6 +5,7 @@ using System.Text.Json;
 using ShiroBot.Adapters.Compatibility;
 using ShiroBot.Components.Updates;
 using ShiroBot.Configuration;
+using ShiroBot.Plugins.Loading;
 using Tomlyn;
 
 namespace ShiroBot.Adapters;
@@ -250,6 +251,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
 
     public InstalledAdapterPackage Install(AdapterPackageProbe package, bool enabled)
     {
+        EnsureNotPendingDeletion(package.Id);
         if (Get(package.Id) is not null) InitializeInstances();
         Directory.CreateDirectory(_root);
         var target = GetAdapterDirectory(package.Id);
@@ -279,6 +281,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
             }
 
             TryDeleteDirectory(backup);
+            DiscardSupersededUpdate(package.Id);
             var installed = new InstalledAdapterPackage(package.Id, Path.Combine(target, entryRelativePath), enabled,
                 package.Name, package.Version, package.Description, package.Platform);
             if (fresh) EnsureInstanceConfig(installed);
@@ -304,6 +307,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         Func<InstalledAdapterPackage, Task>? restore = null,
         bool activateWhenDisabled = false)
     {
+        EnsureNotPendingDeletion(package.Id);
         if (Get(package.Id) is not null) InitializeInstances();
         Directory.CreateDirectory(_root);
         var target = GetAdapterDirectory(package.Id);
@@ -332,6 +336,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                 SetPackageEnabled(package.Id, enabled);
                 if (enabled || activateWhenDisabled) await activate(installed).ConfigureAwait(false);
                 TryDeleteDirectory(backup);
+                DiscardSupersededUpdate(package.Id);
                 return new AdapterInstallResult(installed, null);
             }
             catch (Exception activationError) when (previous is null)
@@ -363,6 +368,11 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
                         }
                 }
 
+                // A shared contract DLL already loaded into the default context cannot be swapped live: the
+                // package is fine, it only needs a restart, so let the caller stage it instead of giving up.
+                if (activationError is SharedAssemblyRestartRequiredException)
+                    throw new ComponentUnloadPendingException(
+                        $"Adapter {package.Id} 的共享程序集已更新，需要重启宿主后才能替换；已恢复旧版本继续运行。");
                 throw new InvalidOperationException($"Adapter 启动失败，已恢复旧版本: {activationError.Message}", activationError);
             }
         }
@@ -385,6 +395,7 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
     public void StageUpdate(AdapterPackageProbe package, bool enabled)
     {
         ValidateId(package.Id);
+        EnsureNotPendingDeletion(package.Id);
         var staging = StagedComponentUpdates.GetStagingDirectory(_root, package.Id);
         TryDeleteDirectory(staging);
         CopyPackageFiles(package, staging);
@@ -407,14 +418,77 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         return List().FirstOrDefault(package => string.Equals(package.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
-    public void Uninstall(string id)
+    /// <summary>
+    ///     Removes a package and its instances. Returns false when files are still in use (a native library or a
+    ///     shared assembly the process keeps mapped): the removal is then recorded and finished at the next start,
+    ///     and the package is hidden meanwhile.
+    /// </summary>
+    public bool Uninstall(string id)
     {
         var path = GetAdapterDirectory(id);
         if (!IsStrictChild(_root, path)) throw new InvalidOperationException("拒绝删除 Adapter 根目录之外的路径。");
         StagedComponentUpdates.DiscardStaged(_root, id);
-        if (Get(id) is not null) SetPackageEnabled(id, false);
-        if (Directory.Exists(path)) Directory.Delete(path, true);
+        DisableProtocol(id);
         TryDeleteCacheFile(GetMetadataCachePath(path));
+        if (!Directory.Exists(path)) return true;
+        try
+        {
+            Directory.Delete(path, true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StagedComponentUpdates.StageDeletion(_root, id, path, true);
+            return false;
+        }
+    }
+
+    /// <summary>True while files of a package remain on disk, even if it can no longer be read as a package.</summary>
+    public bool HasPackageFiles(string id)
+    {
+        return Directory.Exists(GetAdapterDirectory(id));
+    }
+
+    public bool HasStagedDeletion(string id)
+    {
+        return StagedComponentUpdates.HasStagedDeletion(_root, id);
+    }
+
+    /// <summary>Finishes removals recorded by <see cref="Uninstall" />; call at startup before adapters are loaded.</summary>
+    public (IReadOnlyList<string> Applied, IReadOnlyList<(string Id, string Error)> Failed) ApplyStagedDeletions()
+    {
+        return StagedComponentUpdates.ApplyStagedDeletions(_root);
+    }
+
+    private void EnsureNotPendingDeletion(string id)
+    {
+        if (HasStagedDeletion(id))
+            throw new InvalidOperationException($"适配器 {id} 已登记删除任务，请先重启宿主完成删除，再重新安装。");
+    }
+
+    /// <summary>A package installed live replaces whatever older package was waiting for a restart.</summary>
+    private void DiscardSupersededUpdate(string id)
+    {
+        try
+        {
+            StagedComponentUpdates.DiscardStaged(_root, id);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>Drops the package from the core config's protocols even when its files can no longer be read.</summary>
+    private void DisableProtocol(string id)
+    {
+        lock (ProtocolGate)
+        {
+            var current = ReadProtocols();
+            var protocols = current.Where(value =>
+                !string.Equals(value.Trim(), id, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (protocols.Length == current.Length) return;
+            new ConfigManager(CoreConfigPath).SetConfigValue(CoreConfigPath, "protocols", protocols);
+        }
     }
 
     private string GetMetadataCachePath(string directory)
@@ -430,6 +504,8 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         {
             var id = Path.GetFileName(directory);
             if (id.StartsWith('.')) return null;
+            // A package waiting for its files to be removed is already uninstalled as far as the host is concerned.
+            if (StagedComponentUpdates.HasStagedDeletion(_root, id)) return null;
             var files = Directory.EnumerateFiles(directory, "*.dll", SearchOption.AllDirectories)
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .Select(path => new FileInfo(path))

@@ -15,6 +15,12 @@ internal sealed class ComponentReloadCoordinator(AdapterManager adapterManager)
         return ExecuteAdapterMutationAsync(() => adapterManager.ReloadAsync(assemblyPath));
     }
 
+    /// <summary>Reloads the instances of a watched adapter DLL only when the file really changed.</summary>
+    public Task<bool> ReloadChangedAdapterAsync(string assemblyPath)
+    {
+        return ExecuteAdapterMutationAsync(() => adapterManager.ReloadChangedAsync(assemblyPath));
+    }
+
     public Task ReloadAdapterByIdAsync(string id)
     {
         return ExecuteAdapterMutationAsync(() => adapterManager.ReloadByIdAsync(id));

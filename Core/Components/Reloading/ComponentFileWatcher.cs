@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ShiroBot.SDK.Abstractions;
 
 namespace ShiroBot.Components.Reloading;
@@ -6,6 +7,7 @@ internal sealed class ComponentFileWatcher : IDisposable
 {
     private readonly Timer _adapterTimer;
     private readonly FileSystemWatcher[] _adapterWatchers;
+    private readonly ConcurrentDictionary<string, byte> _changedAdapterPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ComponentReloadCoordinator _coordinator;
     private int _disposed;
 
@@ -25,8 +27,10 @@ internal sealed class ComponentFileWatcher : IDisposable
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(directory => CreateWatcher(directory!, false, path =>
                 {
-                    if (resolvedAdapterPaths.Contains(Path.GetFullPath(path)))
-                        _adapterTimer.Change(750, Timeout.Infinite);
+                    var fullPath = Path.GetFullPath(path);
+                    if (!resolvedAdapterPaths.Contains(fullPath)) return;
+                    _changedAdapterPaths[fullPath] = 0;
+                    _adapterTimer.Change(750, Timeout.Infinite);
                 }))
         ];
     }
@@ -41,14 +45,19 @@ internal sealed class ComponentFileWatcher : IDisposable
     private async Task ReloadAdapterAsync()
     {
         if (Volatile.Read(ref _disposed) != 0) return;
-        try
+        // Only the adapter whose DLL changed is reloaded; the others keep their connections.
+        foreach (var path in _changedAdapterPaths.Keys)
         {
-            await _coordinator.ReloadAdapterAsync().ConfigureAwait(false);
-            BotLog.Info("检测到 Adapter 文件变化，热重载完成。");
-        }
-        catch (Exception ex)
-        {
-            BotLog.Error("Adapter 自动热重载失败: " + ex.Message);
+            if (!_changedAdapterPaths.TryRemove(path, out _)) continue;
+            try
+            {
+                if (await _coordinator.ReloadChangedAdapterAsync(path).ConfigureAwait(false))
+                    BotLog.Info($"检测到 Adapter 文件变化，热重载完成: {Path.GetFileName(path)}");
+            }
+            catch (Exception ex)
+            {
+                BotLog.Error($"Adapter 自动热重载失败: {Path.GetFileName(path)} - {ex.Message}");
+            }
         }
     }
 

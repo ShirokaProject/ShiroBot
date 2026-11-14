@@ -534,9 +534,17 @@ internal sealed partial class HostHttpServer
             {
                 try
                 {
-                    if (adapterPackages.Get(id) is null)
-                        return Results.NotFound(new { error = "adapter_not_found", message = $"未找到适配器包: {id}" });
+                    // A package whose files are damaged or half removed is no longer listed, but must stay removable.
+                    if (adapterPackages.Get(id) is null && !adapterPackages.HasPackageFiles(id))
+                        return adapterPackages.HasStagedDeletion(id)
+                            ? Results.Ok(new
+                            {
+                                ok = true, restartRequired = true, pendingDelete = true,
+                                message = "适配器包已登记删除，重启宿主后完成清理。"
+                            })
+                            : Results.NotFound(new { error = "adapter_not_found", message = $"未找到适配器包: {id}" });
                     var restartRequired = false;
+                    var removed = true;
                     await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                     {
                         foreach (var instance in adapterPackages.ListInstances().Where(item =>
@@ -548,7 +556,8 @@ internal sealed partial class HostHttpServer
                             if (adapterManager.LoadedIds.Contains(instance.Id, StringComparer.OrdinalIgnoreCase))
                                 try
                                 {
-                                    await adapterManager.StopByIdAsync(instance.Id).ConfigureAwait(false);
+                                    // Deleting must not depend on the adapter stopping cleanly.
+                                    await adapterManager.StopByIdAsync(instance.Id, true).ConfigureAwait(false);
                                 }
                                 catch (ComponentUnloadPendingException)
                                 {
@@ -558,8 +567,19 @@ internal sealed partial class HostHttpServer
                             adapterManager.ForgetRemovedAdapter(instance.Id);
                         }
 
-                        adapterPackages.Uninstall(id);
+                        removed = adapterPackages.Uninstall(id);
                     }).ConfigureAwait(false);
+                    if (!removed)
+                    {
+                        runtimeState.RecommendRestart("adapter-delete:" + id,
+                            $"适配器 {id} 的文件仍被占用，需要重启宿主完成删除。");
+                        return Results.Ok(new
+                        {
+                            ok = true, restartRequired = true, pendingDelete = true,
+                            message = "适配器包及实例已卸载，部分文件仍被占用，重启宿主后完成清理。"
+                        });
+                    }
+
                     return Results.Ok(new
                     {
                         ok = true, restartRequired, message = restartRequired ? "适配器包及实例已删除，重启后释放残留程序集。" : "适配器包及实例已删除。"
@@ -642,7 +662,7 @@ internal sealed partial class HostHttpServer
                         if (adapterManager.LoadedIds.Contains(id, StringComparer.OrdinalIgnoreCase))
                             try
                             {
-                                await adapterManager.StopByIdAsync(id).ConfigureAwait(false);
+                                await adapterManager.StopByIdAsync(id, true).ConfigureAwait(false);
                             }
                             catch (ComponentUnloadPendingException)
                             {
