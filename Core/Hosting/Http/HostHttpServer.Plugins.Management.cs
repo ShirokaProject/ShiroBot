@@ -311,6 +311,14 @@ internal sealed partial class HostHttpServer
                             : Results.NotFound(new { ok = false, message = $"未找到插件文件: {id}" });
 
                     var canonicalId = plugin?.Name ?? pluginManager.TryProbePluginInfoFile(targetPath)?.Id ?? id;
+                    // A plugin others still use keeps running, so recording its deletion would only break them
+                    // at the next start. The owner has to remove or unload the dependents first.
+                    if (plugin is not null && pluginManager.GetLoadedDependents(plugin.Name) is { Count: > 0 } dependents)
+                        return Results.Conflict(new
+                        {
+                            ok = false, error = "plugin_in_use",
+                            message = $"插件 {canonicalId} 正被以下插件依赖，请先停用或删除它们: {string.Join(", ", dependents)}"
+                        });
                     var deletion = GetPluginDeleteTarget(pluginManager.PluginRootPath, targetPath, canonicalId);
                     // Persist intent before unloading, so interruption cannot resurrect a staged package.
                     StagedComponentUpdates.StageDeletion(pluginManager.PluginRootPath, canonicalId, deletion.Path,
@@ -320,10 +328,24 @@ internal sealed partial class HostHttpServer
                                  string.Equals(request.Name, canonicalId, StringComparison.OrdinalIgnoreCase)))
                         Updater.CancelUpdate(request.Id);
 
-                    if (plugin is not null && !await pluginManager
-                            .ScheduleUnloadPluginByName(eventDispatcher, plugin.Name)
-                            .ConfigureAwait(false))
-                        return PendingDeletion("当前版本无法卸载，可能仍被其他插件依赖或 OnUnload 执行失败。");
+                    if (plugin is not null)
+                        switch (await pluginManager.UnloadPluginAsync(eventDispatcher, plugin.Name)
+                                    .ConfigureAwait(false))
+                        {
+                            case PluginUnloadOutcome.BlockedByDependents:
+                                StagedComponentUpdates.DiscardStaged(pluginManager.PluginRootPath, canonicalId);
+                                return Results.Conflict(new
+                                {
+                                    ok = false, error = "plugin_in_use",
+                                    message = $"插件 {canonicalId} 正被其他插件依赖，请先停用或删除依赖它的插件。"
+                                });
+                            case PluginUnloadOutcome.TimedOut:
+                                return PendingDeletion("插件未在限定时间内完成卸载，它的代码可能仍在运行。");
+                            case PluginUnloadOutcome.ShuttingDown:
+                                return PendingDeletion("宿主正在退出。");
+                            // Failed: OnUnload threw, but the instance is torn down and loaded from a shadow copy,
+                            // so its files can go now instead of lingering until a restart.
+                        }
 
                     pluginManager.SuppressWatcherPath(deletion.Path);
                     try
@@ -373,24 +395,36 @@ internal sealed partial class HostHttpServer
 
             api.MapPost("/plugins/{id}/update", async (string id, HttpContext context) =>
             {
-                var plugin = FindLoadedPlugin(pluginManager, id);
-                if (plugin is null) return Results.NotFound(new { ok = false, message = $"未找到已加载插件: {id}" });
+                // An installed plugin that failed to load is exactly the one an update may fix.
+                var loadedPlugin = FindLoadedPlugin(pluginManager, id);
+                var installedInfo = loadedPlugin is null && pluginManager.ResolveFirstPluginLoadCandidate(id) is { } path
+                    ? pluginManager.TryProbePluginInfoFile(path)
+                    : null;
+                if (loadedPlugin is null && installedInfo is null)
+                    return Results.NotFound(new { ok = false, message = $"未找到已安装插件: {id}" });
+                var plugin = new
+                {
+                    Name = loadedPlugin?.Name ?? installedInfo!.Id,
+                    GithubRepo = loadedPlugin?.GithubRepo ?? installedInfo?.GithubRepo,
+                    Version = loadedPlugin?.Version ?? installedInfo!.Version
+                };
 
                 if (string.IsNullOrWhiteSpace(plugin.GithubRepo))
                     return Results.BadRequest(new { ok = false, message = $"插件 {plugin.Name} 未配置 GithubRepo" });
 
-                var update = await Updater.CheckGitHubPluginPackageUpdateAsync(
-                    plugin.GithubRepo,
-                    plugin.Version,
-                    cancellationToken: context.RequestAborted).ConfigureAwait(false);
-                if (update is null) return Results.Ok(new { ok = true, message = $"插件 {plugin.Name} 已是最新版本" });
-
-                if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) || string.IsNullOrWhiteSpace(update.AssetName))
-                    return Results.BadRequest(new
-                        { ok = false, message = $"插件 {plugin.Name} 有新版本，但 release 中没有可用的 zip 或 dll 插件包" });
-
                 try
                 {
+                    var update = await Updater.CheckGitHubPluginPackageUpdateAsync(
+                        plugin.GithubRepo,
+                        plugin.Version,
+                        cancellationToken: context.RequestAborted).ConfigureAwait(false);
+                    if (update is null) return Results.Ok(new { ok = true, message = $"插件 {plugin.Name} 已是最新版本" });
+
+                    if (string.IsNullOrWhiteSpace(update.AssetDownloadUrl) ||
+                        string.IsNullOrWhiteSpace(update.AssetName))
+                        return Results.BadRequest(new
+                            { ok = false, message = $"插件 {plugin.Name} 有新版本，但 release 中没有可用的 zip 或 dll 插件包" });
+
                     var result = await PluginUpdateService.ApplyAsync(pluginManager, eventDispatcher, routePolicy,
                         plugin.Name, update.AssetDownloadUrl, update.AssetName, update.LatestVersion,
                         context.RequestAborted).ConfigureAwait(false);

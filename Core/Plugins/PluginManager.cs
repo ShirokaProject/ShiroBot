@@ -32,6 +32,23 @@ internal sealed record PluginProbeInfo(
     IReadOnlyList<string> Dependencies,
     int Priority = BotPluginAttribute.DefaultPriority);
 
+/// <summary>How an unload request ended.</summary>
+internal enum PluginUnloadOutcome
+{
+    Unloaded,
+    NotLoaded,
+
+    /// <summary>Other loaded plugins depend on it; it keeps running.</summary>
+    BlockedByDependents,
+
+    /// <summary>OnUnload threw; the instance was torn down anyway and no longer runs.</summary>
+    Failed,
+
+    /// <summary>Its handlers or OnUnload did not finish in time; its code may still be running.</summary>
+    TimedOut,
+    ShuttingDown
+}
+
 internal sealed record PluginProbeCacheEntry(long Length, DateTime LastWriteTimeUtc, PluginProbeInfo? Info);
 
 internal sealed class PluginManager(
@@ -566,7 +583,30 @@ internal sealed class PluginManager(
     ///     it, OnUnload failed or timed out); an assembly that stays referenced afterwards still counts as
     ///     unloaded, because a replacement loads into a fresh context alongside it.
     /// </summary>
-    public Task<bool> ScheduleUnloadPluginByName(
+    public async Task<bool> ScheduleUnloadPluginByName(
+        HostEventDispatcher hostEventDispatcher,
+        string pluginName)
+    {
+        return await UnloadPluginAsync(hostEventDispatcher, pluginName).ConfigureAwait(false)
+            is PluginUnloadOutcome.Unloaded or PluginUnloadOutcome.NotLoaded;
+    }
+
+    /// <summary>Names of the loaded plugins that declare a dependency on <paramref name="pluginName" />.</summary>
+    public IReadOnlyList<string> GetLoadedDependents(string pluginName)
+    {
+        lock (PluginLifecycleLock)
+        {
+            return
+            [
+                .. _loadedPlugins
+                    .Where(plugin => plugin.Dependencies.Contains(pluginName, StringComparer.OrdinalIgnoreCase))
+                    .Select(plugin => plugin.Name)
+            ];
+        }
+    }
+
+    /// <summary>Like <see cref="ScheduleUnloadPluginByName" />, but says why a plugin was not unloaded.</summary>
+    internal Task<PluginUnloadOutcome> UnloadPluginAsync(
         HostEventDispatcher hostEventDispatcher,
         string pluginName)
     {
@@ -575,7 +615,7 @@ internal sealed class PluginManager(
             if (_isShuttingDown)
             {
                 CH.Warning($"程序正在退出，忽略热卸载请求: {pluginName}");
-                return Task.FromResult(false);
+                return Task.FromResult(PluginUnloadOutcome.ShuttingDown);
             }
         }
 
@@ -596,7 +636,7 @@ internal sealed class PluginManager(
                     CH.Warning(
                         $"无法卸载插件 {pluginHandle.Name}，以下已加载插件依赖它: " +
                         string.Join(", ", dependents));
-                    return Task.FromResult(false);
+                    return Task.FromResult(PluginUnloadOutcome.BlockedByDependents);
                 }
 
                 _loadedPlugins.Remove(pluginHandle);
@@ -608,7 +648,7 @@ internal sealed class PluginManager(
         if (pluginHandle is null)
         {
             CH.Warning($"未找到已加载插件: {pluginName}");
-            return Task.FromResult(true);
+            return Task.FromResult(PluginUnloadOutcome.NotLoaded);
         }
 
         CH.Info($"已加入热卸载队列: {pluginHandle.Name}");
@@ -620,11 +660,11 @@ internal sealed class PluginManager(
 
         {
             CH.Warning($"程序正在退出，取消热卸载任务: {pluginHandle.Name}");
-            return Task.FromResult(false);
+            return Task.FromResult(PluginUnloadOutcome.ShuttingDown);
         }
     }
 
-    private async Task<bool> ProcessPluginUnloadAsync(
+    private async Task<PluginUnloadOutcome> ProcessPluginUnloadAsync(
         LoadedPluginHandle pluginHandle)
     {
         await PluginLifecycleSemaphore.WaitAsync();
@@ -644,7 +684,9 @@ internal sealed class PluginManager(
                 runtimeState.RecordEvent(error, "error");
                 runtimeState.RecommendRestart("plugin:" + unloadResult.Name,
                     $"插件 {unloadResult.Name} 未完成卸载，建议重启宿主后继续更新。");
-                return false;
+                return unloadResult.Error is TimeoutException
+                    ? PluginUnloadOutcome.TimedOut
+                    : PluginUnloadOutcome.Failed;
             }
 
             CH.Info($"插件逻辑已卸载，正在后台验证程序集释放: {unloadResult.Name}");
@@ -669,12 +711,12 @@ internal sealed class PluginManager(
                 runtimeState.RecommendRestart("plugin:" + unloadResult.Name,
                     $"插件 {unloadResult.Name} 的旧程序集仍未释放，建议重启宿主完成清理。");
                 CH.Warning($"插件逻辑已卸载，但程序集仍有残留引用: {unloadResult.Name} ({unloadResult.AssemblyPath})，建议重启宿主以释放旧程序集。");
-                return true;
+                return PluginUnloadOutcome.Unloaded;
             }
 
             CH.Success($"插件热卸载成功: {unloadResult.Name}");
             runtimeState.RecordEvent($"{unloadResult.Name} 插件已卸载");
-            return true;
+            return PluginUnloadOutcome.Unloaded;
         }
         finally
         {
