@@ -518,6 +518,10 @@ public static class Program
             var path = ResolveAdapterPath(value) ?? installed.FirstOrDefault(package =>
                 string.Equals(package.Id, value.Trim(), StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(package.Name, value.Trim(), StringComparison.OrdinalIgnoreCase))?.AssemblyPath;
+            // Files left behind by a deletion that could not finish yet are not an adapter to start.
+            if (path is not null &&
+                StagedComponentUpdates.IsPendingDeletion(Path.Combine(BasePath, "adapters"), path))
+                continue;
             if (path is null)
             {
                 // One stale entry must not keep the host (and its Dashboard) from starting.

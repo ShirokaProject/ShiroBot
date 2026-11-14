@@ -701,6 +701,34 @@ internal static class UpdateIntegration
                             "A package waiting for removal is still listed, loaded or not recorded");
                         using var repeated = await host.Client.DeleteAsync($"adapter-packages/{AdapterId}");
                         Check(repeated.IsSuccessStatusCode, "Repeating a deferred adapter deletion failed");
+                        // Its files are still there, but for the host the package is gone: a fresh start lists
+                        // no package or instance, the deletion is retried, and nothing can start it by path.
+                        var entryPath = Path.Combine(folder, "ShiroBot.UpdateProbe.dll");
+                        var restarted = new AdapterPackageManager(adapterRoot, Path.Combine(host.Root, "config.toml"));
+                        var retried = restarted.ApplyStagedDeletions();
+                        // The interrupted removal may already have taken the entry DLL; leftovers that still
+                        // look like a complete adapter are the worst case.
+                        File.Copy(Path.Combine(fixtureDirectory, "v1", "ShiroBot.UpdateProbe.dll"), entryPath, true);
+                        Check(retried.Failed.Any(item => item.Id == AdapterId) && Directory.Exists(folder) &&
+                              restarted.List().Count == 0 && restarted.ListInstances().Count == 0 &&
+                              restarted.HasStagedDeletion(AdapterId),
+                            "A deletion that failed again at startup brought the adapter back");
+                        var startError = "";
+                        try
+                        {
+                            await host.Adapters.LoadOneAsync(entryPath, AdapterId);
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            startError = ex.Message;
+                        }
+
+                        host.Adapters.ForgetRemovedAdapter(AdapterId);
+                        Check(startError.Contains("已登记删除") && host.Adapters.LoadedIds.Count == 0,
+                            "An adapter waiting for deletion was started by path: " + startError);
+                        using (var listed = await host.Client.GetAsync("adapter-packages"))
+                            Check(!(await listed.Content.ReadAsStringAsync()).Contains(AdapterId,
+                                StringComparison.Ordinal), "An adapter waiting for deletion is still listed");
                         using var upload = new MultipartFormDataContent();
                         upload.Add(new ByteArrayContent(await File.ReadAllBytesAsync(Path.Combine(packages, "v2.zip"))),
                             "file", "v2.zip");
@@ -718,8 +746,8 @@ internal static class UpdateIntegration
                     var applied = host.AdapterPackages.ApplyStagedDeletions();
                     Check(applied.Applied.Contains(AdapterId) && applied.Failed.Count == 0 && !Directory.Exists(folder),
                         "Startup did not finish the deferred adapter deletion");
-                    return new { pending_delete = true, hidden_until_restart = true, reinstall_blocked = true,
-                        deleted_at_startup = true };
+                    return new { pending_delete = true, hidden_until_restart = true, never_restarted = true,
+                        reinstall_blocked = true, deleted_at_startup = true };
                 });
             await Scenario("adapter-staged", async host =>
             {

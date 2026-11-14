@@ -504,6 +504,16 @@ internal sealed partial class AdapterManager(
             await StopEntryAsync(entry, waitForAssemblyRelease, force).ConfigureAwait(false);
             if (waitForAssemblyRelease) TryDeleteDirectory(entry.ShadowRoot);
         }
+        catch (Exception ex) when (force && ex is not ComponentUnloadPendingException)
+        {
+            // Whatever went wrong while tearing it down, an instance being deleted must not stay registered.
+            RecordAdapterLifecycle(entry.Id, "error", $"forced removal after unload failure: {ex}");
+            entry.ReleaseRuntimeReferences();
+            var error = new ComponentUnloadPendingException(
+                $"Adapter {entry.Metadata.Name} 卸载时出错（{ex.Message}），已强制移除；重启宿主后才能完全卸载。");
+            RecordError(entry.Id, error);
+            throw error;
+        }
         finally
         {
             if (entry.Adapter is null)
@@ -518,6 +528,10 @@ internal sealed partial class AdapterManager(
         string? instanceId = null, string? configPath = null, string? instanceName = null)
     {
         TraceLoad("begin");
+        // A package recorded for deletion is uninstalled, whether or not its files could be removed yet;
+        // no start, reload or restore may bring it back.
+        if (StagedComponentUpdates.IsPendingDeletion(adapterRoot, logicalAssemblyPath ?? adapterPath))
+            throw new InvalidOperationException("该适配器已登记删除，不再加载；重启宿主完成删除后可重新安装。");
         if (!File.Exists(adapterPath)) throw new FileNotFoundException("Adapter DLL 不存在。", adapterPath);
 
         TraceLoad("metadata");
