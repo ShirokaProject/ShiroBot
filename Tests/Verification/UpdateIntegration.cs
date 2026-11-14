@@ -535,6 +535,22 @@ internal static class UpdateIntegration
                     "Deferred deletion was not persisted");
                 Check(Updater.GetPendingUpdates().All(request => request.Id != requestId),
                     "Deleting a plugin left its console update request pending");
+                // Its files are still there, but for the host the plugin is gone: not listed, not found by
+                // name or path, skipped by the startup scan and never loaded again.
+                var entryPath = Path.Combine(pluginFolder, "ShiroBot.UpdateProbe.dll");
+                using (var listed = await host.Client.GetAsync("plugins/list"))
+                    Check(!(await listed.Content.ReadAsStringAsync()).Contains(PluginId, StringComparison.Ordinal),
+                        "A plugin waiting for deletion is still listed");
+                Check(File.Exists(entryPath) && !PluginManager.EnumeratePluginEntryAssemblies(pluginRoot).Any() &&
+                      host.Plugins.ResolvePluginLoadCandidates(pluginRoot, PluginId).Count == 0 &&
+                      host.Plugins.ResolvePluginLoadCandidates(pluginRoot, entryPath).Count == 0,
+                    "A plugin waiting for deletion can still be found for loading");
+                await host.Plugins.ScheduleLoadPluginByName(host.Dispatcher, host.Policy, entryPath);
+                await host.Plugins.LoadPluginsAsync([entryPath], host.Dispatcher, host.Policy);
+                Check(host.Plugins.GetLoadedPluginSnapshot().Count == 0, "A plugin waiting for deletion was loaded again");
+                await host.PostAsync($"/plugins/{PluginId}/enable", new { }, true);
+                var again = await host.PostAsync($"/plugins/{PluginId}/delete", new { });
+                Check(again.GetProperty("pending_delete").GetBoolean(), "Repeating a deferred deletion failed");
                 var updates = StagedComponentUpdates.ApplyStaged(pluginRoot);
                 Check(updates.Applied.Count == 0 && updates.Failed.Count == 0, "An update ran over a pending deletion");
                 // A reinstall cannot replace the deletion marker with a fresh package.
@@ -558,8 +574,8 @@ internal static class UpdateIntegration
                 Check(!Directory.Exists(pluginFolder), "Pending deletion resurrected a staged update");
                 return new
                 {
-                    pending_delete = true, old_update_cancelled = true, reinstall_blocked = true,
-                    deleted_at_startup = true
+                    pending_delete = true, old_update_cancelled = true, hidden_and_never_reloaded = true,
+                    reinstall_blocked = true, deleted_at_startup = true
                 };
             });
             await Scenario("adapter-http", async host =>

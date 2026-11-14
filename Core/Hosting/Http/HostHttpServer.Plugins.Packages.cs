@@ -1,5 +1,6 @@
 using ShiroBot.Plugins;
 using ShiroBot.Plugins.Marketplace;
+using ShiroBot.Components.Updates;
 using static ShiroBot.Update.PluginUpdateService;
 
 namespace ShiroBot.Hosting.Http;
@@ -37,7 +38,9 @@ internal sealed partial class HostHttpServer
         if (!Directory.Exists(pluginRoot)) return null;
 
         var aliases = GetPluginIdAliases(id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var pendingDeletion = StagedComponentUpdates.GetStagedDeletionTargets(pluginRoot);
         return Directory.EnumerateFiles(pluginRoot, "*.dll.disable", SearchOption.AllDirectories)
+            .Where(path => !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(path =>
             {
@@ -85,7 +88,9 @@ internal sealed partial class HostHttpServer
         var pluginRoot = Path.GetFullPath(pluginRootPath);
         if (!Directory.Exists(pluginRoot)) yield break;
 
+        var pendingDeletion = StagedComponentUpdates.GetStagedDeletionTargets(pluginRoot);
         foreach (var path in Directory.EnumerateFiles(pluginRoot, "*.dll.disable", SearchOption.AllDirectories)
+                     .Where(path => !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, path))
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             var info = TryProbeDisabledPluginInfo(pluginManager, path);

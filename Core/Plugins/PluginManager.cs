@@ -135,9 +135,12 @@ internal sealed class PluginManager(
             "ShiroBot.SDK.dll"
         };
         var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // A plugin recorded for deletion stays uninstalled even while its files cannot be removed yet.
+        var pendingDeletion = StagedComponentUpdates.GetStagedDeletionTargets(pluginRoot);
 
         var rootLevelDlls = Directory.EnumerateFiles(pluginRoot, "*.dll", SearchOption.TopDirectoryOnly)
-            .Where(dll => !sharedAssemblies.Contains(Path.GetFileName(dll)))
+            .Where(dll => !sharedAssemblies.Contains(Path.GetFileName(dll)) &&
+                          !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, dll))
             .OrderBy(dll => dll, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -145,6 +148,7 @@ internal sealed class PluginManager(
             yield return normalizedPath;
 
         var pluginDirectories = Directory.EnumerateDirectories(pluginRoot)
+            .Where(directory => !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, directory))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -278,9 +282,11 @@ internal sealed class PluginManager(
 
         return;
 
+        // Files of a plugin recorded for deletion are leftovers, not something to load or reload.
         bool IsStaged(string path)
         {
-            return StagedComponentUpdates.IsStagingPath(pluginRoot, path);
+            return StagedComponentUpdates.IsStagingPath(pluginRoot, path) ||
+                   StagedComponentUpdates.IsPendingDeletion(pluginRoot, path);
         }
     }
 
@@ -360,6 +366,9 @@ internal sealed class PluginManager(
         if (_hotReloadEventDispatcher is null) return;
 
         var fullPath = Path.GetFullPath(path);
+        // The host's own replacements and rollbacks also delete the entry DLL for a moment. Such an event can
+        // arrive after the plugin is running again; only a file that is really gone means "unload it".
+        if (IsWatcherPathSuppressed(fullPath) || File.Exists(fullPath)) return;
         var loaded = GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
             string.Equals(Path.GetFullPath(plugin.AssemblyPath), fullPath, StringComparison.OrdinalIgnoreCase));
         if (loaded is not null) _ = ScheduleUnloadPluginByName(_hotReloadEventDispatcher, loaded.Name);
@@ -526,7 +535,9 @@ internal sealed class PluginManager(
         foreach (var entry in EnumeratePluginEntryAssemblies(pluginRoot, false).Where(yieldedPaths.Add))
             yield return entry;
 
+        var pendingDeletion = StagedComponentUpdates.GetStagedDeletionTargets(pluginRoot);
         foreach (var directory in Directory.EnumerateDirectories(pluginRoot)
+                     .Where(directory => !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, directory))
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
                      .Where(dll => !sharedAssemblies.Contains(Path.GetFileName(dll)))
@@ -860,6 +871,12 @@ internal sealed class PluginManager(
         try
         {
             var actualDllPath = Path.GetFullPath(dll);
+            if (StagedComponentUpdates.IsPendingDeletion(PluginRootPath, actualDllPath))
+            {
+                CH.Warning($"插件已登记删除，不再加载: {actualDllPath}");
+                return;
+            }
+
             var pluginInfo = preparedPluginInfo ?? ProbePluginInfo(actualDllPath);
 
             lock (PluginLifecycleLock)
@@ -1279,6 +1296,17 @@ internal sealed class PluginManager(
     }
 
     public IReadOnlyList<string> ResolvePluginLoadCandidates(string pluginRoot, string pluginNameOrPath)
+    {
+        var candidates = ResolvePluginLoadCandidatesCore(pluginRoot, pluginNameOrPath);
+        if (candidates.Count == 0) return candidates;
+        // Every way of naming a plugin ends here, so a plugin recorded for deletion cannot be found or loaded.
+        var pendingDeletion = StagedComponentUpdates.GetStagedDeletionTargets(pluginRoot);
+        return pendingDeletion.Count == 0
+            ? candidates
+            : [.. candidates.Where(path => !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, path))];
+    }
+
+    private IReadOnlyList<string> ResolvePluginLoadCandidatesCore(string pluginRoot, string pluginNameOrPath)
     {
         var normalizedInput = pluginNameOrPath.Trim();
 

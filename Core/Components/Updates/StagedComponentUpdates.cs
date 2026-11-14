@@ -64,6 +64,57 @@ internal static class StagedComponentUpdates
         return File.Exists(Path.Combine(GetStagingDirectory(componentRoot, id), DeleteTargetFileName));
     }
 
+    /// <summary>
+    ///     True when <paramref name="path" /> is, or lies inside, something recorded for deletion. Such a component
+    ///     is uninstalled as far as the host is concerned: it is not listed and never loaded again, whether or not
+    ///     its files could be removed yet.
+    /// </summary>
+    public static bool IsPendingDeletion(string componentRoot, string path)
+    {
+        var targets = GetStagedDeletionTargets(componentRoot);
+        return targets.Count > 0 && IsPendingDeletion(targets, path);
+    }
+
+    public static bool IsPendingDeletion(IReadOnlyList<string> targets, string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        return targets.Any(target => string.Equals(fullPath, target, StringComparison.OrdinalIgnoreCase) ||
+                                     fullPath.StartsWith(target + Path.DirectorySeparatorChar,
+                                         StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Full paths of the files and directories recorded for deletion under <paramref name="componentRoot" />.</summary>
+    public static IReadOnlyList<string> GetStagedDeletionTargets(string componentRoot)
+    {
+        var stagingRoot = Path.Combine(Path.GetFullPath(componentRoot), DirectoryName);
+        if (!Directory.Exists(stagingRoot)) return [];
+        var targets = new List<string>();
+        try
+        {
+            foreach (var staging in Directory.EnumerateDirectories(stagingRoot))
+            {
+                var marker = Path.Combine(staging, DeleteTargetFileName);
+                if (!File.Exists(marker)) continue;
+                try
+                {
+                    if (JsonSerializer.Deserialize<DeleteTarget>(File.ReadAllText(marker)) is { Path.Length: > 0 } target)
+                        targets.Add(Path.GetFullPath(target.Path)
+                            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+                                               or ArgumentException)
+                {
+                    // An unreadable marker is reported when the startup applier retries it.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return targets;
+    }
+
     public static (IReadOnlyList<string> Applied, IReadOnlyList<(string Id, string Error)> Failed) ApplyStagedDeletions(
         string componentRoot)
     {
@@ -373,7 +424,8 @@ internal static class StagedComponentUpdates
         {
             if (_completed) return;
             _completed = true;
-            foreach (var path in written) TryDelete(path);
+            // Files that only the new package brought are removed; replaced ones are moved back over the new copy.
+            foreach (var path in written.Except(movedAside, StringComparer.OrdinalIgnoreCase)) TryDelete(path);
             List<Exception>? failures = null;
             foreach (var path in movedAside)
                 try
