@@ -68,7 +68,7 @@ internal sealed class AutoUpdateRunner(
             await notifyOwners("【ShiroBot 自动更新】自动重启失败，请手动重启宿主: " + restart.Message, null, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
         {
             Report("自动更新中断: " + ex.Message, true);
             await SendReportAsync(CancellationToken.None).ConfigureAwait(false);
@@ -138,7 +138,7 @@ internal sealed class AutoUpdateRunner(
                 runtimeState.RecommendRestart("plugin-update:" + plugin.Name, result.Message);
                 pending.Add("插件 " + plugin.Name);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
             {
                 Report($"插件 {plugin.Name} 自动更新失败: {ex.Message}", true);
             }
@@ -149,7 +149,18 @@ internal sealed class AutoUpdateRunner(
     {
         var installed = adapterPackages.List();
         if (installed.Count == 0) return;
-        var entries = await AdapterMarketplaceCache.Shared.GetAsync(cancellationToken).ConfigureAwait(false);
+        JsonArray entries;
+        try
+        {
+            entries = await AdapterMarketplaceCache.Shared.GetAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
+        {
+            // The host update below does not depend on the adapter market being reachable.
+            Report("适配器市场读取失败，本次未检查适配器更新: " + ex.Message, true);
+            return;
+        }
+
         foreach (var package in installed)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -194,7 +205,7 @@ internal sealed class AutoUpdateRunner(
                     Report($"适配器 {package.Id} 已更新到 {probe.Version}");
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
             {
                 Report($"适配器 {package.Id} 自动更新失败: {ex.Message}", true);
             }
@@ -230,10 +241,19 @@ internal sealed class AutoUpdateRunner(
             Report("主程序自动更新失败: " + result.Message, true);
             return false;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
         {
             Report("主程序自动更新失败: " + ex.Message, true);
             return false;
         }
+    }
+
+    /// <summary>
+    ///     Only a run that was itself cancelled counts. A timeout inside one update also surfaces as a cancellation
+    ///     exception, and must be reported as that update's failure instead of silently ending the whole run.
+    /// </summary>
+    private static bool IsCancellation(Exception exception, CancellationToken cancellationToken)
+    {
+        return exception is OperationCanceledException && cancellationToken.IsCancellationRequested;
     }
 }

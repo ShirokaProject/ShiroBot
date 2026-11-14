@@ -25,6 +25,7 @@ public static class Updater
 
     private static OwnerNotify _notifyOwners = (_, _, _) => Task.CompletedTask;
     private static string? _githubProxy;
+    private static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(30);
     internal static HttpClient HttpClient { get; set; } = new();
 
     /// <summary>
@@ -328,8 +329,8 @@ public static class Updater
         using var request = new HttpRequestMessage(HttpMethod.Get, ApplyGithubProxy(url));
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
 
-        using var response =
-            await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, null,
+            cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         if (maxBytes is { } limit && response.Content.Headers.ContentLength is { } contentLength &&
             contentLength > limit) throw new InvalidOperationException($"下载文件超过大小限制: {contentLength} > {limit}");
@@ -501,8 +502,15 @@ public static class Updater
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
 
-        using var response = await HttpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, ApiTimeout,
+            cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        // Anonymous API calls share 60 requests per hour per address; say so instead of a bare 403.
+        if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests &&
+            response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) &&
+            remaining.FirstOrDefault() == "0")
+            throw new HttpRequestException($"GitHub API 请求次数已达上限，请稍后再试（{repository}）。", null,
+                response.StatusCode);
 
         response.EnsureSuccessStatusCode();
 
@@ -520,6 +528,26 @@ public static class Updater
             item.GetPropertyOrDefault("html_url"),
             item.GetPropertyOrDefault("body"),
             GetReleaseAssets(item));
+    }
+
+    /// <summary>
+    ///     Sends a request, reporting a timeout as <see cref="HttpRequestException" />. HttpClient signals its own
+    ///     timeout with a cancellation exception, which callers would otherwise mistake for a cancelled operation
+    ///     and skip their failure handling.
+    /// </summary>
+    private static async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+        HttpCompletionOption completion, TimeSpan? timeout, CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (timeout is { } limit) timeoutSource.CancelAfter(limit);
+        try
+        {
+            return await HttpClient.SendAsync(request, completion, timeoutSource.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new HttpRequestException($"请求 {request.RequestUri?.Host} 超时，请检查网络或 github_proxy 设置。", ex);
+        }
     }
 
     internal static bool IsNewerVersion(string latestVersion, string currentVersion)
