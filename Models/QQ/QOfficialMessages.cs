@@ -11,6 +11,12 @@ public abstract record QOfficialMessage
         return new QOfficialTextMessage(content);
     }
 
+    /// <summary>群聊和单聊图文卡片（msg_type=8），不同于 ARK 和频道 Embed。</summary>
+    public static QOfficialMessage Card(QOfficialCard card)
+    {
+        return new QOfficialCardMessage(card);
+    }
+
     public static QOfficialMessage Markdown(QOfficialMarkdown markdown, QOfficialKeyboard? keyboard = null)
     {
         return new QOfficialMarkdownMessage(markdown, keyboard);
@@ -31,6 +37,10 @@ public abstract record QOfficialMessage
 }
 
 public sealed record QOfficialTextMessage(string Content) : QOfficialMessage;
+
+public sealed record QOfficialCard(string Title, string Description, string Url, string PictureUrl);
+
+public sealed record QOfficialCardMessage(QOfficialCard Content) : QOfficialMessage;
 
 public sealed record QOfficialMarkdownMessage(QOfficialMarkdown Content, QOfficialKeyboard? Keyboard = null)
     : QOfficialMessage;
@@ -167,6 +177,9 @@ public sealed record QOfficialMessageReply
     public string? MessageId { get; init; }
     public string? EventId { get; init; }
     public int? MessageSequence { get; init; }
+
+    /// <summary>引用消息的 QQ REFIDX_ 值；用于让客户端显示引用关系。</summary>
+    public string? ReferenceIndex { get; init; }
 }
 
 /// <summary>QQ 官方群媒体类型。</summary>
