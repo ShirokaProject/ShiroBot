@@ -36,6 +36,8 @@ public sealed record QFriend
 public sealed record QGroup
 {
     public required string GroupId { get; init; }
+    /// <summary>QQ 官方跨应用群标识；仅在绑定第三方应用时有效，不可代替 GroupId 调用接口。</summary>
+    public string? UnionGroupOpenId { get; init; }
     public string? GroupName { get; init; }
     public int? MemberCount { get; init; }
     public int? MaxMemberCount { get; init; }
@@ -43,6 +45,12 @@ public sealed record QGroup
     public DateTimeOffset? CreatedTime { get; init; }
     public string? Description { get; init; }
     public string? Announcement { get; init; }
+
+    /// <summary>群分类。</summary>
+    public string? ClassText { get; init; }
+
+    /// <summary>群标签。</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
 
     /// <summary>入群验证问题(群主设置的问题,用于验证加入请求)。</summary>
     public string? Question { get; init; }
@@ -68,6 +76,11 @@ public sealed record QGroupMember
     public QGroupRole Role { get; init; }
     public DateTimeOffset? JoinTime { get; init; }
     public DateTimeOffset? LastSentTime { get; init; }
+
+    /// <summary>跨应用关联的用户标识（如有）。</summary>
+    public string? UnionOpenId { get; init; }
+
+    public bool IsBot { get; init; }
 
     /// <summary>禁言截止时间;未被禁言为 null。</summary>
     public DateTimeOffset? ShutUpEndTime { get; init; }

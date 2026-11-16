@@ -123,3 +123,28 @@ public sealed record QApprovalStrategy
 }
 
 public sealed record QApprovalStrategyPage(IReadOnlyList<QApprovalStrategy> Strategies, string? NextCursor);
+
+/// <summary>群黑名单用户。</summary>
+public sealed record QGroupBlacklistUser
+{
+    public required string UserId { get; init; }
+    public string? UnionOpenId { get; init; }
+    public string? Nickname { get; init; }
+    public DateTimeOffset? BannedAt { get; init; }
+    public bool IsBot { get; init; }
+}
+
+public sealed record QGroupBlacklistPage(IReadOnlyList<QGroupBlacklistUser> Users, string? NextCursor);
+
+/// <summary>机器人在群内的状态。</summary>
+public sealed record QGroupBotState
+{
+    public required string MemberOpenId { get; init; }
+    public DateTimeOffset? JoinedAt { get; init; }
+    public bool AllowProactiveMessage { get; init; }
+
+    /// <summary>群内消息接收设置：all、only_mention、mention_and_context。</summary>
+    public string? ReceiveSetting { get; init; }
+
+    public QGroupRole Role { get; init; }
+}

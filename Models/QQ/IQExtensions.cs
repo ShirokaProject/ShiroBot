@@ -196,6 +196,26 @@ public interface IQGroupApi
         throw new NotSupportedException();
     }
 
+    /// <summary>群黑名单列表（QQ 平台内邀能力）。Cursor 是不透明分页凭据。</summary>
+    Task<QGroupBlacklistPage> GetGroupBlacklistAsync(string groupId, string? cursor = null, int limit = 20,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>加入或移出群黑名单，返回平台报告失败的 OpenID。目标在群中时无法加入。</summary>
+    Task<IReadOnlyList<string>> UpdateGroupBlacklistAsync(string groupId, IReadOnlyList<string> userIds,
+        bool add = true, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>获取机器人在群内的状态。</summary>
+    Task<QGroupBotState> GetBotStateAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
     Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QMemberMute> members,
         CancellationToken cancellationToken = default)
     {
