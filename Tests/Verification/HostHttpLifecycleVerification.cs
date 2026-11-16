@@ -20,6 +20,34 @@ namespace ShiroBot.Verification;
 
 internal static class HostHttpLifecycleVerification
 {
+    // An endpoint that throws must say why: an empty 500 leaves the dashboard with nothing to show.
+    private static async Task AssertUnhandledErrorsAreReportedAsync(WebHostContext web, HttpClient client)
+    {
+        var url = web.MapGet("error-probe", "boom",
+            _ => throw new InvalidOperationException("probe-failure-reason"));
+        try
+        {
+            using var failed = await client.GetAsync(url);
+            var body = await failed.Content.ReadAsStringAsync();
+            if (failed.StatusCode != HttpStatusCode.InternalServerError ||
+                failed.Content.Headers.ContentType?.MediaType != "application/json" ||
+                !body.Contains("\"internal_error\"") || !body.Contains("probe-failure-reason"))
+                throw new Exception($"Unhandled endpoint error was not reported: {(int)failed.StatusCode} {body}");
+
+            // ReSharper disable once ShortLivedHttpClient
+            using var anonymous = new HttpClient();
+            using var hidden = await anonymous.GetAsync(url);
+            var hiddenBody = await hidden.Content.ReadAsStringAsync();
+            if (hidden.StatusCode != HttpStatusCode.InternalServerError ||
+                !hiddenBody.Contains("\"internal_error\"") || hiddenBody.Contains("probe-failure-reason"))
+                throw new Exception($"Unhandled endpoint error leaked to an anonymous caller: {hiddenBody}");
+        }
+        finally
+        {
+            web.UnregisterOwner("error-probe");
+        }
+    }
+
     public static async Task RunAsync()
     {
         var root = Path.Combine(Path.GetTempPath(), "shiro-http-lifecycle-" + Guid.NewGuid().ToString("N"));
@@ -106,6 +134,7 @@ internal static class HostHttpLifecycleVerification
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "original");
                     using var authenticated = await client.GetAsync("/api/v1/auth");
                     authenticated.EnsureSuccessStatusCode();
+                    await AssertUnhandledErrorsAreReportedAsync(web, client);
                     using (new CoreConfigWatcher(path, config, bot))
                     {
                         var updated = await manager.LoadCoreConfig();

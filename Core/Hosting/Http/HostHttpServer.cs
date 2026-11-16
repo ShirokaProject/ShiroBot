@@ -71,8 +71,10 @@ internal sealed partial class HostHttpServer(
         _app = app;
         try
         {
-            app.UseWebSockets();
             app.UseCors(ApiCorsPolicyName);
+            // After CORS so the browser may read the error body, before everything that can throw.
+            app.Use((context, next) => ReportUnhandledErrorAsync(context, next, options.Value));
+            app.UseWebSockets();
             if (config.EnableDashboard) MapDashboardAssets(app);
             var api = app.MapGroup("/api/v1");
             api.AddEndpointFilter(async (context, next) =>
@@ -150,6 +152,38 @@ internal sealed partial class HostHttpServer(
                 contentType = "application/octet-stream";
 
             return Results.File(stream, contentType, enableRangeProcessing: true);
+        }
+    }
+
+    /// <summary>
+    ///     Without this an endpoint that throws answers with an empty 500 and, since the nested host has no
+    ///     logging providers, leaves no trace: the dashboard can then only say that something failed.
+    ///     The reason goes to the host log, and to the caller when it holds the API key.
+    /// </summary>
+    private static async Task ReportUnhandledErrorAsync(HttpContext context, RequestDelegate next, ApiHostConfig config)
+    {
+        try
+        {
+            await next(context).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // The client went away; there is nobody to answer.
+        }
+        catch (Exception ex)
+        {
+            // The query string may carry the API key, so only the path is logged.
+            BotLog.Error($"API 请求处理失败: {context.Request.Method} {context.Request.Path} - {ex}");
+            if (context.Response.HasStarted) throw;
+
+            var reason = string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
+            var message = IsAuthorized(context, config)
+                ? $"宿主处理请求时出错: {reason}"
+                : "宿主处理请求时出错，详情见宿主运行日志。";
+            context.Response.Clear();
+            await Results.Json(new ApiError("internal_error", message),
+                    statusCode: StatusCodes.Status500InternalServerError)
+                .ExecuteAsync(context).ConfigureAwait(false);
         }
     }
 
