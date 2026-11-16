@@ -34,6 +34,10 @@ public sealed class AdapterLifecycleProbe : IBotAdapter, IConfigurableAdapter,
     public async Task StartAsync()
     {
         await Task.Delay(10).ConfigureAwait(false);
+        // 像真实适配器发请求那样，用反射序列化自己程序集里的类型：System.Text.Json 的进程级缓存会记住它，
+        // 宿主卸载时不清掉的话 ALC 永远回收不了。
+        _ticks += System.Text.Json.JsonSerializer.Serialize(new ProbeRequest { Endpoint = "probe" },
+            new System.Text.Json.JsonSerializerOptions()).Length;
         _ = Lifetime.Run(async token =>
         {
             while (true)
@@ -58,6 +62,11 @@ public sealed class AdapterLifecycleProbe : IBotAdapter, IConfigurableAdapter,
     }
     public Task OnConfigChangedAsync(AdapterLifecycleProbeConfig previous, AdapterLifecycleProbeConfig current,
         CancellationToken cancellationToken) => OnConfigLoadedAsync(current, cancellationToken);
+
+    private sealed class ProbeRequest
+    {
+        public string Endpoint { get; set; } = "";
+    }
 
     private sealed class ProbeMessages : IMessageService;
     private sealed class ProbeChannels : IChannelService;

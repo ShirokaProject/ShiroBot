@@ -106,6 +106,9 @@ public class DllLoader<T>
 
             if (!alcWeakReference.IsAlive) return true;
 
+            // Only pay for the cache reset when the context survived a full collection.
+            if (attempt == 1) SerializerCacheReset.Clear();
+
             Thread.Sleep(delayMs);
         }
 
