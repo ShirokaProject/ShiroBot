@@ -11,12 +11,6 @@ public abstract record QOfficialMessage
         return new QOfficialTextMessage(content);
     }
 
-    /// <summary>群聊和单聊图文卡片（msg_type=8），不同于 ARK 和频道 Embed。</summary>
-    public static QOfficialMessage Card(QOfficialCard card)
-    {
-        return new QOfficialCardMessage(card);
-    }
-
     public static QOfficialMessage Markdown(QOfficialMarkdown markdown, QOfficialKeyboard? keyboard = null)
     {
         return new QOfficialMarkdownMessage(markdown, keyboard);
@@ -37,10 +31,6 @@ public abstract record QOfficialMessage
 }
 
 public sealed record QOfficialTextMessage(string Content) : QOfficialMessage;
-
-public sealed record QOfficialCard(string Title, string Description, string Url, string PictureUrl);
-
-public sealed record QOfficialCardMessage(QOfficialCard Content) : QOfficialMessage;
 
 public sealed record QOfficialMarkdownMessage(QOfficialMarkdown Content, QOfficialKeyboard? Keyboard = null)
     : QOfficialMessage;

@@ -1,6 +1,6 @@
 # 群管理（IQGroupApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.1.0.0`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQGroupApi>();
@@ -655,6 +655,80 @@ Task<QGroupMuteState> GetMuteStateAsync(
 ### 返回
 
 `Task<QGroupMuteState>`。返回群禁言状态及定时、周期规则。
+
+## GetGroupBlacklistAsync
+
+分页查询群黑名单；需要 `QGroupCapabilities.MemberBlacklist`，平台未授权时抛出 `QPermissionDeniedException`。
+
+```csharp
+Task<QGroupBlacklistPage> GetGroupBlacklistAsync(
+    string groupId,
+    string? cursor = null,
+    int limit = 20,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
+| `cursor` | `string?` | `null` | 上一页返回的 NextCursor；null 从第一页开始。 |
+| `limit` | `int` | `20` | 本页请求数量。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QGroupBlacklistPage>`。返回黑名单用户 Members 和下一页游标 NextCursor；null 表示没有下一页。
+
+## UpdateGroupBlacklistAsync
+
+把用户加入或移出群黑名单；需要 `QGroupCapabilities.MemberBlacklist`。仍在群内的用户无法加入。
+
+```csharp
+Task<IReadOnlyList<string>> UpdateGroupBlacklistAsync(
+    string groupId,
+    IReadOnlyList<string> userIds,
+    bool add = true,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
+| `userIds` | `IReadOnlyList<string>` | `必传` | 要加入或移出的用户 ID。 |
+| `add` | `bool` | `true` | true 加入黑名单，false 移出。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<IReadOnlyList<string>>`。返回平台报告失败的用户 ID；全部成功时为空。
+
+## GetBotStateAsync
+
+查询机器人在群内的状态；需要 `QGroupCapabilities.BotState`。
+
+```csharp
+Task<QGroupBotState> GetBotStateAsync(
+    string groupId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QGroupBotState>`。`Member` 是机器人自己的群成员资料（群内 ID、角色、入群时间），另含主动推送许可与消息接收设置。
 
 ## SetMemberMutesAsync
 

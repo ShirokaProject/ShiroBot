@@ -210,7 +210,7 @@ public interface IQGroupApi
         throw new NotSupportedException();
     }
 
-    /// <summary>获取机器人在群内的状态。</summary>
+    /// <summary>获取机器人在群内的状态：群内成员身份、主动推送许可与消息接收设置。</summary>
     Task<QGroupBotState> GetBotStateAsync(string groupId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();

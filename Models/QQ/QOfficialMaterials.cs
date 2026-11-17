@@ -18,10 +18,9 @@ public sealed record QOfficialImageMaterial(string ImageId, string Url)
 {
     public string? FileName { get; init; }
     public string? PreviewUrl { get; init; }
-    public long? Ttl { get; init; }
     public DateTimeOffset? CreatedAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
 }
 
 public sealed record QOfficialImageMaterialPage(
-    IReadOnlyList<QOfficialImageMaterial> Images, string? NextCursor, ulong Total);
+    IReadOnlyList<QOfficialImageMaterial> Images, string? NextCursor, int Total);

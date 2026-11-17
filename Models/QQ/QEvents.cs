@@ -76,8 +76,6 @@ public sealed record QOfficialButtonInteraction : QEventPayload
 /// </summary>
 public sealed record QOfficialLifecycleEvent : QEventPayload
 {
-    /// <summary>QQ 官方跨应用群标识，群事件中可能提供。</summary>
-    public string? UnionGroupOpenId { get; init; }
     /// <summary>事件发生的会话。</summary>
     public required QOfficialMessageTarget Target { get; init; }
     /// <summary>操作者的 openid：群事件为 op_member_openid，单聊事件为用户 openid。</summary>
@@ -194,7 +192,6 @@ public sealed record QGroupFileUpload : QEventPayload
 /// <summary>统一入群申请。RequestId 是不透明审批凭据，应原样传回 IQGroupApi。</summary>
 public sealed record QGroupJoinRequest : QEventPayload
 {
-    public string? UnionGroupOpenId { get; init; }
     public required string GroupId { get; init; }
     public required string UserId { get; init; }
     public required string RequestId { get; init; }
@@ -240,7 +237,6 @@ public sealed record QMessageRecall : QEventPayload
 /// <summary>群成员增加的 QQ 原始信息。</summary>
 public sealed record QGroupMemberIncrease : QEventPayload
 {
-    public string? UnionGroupOpenId { get; init; }
     public required string GroupId { get; init; }
     public required string UserId { get; init; }
     public string? OperatorId { get; init; }
@@ -252,7 +248,6 @@ public sealed record QGroupMemberIncrease : QEventPayload
 /// <summary>群成员减少的 QQ 原始信息。</summary>
 public sealed record QGroupMemberDecrease : QEventPayload
 {
-    public string? UnionGroupOpenId { get; init; }
     public required string GroupId { get; init; }
     public required string UserId { get; init; }
     public string? OperatorId { get; init; }
