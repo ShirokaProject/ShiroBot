@@ -348,20 +348,20 @@ public interface ITelegramBotProfileApi
         throw new NotSupportedException();
     }
 
-    Task SetNameAsync(string? name, string? languageCode = null, CancellationToken cancellationToken = default)
+    Task SetBotNameAsync(string? name, string? languageCode = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
     /// <summary>空会话中显示的介绍，0–512 个字符。</summary>
-    Task SetDescriptionAsync(string? description, string? languageCode = null,
+    Task SetBotDescriptionAsync(string? description, string? languageCode = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
     /// <summary>资料页和分享链接中显示的简介，0–120 个字符。</summary>
-    Task SetShortDescriptionAsync(string? description, string? languageCode = null,
+    Task SetBotShortDescriptionAsync(string? description, string? languageCode = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
