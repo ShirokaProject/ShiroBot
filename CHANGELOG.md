@@ -1,5 +1,21 @@
 # 更新日志
 
+## 1.0.4（未发布）
+
+对比 1.0.3。宿主、`ShiroBot.SDK` / `ShiroBot.Templates` 包为 1.0.4，内嵌 Dashboard 仍为 1.0.3。
+
+### 主要更新
+
+- 扩展 `ShiroBot.Model.Telegram`：会话、成员与权限、管理员权限、话题、邀请链接、机器人命令等实体；投票、位置、地点、联系人、骰子、贴纸、相册、发票等原生内容；内联键盘、自定义键盘、强制回复；inline 模式结果与回调提示。
+- 新增可选扩展接口 `ITelegramChatApi`、`ITelegramMessageApi`、`ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi`，以及只使用 System.Text.Json 类型的 `ITelegramRawApi`，插件无需引用适配器程序集即可调用任意 Bot API 方法。
+- 新增 Telegram 事件负载和 `TelegramEventKinds`：消息编辑、成员与机器人状态变化、入群申请、inline 查询、投票、付款确认、收货查询和助力；`TelegramMessage` 提供消息原生资料，`TelegramSegmentKinds` 约定位置、投票、付款等入站内容的 `RawSegment`。
+- `TelegramUser` 新增 `LanguageCode` 与 `IsPremium`。
+
+### 升级说明
+
+- Telegram Model ABI 升至 `1.1.0.0`（新增成员，兼容 `1.0.0.0`）；SDK ABI 仍为 `1.4.0.0`，QQ、Discord Model ABI 仍为 `1.0.0.0`。
+- 引用新增 Telegram 类型的组件需要 1.0.4 及以上的宿主；只使用原有成员的组件不受影响。
+
 ## 1.0.3
 
 对比 1.0.2。宿主、SDK、模板和内嵌 Dashboard 同步为 1.0.3。

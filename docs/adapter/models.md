@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | QQ | `qq` | `ShiroBot.Model.QQ` | 通用消息和服务照常映射；按需实现 `IQFriendApi`、`IQGroupApi`、`IQFileApi`、`IQSystemApi`、`IQMessageApi` 或 `IQOfficialMessageApi` |
 | Discord | `discord` | `ShiroBot.Model.Discord` | 通用服务为主；`DiscordUser` 保留原生用户字段，当前没有 Discord 专有扩展接口 |
-| Telegram | `telegram` | `ShiroBot.Model.Telegram` | 通用服务为主；`TelegramUser` 保留原生用户字段，当前没有 Telegram 专有扩展接口 |
+| Telegram | `telegram` | `ShiroBot.Model.Telegram` | 通用消息和服务照常映射；按需实现 `ITelegramChatApi`、`ITelegramMessageApi`、`ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` 或 `ITelegramRawApi` |
 | 其他平台 | 自定义稳定 ID | 通用 SDK | 从通用模型开始；需要插件共享自定义类型时使用共享契约程序集 |
 
 ## 常用 Model 字段
@@ -63,7 +63,12 @@
 | QQ 原生消息 | `IQMessageApi` | 原生段收发、历史消息、撤回、已读等 | 可选扩展 |
 | QQ 官方消息 | `IQOfficialMessageApi` | Markdown 与按钮能力探测、发送和互动回应；按需实现文本与 Ark 发送 | 可选扩展 |
 | QQ 官方私聊 | `IQOfficialDirectMessageApi` | 输入状态与流式回复 | 可选扩展 |
-| Discord / Telegram 平台扩展 | 当前无专有扩展接口 | 通过通用服务实现；原生用户字段使用对应用户 Model | 无额外接口 |
+| Telegram 会话管理 | `ITelegramChatApi` | 成员与权限、置顶、邀请链接、入群审批、话题 | 可选扩展 |
+| Telegram 原生消息 | `ITelegramMessageApi` | 投票、位置、相册、发票等原生内容；编辑、转发、复制、输入状态、回调提示 | 可选扩展 |
+| Telegram inline / 支付 / 资料 | `ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` | inline 查询回答、付款确认与退款、命令菜单 | 可选扩展 |
+| Telegram 原始调用 | `ITelegramRawApi` | 任意 Bot API 方法与原始 Update | 可选扩展 |
+| Telegram 事件与入站内容 | `TelegramEventKinds`、`TelegramSegmentKinds` | 特有 Update 以 `PlatformEvent` 上报，`Raw` 为对应负载；`MessageEvent.Raw` 为 `TelegramMessage` | 实现扩展时建议遵循 |
+| Discord 平台扩展 | 当前无专有扩展接口 | 通过通用服务实现；原生用户字段使用 `DiscordUser` | 无额外接口 |
 
 通用接口的方法清单见[实现服务接口](/adapter/services)，QQ 扩展的功能清单见[QQ Model](/plugin/qq-model)。取得扩展接口不代表所有方法都可用；未实现的方法默认抛 `NotSupportedException`。
 

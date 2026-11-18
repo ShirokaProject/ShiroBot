@@ -12,11 +12,12 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 
 ## Version and ABI
 
-The current source product version is **1.0.3**. Package versions follow the host product version;
+The current source product version is **1.0.4**. Package versions follow the host product version;
 shared assemblies maintain their own ABI versions.
 
 | ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
+| 1.0.4 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.1.0.0 |
 | 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.2 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
@@ -29,6 +30,10 @@ assembly-level checks.
 support. Plugins only need this single package, including plugins that render Avalonia controls.
 
 ## Current release features
+
+Version 1.0.4 extends the Telegram Model (ABI 1.1.0.0) with chats, members, permissions, forum topics,
+invite links, polls, locations, media groups, reply keyboards, inline mode, payments, typed platform
+events and a raw Bot API call. Other ABI versions are unchanged.
 
 Version 1.0.3 targets .NET 11 and adds adapter Dashboard pages and actions, SSE log streaming,
 persistent logs and configurable message prefixes. SDK and built-in Model ABI versions remain unchanged.
