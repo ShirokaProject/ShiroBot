@@ -7,7 +7,8 @@
 ### 主要更新
 
 - 扩展 `ShiroBot.Model.Telegram`：会话、成员与权限、管理员权限、话题、邀请链接、机器人命令等实体；投票、位置、地点、联系人、骰子、贴纸、相册、发票等原生内容；内联键盘、自定义键盘、强制回复；inline 模式结果与回调提示。
-- 新增可选扩展接口 `ITelegramChatApi`、`ITelegramMessageApi`、`ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi`，以及只使用 System.Text.Json 类型的 `ITelegramRawApi`，插件无需引用适配器程序集即可调用任意 Bot API 方法。
+- 新增可选扩展接口 `ITelegramClientApi`（账号类型、传输方式、文件上限、自身资料）、`ITelegramChatApi`、`ITelegramMessageApi`，以及仅机器人可用的 `ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` 和只使用 System.Text.Json 类型的 `ITelegramBotApi`（Bot API 原始调用），插件无需引用适配器程序集即可调用任意 Bot API 方法。
+- 机器人与用户账号（MTProto）适配器共用 Telegram Model：会话 ID 统一为 Bot API 格式，`TelegramChatIds` 负责与 MTProto peer 互转，原始 JSON 通过 `JsonFormat` 说明结构。
 - 新增 Telegram 事件负载和 `TelegramEventKinds`：消息编辑、成员与机器人状态变化、入群申请、inline 查询、投票、付款确认、收货查询和助力；`TelegramMessage` 提供消息原生资料，`TelegramSegmentKinds` 约定位置、投票、付款等入站内容的 `RawSegment`。
 - `TelegramUser` 新增 `LanguageCode` 与 `IsPremium`。
 - 扩展 `ShiroBot.Model.Discord`：服务器、频道、角色、成员、权限位、表情、邀请、封禁等实体；Embed、按钮、下拉菜单、文本输入、投票、附件、允许提及等原生消息内容；交互详情、应用命令定义与弹窗。

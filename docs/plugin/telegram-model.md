@@ -3,6 +3,9 @@
 `ShiroBot.Model.Telegram` 补充通用 SDK 无法表达的 Telegram 数据与操作。插件先使用 `ShiroBot.SDK.Models`
 处理普通消息，再按需探测 Telegram 扩展接口。Model 由宿主提供，插件不需要引用适配器程序集。
 
+机器人适配器和用户账号适配器共用这一套 Model，平台 ID 都是 `telegram`；各自只实现自己账号能用的接口，
+插件通过 `GetAdapterExtension<T>()` 是否返回 `null` 判断。
+
 本文对应宿主与 SDK 1.0.4（Telegram Model ABI `1.1.0.0`）。只使用 `TelegramUser` 原有成员的组件可在更早的宿主上运行。
 
 ```csharp
@@ -25,19 +28,26 @@
 | `TelegramInlineResult` | inline 结果基类 | `Id` | 文章、图片、贴纸 |
 | `TelegramEventPayload` | 事件负载基类 | 由子类型决定 | 放在 `PlatformEvent.Raw`，均带 `UpdateId`、`Time` 和原始 `Json` |
 
-ID 规则与 SDK 相同：会话参数接受数字 ID、`@username` 或 SDK 频道 ID，用户和消息 ID 使用 `User.Id`、`MessageId` 的字符串。
-Model 实体中的原生 ID 为 `long`。
+## ID 与账号类型
+
+- 会话 ID 一律使用 Bot API 格式：用户为正数，普通群为负数，超级群组和频道为 `-100…`；话题频道为 `chatId:threadId`。
+  用户账号（MTProto）适配器在内部与 peer 互相转换，插件保存的 ID 在两种适配器之间通用。需要换算时使用 `TelegramChatIds`。
+- 会话参数接受数字 ID、`@username` 或 SDK 频道 ID；用户和消息 ID 使用 `User.Id`、`MessageId` 的字符串。Model 实体中的原生 ID 为 `long`。
+- `ITelegramClientApi` 说明当前实例的账号类型（`AccountKind`：机器人或用户）、传输方式（`Transport`：Bot API 或 MTProto）
+  以及上传、下载上限（官方 Bot API 为 50 MB / 20 MB，自建 Bot API Server 与 MTProto 为 2000 MB）。
+- `TelegramMessage.Json` 和事件负载的 `Json` 保留原始对象，结构由 `JsonFormat` 说明：机器人适配器为 Bot API 格式。
 
 ## 目前提供的功能
 
 | 功能 | Model 接口 | 内容 |
 | --- | --- | --- |
+| 账号信息 | `ITelegramClientApi` | 账号类型、传输方式、文件上限、自身资料、已见用户；两种账号都实现 |
 | 会话管理 | `ITelegramChatApi` | 会话资料、成员数、成员与管理员查询；封禁、解封、限制、提升、头衔、默认权限；标题、简介、头像；置顶；邀请链接；入群审批；话题的创建、修改、关闭、重开和删除；退出 |
-| 原生消息 | `ITelegramMessageApi` | 发送原生内容；编辑文本、说明和键盘（包括 inline 消息）；转发、复制、批量删除；输入状态；结束投票；带提示回答按钮回调 |
-| inline 模式 | `ITelegramInlineApi` | 回答 inline 查询 |
-| 支付 | `ITelegramPaymentApi` | 付款前确认、收货方式、Telegram Stars 退款与余额；发送发票使用 `TelegramInvoiceContent` |
-| 机器人资料 | `ITelegramBotProfileApi` | 自身资料、已见用户、命令菜单（按范围和语言）、名称与介绍 |
-| 原始调用 | `ITelegramRawApi` | 调用任意 Bot API 方法并上传文件，接收原始 Update；只使用 System.Text.Json 类型 |
+| 原生消息 | `ITelegramMessageApi` | 发送原生内容；编辑文本、说明和键盘（包括 inline 消息）；转发、复制、批量删除；输入状态；结束投票；带提示回答按钮回调（仅机器人） |
+| inline 模式（仅机器人） | `ITelegramInlineApi` | 回答 inline 查询 |
+| 支付（仅机器人） | `ITelegramPaymentApi` | 付款前确认、收货方式、Telegram Stars 退款与余额；发送发票使用 `TelegramInvoiceContent` |
+| 机器人资料（仅机器人） | `ITelegramBotProfileApi` | 命令菜单（按范围和语言）、名称与介绍 |
+| Bot API 原始调用（仅 Bot API） | `ITelegramBotApi` | 调用任意 Bot API 方法并上传文件，接收原始 Update；只使用 System.Text.Json 类型 |
 
 取得接口后，未实现的方法仍可能抛出 `NotSupportedException`。平台权限由 Telegram 校验，失败时抛出 `InvalidOperationException`，消息包含错误码与说明。
 
@@ -125,14 +135,14 @@ Events.MapPlatform(TelegramEventKinds.PreCheckoutQuery, async evt =>
 });
 ```
 
-## 原始 Bot API
+## Bot API 原始调用
 
-Model 没有覆盖的方法用 `ITelegramRawApi` 调用，参数使用 Bot API 的 snake_case 名称：
+Model 没有覆盖的方法，在 Bot API 机器人适配器上用 `ITelegramBotApi` 调用，参数使用 Bot API 的 snake_case 名称：
 
 ```csharp
 using System.Text.Json.Nodes;
 
-var raw = Context.GetAdapterExtension<ITelegramRawApi>()!;
+var raw = Context.GetAdapterExtension<ITelegramBotApi>()!;
 var result = await raw.CallAsync("setChatMenuButton", new JsonObject
 {
     ["menu_button"] = new JsonObject { ["type"] = "commands" }

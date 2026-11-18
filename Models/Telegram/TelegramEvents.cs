@@ -16,47 +16,49 @@ public static class TelegramEventKinds
     /// <summary>其他成员的状态变化（需要管理员权限并订阅 chat_member）；<see cref="TelegramChatMemberUpdated"/>。</summary>
     public const string ChatMemberUpdated = "chat_member_updated";
 
-    /// <summary>机器人自己在会话中的状态变化：被拉入、移出、提升、私聊中被屏蔽；<see cref="TelegramChatMemberUpdated"/>。</summary>
+    /// <summary>当前账号自己在会话中的状态变化：被拉入、移出、提升、私聊中被屏蔽；<see cref="TelegramChatMemberUpdated"/>。</summary>
     public const string MyChatMemberUpdated = "my_chat_member_updated";
 
-    /// <summary>入群申请；<see cref="TelegramChatJoinRequest"/>。</summary>
+    /// <summary>入群申请（仅机器人）；<see cref="TelegramChatJoinRequest"/>。</summary>
     public const string ChatJoinRequest = "chat_join_request";
 
-    /// <summary>inline 查询；<see cref="TelegramInlineQuery"/>。</summary>
+    /// <summary>inline 查询（仅机器人）；<see cref="TelegramInlineQuery"/>。</summary>
     public const string InlineQuery = "inline_query";
 
-    /// <summary>用户选择了 inline 结果（需在 BotFather 开启反馈）；<see cref="TelegramChosenInlineResult"/>。</summary>
+    /// <summary>用户选择了 inline 结果（仅机器人，需在 BotFather 开启反馈）；<see cref="TelegramChosenInlineResult"/>。</summary>
     public const string ChosenInlineResult = "chosen_inline_result";
 
     /// <summary>投票状态变化；<see cref="TelegramPollUpdated"/>。</summary>
     public const string Poll = "poll";
 
-    /// <summary>非匿名投票中用户的选择；<see cref="TelegramPollAnswer"/>。</summary>
+    /// <summary>非匿名投票中用户的选择（仅机器人发起的投票）；<see cref="TelegramPollAnswer"/>。</summary>
     public const string PollAnswer = "poll_answer";
 
-    /// <summary>付款前确认，需在 10 秒内回答；<see cref="TelegramPreCheckoutQuery"/>。</summary>
+    /// <summary>付款前确认（仅机器人），需在 10 秒内回答；<see cref="TelegramPreCheckoutQuery"/>。</summary>
     public const string PreCheckoutQuery = "pre_checkout_query";
 
-    /// <summary>灵活价格发票的收货地址；<see cref="TelegramShippingQuery"/>。</summary>
+    /// <summary>灵活价格发票的收货地址（仅机器人）；<see cref="TelegramShippingQuery"/>。</summary>
     public const string ShippingQuery = "shipping_query";
 
-    /// <summary>会话获得或续期助力；<see cref="TelegramChatBoost"/>。</summary>
+    /// <summary>会话获得或续期助力（仅机器人）；<see cref="TelegramChatBoost"/>。</summary>
     public const string ChatBoost = "chat_boost";
 
-    /// <summary>会话失去助力；<see cref="TelegramChatBoost"/>，<c>IsRemoved</c> 为 true。</summary>
+    /// <summary>会话失去助力（仅机器人）；<see cref="TelegramChatBoost"/>，<c>IsRemoved</c> 为 true。</summary>
     public const string ChatBoostRemoved = "removed_chat_boost";
 }
 
 /// <summary>Telegram 事件负载的公共字段。</summary>
 public abstract record TelegramEventPayload
 {
-    /// <summary>Bot API Update ID。</summary>
+    /// <summary>Bot API Update ID；MTProto 适配器没有对应序号时为 0。</summary>
     public long UpdateId { get; init; }
 
     public DateTimeOffset Time { get; init; }
 
-    /// <summary>Bot API 原始对象。</summary>
+    /// <summary>原始对象，结构由 <see cref="JsonFormat"/> 说明。</summary>
     public JsonElement Json { get; init; }
+
+    public TelegramJsonFormat JsonFormat { get; init; }
 }
 
 /// <summary>编辑后的消息，内容按 SDK 消息段映射。</summary>

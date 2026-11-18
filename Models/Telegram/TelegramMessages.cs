@@ -348,8 +348,8 @@ public sealed record TelegramInlineAnswerOptions
 // ─── 入站内容 ───
 
 /// <summary>
-///     Telegram 消息的原生资料，放在 <see cref="MessageEvent.Raw"/>。<see cref="Json"/> 保留 Bot API 原始 Message，
-///     可按需读取本模型未列出的字段。
+///     Telegram 消息的原生资料，放在 <see cref="MessageEvent.Raw"/>。<see cref="Json"/> 保留原始消息，
+///     结构由 <see cref="JsonFormat"/> 说明，可按需读取本模型未列出的字段。
 /// </summary>
 public sealed record TelegramMessage
 {
@@ -385,8 +385,11 @@ public sealed record TelegramMessage
 
     public string? BusinessConnectionId { get; init; }
 
-    /// <summary>Bot API 原始 Message 对象。</summary>
+    /// <summary>原始消息对象。</summary>
     public JsonElement Json { get; init; }
+
+    /// <summary><see cref="Json"/> 的结构：机器人适配器为 Bot API Message。</summary>
+    public TelegramJsonFormat JsonFormat { get; init; }
 }
 
 public enum TelegramForwardOriginKind

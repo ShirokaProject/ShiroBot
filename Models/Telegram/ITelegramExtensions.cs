@@ -4,9 +4,36 @@ using ShiroBot.SDK.Models;
 
 namespace ShiroBot.Model.Telegram;
 
-// 插件通过 Context.GetAdapterExtension<T>() 探测这些接口。会话参数接受数字 ID、@username 或 SDK 频道 ID
-// （chatId:threadId 只在话题相关方法中使用话题部分）；用户和消息 ID 与 SDK 的 User.Id、MessageId 相同。
-// 未实现的方法默认抛 NotSupportedException；平台权限仍由 Telegram 校验。
+// 插件通过 Context.GetAdapterExtension<T>() 探测这些接口。机器人适配器与用户账号适配器共用本 Model（平台 ID 均为 telegram），
+// 只实现各自账号能用的接口：标注“仅机器人”的接口在用户账号适配器上不可用，插件会拿到 null。
+// 会话参数接受 Bot API 格式的数字 ID（见 TelegramChatIds）、@username 或 SDK 频道 ID（chatId:threadId 只在话题相关方法中使用话题部分）；
+// 用户和消息 ID 与 SDK 的 User.Id、MessageId 相同。未实现的方法默认抛 NotSupportedException；平台权限仍由 Telegram 校验。
+
+/// <summary>当前实例的账号与传输信息，两种账号都实现。</summary>
+public interface ITelegramClientApi
+{
+    TelegramAccountKind AccountKind => TelegramAccountKind.Bot;
+
+    TelegramTransport Transport => TelegramTransport.BotApi;
+
+    /// <summary>单个文件的上传上限（字节）：官方 Bot API 为 50 MB，自建 Bot API Server 与 MTProto 为 2000 MB。</summary>
+    long MaxUploadBytes => 50L * 1024 * 1024;
+
+    /// <summary>单个文件的下载上限（字节）：官方 Bot API 为 20 MB，自建 Bot API Server 与 MTProto 为 2000 MB。</summary>
+    long MaxDownloadBytes => 20L * 1024 * 1024;
+
+    /// <summary>当前登录账号的完整资料。</summary>
+    Task<TelegramUser> GetMeAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>已在当前实例中见过的用户。机器人不能按 ID 查询任意用户，只能返回见过的。</summary>
+    TelegramUser? FindKnownUser(string userId)
+    {
+        return null;
+    }
+}
 
 /// <summary>Telegram 会话、成员、话题和邀请管理。</summary>
 public interface ITelegramChatApi
@@ -259,7 +286,7 @@ public interface ITelegramMessageApi
     }
 
     /// <summary>
-    ///     带提示回答按钮回调，<paramref name="interactionId"/> 为 <see cref="InteractionEvent.InteractionId"/>。
+    ///     带提示回答按钮回调（仅机器人），<paramref name="interactionId"/> 为 <see cref="InteractionEvent.InteractionId"/>。
     ///     适配器自动确认回调时，此前的空确认已经发出，提示不会再显示；需要提示时关闭适配器的自动确认。
     /// </summary>
     Task AnswerCallbackAsync(string interactionId, TelegramCallbackAnswer answer,
@@ -272,7 +299,7 @@ public interface ITelegramMessageApi
     bool AutoAnswersCallbacks => true;
 }
 
-/// <summary>inline 模式（在任意会话输入 @机器人 查询）。需要在 BotFather 开启。</summary>
+/// <summary>inline 模式（在任意会话输入 @机器人 查询），仅机器人。需要在 BotFather 开启。</summary>
 public interface ITelegramInlineApi
 {
     /// <summary>回答 <see cref="TelegramEventKinds.InlineQuery"/>，最多 50 项结果；需在 10 秒内调用。</summary>
@@ -283,7 +310,7 @@ public interface ITelegramInlineApi
     }
 }
 
-/// <summary>发票与 Telegram Stars 支付。发送发票使用 <see cref="ITelegramMessageApi.SendAsync"/> 和 <see cref="TelegramInvoiceContent"/>。</summary>
+/// <summary>发票与 Telegram Stars 收款，仅机器人。发送发票使用 <see cref="ITelegramMessageApi.SendAsync"/> 和 <see cref="TelegramInvoiceContent"/>。</summary>
 public interface ITelegramPaymentApi
 {
     /// <summary>确认或拒绝付款；<paramref name="errorMessage"/> 在拒绝时显示给用户。</summary>
@@ -314,21 +341,9 @@ public interface ITelegramPaymentApi
     }
 }
 
-/// <summary>机器人资料与命令菜单。</summary>
+/// <summary>机器人的命令菜单、名称与介绍，仅机器人。自身资料见 <see cref="ITelegramClientApi.GetMeAsync"/>。</summary>
 public interface ITelegramBotProfileApi
 {
-    /// <summary>当前机器人的完整资料。</summary>
-    Task<TelegramUser> GetMeAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    /// <summary>已在当前实例中见过的用户；Bot API 不提供按 ID 查询任意用户。</summary>
-    TelegramUser? FindKnownUser(string userId)
-    {
-        return null;
-    }
-
     /// <param name="languageCode">两位 ISO 639-1 语言代码；null 表示所有未单独设置的语言。</param>
     Task SetCommandsAsync(IReadOnlyList<TelegramBotCommand> commands, TelegramCommandScope? scope = null,
         string? languageCode = null, CancellationToken cancellationToken = default)
@@ -373,10 +388,10 @@ public interface ITelegramBotProfileApi
 public sealed record TelegramUploadFile(string Name, string FileName, Stream Content);
 
 /// <summary>
-///     直接调用任意 Bot API 方法，覆盖本模型没有建模的功能。只使用 System.Text.Json 类型，插件无需引用适配器程序集。
-///     适配器负责长轮询：调用 getUpdates 或 setWebhook 会与之冲突。
+///     直接调用任意 Bot API 方法，覆盖本模型没有建模的功能；仅 Bot API 传输的机器人适配器实现。
+///     只使用 System.Text.Json 类型，插件无需引用适配器程序集。适配器负责长轮询：调用 getUpdates 或 setWebhook 会与之冲突。
 /// </summary>
-public interface ITelegramRawApi
+public interface ITelegramBotApi
 {
     /// <summary>Bot API 版本，如 10.4。</summary>
     string BotApiVersion => string.Empty;
@@ -391,7 +406,7 @@ public interface ITelegramRawApi
         throw new NotSupportedException();
     }
 
-    /// <summary>每个 Update 的原始 JSON，先于 SDK 事件触发。</summary>
+    /// <summary>每个 Bot API Update 的原始 JSON，先于 SDK 事件触发。</summary>
     event Func<JsonElement, Task>? UpdateReceived
     {
         add => throw new NotSupportedException();

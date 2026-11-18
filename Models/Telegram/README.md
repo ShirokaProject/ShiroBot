@@ -17,9 +17,12 @@ Telegram Model ABI **1.1.0.0** (host 1.0.4) adds, compatibly with 1.0.0.0:
 - Outgoing content for `ITelegramMessageApi.SendAsync`: text with MarkdownV2/HTML, polls and quizzes,
   locations, venues, contacts, dice, stickers, media groups and invoices, with inline keyboards,
   reply keyboards, keyboard removal and force reply.
-- Optional adapter extensions: `ITelegramChatApi`, `ITelegramMessageApi`, `ITelegramInlineApi`,
-  `ITelegramPaymentApi`, `ITelegramBotProfileApi` and `ITelegramRawApi`. The raw API uses only
-  System.Text.Json types and reaches every Bot API method.
+- Optional adapter extensions: `ITelegramClientApi` (account kind, transport, file limits, self profile),
+  `ITelegramChatApi`, `ITelegramMessageApi`, and the bot-only `ITelegramInlineApi`, `ITelegramPaymentApi`,
+  `ITelegramBotProfileApi` and `ITelegramBotApi`. The Bot API raw call uses only System.Text.Json types and
+  reaches every Bot API method.
+- Bot and user-account (MTProto) adapters share this Model under the platform ID `telegram`. Chat IDs always use
+  the Bot API format (`TelegramChatIds` converts to and from MTProto peers); raw JSON states its `JsonFormat`.
 - `MessageEvent.Raw` carries `TelegramMessage`; content without a common segment arrives as
   `RawSegment` with a `TelegramSegmentKinds` kind. Telegram-only updates arrive as `PlatformEvent`
   with a `TelegramEventKinds` kind and a `TelegramEventPayload` in `Raw`.
