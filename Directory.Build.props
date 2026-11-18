@@ -12,7 +12,7 @@
     <ShirobotDashboardVersion>1.0.3</ShirobotDashboardVersion>
     <ShiroBotSdkAbiVersion>1.4.0.0</ShiroBotSdkAbiVersion>
     <ShiroBotQqModelAbiVersion>1.0.0.0</ShiroBotQqModelAbiVersion>
-    <ShiroBotDiscordModelAbiVersion>1.0.0.0</ShiroBotDiscordModelAbiVersion>
+    <ShiroBotDiscordModelAbiVersion>1.1.0.0</ShiroBotDiscordModelAbiVersion>
     <ShiroBotTelegramModelAbiVersion>1.1.0.0</ShiroBotTelegramModelAbiVersion>
   </PropertyGroup>
 </Project>

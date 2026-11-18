@@ -10,11 +10,14 @@
 - 新增可选扩展接口 `ITelegramChatApi`、`ITelegramMessageApi`、`ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi`，以及只使用 System.Text.Json 类型的 `ITelegramRawApi`，插件无需引用适配器程序集即可调用任意 Bot API 方法。
 - 新增 Telegram 事件负载和 `TelegramEventKinds`：消息编辑、成员与机器人状态变化、入群申请、inline 查询、投票、付款确认、收货查询和助力；`TelegramMessage` 提供消息原生资料，`TelegramSegmentKinds` 约定位置、投票、付款等入站内容的 `RawSegment`。
 - `TelegramUser` 新增 `LanguageCode` 与 `IsPremium`。
+- 扩展 `ShiroBot.Model.Discord`：服务器、频道、角色、成员、权限位、表情、邀请、封禁等实体；Embed、按钮、下拉菜单、文本输入、投票、附件、允许提及等原生消息内容；交互详情、应用命令定义与弹窗。
+- 新增可选扩展接口 `IDiscordGuildApi`、`IDiscordMessageApi`、`IDiscordInteractionApi`、`IDiscordBotApi`，以及只使用 System.Text.Json 类型的 `IDiscordRawApi`（任意 REST 路由、Gateway 指令和原始 Dispatch）。
+- 新增 Discord 事件负载和 `DiscordEventKinds`：消息编辑、服务器、频道与子区、成员、角色、封禁、语音状态、输入、Reaction 清除、投票和邀请；`DiscordMessage` 提供消息原生资料，`DiscordSegmentKinds` 约定 Embed、贴纸、投票和组件的 `RawSegment`。`DiscordUser` 新增 `AvatarUrl`。
 
 ### 升级说明
 
-- Telegram Model ABI 升至 `1.1.0.0`（新增成员，兼容 `1.0.0.0`）；SDK ABI 仍为 `1.4.0.0`，QQ、Discord Model ABI 仍为 `1.0.0.0`。
-- 引用新增 Telegram 类型的组件需要 1.0.4 及以上的宿主；只使用原有成员的组件不受影响。
+- Telegram 与 Discord Model ABI 升至 `1.1.0.0`（新增成员，兼容 `1.0.0.0`）；SDK ABI 仍为 `1.4.0.0`，QQ Model ABI 仍为 `1.0.0.0`。
+- 引用新增 Telegram 或 Discord 类型的组件需要 1.0.4 及以上的宿主；只使用原有成员的组件不受影响。
 
 ## 1.0.3
 

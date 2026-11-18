@@ -17,7 +17,7 @@ shared assemblies maintain their own ABI versions.
 
 | ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
-| 1.0.4 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.1.0.0 |
+| 1.0.4 | 1.4.0.0 | 1.0.0.0 | 1.1.0.0 | 1.1.0.0 |
 | 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.2 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
@@ -33,7 +33,9 @@ support. Plugins only need this single package, including plugins that render Av
 
 Version 1.0.4 extends the Telegram Model (ABI 1.1.0.0) with chats, members, permissions, forum topics,
 invite links, polls, locations, media groups, reply keyboards, inline mode, payments, typed platform
-events and a raw Bot API call. Other ABI versions are unchanged.
+events and a raw Bot API call, and the Discord Model (ABI 1.1.0.0) with guilds, channels, roles,
+members, permissions, embeds, components, polls, slash commands, interaction responses, modals,
+presence, typed Gateway events and raw REST/Gateway access. SDK and QQ Model ABI are unchanged.
 
 Version 1.0.3 targets .NET 11 and adds adapter Dashboard pages and actions, SSE log streaming,
 persistent logs and configurable message prefixes. SDK and built-in Model ABI versions remain unchanged.

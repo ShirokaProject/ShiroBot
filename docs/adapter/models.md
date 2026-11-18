@@ -5,7 +5,7 @@
 | 平台 | `IBotAdapter.Platform` | 内置 Model | 当前接入方式 |
 | --- | --- | --- | --- |
 | QQ | `qq` | `ShiroBot.Model.QQ` | 通用消息和服务照常映射；按需实现 `IQFriendApi`、`IQGroupApi`、`IQFileApi`、`IQSystemApi`、`IQMessageApi` 或 `IQOfficialMessageApi` |
-| Discord | `discord` | `ShiroBot.Model.Discord` | 通用服务为主；`DiscordUser` 保留原生用户字段，当前没有 Discord 专有扩展接口 |
+| Discord | `discord` | `ShiroBot.Model.Discord` | 通用消息和服务照常映射；按需实现 `IDiscordGuildApi`、`IDiscordMessageApi`、`IDiscordInteractionApi`、`IDiscordBotApi` 或 `IDiscordRawApi` |
 | Telegram | `telegram` | `ShiroBot.Model.Telegram` | 通用消息和服务照常映射；按需实现 `ITelegramChatApi`、`ITelegramMessageApi`、`ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` 或 `ITelegramRawApi` |
 | 其他平台 | 自定义稳定 ID | 通用 SDK | 从通用模型开始；需要插件共享自定义类型时使用共享契约程序集 |
 
@@ -68,7 +68,12 @@
 | Telegram inline / 支付 / 资料 | `ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` | inline 查询回答、付款确认与退款、命令菜单 | 可选扩展 |
 | Telegram 原始调用 | `ITelegramRawApi` | 任意 Bot API 方法与原始 Update | 可选扩展 |
 | Telegram 事件与入站内容 | `TelegramEventKinds`、`TelegramSegmentKinds` | 特有 Update 以 `PlatformEvent` 上报，`Raw` 为对应负载；`MessageEvent.Raw` 为 `TelegramMessage` | 实现扩展时建议遵循 |
-| Discord 平台扩展 | 当前无专有扩展接口 | 通过通用服务实现；原生用户字段使用 `DiscordUser` | 无额外接口 |
+| Discord 服务器管理 | `IDiscordGuildApi` | 频道、权限覆盖、角色、成员、超时、封禁、邀请、表情、子区 | 可选扩展 |
+| Discord 原生消息 | `IDiscordMessageApi` | Embed、组件、投票、附件；编辑、置顶、批量删除、Reaction 管理 | 可选扩展 |
+| Discord 交互与命令 | `IDiscordInteractionApi` | 交互回复、延迟、弹窗、自动补全、后续消息；应用命令注册 | 可选扩展 |
+| Discord 机器人 | `IDiscordBotApi` | 自身资料、用户查询、在线状态 | 可选扩展 |
+| Discord 原始调用 | `IDiscordRawApi` | 任意 REST 路由、Gateway 指令与原始 Dispatch | 可选扩展 |
+| Discord 事件与入站内容 | `DiscordEventKinds`、`DiscordSegmentKinds` | 特有 Gateway 事件以 `PlatformEvent` 上报；`MessageEvent.Raw` 为 `DiscordMessage`，`InteractionEvent.Raw` 为 `DiscordInteraction` | 实现扩展时建议遵循 |
 
 通用接口的方法清单见[实现服务接口](/adapter/services)，QQ 扩展的功能清单见[QQ Model](/plugin/qq-model)。取得扩展接口不代表所有方法都可用；未实现的方法默认抛 `NotSupportedException`。
 
