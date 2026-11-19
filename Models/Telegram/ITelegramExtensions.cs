@@ -38,16 +38,19 @@ public interface ITelegramClientApi
 /// <summary>Telegram 会话、成员、话题和邀请管理。</summary>
 public interface ITelegramChatApi
 {
+    /// <summary>查询会话资料，包括简介、默认权限、慢速模式和关联频道。</summary>
     Task<TelegramChat> GetChatAsync(string chatId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询会话成员数。</summary>
     Task<int> GetMemberCountAsync(string chatId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询指定成员的状态、权限和头衔。</summary>
     Task<TelegramChatMember> GetMemberAsync(string chatId, string userId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -102,11 +105,13 @@ public interface ITelegramChatApi
         throw new NotSupportedException();
     }
 
+    /// <summary>修改群组或频道标题。</summary>
     Task SetTitleAsync(string chatId, string title, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>修改群组或频道简介；null 清除。</summary>
     Task SetDescriptionAsync(string chatId, string? description, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -118,11 +123,13 @@ public interface ITelegramChatApi
         throw new NotSupportedException();
     }
 
+    /// <summary>删除会话头像。</summary>
     Task DeletePhotoAsync(string chatId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>置顶消息。</summary>
     Task PinMessageAsync(string chatId, string messageId, bool disableNotification = false,
         CancellationToken cancellationToken = default)
     {
@@ -147,34 +154,40 @@ public interface ITelegramChatApi
         throw new NotSupportedException();
     }
 
+    /// <summary>创建额外的邀请链接。</summary>
     Task<TelegramInviteLink> CreateInviteLinkAsync(string chatId, TelegramInviteLinkOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>修改机器人创建的邀请链接。</summary>
     Task<TelegramInviteLink> EditInviteLinkAsync(string chatId, string link, TelegramInviteLinkOptions options,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>撤销邀请链接；撤销主链接时会生成新的主链接。</summary>
     Task<TelegramInviteLink> RevokeInviteLinkAsync(string chatId, string link,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>批准入群申请。</summary>
     Task ApproveJoinRequestAsync(string chatId, string userId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>拒绝入群申请。</summary>
     Task DeclineJoinRequestAsync(string chatId, string userId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>退出群组或频道。</summary>
     Task LeaveChatAsync(string chatId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -194,11 +207,13 @@ public interface ITelegramChatApi
         throw new NotSupportedException();
     }
 
+    /// <summary>关闭话题，普通成员不能再发言。</summary>
     Task CloseTopicAsync(string chatId, long threadId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>重新开启已关闭的话题。</summary>
     Task ReopenTopicAsync(string chatId, long threadId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -345,24 +360,28 @@ public interface ITelegramPaymentApi
 public interface ITelegramBotProfileApi
 {
     /// <param name="languageCode">两位 ISO 639-1 语言代码；null 表示所有未单独设置的语言。</param>
+    /// <summary>设置命令菜单。</summary>
     Task SetCommandsAsync(IReadOnlyList<TelegramBotCommand> commands, TelegramCommandScope? scope = null,
         string? languageCode = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询已设置的命令菜单。</summary>
     Task<IReadOnlyList<TelegramBotCommand>> GetCommandsAsync(TelegramCommandScope? scope = null,
         string? languageCode = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>删除命令菜单，回退到更宽范围的设置。</summary>
     Task DeleteCommandsAsync(TelegramCommandScope? scope = null, string? languageCode = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>修改机器人显示名称；null 清除该语言的单独设置。</summary>
     Task SetBotNameAsync(string? name, string? languageCode = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -411,5 +430,43 @@ public interface ITelegramBotApi
     {
         add => throw new NotSupportedException();
         remove { }
+    }
+}
+
+/// <summary>
+///     用户账号特有的操作，仅用户账号（MTProto 登录；机器人适配器不实现）。历史消息、完整成员列表、会话列表和好友
+///     使用 SDK 通用服务（<c>GetHistoryMessagesAsync</c>、<c>GetMembersAsync</c>、<c>GetChannelsAsync</c>、<c>GetFriendsAsync</c>）。
+/// </summary>
+public interface ITelegramAccountApi
+{
+    /// <summary>会话列表（对话），按最近活动排序。</summary>
+    Task<IReadOnlyList<TelegramChat>> GetDialogsAsync(int limit = 100, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>通过邀请链接（<c>t.me/+…</c>）或公开用户名加入群组或频道。</summary>
+    Task<TelegramChat> JoinChatAsync(string inviteLinkOrUsername, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>把会话标记为已读；<paramref name="maxMessageId"/> 为 null 时读到最新消息。</summary>
+    Task MarkAsReadAsync(Channel channel, string? maxMessageId = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>通讯录联系人。</summary>
+    Task<IReadOnlyList<TelegramUser>> GetContactsAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>点击其他机器人消息上的回调按钮，返回机器人回答的提示文本（没有时为 null）。</summary>
+    Task<string?> PressCallbackButtonAsync(Channel channel, string messageId, string callbackData,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
     }
 }

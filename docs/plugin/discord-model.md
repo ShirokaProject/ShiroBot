@@ -9,6 +9,18 @@
 [assembly: RequiresShiroBotPackage("shirobot.model.discord", MinimumVersion = "1.0.4")]
 ```
 
+## 账号类型
+
+官方机器人适配器和用户账号适配器共用这套 Model，平台 ID 都是 `discord`，各自只实现自己账号能用的接口，其他接口返回 `null`。
+`IDiscordClientApi.AccountKind` 说明当前实例是机器人还是用户账号。
+
+- **通用接口**：账号信息、服务器管理、原生消息、原始调用。
+- **仅机器人**：交互与应用命令（斜杠命令、按钮回调、弹窗等），用户账号收不到交互。
+- **仅用户账号**：私聊列表、通过邀请加入服务器、标记已读等，为预留契约。Discord 服务条款禁止自动化用户账号（self-bot），
+  账号可能被封禁，是否使用由部署者自行承担。
+
+完整签名见 [接口参考](./discord-reference) 与 [C# 类型参考](./discord/types)。
+
 ## 常用 Model 类型
 
 | 名称 | 类型 | 描述 |
@@ -29,10 +41,11 @@
 
 | 功能 | Model 接口 | 内容 |
 | --- | --- | --- |
+| 账号信息 | `IDiscordClientApi` | 账号类型、上传上限、自身资料、用户查询、在线状态与活动、修改用户名和头像 |
 | 服务器管理 | `IDiscordGuildApi` | 服务器与频道查询；频道创建、修改、删除与权限覆盖；角色增删改；成员查询、搜索、角色、昵称、超时、移出；封禁；邀请；表情；子区 |
 | 原生消息 | `IDiscordMessageApi` | 发送与编辑富消息；公告推送；置顶；批量删除；输入状态；Reaction 用户与清除；投票结束与投票者 |
-| 交互与命令 | `IDiscordInteractionApi` | 回复、延迟、更新组件消息、弹窗、自动补全、编辑/删除原回复、后续消息；命令查询、整体注册、单个新增或更新、删除 |
-| 机器人 | `IDiscordBotApi` | 自身资料、用户查询、在线状态与活动、修改用户名和头像 |
+| 交互与命令（仅机器人） | `IDiscordInteractionApi` | 应用 ID；回复、延迟、更新组件消息、弹窗、自动补全、编辑/删除原回复、后续消息；命令查询、整体注册、单个新增或更新、删除 |
+| 账号操作（仅用户账号，预留） | `IDiscordAccountApi` | 私聊列表、通过邀请加入或离开服务器、标记已读 |
 | 原始调用 | `IDiscordRawApi` | 任意 REST 路由（含文件上传与审计日志原因）、Gateway 指令、原始 Dispatch |
 
 取得接口后，未实现的方法仍可能抛出 `NotSupportedException`。权限不足等失败由 Discord 返回，适配器抛出带状态码和错误内容的异常。

@@ -4,13 +4,61 @@ using ShiroBot.SDK.Models;
 
 namespace ShiroBot.Model.Discord;
 
-// 插件通过 Context.GetAdapterExtension<T>() 探测这些接口。ID 参数使用 Snowflake 字符串，与 SDK 的 User.Id、Channel.Id、
-// MessageId 相同；消息方法的 Channel 为 Direct 时 Id 为用户 ID，适配器自动打开私聊。
-// reason 写入服务器审计日志。未实现的方法默认抛 NotSupportedException；权限由 Discord 校验。
+// 插件通过 Context.GetAdapterExtension<T>() 探测这些接口。官方机器人适配器与用户账号适配器共用本 Model（平台 ID 均为 discord），
+// 只实现各自账号能用的接口：标注“仅机器人”或“仅用户账号”的接口在另一种适配器上不可用，插件会拿到 null。
+// ID 参数使用 Snowflake 字符串，与 SDK 的 User.Id、Channel.Id、MessageId 相同；消息方法的 Channel 为 Direct 时 Id 为用户 ID，
+// 适配器自动打开私聊。reason 写入服务器审计日志。未实现的方法默认抛 NotSupportedException；权限由 Discord 校验。
+
+/// <summary>适配器登录的账号类型。</summary>
+public enum DiscordAccountKind
+{
+    /// <summary>Developer Portal 创建的机器人（Bot Token）。</summary>
+    Bot,
+
+    /// <summary>
+    ///     用户自己的账号。Discord 服务条款禁止自动化用户账号（self-bot），账号可能被封禁；是否使用由部署者自行承担。
+    /// </summary>
+    User
+}
+
+/// <summary>当前实例的账号信息、自身资料、用户查询与在线状态，两种账号都实现。</summary>
+public interface IDiscordClientApi
+{
+    DiscordAccountKind AccountKind => DiscordAccountKind.Bot;
+
+    /// <summary>单个附件的上传上限（字节）。机器人默认 10 MB，服务器助力等级可提高；用户账号取决于订阅。</summary>
+    long MaxUploadBytes => 10L * 1024 * 1024;
+
+    /// <summary>当前登录账号的资料。</summary>
+    Task<DiscordUser> GetCurrentUserAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>查询任意用户的公开资料。</summary>
+    Task<DiscordUser> FetchUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>通过 Gateway 更新在线状态；断线重连后由适配器重新发送。</summary>
+    Task SetPresenceAsync(DiscordPresence presence, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>修改当前账号的用户名或头像；null 表示不修改。Discord 对用户名修改有频率限制。</summary>
+    Task<DiscordUser> ModifyCurrentUserAsync(string? username = null, string? avatarUri = null,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+}
 
 /// <summary>服务器、频道、角色、成员、封禁、邀请、表情和子区管理。</summary>
 public interface IDiscordGuildApi
 {
+    /// <summary>查询服务器资料。</summary>
     Task<DiscordGuild> GetGuildAsync(string guildId, bool withCounts = false, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -22,23 +70,27 @@ public interface IDiscordGuildApi
         throw new NotSupportedException();
     }
 
+    /// <summary>查询服务器的全部频道（不含子区）。</summary>
     Task<IReadOnlyList<DiscordChannel>> GetGuildChannelsAsync(string guildId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>创建频道。</summary>
     Task<DiscordChannel> CreateChannelAsync(string guildId, DiscordChannelOptions options, string? reason = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>修改频道设置；未设置的项保持不变。</summary>
     Task<DiscordChannel> ModifyChannelAsync(string channelId, DiscordChannelOptions options, string? reason = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>删除频道或子区。</summary>
     Task DeleteChannelAsync(string channelId, string? reason = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -51,34 +103,40 @@ public interface IDiscordGuildApi
         throw new NotSupportedException();
     }
 
+    /// <summary>删除频道上对某个角色或成员的权限覆盖。</summary>
     Task DeleteChannelPermissionAsync(string channelId, string roleOrUserId, string? reason = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询服务器角色。</summary>
     Task<IReadOnlyList<DiscordRole>> GetRolesAsync(string guildId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>创建角色。</summary>
     Task<DiscordRole> CreateRoleAsync(string guildId, DiscordRoleOptions options, string? reason = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>修改角色；未设置的项保持不变。</summary>
     Task<DiscordRole> ModifyRoleAsync(string guildId, string roleId, DiscordRoleOptions options, string? reason = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>删除角色。</summary>
     Task DeleteRoleAsync(string guildId, string roleId, string? reason = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询成员资料，并按角色计算服务器级权限。</summary>
     Task<DiscordMember> GetGuildMemberAsync(string guildId, string userId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -91,12 +149,14 @@ public interface IDiscordGuildApi
         throw new NotSupportedException();
     }
 
+    /// <summary>给成员添加角色。</summary>
     Task AddMemberRoleAsync(string guildId, string userId, string roleId, string? reason = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>移除成员的角色。</summary>
     Task RemoveMemberRoleAsync(string guildId, string userId, string roleId, string? reason = null,
         CancellationToken cancellationToken = default)
     {
@@ -117,6 +177,7 @@ public interface IDiscordGuildApi
         throw new NotSupportedException();
     }
 
+    /// <summary>把成员移出服务器（可再次通过邀请加入）。</summary>
     Task RemoveGuildMemberAsync(string guildId, string userId, string? reason = null,
         CancellationToken cancellationToken = default)
     {
@@ -130,32 +191,38 @@ public interface IDiscordGuildApi
         throw new NotSupportedException();
     }
 
+    /// <summary>解除封禁。</summary>
     Task UnbanAsync(string guildId, string userId, string? reason = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询封禁列表。</summary>
     Task<IReadOnlyList<DiscordBan>> GetBansAsync(string guildId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询服务器的邀请。</summary>
     Task<IReadOnlyList<DiscordInvite>> GetInvitesAsync(string guildId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>为频道创建邀请。</summary>
     Task<DiscordInvite> CreateInviteAsync(string channelId, DiscordInviteOptions? options = null, string? reason = null,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>删除邀请。</summary>
     Task DeleteInviteAsync(string code, string? reason = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询服务器自定义表情。</summary>
     Task<IReadOnlyList<DiscordEmoji>> GetEmojisAsync(string guildId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -171,16 +238,19 @@ public interface IDiscordGuildApi
         throw new NotSupportedException();
     }
 
+    /// <summary>让当前账号加入子区。</summary>
     Task JoinThreadAsync(string threadId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>让当前账号离开子区。</summary>
     Task LeaveThreadAsync(string threadId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>把成员加入子区。</summary>
     Task AddThreadMemberAsync(string threadId, string userId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -190,6 +260,7 @@ public interface IDiscordGuildApi
 /// <summary>Discord 原生消息：Embed、组件、投票、附件、编辑、置顶、批量删除和 Reaction 管理。</summary>
 public interface IDiscordMessageApi
 {
+    /// <summary>发送 Discord 原生富消息。</summary>
     Task<DiscordSentMessage> SendAsync(Channel channel, DiscordMessageContent content,
         CancellationToken cancellationToken = default)
     {
@@ -209,16 +280,19 @@ public interface IDiscordMessageApi
         throw new NotSupportedException();
     }
 
+    /// <summary>置顶消息。</summary>
     Task PinAsync(Channel channel, string messageId, string? reason = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>取消置顶。</summary>
     Task UnpinAsync(Channel channel, string messageId, string? reason = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>查询频道的全部置顶消息。</summary>
     Task<IReadOnlyList<DiscordMessage>> GetPinnedAsync(Channel channel, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -238,6 +312,7 @@ public interface IDiscordMessageApi
     }
 
     /// <param name="emoji">Unicode 表情，或自定义表情的 name:id。</param>
+    /// <summary>查询对消息添加了某个表情的用户。</summary>
     Task<IReadOnlyList<DiscordUser>> GetReactionUsersAsync(Channel channel, string messageId, string emoji, int limit = 25,
         CancellationToken cancellationToken = default)
     {
@@ -257,6 +332,7 @@ public interface IDiscordMessageApi
         throw new NotSupportedException();
     }
 
+    /// <summary>查询投票中选择了某个选项的用户。</summary>
     Task<IReadOnlyList<DiscordUser>> GetPollVotersAsync(Channel channel, string messageId, int answerId, int limit = 25,
         CancellationToken cancellationToken = default)
     {
@@ -265,12 +341,15 @@ public interface IDiscordMessageApi
 }
 
 /// <summary>
-///     交互回复与应用命令。交互令牌有效期 15 分钟，首次回复必须在 3 秒内发出。
+///     交互回复与应用命令，仅机器人。交互令牌有效期 15 分钟，首次回复必须在 3 秒内发出。
 ///     适配器自动确认交互时（<see cref="AutoAcknowledges"/>），首次回复已用延迟回复占用，只能使用
 ///     <see cref="EditOriginalAsync"/> 和 <see cref="FollowupAsync"/>；弹窗、自动补全和临时可见的首次回复需要关闭自动确认。
 /// </summary>
 public interface IDiscordInteractionApi
 {
+    /// <summary>应用 ID；READY 之后可用。</summary>
+    string? ApplicationId => null;
+
     bool AutoAcknowledges => true;
 
     /// <summary>首次回复一条消息；<see cref="DiscordMessageFlags.Ephemeral"/> 使其只对发起者可见。</summary>
@@ -308,12 +387,14 @@ public interface IDiscordInteractionApi
         throw new NotSupportedException();
     }
 
+    /// <summary>编辑首次回复（包括自动确认产生的延迟回复）。</summary>
     Task<DiscordSentMessage> EditOriginalAsync(string interactionId, DiscordMessageContent content,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
+    /// <summary>删除首次回复。</summary>
     Task DeleteOriginalAsync(string interactionId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -347,6 +428,7 @@ public interface IDiscordInteractionApi
         throw new NotSupportedException();
     }
 
+    /// <summary>删除一个已注册的命令。</summary>
     Task DeleteCommandAsync(string commandId, string? guildId = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -383,7 +465,7 @@ public sealed record DiscordActivity(DiscordActivityType Type, string Name)
     public string? Url { get; init; }
 }
 
-/// <summary>机器人的在线状态与活动。</summary>
+/// <summary>账号的在线状态与活动。</summary>
 public sealed record DiscordPresence
 {
     public DiscordStatus Status { get; init; } = DiscordStatus.Online;
@@ -391,35 +473,35 @@ public sealed record DiscordPresence
     public bool Afk { get; init; }
 }
 
-/// <summary>机器人自身：资料、在线状态和用户查询。</summary>
-public interface IDiscordBotApi
+/// <summary>
+///     用户账号特有的操作，仅用户账号（机器人适配器不实现）。好友、历史消息和成员列表使用 SDK 通用服务。
+///     Discord 服务条款禁止自动化用户账号，账号可能被封禁。
+/// </summary>
+public interface IDiscordAccountApi
 {
-    Task<DiscordUser> GetCurrentUserAsync(CancellationToken cancellationToken = default)
+    /// <summary>当前账号的私聊和群组私聊。</summary>
+    Task<IReadOnlyList<DiscordChannel>> GetPrivateChannelsAsync(CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
-    /// <summary>查询任意用户的公开资料。</summary>
-    Task<DiscordUser> FetchUserAsync(string userId, CancellationToken cancellationToken = default)
+    /// <summary>通过邀请码加入服务器。</summary>
+    Task<DiscordGuild> JoinGuildAsync(string inviteCode, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
-    /// <summary>通过 Gateway 更新在线状态；断线重连后由适配器重新发送。</summary>
-    Task SetPresenceAsync(DiscordPresence presence, CancellationToken cancellationToken = default)
+    /// <summary>离开服务器。</summary>
+    Task LeaveGuildAsync(string guildId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
-    /// <summary>修改机器人用户名或头像；null 表示不修改。Discord 对用户名修改有频率限制。</summary>
-    Task<DiscordUser> ModifyCurrentUserAsync(string? username = null, string? avatarUri = null,
-        CancellationToken cancellationToken = default)
+    /// <summary>把频道标记为已读到 <paramref name="messageId"/>。</summary>
+    Task AcknowledgeAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
-
-    /// <summary>应用 ID；READY 之后可用。</summary>
-    string? ApplicationId => null;
 }
 
 /// <summary>随原始请求上传的文件，按顺序作为 <c>files[n]</c> 发送。</summary>

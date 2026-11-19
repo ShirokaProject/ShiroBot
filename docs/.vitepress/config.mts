@@ -140,8 +140,76 @@ export default defineConfig({
                 { text: 'C# 类型参考', link: '/plugin/qq/types' }
               ]
             },
-            { text: 'Discord Model', link: '/plugin/discord-model' },
-            { text: 'Telegram Model', link: '/plugin/telegram-model' }
+            {
+              text: 'Discord Model',
+              items: [
+                { text: 'Discord 特有能力', link: '/plugin/discord-model' },
+                {
+                  text: '接口参考',
+                  link: '/plugin/discord-reference',
+                  collapsed: true,
+                  items: [
+                    { text: '账号信息', link: '/plugin/discord/client' },
+                    { text: '服务器管理', link: '/plugin/discord/guild' },
+                    { text: '原生消息', link: '/plugin/discord/message' },
+                    { text: '原始调用', link: '/plugin/discord/raw' }
+                  ]
+                },
+                {
+                  text: '机器人接口',
+                  link: '/plugin/discord/bot',
+                  collapsed: true,
+                  items: [
+                    { text: '交互与应用命令', link: '/plugin/discord/interaction' }
+                  ]
+                },
+                {
+                  text: '用户账号接口',
+                  link: '/plugin/discord/user',
+                  collapsed: true,
+                  items: [
+                    { text: '账号操作（预留）', link: '/plugin/discord/account' }
+                  ]
+                },
+                { text: 'C# 类型参考', link: '/plugin/discord/types' }
+              ]
+            },
+            {
+              text: 'Telegram Model',
+              items: [
+                { text: 'Telegram 特有能力', link: '/plugin/telegram-model' },
+                {
+                  text: '接口参考',
+                  link: '/plugin/telegram-reference',
+                  collapsed: true,
+                  items: [
+                    { text: '账号信息', link: '/plugin/telegram/client' },
+                    { text: '会话管理', link: '/plugin/telegram/chat' },
+                    { text: '原生消息', link: '/plugin/telegram/message' }
+                  ]
+                },
+                {
+                  text: '机器人接口',
+                  link: '/plugin/telegram/bot',
+                  collapsed: true,
+                  items: [
+                    { text: 'inline 模式', link: '/plugin/telegram/inline' },
+                    { text: '支付', link: '/plugin/telegram/payment' },
+                    { text: '命令菜单与资料', link: '/plugin/telegram/bot-profile' },
+                    { text: 'Bot API 原始调用', link: '/plugin/telegram/bot-api' }
+                  ]
+                },
+                {
+                  text: '用户账号接口',
+                  link: '/plugin/telegram/user',
+                  collapsed: true,
+                  items: [
+                    { text: '账号操作（预留）', link: '/plugin/telegram/account' }
+                  ]
+                },
+                { text: 'C# 类型参考', link: '/plugin/telegram/types' }
+              ]
+            }
           ]
         },
         {

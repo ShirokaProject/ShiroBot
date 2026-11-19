@@ -12,6 +12,8 @@
 [assembly: RequiresShiroBotPackage("shirobot.model.telegram", MinimumVersion = "1.0.4")]
 ```
 
+完整签名见 [接口参考](./telegram-reference) 与 [C# 类型参考](./telegram/types)。
+
 ## 常用 Model 类型
 
 | 名称 | 类型 | 必填字段 | 描述 |
@@ -41,6 +43,7 @@
 
 | 功能 | Model 接口 | 内容 |
 | --- | --- | --- |
+| 账号操作（仅用户账号，预留） | `ITelegramAccountApi` | 会话列表、通过邀请链接加入、标记已读、通讯录、点击其他机器人的回调按钮 |
 | 账号信息 | `ITelegramClientApi` | 账号类型、传输方式、文件上限、自身资料、已见用户；两种账号都实现 |
 | 会话管理 | `ITelegramChatApi` | 会话资料、成员数、成员与管理员查询；封禁、解封、限制、提升、头衔、默认权限；标题、简介、头像；置顶；邀请链接；入群审批；话题的创建、修改、关闭、重开和删除；退出 |
 | 原生消息 | `ITelegramMessageApi` | 发送原生内容；编辑文本、说明和键盘（包括 inline 消息）；转发、复制、批量删除；输入状态；结束投票；带提示回答按钮回调（仅机器人） |
