@@ -110,6 +110,7 @@ export default defineConfig({
             { text: '通用 Model', link: '/plugin/models' },
             {
               text: 'QQ Model',
+              collapsed: true,
               items: [
                 { text: 'QQ 特有能力', link: '/plugin/qq-model' },
                 {
@@ -142,6 +143,7 @@ export default defineConfig({
             },
             {
               text: 'Discord Model',
+              collapsed: true,
               items: [
                 { text: 'Discord 特有能力', link: '/plugin/discord-model' },
                 {
@@ -176,6 +178,7 @@ export default defineConfig({
             },
             {
               text: 'Telegram Model',
+              collapsed: true,
               items: [
                 { text: 'Telegram 特有能力', link: '/plugin/telegram-model' },
                 {
