@@ -2,7 +2,7 @@
 
 命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。两种账号都实现。
 
-Telegram 会话、成员、话题和邀请管理。
+Telegram 会话、成员、话题和邀请管理。改名（含话题名）、退出、踢出、禁言、删除单条消息和成员资料使用 SDK 通用服务 （`SetChannelNameAsync`、`LeaveChannelAsync`、`KickMemberAsync`、`MuteMemberAsync`、`DeleteMessageAsync`、`GetMemberAsync`）， 这里只放通用服务表达不了的部分。
 
 ```csharp
 var api = Context.GetAdapterExtension<ITelegramChatApi>();
@@ -247,26 +247,6 @@ Task SetPermissionsAsync(
 | --- | --- | --- | --- |
 | `chatId` | `string` | `必传` | 会话：Bot API 格式的数字 ID、`@username` 或 SDK 频道 ID（`chatId:threadId`）。 |
 | `permissions` | `TelegramChatPermissions` | `必传` | 权限设置。 |
-| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
-
-### 返回
-
-`Task`。完成后无返回值。
-
-## SetTitleAsync
-
-修改群组或频道标题。
-
-```csharp
-Task SetTitleAsync(string chatId, string title, CancellationToken cancellationToken = default);
-```
-
-### 参数
-
-| 参数 | C# 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `chatId` | `string` | `必传` | 会话：Bot API 格式的数字 ID、`@username` 或 SDK 频道 ID（`chatId:threadId`）。 |
-| `title` | `string` | `必传` | 标题。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回
@@ -540,25 +520,6 @@ Task DeclineJoinRequestAsync(
 | --- | --- | --- | --- |
 | `chatId` | `string` | `必传` | 会话：Bot API 格式的数字 ID、`@username` 或 SDK 频道 ID（`chatId:threadId`）。 |
 | `userId` | `string` | `必传` | 用户 ID，与 SDK 的 `User.Id` 相同。 |
-| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
-
-### 返回
-
-`Task`。完成后无返回值。
-
-## LeaveChatAsync
-
-退出群组或频道。
-
-```csharp
-Task LeaveChatAsync(string chatId, CancellationToken cancellationToken = default);
-```
-
-### 参数
-
-| 参数 | C# 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `chatId` | `string` | `必传` | 会话：Bot API 格式的数字 ID、`@username` 或 SDK 频道 ID（`chatId:threadId`）。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回

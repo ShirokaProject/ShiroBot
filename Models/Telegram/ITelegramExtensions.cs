@@ -35,7 +35,11 @@ public interface ITelegramClientApi
     }
 }
 
-/// <summary>Telegram 会话、成员、话题和邀请管理。</summary>
+/// <summary>
+///     Telegram 会话、成员、话题和邀请管理。改名（含话题名）、退出、踢出、禁言、删除单条消息和成员资料使用 SDK 通用服务
+///     （<c>SetChannelNameAsync</c>、<c>LeaveChannelAsync</c>、<c>KickMemberAsync</c>、<c>MuteMemberAsync</c>、<c>DeleteMessageAsync</c>、<c>GetMemberAsync</c>），
+///     这里只放通用服务表达不了的部分。
+/// </summary>
 public interface ITelegramChatApi
 {
     /// <summary>查询会话资料，包括简介、默认权限、慢速模式和关联频道。</summary>
@@ -101,12 +105,6 @@ public interface ITelegramChatApi
     /// <summary>设置所有成员的默认权限。</summary>
     Task SetPermissionsAsync(string chatId, TelegramChatPermissions permissions,
         CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    /// <summary>修改群组或频道标题。</summary>
-    Task SetTitleAsync(string chatId, string title, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
@@ -183,12 +181,6 @@ public interface ITelegramChatApi
 
     /// <summary>拒绝入群申请。</summary>
     Task DeclineJoinRequestAsync(string chatId, string userId, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    /// <summary>退出群组或频道。</summary>
-    Task LeaveChatAsync(string chatId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }

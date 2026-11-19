@@ -474,7 +474,7 @@ public sealed record DiscordPresence
 }
 
 /// <summary>
-///     用户账号特有的操作，仅用户账号（机器人适配器不实现）。好友、历史消息和成员列表使用 SDK 通用服务。
+///     用户账号特有的操作，仅用户账号（机器人适配器不实现）。好友、历史消息、成员列表和退出服务器（<c>LeaveChannelAsync</c>）使用 SDK 通用服务。
 ///     Discord 服务条款禁止自动化用户账号，账号可能被封禁。
 /// </summary>
 public interface IDiscordAccountApi
@@ -491,14 +491,8 @@ public interface IDiscordAccountApi
         throw new NotSupportedException();
     }
 
-    /// <summary>离开服务器。</summary>
-    Task LeaveGuildAsync(string guildId, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    /// <summary>把频道标记为已读到 <paramref name="messageId"/>。</summary>
-    Task AcknowledgeAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
+    /// <summary>把频道标记为已读；<paramref name="maxMessageId"/> 为 null 时读到最新消息。</summary>
+    Task MarkAsReadAsync(Channel channel, string? maxMessageId = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }

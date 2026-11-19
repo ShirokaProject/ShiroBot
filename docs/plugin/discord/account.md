@@ -2,7 +2,7 @@
 
 命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。仅用户账号实现；机器人适配器上为 null。Discord 服务条款禁止自动化用户账号（self-bot），账号可能被封禁，是否使用由部署者自行承担。
 
-用户账号特有的操作，仅用户账号（机器人适配器不实现）。好友、历史消息和成员列表使用 SDK 通用服务。 Discord 服务条款禁止自动化用户账号，账号可能被封禁。
+用户账号特有的操作，仅用户账号（机器人适配器不实现）。好友、历史消息、成员列表和退出服务器（`LeaveChannelAsync`）使用 SDK 通用服务。 Discord 服务条款禁止自动化用户账号，账号可能被封禁。
 
 ```csharp
 var api = Context.GetAdapterExtension<IDiscordAccountApi>();
@@ -50,33 +50,14 @@ Task<DiscordGuild> JoinGuildAsync(string inviteCode, CancellationToken cancellat
 
 `Task<DiscordGuild>`。异步返回 `DiscordGuild`。
 
-## LeaveGuildAsync
+## MarkAsReadAsync
 
-离开服务器。
-
-```csharp
-Task LeaveGuildAsync(string guildId, CancellationToken cancellationToken = default);
-```
-
-### 参数
-
-| 参数 | C# 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `guildId` | `string` | `必传` | 服务器 ID。 |
-| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
-
-### 返回
-
-`Task`。完成后无返回值。
-
-## AcknowledgeAsync
-
-把频道标记为已读到 `messageId`。
+把频道标记为已读；`maxMessageId` 为 null 时读到最新消息。
 
 ```csharp
-Task AcknowledgeAsync(
+Task MarkAsReadAsync(
     Channel channel,
-    string messageId,
+    string? maxMessageId = null,
     CancellationToken cancellationToken = default
 );
 ```
@@ -86,7 +67,7 @@ Task AcknowledgeAsync(
 | 参数 | C# 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `channel` | `Channel` | `必传` | 目标 SDK 频道；私聊为 `Channel.Direct(用户 ID)`，适配器自动打开私聊。 |
-| `messageId` | `string` | `必传` | 消息 ID，与 SDK 的 `MessageId` 相同。 |
+| `maxMessageId` | `string?` | `null` | 读到的最后一条消息 ID；null 为最新。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回

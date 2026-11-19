@@ -45,12 +45,14 @@
 | --- | --- | --- |
 | 账号操作（仅用户账号） | `ITelegramAccountApi` | 会话列表、通过邀请链接加入、标记已读、通讯录、点击其他机器人的回调按钮 |
 | 账号信息 | `ITelegramClientApi` | 账号类型、传输方式、文件上限、自身资料、已见用户；两种账号都实现 |
-| 会话管理 | `ITelegramChatApi` | 会话资料、成员数、成员与管理员查询；封禁、解封、限制、提升、头衔、默认权限；标题、简介、头像；置顶；邀请链接；入群审批；话题的创建、修改、关闭、重开和删除；退出 |
+| 会话管理 | `ITelegramChatApi` | 会话资料、成员数、成员与管理员查询；封禁、解封、限制、提升、头衔、默认权限；简介、头像；置顶；邀请链接；入群审批；话题的创建、修改、关闭、重开和删除 |
 | 原生消息 | `ITelegramMessageApi` | 发送原生内容；编辑文本、说明和键盘（包括 inline 消息）；转发、复制、批量删除；输入状态；结束投票；带提示回答按钮回调（仅机器人） |
 | inline 模式（仅机器人） | `ITelegramInlineApi` | 回答 inline 查询 |
 | 支付（仅机器人） | `ITelegramPaymentApi` | 付款前确认、收货方式、Telegram Stars 退款与余额；发送发票使用 `TelegramInvoiceContent` |
 | 机器人资料（仅机器人） | `ITelegramBotProfileApi` | 命令菜单（按范围和语言）、名称与介绍 |
 | Bot API 原始调用（仅 Bot API） | `ITelegramBotApi` | 调用任意 Bot API 方法并上传文件，接收原始 Update；只使用 System.Text.Json 类型 |
+
+改名、退出、踢出、禁言、删除单条消息、成员资料、历史消息等通用操作优先使用 SDK 通用服务，换平台时插件不用改；Model 接口只放通用服务表达不了的部分。
 
 取得接口后，未实现的方法仍可能抛出 `NotSupportedException`。平台权限由 Telegram 校验，失败时抛出 `InvalidOperationException`，消息包含错误码与说明。
 
