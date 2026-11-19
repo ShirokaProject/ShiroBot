@@ -1,6 +1,6 @@
 # 官方私聊（IQOfficialDirectMessageApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.1.0.0`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQOfficialDirectMessageApi>();

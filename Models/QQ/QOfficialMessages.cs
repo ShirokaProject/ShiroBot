@@ -167,6 +167,9 @@ public sealed record QOfficialMessageReply
     public string? MessageId { get; init; }
     public string? EventId { get; init; }
     public int? MessageSequence { get; init; }
+
+    /// <summary>引用消息的 QQ REFIDX_ 值；用于让客户端显示引用关系。</summary>
+    public string? ReferenceIndex { get; init; }
 }
 
 /// <summary>QQ 官方群媒体类型。</summary>

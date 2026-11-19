@@ -37,5 +37,7 @@ public enum QGroupCapabilities
     RejectAndBlacklist = 1 << 18,
     GroupList = 1 << 19,
     GroupInfo = 1 << 20,
-    Members = 1 << 21
+    Members = 1 << 21,
+    MemberBlacklist = 1 << 22,
+    BotState = 1 << 23
 }

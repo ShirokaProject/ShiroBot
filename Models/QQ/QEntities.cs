@@ -44,6 +44,15 @@ public sealed record QGroup
     public string? Description { get; init; }
     public string? Announcement { get; init; }
 
+    /// <summary>群分类。</summary>
+    public string? ClassText { get; init; }
+
+    /// <summary>群标签。</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>跨应用群标识（QQ 官方 union_group_openid）；仅在绑定第三方应用时有效，不能代替 GroupId 调用接口。</summary>
+    public string? UnionId { get; init; }
+
     /// <summary>入群验证问题(群主设置的问题,用于验证加入请求)。</summary>
     public string? Question { get; init; }
 }
@@ -69,6 +78,11 @@ public sealed record QGroupMember
     public DateTimeOffset? JoinTime { get; init; }
     public DateTimeOffset? LastSentTime { get; init; }
 
+    /// <summary>跨应用用户标识（QQ 官方 union_openid），未绑定第三方应用时为 null。</summary>
+    public string? UnionId { get; init; }
+
+    public bool IsBot { get; init; }
+
     /// <summary>禁言截止时间;未被禁言为 null。</summary>
     public DateTimeOffset? ShutUpEndTime { get; init; }
 
@@ -89,6 +103,13 @@ public sealed record QUserProfile
     public string? Country { get; init; }
     public string? City { get; init; }
     public string? School { get; init; }
+    public string? AvatarUrl { get; init; }
+
+    /// <summary>跨应用用户标识（QQ 官方 union_openid），未绑定第三方应用时为 null。</summary>
+    public string? UnionId { get; init; }
+
+    /// <summary>用户是否允许机器人主动推送消息（QQ 官方）。</summary>
+    public bool? AllowProactiveMessage { get; init; }
 }
 
 /// <summary>群公告。</summary>

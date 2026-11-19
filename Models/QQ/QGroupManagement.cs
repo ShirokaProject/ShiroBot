@@ -123,3 +123,34 @@ public sealed record QApprovalStrategy
 }
 
 public sealed record QApprovalStrategyPage(IReadOnlyList<QApprovalStrategy> Strategies, string? NextCursor);
+
+/// <summary>群黑名单中的用户；字段与 <see cref="QMutedMember" /> 一致。</summary>
+public sealed record QBlacklistedMember(string UserId, DateTimeOffset? BlacklistedAt, string? Username, string? UnionId)
+{
+    public bool IsBot { get; init; }
+}
+
+public sealed record QGroupBlacklistPage(IReadOnlyList<QBlacklistedMember> Members, string? NextCursor);
+
+/// <summary>群内消息接收设置（QQ 官方 receive_setting）。</summary>
+public enum QGroupReceiveSetting
+{
+    Unknown = 0,
+
+    /// <summary>接收全部消息（all）。</summary>
+    All = 1,
+
+    /// <summary>仅接收 @机器人 的消息（only_mention）。</summary>
+    MentionOnly = 2,
+
+    /// <summary>接收 @机器人 的消息及其上下文（mention_and_context）。</summary>
+    MentionAndContext = 3
+}
+
+/// <summary>机器人在群内的状态。成员身份（群内 ID、角色、入群时间）沿用 <see cref="QGroupMember" />。</summary>
+public sealed record QGroupBotState
+{
+    public required QGroupMember Member { get; init; }
+    public bool AllowProactiveMessage { get; init; }
+    public QGroupReceiveSetting ReceiveSetting { get; init; }
+}

@@ -1,6 +1,6 @@
 # 账号与资料（IQSystemApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.1.0.0`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQSystemApi>();

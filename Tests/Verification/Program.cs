@@ -696,7 +696,7 @@ Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
     AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.4.0.0");
-    AssertAssemblyVersion(typeof(QGroup).Assembly, "1.0.0.0");
+    AssertAssemblyVersion(typeof(QGroup).Assembly, "1.1.0.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "1.1.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "1.1.0.0");
 

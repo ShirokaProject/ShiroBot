@@ -1,6 +1,6 @@
 # QQ C# 类型参考
 
-命名空间：`ShiroBot.Model.QQ`。以下完整声明对应 QQ Model ABI `1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。以下完整声明对应 QQ Model ABI `1.1.0.0`。
 
 `required` 属性必须初始化；`init` 属性在创建对象时设置；位置式 record 使用所列构造参数。
 ID 与分页游标均为不透明字符串。文件大小、计数、时间及枚举保持各自类型。
@@ -65,6 +65,15 @@ public sealed record QGroup
     public string? Description { get; init; }
     public string? Announcement { get; init; }
 
+    /// <summary>群分类。</summary>
+    public string? ClassText { get; init; }
+
+    /// <summary>群标签。</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>跨应用群标识（QQ 官方 union_group_openid）；仅在绑定第三方应用时有效，不能代替 GroupId 调用接口。</summary>
+    public string? UnionId { get; init; }
+
     /// <summary>入群验证问题(群主设置的问题,用于验证加入请求)。</summary>
     public string? Question { get; init; }
 }
@@ -93,6 +102,11 @@ public sealed record QGroupMember
     public DateTimeOffset? JoinTime { get; init; }
     public DateTimeOffset? LastSentTime { get; init; }
 
+    /// <summary>跨应用用户标识（QQ 官方 union_openid），未绑定第三方应用时为 null。</summary>
+    public string? UnionId { get; init; }
+
+    public bool IsBot { get; init; }
+
     /// <summary>禁言截止时间;未被禁言为 null。</summary>
     public DateTimeOffset? ShutUpEndTime { get; init; }
 
@@ -116,6 +130,13 @@ public sealed record QUserProfile
     public string? Country { get; init; }
     public string? City { get; init; }
     public string? School { get; init; }
+    public string? AvatarUrl { get; init; }
+
+    /// <summary>跨应用用户标识（QQ 官方 union_openid），未绑定第三方应用时为 null。</summary>
+    public string? UnionId { get; init; }
+
+    /// <summary>用户是否允许机器人主动推送消息（QQ 官方）。</summary>
+    public bool? AllowProactiveMessage { get; init; }
 }
 ```
 
@@ -495,6 +516,64 @@ public sealed record QApprovalStrategy
 
 ```csharp
 public sealed record QApprovalStrategyPage(IReadOnlyList<QApprovalStrategy> Strategies, string? NextCursor);
+```
+
+### QBlacklistedMember
+
+```csharp
+/// <summary>群黑名单中的用户；字段与 QMutedMember 一致。</summary>
+public sealed record QBlacklistedMember(string UserId, DateTimeOffset? BlacklistedAt, string? Username, string? UnionId)
+{
+    public bool IsBot { get; init; }
+}
+```
+
+### QGroupBlacklistPage
+
+```csharp
+public sealed record QGroupBlacklistPage(IReadOnlyList<QBlacklistedMember> Members, string? NextCursor);
+```
+
+### QGroupReceiveSetting
+
+```csharp
+public enum QGroupReceiveSetting
+{
+    Unknown = 0,
+    All = 1,
+    MentionOnly = 2,
+    MentionAndContext = 3
+}
+```
+
+### QGroupBotState
+
+```csharp
+/// <summary>机器人在群内的状态。成员身份（群内 ID、角色、入群时间）沿用 QGroupMember。</summary>
+public sealed record QGroupBotState
+{
+    public required QGroupMember Member { get; init; }
+    public bool AllowProactiveMessage { get; init; }
+    public QGroupReceiveSetting ReceiveSetting { get; init; }
+}
+```
+
+### QPermissionDeniedException 与 QLimitExceededException
+
+```csharp
+/// <summary>QQ 平台拒绝了某个操作。</summary>
+public abstract class QPlatformException : Exception
+{
+    public string Operation { get; }
+    public int? ErrorCode { get; }
+    public string? Detail { get; }
+}
+
+/// <summary>平台未给当前机器人开通某个 QQ 接口权限。</summary>
+public sealed class QPermissionDeniedException : QPlatformException;
+
+/// <summary>QQ 平台限制了操作次数，例如每群每天一次的 @全体成员。</summary>
+public sealed class QLimitExceededException : QPlatformException;
 ```
 
 ## 原生消息
@@ -1375,6 +1454,9 @@ public sealed record QOfficialMessageReply
     public string? MessageId { get; init; }
     public string? EventId { get; init; }
     public int? MessageSequence { get; init; }
+
+    /// <summary>引用消息的 QQ REFIDX_ 值；用于让客户端显示引用关系。</summary>
+    public string? ReferenceIndex { get; init; }
 }
 ```
 
@@ -1448,6 +1530,8 @@ public enum QGroupCapabilities
     RejectAndBlacklist = 1 << 18,
     GroupList = 1 << 19,
     GroupInfo = 1 << 20,
-    Members = 1 << 21
+    Members = 1 << 21,
+    MemberBlacklist = 1 << 22,
+    BotState = 1 << 23
 }
 ```

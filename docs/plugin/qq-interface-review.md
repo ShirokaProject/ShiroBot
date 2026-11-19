@@ -1,6 +1,6 @@
 # QQ 接口与契约语义
 
-`ShiroBot.Model.QQ` 当前 ABI 为 **1.0.0.0**，用户、群与消息 ID 统一使用不透明字符串。
+`ShiroBot.Model.QQ` 当前 ABI 为 **1.1.0.0**，用户、群与消息 ID 统一使用不透明字符串。
 SDK 与宿主的版本要求见 [ABI 兼容性与版本](./api-compatibility)。
 
 ## 插件入口
@@ -38,6 +38,9 @@ Task AcceptJoinRequestAsync(QGroupJoinRequest request, CancellationToken cancell
 Task RejectJoinRequestAsync(QGroupJoinRequest request, string? reason = null, bool addToBlacklist = false, CancellationToken cancellationToken = default);
 Task<QGroupMuteState> GetMuteStateAsync(string groupId, CancellationToken cancellationToken = default);
 Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QMemberMute> members, CancellationToken cancellationToken = default);
+Task<QGroupBlacklistPage> GetGroupBlacklistAsync(string groupId, string? cursor = null, int limit = 20, CancellationToken cancellationToken = default);
+Task<IReadOnlyList<string>> UpdateGroupBlacklistAsync(string groupId, IReadOnlyList<string> userIds, bool add = true, CancellationToken cancellationToken = default);
+Task<QGroupBotState> GetBotStateAsync(string groupId, CancellationToken cancellationToken = default);
 ```
 
 `QGroupJoinRequest` 必填 `GroupId`、`UserId`、`RequestId`。
@@ -58,6 +61,8 @@ Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QM
 | 拒绝申请并拉黑 | 未声明 | 支持 |
 | 禁言状态及定时/周期规则查询 | 未声明 | 支持 |
 | 自动审批策略与白名单 | 未提供扩展 | 支持 |
+| 群黑名单查询与增删 | 未声明 | 支持 |
+| 机器人群内状态 | 未声明 | 支持 |
 
 `Capabilities` 描述适配器实现情况，不能替代 QQ 平台授权。
 自动审批策略使用可选的 `IQGroupApprovalStrategyApi`；策略 `GroupIds` 为适配器 ID，
