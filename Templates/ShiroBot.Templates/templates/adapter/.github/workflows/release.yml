@@ -15,12 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6.0.0
         with:
           # Keep the target runtime available while building with the latest stable SDK.
           dotnet-version: |
             11.0.x
             latest
+          dotnet-quality: ga
       - name: Restore
         run: dotnet restore AdapterTemplate.csproj
       - name: Build
