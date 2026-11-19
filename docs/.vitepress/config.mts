@@ -170,7 +170,7 @@ export default defineConfig({
                   link: '/plugin/discord/user',
                   collapsed: true,
                   items: [
-                    { text: '账号操作（预留）', link: '/plugin/discord/account' }
+                    { text: '账号操作', link: '/plugin/discord/account' }
                   ]
                 },
                 { text: 'C# 类型参考', link: '/plugin/discord/types' }
@@ -207,7 +207,7 @@ export default defineConfig({
                   link: '/plugin/telegram/user',
                   collapsed: true,
                   items: [
-                    { text: '账号操作（预留）', link: '/plugin/telegram/account' }
+                    { text: '账号操作', link: '/plugin/telegram/account' }
                   ]
                 },
                 { text: 'C# 类型参考', link: '/plugin/telegram/types' }

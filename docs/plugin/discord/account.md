@@ -1,6 +1,6 @@
 # 账号操作（IDiscordAccountApi）
 
-命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。仅用户账号实现；机器人适配器上为 null。当前为预留契约。Discord 服务条款禁止自动化用户账号（self-bot），账号可能被封禁，是否使用由部署者自行承担。
+命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。仅用户账号实现；机器人适配器上为 null。Discord 服务条款禁止自动化用户账号（self-bot），账号可能被封禁，是否使用由部署者自行承担。
 
 用户账号特有的操作，仅用户账号（机器人适配器不实现）。好友、历史消息和成员列表使用 SDK 通用服务。 Discord 服务条款禁止自动化用户账号，账号可能被封禁。
 

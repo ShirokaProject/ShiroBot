@@ -8,12 +8,12 @@
 
 - 扩展 `ShiroBot.Model.Telegram`：会话、成员与权限、管理员权限、话题、邀请链接、机器人命令等实体；投票、位置、地点、联系人、骰子、贴纸、相册、发票等原生内容；内联键盘、自定义键盘、强制回复；inline 模式结果与回调提示。
 - 新增可选扩展接口 `ITelegramClientApi`（账号类型、传输方式、文件上限、自身资料）、`ITelegramChatApi`、`ITelegramMessageApi`，以及仅机器人可用的 `ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` 和只使用 System.Text.Json 类型的 `ITelegramBotApi`（Bot API 原始调用），插件无需引用适配器程序集即可调用任意 Bot API 方法。
-- Telegram 与 Discord Model 都支持机器人和用户账号两种适配器：新增仅用户账号的预留接口 `ITelegramAccountApi`、`IDiscordAccountApi`；Telegram 会话 ID 统一为 Bot API 格式，`TelegramChatIds` 负责与 MTProto peer 互转，原始 JSON 通过 `JsonFormat` 说明结构。
+- Telegram 与 Discord Model 都支持机器人和用户账号两种适配器：新增仅用户账号的接口 `ITelegramAccountApi`、`IDiscordAccountApi`；Telegram 会话 ID 统一为 Bot API 格式，`TelegramChatIds` 负责与 MTProto peer 互转，原始 JSON 通过 `JsonFormat` 说明结构。
 - 新增 Telegram 事件负载和 `TelegramEventKinds`：消息编辑、成员与机器人状态变化、入群申请、inline 查询、投票、付款确认、收货查询和助力；`TelegramMessage` 提供消息原生资料，`TelegramSegmentKinds` 约定位置、投票、付款等入站内容的 `RawSegment`。
 - `TelegramUser` 新增 `LanguageCode` 与 `IsPremium`。
 - 扩展 `ShiroBot.Model.QQ`：群黑名单、机器人在群内的状态和更丰富的群资料；用户资料新增头像、`UnionId` 与主动消息开关；QQ 官方图片素材接口；两种 QQ 异常共用 `QPlatformException` 基类。仅为 QQPlatform 0.5.0 新增、与现有契约重复的类型改为复用已有契约（用户资料走 `IQSystemApi`，图文卡片使用 SDK 的 `CardSegment`）。
 - 扩展 `ShiroBot.Model.Discord`：服务器、频道、角色、成员、权限位、表情、邀请、封禁等实体；Embed、按钮、下拉菜单、文本输入、投票、附件、允许提及等原生消息内容；交互详情、应用命令定义与弹窗。
-- 新增可选扩展接口 `IDiscordClientApi`（账号类型、自身资料、在线状态）、`IDiscordGuildApi`、`IDiscordMessageApi`、仅机器人的 `IDiscordInteractionApi`、仅用户账号的预留接口 `IDiscordAccountApi`，以及只使用 System.Text.Json 类型的 `IDiscordRawApi`（任意 REST 路由、Gateway 指令和原始 Dispatch）。
+- 新增可选扩展接口 `IDiscordClientApi`（账号类型、自身资料、在线状态）、`IDiscordGuildApi`、`IDiscordMessageApi`、仅机器人的 `IDiscordInteractionApi`、仅用户账号的 `IDiscordAccountApi`，以及只使用 System.Text.Json 类型的 `IDiscordRawApi`（任意 REST 路由、Gateway 指令和原始 Dispatch）。
 - 新增 Discord 事件负载和 `DiscordEventKinds`：消息编辑、服务器、频道与子区、成员、角色、封禁、语音状态、输入、Reaction 清除、投票和邀请；`DiscordMessage` 提供消息原生资料，`DiscordSegmentKinds` 约定 Embed、贴纸、投票和组件的 `RawSegment`。`DiscordUser` 新增 `AvatarUrl`。
 
 ### 升级说明

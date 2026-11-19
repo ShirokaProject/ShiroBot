@@ -18,7 +18,7 @@ Discord Model ABI **1.1.0.0** (host 1.0.4) adds, compatibly with 1.0.0.0:
 - Interactions: `DiscordInteraction` (in `InteractionEvent.Raw`) with command options, select values and
   modal input; `DiscordApplicationCommand` definitions and `DiscordModal`.
 - Optional adapter extensions: `IDiscordClientApi` (account kind, profile, presence), `IDiscordGuildApi`,
-  `IDiscordMessageApi`, `IDiscordRawApi`, the bot-only `IDiscordInteractionApi` and the reserved user-only
+  `IDiscordMessageApi`, `IDiscordRawApi`, the bot-only `IDiscordInteractionApi` and the user-only
   `IDiscordAccountApi`. Bot and user-account adapters share this Model under the platform ID `discord`.
   The raw API uses only System.Text.Json types and reaches every
   REST route and Gateway command.

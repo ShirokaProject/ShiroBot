@@ -111,7 +111,7 @@ PLATFORMS = [
                 ("ITelegramBotProfileApi", "bot-profile", "命令菜单与资料"),
                 ("ITelegramBotApi", "bot-api", "Bot API 原始调用"),
             ]),
-            ("user", "用户账号接口", "仅用户账号（MTProto 登录）实现；机器人适配器上为 null。当前为预留契约，等待用户账号适配器实现。", [
+            ("user", "用户账号接口", "仅用户账号（MTProto 登录）实现；机器人适配器上为 null。", [
                 ("ITelegramAccountApi", "account", "账号操作"),
             ]),
         ],
@@ -136,7 +136,7 @@ PLATFORMS = [
             ("bot", "机器人接口", "仅机器人账号（Developer Portal 创建的机器人）实现；用户账号适配器上为 null。", [
                 ("IDiscordInteractionApi", "interaction", "交互与应用命令"),
             ]),
-            ("user", "用户账号接口", "仅用户账号实现；机器人适配器上为 null。当前为预留契约。"
+            ("user", "用户账号接口", "仅用户账号实现；机器人适配器上为 null。"
                                    "Discord 服务条款禁止自动化用户账号（self-bot），账号可能被封禁，是否使用由部署者自行承担。", [
                 ("IDiscordAccountApi", "account", "账号操作"),
             ]),
