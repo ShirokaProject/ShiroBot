@@ -343,7 +343,11 @@ jobs:
             /p:RequireDashboard=true \
             /p:PublishSingleFile=true \
             /p:IncludeNativeLibrariesForSelfExtract=true
-          cmp "$RUNNER_TEMP/shirobot-single-file/ShiroBot" "$output_dir/ShiroBot"
+          if ! cmp -s "$RUNNER_TEMP/shirobot-single-file/ShiroBot" "$output_dir/ShiroBot"; then
+            # cmp only names the first byte, usually the bundle header offset; list the embedded files that differ.
+            python3 .github/scripts/compare_single_file.py "$RUNNER_TEMP/shirobot-single-file/ShiroBot" "$output_dir/ShiroBot" || true
+            exit 1
+          fi
           sha256sum "$output_dir/ShiroBot"
 
       - name: Reject old ABI plugin in single-file host
