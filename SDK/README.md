@@ -7,7 +7,7 @@ outputs exclude these shared DLLs because the host supplies their runtime copies
 ## Install
 
 ```xml
-<PackageReference Include="ShiroBot.SDK" Version="1.0.3" />
+<PackageReference Include="ShiroBot.SDK" Version="1.0.4" />
 ```
 
 ## Version and ABI
@@ -35,7 +35,10 @@ Version 1.0.4 extends the Telegram Model (ABI 1.1.0.0) with chats, members, perm
 invite links, polls, locations, media groups, reply keyboards, inline mode, payments, typed platform
 events and a raw Bot API call, and the Discord Model (ABI 1.1.0.0) with guilds, channels, roles,
 members, permissions, embeds, components, polls, slash commands, interaction responses, modals,
-presence, typed Gateway events and raw REST/Gateway access. The QQ Model (ABI 1.1.0.0) adds group blacklists, the bot's group state, richer group and user profiles and official image materials. The SDK ABI is unchanged.
+presence, typed Gateway events and raw REST/Gateway access. Both Models serve bot and user-account
+adapters under one platform ID. The QQ Model (ABI 1.1.0.0) adds group blacklists, the bot's group state,
+richer group and user profiles and official image materials. The host rolls back plugin updates that fail
+to load and removes plugins and adapters reliably. The SDK ABI is unchanged.
 
 Version 1.0.3 targets .NET 11 and adds adapter Dashboard pages and actions, SSE log streaming,
 persistent logs and configurable message prefixes. SDK and built-in Model ABI versions remain unchanged.

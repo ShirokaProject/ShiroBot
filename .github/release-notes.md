@@ -1,19 +1,30 @@
 ### 主要更新
 
-- 宿主、SDK、模板和 Dashboard 同步为 1.0.3，构建与运行目标升级为 .NET 11；适配器卸载调整异步栈引用释放，改善热重载时的程序集回收。
-- 宿主先完成 HTTP 监听，再逐个启动适配器并加载插件；端口占用时提前退出，避免适配器登录后才报宿主启动失败。
-- 适配器支持 Dashboard 组件页面、沙箱网页和自定义操作按钮；页面按实例隔离，随启动、停止和重载注册与释放。控制台 `adapter actions` / `adapter action` 支持逐词补全实例和操作 ID。
-- 日志流由 WebSocket 迁移到 SSE，支持心跳和自动重连；服务端批量推送、前端约每 16 毫秒合并更新，减少日志突发时的开销。
-- 新增本地日志文件，默认开启并保留 3 个自然日。文件缓冲每 250 毫秒刷新，历史扫描移到日志发布锁外；慢客户端使用有界队列和发送超时。
-- 新增全局和按插件设置的消息触发前缀，支持插件声明默认前缀；命令、原始监听、@ 机器人和优先级处理按路由语义执行。
-- 改善 Docker、Podman、systemd、沙箱与直接运行环境识别，避免继承的 systemd 环境变量造成误判；修复重命名主程序后的自更新。
-- 插件安装和更新前按实际 SDK / Model ABI 检查兼容性；规范 HTTP 服务与路由模块的依赖注入和启动失败清理。
-- 发布 ZIP 使用可复现打包并提高压缩率；更新稳定版依赖，渲染字体缓存空闲后释放。
+- 扩展 `ShiroBot.Model.Telegram`：会话、成员与权限、管理员权限、话题、邀请链接、机器人命令等实体；投票、位置、地点、联系人、骰子、贴纸、相册、发票等原生内容；内联键盘、自定义键盘、强制回复；inline 模式结果与回调提示。
+- 新增可选扩展接口 `ITelegramClientApi`（账号类型、传输方式、文件上限、自身资料）、`ITelegramChatApi`、`ITelegramMessageApi`，以及仅机器人可用的 `ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` 和只使用 System.Text.Json 类型的 `ITelegramBotApi`（Bot API 原始调用），插件无需引用适配器程序集即可调用任意 Bot API 方法。
+- Telegram 与 Discord Model 都支持机器人和用户账号两种适配器：新增仅用户账号的接口 `ITelegramAccountApi`、`IDiscordAccountApi`；Telegram 会话 ID 统一为 Bot API 格式，`TelegramChatIds` 负责与 MTProto peer 互转，原始 JSON 通过 `JsonFormat` 说明结构。
+- 新增 Telegram 事件负载和 `TelegramEventKinds`：消息编辑、成员与机器人状态变化、入群申请、inline 查询、投票、付款确认、收货查询和助力；`TelegramMessage` 提供消息原生资料，`TelegramSegmentKinds` 约定位置、投票、付款等入站内容的 `RawSegment`。
+- `TelegramUser` 新增 `LanguageCode` 与 `IsPremium`。
+- 扩展 `ShiroBot.Model.QQ`：群黑名单、机器人在群内的状态和更丰富的群资料；用户资料新增头像、`UnionId` 与主动消息开关；QQ 官方图片素材接口；两种 QQ 异常共用 `QPlatformException` 基类。仅为 QQPlatform 0.5.0 新增、与现有契约重复的类型改为复用已有契约（用户资料走 `IQSystemApi`，图文卡片使用 SDK 的 `CardSegment`）。
+- 扩展 `ShiroBot.Model.Discord`：服务器、频道、角色、成员、权限位、表情、邀请、封禁等实体；Embed、按钮、下拉菜单、文本输入、投票、附件、允许提及等原生消息内容；交互详情、应用命令定义与弹窗。
+- 新增可选扩展接口 `IDiscordClientApi`（账号类型、自身资料、在线状态）、`IDiscordGuildApi`、`IDiscordMessageApi`、仅机器人的 `IDiscordInteractionApi`、仅用户账号的 `IDiscordAccountApi`，以及只使用 System.Text.Json 类型的 `IDiscordRawApi`（任意 REST 路由、Gateway 指令和原始 Dispatch）。
+- 新增 Discord 事件负载和 `DiscordEventKinds`：消息编辑、服务器、频道与子区、成员、角色、封禁、语音状态、输入、Reaction 清除、投票和邀请；`DiscordMessage` 提供消息原生资料，`DiscordSegmentKinds` 约定 Embed、贴纸、投票和组件的 `RawSegment`。`DiscordUser` 新增 `AvatarUrl`。
+
+- 插件和适配器模板的发布工作流改用 `actions/setup-dotnet@v6.0.0`：v4 不接受 `latest`，用模板生成的项目在还原前就会失败。已有项目可照此修改 `.github/workflows/release.yml`。
+- 文档新增 Telegram 与 Discord 的 C# 接口参考与类型参考，按通用接口、机器人接口、用户账号接口分组，结构与 QQ Model 相同；由 `scripts/generate_model_reference.py` 从源码生成。
+
+### 修复
+
+- 插件更新后新版本加载失败时自动还原并重新加载旧版本，不再留下无法启动也无法再更新的插件；没有文件清单的安装也会替换 deps.json、原生库和嵌套程序集。
+- `OnUnload` 抛出异常的插件立即删除文件，只有卸载超时才推迟到下次启动；被其他已加载插件依赖的插件拒绝删除；更新接口接受加载失败的已安装插件。
+- 记录为待删除的插件或适配器不再被列出、按名称或路径解析、启动扫描、文件监听或手动加载重新带回；更新回滚触发的删除事件不再卸载刚还原的插件。
+- 删除适配器包或实例不再依赖 `StopAsync` 成功，仍被占用的文件在下次启动时清理，损坏的包也能删除；文件监听只重载 DLL 真正变化的适配器，不再在宿主自身安装、删除后重启全部适配器。
+- 组件用反射序列化过自己的类型后，System.Text.Json 的进程级缓存会一直持有其程序集，导致卸载等不到回收；卸载时清理这些缓存。
+- 自动更新中请求超时被当作取消，剩余插件、适配器和宿主的更新被静默跳过；现在 GitHub API 请求 30 秒超时并给出可读错误，限流会单独说明。
+- API 端点抛出异常时返回 JSON 错误并写入宿主日志，不再只回空的 500；携带 API Key 的调用方能看到具体原因。
+- 在 Dashboard 保存插件路由、触发前缀或前缀模式时，含点号或引号的插件 ID 不再被当作配置路径拆开，配置会写到正确的插件下。
 
 ### 升级说明
 
-- 非自包含版本需安装 ASP.NET Core 11 Runtime，推荐最新的 11.0.x 补丁；自包含版本自带运行时。开发插件或适配器需使用 .NET SDK 11。
-- SDK ABI 仍为 `1.4.0.0`，QQ、Discord、Telegram Model ABI 仍为 `1.0.0.0`；宿主继续按组件实际引用的程序集检查兼容性。
-- 日志接口 `/api/v1/logs/stream` 改为 SSE，旧的 WebSocket 日志客户端需迁移；请同步升级 Dashboard。宿主发布包已内嵌对应前端。
-- 文件日志使用缓冲，异常退出可能丢失尚未刷新的记录；读取历史、关闭日志和正常释放日志服务时会刷新缓冲。
-- Docker 用户升级到 .NET 11 镜像需执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d`。
+- QQ、Discord、Telegram Model ABI 均升至 `1.1.0.0`（只新增成员，兼容 `1.0.0.0`）；SDK ABI 仍为 `1.4.0.0`。
+- 引用新增 QQ、Discord 或 Telegram 类型的组件需要 1.0.4 及以上的宿主；只使用原有成员的组件不受影响。
