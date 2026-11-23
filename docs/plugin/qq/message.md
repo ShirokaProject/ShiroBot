@@ -1,6 +1,6 @@
 # 原生消息（IQMessageApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.1.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQMessageApi>();

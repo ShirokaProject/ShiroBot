@@ -1,6 +1,6 @@
 # QQ C# 类型参考
 
-命名空间：`ShiroBot.Model.QQ`。以下完整声明对应 QQ Model ABI `1.1.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 `required` 属性必须初始化；`init` 属性在创建对象时设置；位置式 record 使用所列构造参数。
 ID 与分页游标均为不透明字符串。文件大小、计数、时间及枚举保持各自类型。
@@ -34,12 +34,14 @@ public enum QGroupRole
 ### QFriendCategory
 
 ```csharp
+/// <summary>好友分组。</summary>
 public sealed record QFriendCategory(int CategoryId, string CategoryName);
 ```
 
 ### QFriend
 
 ```csharp
+/// <summary>好友。</summary>
 public sealed record QFriend
 {
     public required string UserId { get; init; }
@@ -54,6 +56,7 @@ public sealed record QFriend
 ### QGroup
 
 ```csharp
+/// <summary>群。</summary>
 public sealed record QGroup
 {
     public required string GroupId { get; init; }
@@ -82,6 +85,7 @@ public sealed record QGroup
 ### QGroupMember
 
 ```csharp
+/// <summary>群成员。</summary>
 public sealed record QGroupMember
 {
     public required string UserId { get; init; }
@@ -117,6 +121,7 @@ public sealed record QGroupMember
 ### QUserProfile
 
 ```csharp
+/// <summary>用户资料(陌生人查询)。</summary>
 public sealed record QUserProfile
 {
     public required string UserId { get; init; }
@@ -143,6 +148,7 @@ public sealed record QUserProfile
 ### QGroupAnnouncement
 
 ```csharp
+/// <summary>群公告。</summary>
 public sealed record QGroupAnnouncement
 {
     public required string GroupId { get; init; }
@@ -157,6 +163,7 @@ public sealed record QGroupAnnouncement
 ### QGroupFile
 
 ```csharp
+/// <summary>群文件。</summary>
 public sealed record QGroupFile
 {
     public required string GroupId { get; init; }
@@ -174,6 +181,7 @@ public sealed record QGroupFile
 ### QGroupFolder
 
 ```csharp
+/// <summary>群文件夹。</summary>
 public sealed record QGroupFolder
 {
     public required string GroupId { get; init; }
@@ -190,6 +198,7 @@ public sealed record QGroupFolder
 ### QEssenceMessage
 
 ```csharp
+/// <summary>群精华消息。</summary>
 public sealed record QEssenceMessage
 {
     public required string GroupId { get; init; }
@@ -207,6 +216,7 @@ public sealed record QEssenceMessage
 ### QMessageScene
 
 ```csharp
+/// <summary>QQ 消息场景。</summary>
 public enum QMessageScene
 {
     Friend = 0,
@@ -218,6 +228,7 @@ public enum QMessageScene
 ### QRequestState
 
 ```csharp
+/// <summary>请求/通知处理状态。</summary>
 public enum QRequestState
 {
     Pending = 0,
@@ -230,6 +241,7 @@ public enum QRequestState
 ### QFriendRequest
 
 ```csharp
+/// <summary>好友请求(列表查询)。</summary>
 public sealed record QFriendRequest
 {
     public DateTimeOffset Time { get; init; }
@@ -253,6 +265,7 @@ public sealed record QFriendRequest
 ### QGroupNotification
 
 ```csharp
+/// <summary>群通知基类(入群申请/邀请入群/管理员变更/踢人/退群)。</summary>
 public abstract record QGroupNotification
 {
     public required string GroupId { get; init; }
@@ -263,6 +276,7 @@ public abstract record QGroupNotification
 ### QJoinRequestNotification
 
 ```csharp
+/// <summary>用户入群申请通知。</summary>
 public sealed record QJoinRequestNotification : QGroupNotification
 {
     public required string InitiatorId { get; init; }
@@ -276,6 +290,7 @@ public sealed record QJoinRequestNotification : QGroupNotification
 ### QInvitedJoinRequestNotification
 
 ```csharp
+/// <summary>群成员邀请他人入群通知。</summary>
 public sealed record QInvitedJoinRequestNotification : QGroupNotification
 {
     public required string InitiatorId { get; init; }
@@ -288,6 +303,7 @@ public sealed record QInvitedJoinRequestNotification : QGroupNotification
 ### QAdminChangeNotification
 
 ```csharp
+/// <summary>管理员变更通知。</summary>
 public sealed record QAdminChangeNotification : QGroupNotification
 {
     public required string TargetUserId { get; init; }
@@ -299,6 +315,7 @@ public sealed record QAdminChangeNotification : QGroupNotification
 ### QKickNotification
 
 ```csharp
+/// <summary>成员被踢通知。</summary>
 public sealed record QKickNotification : QGroupNotification
 {
     public required string TargetUserId { get; init; }
@@ -309,6 +326,7 @@ public sealed record QKickNotification : QGroupNotification
 ### QQuitNotification
 
 ```csharp
+/// <summary>成员退群通知。</summary>
 public sealed record QQuitNotification : QGroupNotification
 {
     public required string TargetUserId { get; init; }
@@ -318,6 +336,7 @@ public sealed record QQuitNotification : QGroupNotification
 ### QReactionType
 
 ```csharp
+/// <summary>消息表情回应类型。</summary>
 public enum QReactionType
 {
     /// <summary>QQ 表情(face id)。</summary>
@@ -331,12 +350,14 @@ public enum QReactionType
 ### QLoginInfo
 
 ```csharp
+/// <summary>登录账号信息。</summary>
 public sealed record QLoginInfo(string Uin, string Nickname);
 ```
 
 ### QImplInfo
 
 ```csharp
+/// <summary>协议实现端信息。</summary>
 public sealed record QImplInfo
 {
     public required string ImplName { get; init; }
@@ -374,6 +395,7 @@ public sealed record QGroupJoinRequestPage(IReadOnlyList<QGroupJoinRequest> Requ
 ### QMemberMute
 
 ```csharp
+/// <summary>将成员禁言设置为指定时长；零表示解除。不暴露协议 add/update 模式。</summary>
 public sealed record QMemberMute
 {
     public required string UserId { get; init; }
@@ -384,7 +406,13 @@ public sealed record QMemberMute
 ### QOperationStatus
 
 ```csharp
-public enum QOperationStatus { Succeeded, Failed, Unknown, NotExecuted }
+public enum QOperationStatus
+{
+    Succeeded,
+    Failed,
+    Unknown,
+    NotExecuted
+}
 ```
 
 ### QOperationResult
@@ -401,6 +429,7 @@ public sealed record QOperationResult
 ### QBatchOperationResult
 
 ```csharp
+/// <summary>按输入顺序返回；失败不会回滚已经完成的操作。</summary>
 public sealed record QBatchOperationResult
 {
     public IReadOnlyList<QOperationResult> Items { get; init; } = [];
@@ -411,6 +440,7 @@ public sealed record QBatchOperationResult
 ### QBatchOperationCanceledException
 
 ```csharp
+/// <summary>取消仍抛取消异常；PartialResult 描述已执行、结果未知和未执行的项。</summary>
 public sealed class QBatchOperationCanceledException(QBatchOperationResult partialResult, CancellationToken token)
     : OperationCanceledException("Batch canceled; inspect PartialResult before retrying.", token)
 {
@@ -421,14 +451,24 @@ public sealed class QBatchOperationCanceledException(QBatchOperationResult parti
 ### QPatch
 
 ```csharp
+/// <summary>default 为未指定；Set(value) 为设置；Clear() 为显式清空。</summary>
 public readonly record struct QPatch<T>
 {
     public bool IsSpecified { get; private init; }
     public bool IsClear { get; private init; }
     public T? Value { get; private init; }
-    public static QPatch<T> Set(T value) => value is null ? throw new ArgumentNullException(nameof(value))
-        : new() { IsSpecified = true, Value = value };
-    public static QPatch<T> Clear() => new() { IsSpecified = true, IsClear = true };
+
+    public static QPatch<T> Set(T value)
+    {
+        return value is null
+            ? throw new ArgumentNullException(nameof(value))
+            : new QPatch<T> { IsSpecified = true, Value = value };
+    }
+
+    public static QPatch<T> Clear()
+    {
+        return new QPatch<T> { IsSpecified = true, IsClear = true };
+    }
 }
 ```
 
@@ -447,14 +487,23 @@ public sealed record QMuteSchedule(string TaskId, DateTimeOffset? StartsAt, Date
 ### QMuteRecurring
 
 ```csharp
-public sealed record QMuteRecurring(string TaskId, IReadOnlyList<int> Weekdays, string? StartTime, string? EndTime, bool Enabled);
+/// <summary>周期时段使用北京时间；结束时间早于开始时间代表跨天。</summary>
+public sealed record QMuteRecurring(
+    string TaskId,
+    IReadOnlyList<int> Weekdays,
+    string? StartTime,
+    string? EndTime,
+    bool Enabled);
 ```
 
 ### QGroupMuteState
 
 ```csharp
-public sealed record QGroupMuteState(string? Mode, IReadOnlyList<QMuteSchedule> Schedules,
-    IReadOnlyList<QMuteRecurring> RecurringRules, IReadOnlyList<QMutedMember> Members);
+public sealed record QGroupMuteState(
+    string? Mode,
+    IReadOnlyList<QMuteSchedule> Schedules,
+    IReadOnlyList<QMuteRecurring> RecurringRules,
+    IReadOnlyList<QMutedMember> Members);
 ```
 
 ### QApprovalStrategyOptions
@@ -464,6 +513,7 @@ public sealed record QApprovalStrategyOptions
 {
     /// <summary>与 GroupNumbers 二选一，最多 100 个。</summary>
     public IReadOnlyList<string>? GroupIds { get; init; }
+
     public IReadOnlyList<string>? GroupNumbers { get; init; }
     public bool Enabled { get; init; } = true;
     public DateTimeOffset? ExpiresAt { get; init; }
@@ -506,8 +556,10 @@ public sealed record QApprovalStrategy
     public DateTimeOffset? UpdatedAt { get; init; }
     public string? Remark { get; init; }
     public IReadOnlyList<string> GroupIds { get; init; } = [];
+
     /// <summary>平台查询响应可能脱敏，因此保留字符串。</summary>
     public IReadOnlyList<string> GroupNumbers { get; init; } = [];
+
     public int WhitelistUserCount { get; init; }
 }
 ```
@@ -521,7 +573,7 @@ public sealed record QApprovalStrategyPage(IReadOnlyList<QApprovalStrategy> Stra
 ### QBlacklistedMember
 
 ```csharp
-/// <summary>群黑名单中的用户；字段与 QMutedMember 一致。</summary>
+/// <summary>群黑名单中的用户；字段与 <see cref="QMutedMember" /> 一致。</summary>
 public sealed record QBlacklistedMember(string UserId, DateTimeOffset? BlacklistedAt, string? Username, string? UnionId)
 {
     public bool IsBot { get; init; }
@@ -537,11 +589,18 @@ public sealed record QGroupBlacklistPage(IReadOnlyList<QBlacklistedMember> Membe
 ### QGroupReceiveSetting
 
 ```csharp
+/// <summary>群内消息接收设置（QQ 官方 receive_setting）。</summary>
 public enum QGroupReceiveSetting
 {
     Unknown = 0,
+
+    /// <summary>接收全部消息（all）。</summary>
     All = 1,
+
+    /// <summary>仅接收 @机器人 的消息（only_mention）。</summary>
     MentionOnly = 2,
+
+    /// <summary>接收 @机器人 的消息及其上下文（mention_and_context）。</summary>
     MentionAndContext = 3
 }
 ```
@@ -549,7 +608,7 @@ public enum QGroupReceiveSetting
 ### QGroupBotState
 
 ```csharp
-/// <summary>机器人在群内的状态。成员身份（群内 ID、角色、入群时间）沿用 QGroupMember。</summary>
+/// <summary>机器人在群内的状态。成员身份（群内 ID、角色、入群时间）沿用 <see cref="QGroupMember" />。</summary>
 public sealed record QGroupBotState
 {
     public required QGroupMember Member { get; init; }
@@ -558,29 +617,12 @@ public sealed record QGroupBotState
 }
 ```
 
-### QPermissionDeniedException 与 QLimitExceededException
-
-```csharp
-/// <summary>QQ 平台拒绝了某个操作。</summary>
-public abstract class QPlatformException : Exception
-{
-    public string Operation { get; }
-    public int? ErrorCode { get; }
-    public string? Detail { get; }
-}
-
-/// <summary>平台未给当前机器人开通某个 QQ 接口权限。</summary>
-public sealed class QPermissionDeniedException : QPlatformException;
-
-/// <summary>QQ 平台限制了操作次数，例如每群每天一次的 @全体成员。</summary>
-public sealed class QLimitExceededException : QPlatformException;
-```
-
 ## 原生消息
 
 ### QIncomingMessage
 
 ```csharp
+/// <summary>QQ 入站消息(协议无关)。</summary>
 public abstract record QIncomingMessage
 {
     public required string PeerId { get; init; }
@@ -591,14 +633,17 @@ public abstract record QIncomingMessage
 
     public abstract QMessageScene Scene { get; }
 
-    public string GetPlainText() =>
-        string.Concat(Segments.OfType<QIncomingText>().Select(segment => segment.Text));
+    public string GetPlainText()
+    {
+        return string.Concat(Segments.OfType<QIncomingText>().Select(segment => segment.Text));
+    }
 }
 ```
 
 ### QFriendMessage
 
 ```csharp
+/// <summary>好友消息。</summary>
 public sealed record QFriendMessage : QIncomingMessage
 {
     public required QFriend Friend { get; init; }
@@ -609,6 +654,7 @@ public sealed record QFriendMessage : QIncomingMessage
 ### QGroupMessage
 
 ```csharp
+/// <summary>群消息。</summary>
 public sealed record QGroupMessage : QIncomingMessage
 {
     public required QGroup Group { get; init; }
@@ -620,6 +666,7 @@ public sealed record QGroupMessage : QIncomingMessage
 ### QTempMessage
 
 ```csharp
+/// <summary>临时会话消息。</summary>
 public sealed record QTempMessage : QIncomingMessage
 {
     public QGroup? Group { get; init; }
@@ -630,6 +677,7 @@ public sealed record QTempMessage : QIncomingMessage
 ### QForwardedIncomingMessage
 
 ```csharp
+/// <summary>合并转发内的一条消息。</summary>
 public sealed record QForwardedIncomingMessage
 {
     public string? MessageId { get; init; }
@@ -643,6 +691,7 @@ public sealed record QForwardedIncomingMessage
 ### QSentMessage
 
 ```csharp
+/// <summary>QQ 原生消息发送结果。</summary>
 public sealed record QSentMessage(string MessageId, DateTimeOffset Time);
 ```
 
@@ -651,6 +700,7 @@ public sealed record QSentMessage(string MessageId, DateTimeOffset Time);
 ### QIncomingSegment
 
 ```csharp
+/// <summary>QQ 入站消息段基类(协议无关,由具体适配器从 Milky/OneBot 等映射)。</summary>
 public abstract record QIncomingSegment;
 ```
 
@@ -683,6 +733,7 @@ public sealed record QIncomingMentionAll : QIncomingSegment;
 对应主消息段：[`EmojiSegment`](../segments#emojisegment)
 
 ```csharp
+/// <summary>QQ 表情。</summary>
 public sealed record QIncomingFace(string FaceId, bool IsLarge = false) : QIncomingSegment;
 ```
 
@@ -756,6 +807,7 @@ public sealed record QIncomingFile(string FileId, string FileName, long FileSize
 对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
+/// <summary>合并转发。</summary>
 public sealed record QIncomingForward(string ForwardId) : QIncomingSegment
 {
     public string? Title { get; init; }
@@ -769,6 +821,7 @@ public sealed record QIncomingForward(string ForwardId) : QIncomingSegment
 对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
+/// <summary>商城表情。</summary>
 public sealed record QIncomingMarketFace(string EmojiId, string Url) : QIncomingSegment
 {
     public int EmojiPackageId { get; init; }
@@ -782,6 +835,7 @@ public sealed record QIncomingMarketFace(string EmojiId, string Url) : QIncoming
 对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
+/// <summary>小程序 / 卡片消息。</summary>
 public sealed record QIncomingLightApp(string AppName, string JsonPayload) : QIncomingSegment;
 ```
 
@@ -804,6 +858,7 @@ public sealed record QIncomingMarkdown(string Content) : QIncomingSegment;
 ### QOutgoingSegment
 
 ```csharp
+/// <summary>QQ 出站消息段基类。</summary>
 public abstract record QOutgoingSegment;
 ```
 
@@ -852,6 +907,7 @@ public sealed record QOutgoingReply(string MessageId) : QOutgoingSegment;
 对应主消息段：[`ImageSegment`](../segments#imagesegment)
 
 ```csharp
+/// <summary>Uri 支持 http(s)://、file://、base64://。</summary>
 public sealed record QOutgoingImage(string Uri) : QOutgoingSegment
 {
     public string? Summary { get; init; }
@@ -885,6 +941,7 @@ public sealed record QOutgoingVideo(string Uri) : QOutgoingSegment
 对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
+/// <summary>小程序 / 卡片消息(出站)。</summary>
 public sealed record QOutgoingLightApp(string JsonPayload) : QOutgoingSegment;
 ```
 
@@ -893,6 +950,7 @@ public sealed record QOutgoingLightApp(string JsonPayload) : QOutgoingSegment;
 对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
+/// <summary>合并转发的一条消息。</summary>
 public sealed record QForwardedMessage(string UserId, string SenderName, IReadOnlyList<QOutgoingSegment> Segments)
 {
     /// <summary>消息展示时间,null 使用当前时间。</summary>
@@ -905,6 +963,7 @@ public sealed record QForwardedMessage(string UserId, string SenderName, IReadOn
 对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
+/// <summary>合并转发。</summary>
 public sealed record QOutgoingForward(IReadOnlyList<QForwardedMessage> Messages) : QOutgoingSegment
 {
     public string? Title { get; init; }
@@ -919,6 +978,10 @@ public sealed record QOutgoingForward(IReadOnlyList<QForwardedMessage> Messages)
 ### QEventPayload
 
 ```csharp
+/// <summary>
+/// QQ 平台特有事件负载(协议无关)。适配器把它们放进 PlatformEvent.Raw,
+/// Kind 使用 <see cref="QEventKinds"/> 中的常量;插件按 Kind 订阅后把 Raw 转成对应类型。
+/// </summary>
 public abstract record QEventPayload
 {
     public DateTimeOffset Time { get; init; }
@@ -931,6 +994,7 @@ public abstract record QEventPayload
 ### QEventKinds
 
 ```csharp
+/// <summary>PlatformEvent.Kind 常量表。</summary>
 public static class QEventKinds
 {
     /// <summary>QQ 官方 INTERACTION_CREATE，type=11 的消息按钮点击。</summary>
@@ -970,6 +1034,10 @@ public static class QEventKinds
 ### QOfficialButtonInteraction
 
 ```csharp
+/// <summary>
+/// QQ 官方消息按钮回调。适配器将 INTERACTION_CREATE(type=11) 映射到
+/// PlatformEvent.Raw，并使用 QEventKinds.OfficialButtonInteraction 作为 Kind。
+/// </summary>
 public sealed record QOfficialButtonInteraction : QEventPayload
 {
     /// <summary>互动 ID，用于调用 PUT /interactions/{interaction_id}。</summary>
@@ -992,6 +1060,10 @@ public sealed record QOfficialButtonInteraction : QEventPayload
 ### QOfficialLifecycleEvent
 
 ```csharp
+/// <summary>
+/// QQ 官方机器人在群或单聊里的生命周期事件（加群、被移出、好友变化、主动消息开关）。
+/// Kind 见 <see cref="QEventKinds"/> 中的 Official* 常量。
+/// </summary>
 public sealed record QOfficialLifecycleEvent : QEventPayload
 {
     /// <summary>事件发生的会话。</summary>
@@ -1006,6 +1078,7 @@ public sealed record QOfficialLifecycleEvent : QEventPayload
 ### QFriendNudge
 
 ```csharp
+/// <summary>好友戳一戳。</summary>
 public sealed record QFriendNudge : QEventPayload
 {
     public required string UserId { get; init; }
@@ -1022,6 +1095,7 @@ public sealed record QFriendNudge : QEventPayload
 ### QFriendFileUpload
 
 ```csharp
+/// <summary>好友文件上传。</summary>
 public sealed record QFriendFileUpload : QEventPayload
 {
     public required string UserId { get; init; }
@@ -1036,6 +1110,7 @@ public sealed record QFriendFileUpload : QEventPayload
 ### QGroupAdminChange
 
 ```csharp
+/// <summary>群管理员变更。</summary>
 public sealed record QGroupAdminChange : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1048,6 +1123,7 @@ public sealed record QGroupAdminChange : QEventPayload
 ### QGroupEssenceMessageChange
 
 ```csharp
+/// <summary>群精华消息变更。</summary>
 public sealed record QGroupEssenceMessageChange : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1060,6 +1136,7 @@ public sealed record QGroupEssenceMessageChange : QEventPayload
 ### QGroupNameChange
 
 ```csharp
+/// <summary>群名变更。</summary>
 public sealed record QGroupNameChange : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1071,6 +1148,7 @@ public sealed record QGroupNameChange : QEventPayload
 ### QGroupMessageReaction
 
 ```csharp
+/// <summary>群消息表情回应。</summary>
 public sealed record QGroupMessageReaction : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1088,6 +1166,7 @@ public sealed record QGroupMessageReaction : QEventPayload
 ### QGroupMute
 
 ```csharp
+/// <summary>群禁言(Duration 为零表示解除)。</summary>
 public sealed record QGroupMute : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1101,6 +1180,7 @@ public sealed record QGroupMute : QEventPayload
 ### QGroupWholeMute
 
 ```csharp
+/// <summary>全员禁言。</summary>
 public sealed record QGroupWholeMute : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1112,6 +1192,7 @@ public sealed record QGroupWholeMute : QEventPayload
 ### QGroupNudge
 
 ```csharp
+/// <summary>群戳一戳。</summary>
 public sealed record QGroupNudge : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1128,6 +1209,7 @@ public sealed record QGroupNudge : QEventPayload
 ### QGroupFileUpload
 
 ```csharp
+/// <summary>群文件上传。</summary>
 public sealed record QGroupFileUpload : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1141,6 +1223,7 @@ public sealed record QGroupFileUpload : QEventPayload
 ### QGroupJoinRequest
 
 ```csharp
+/// <summary>统一入群申请。RequestId 是不透明审批凭据，应原样传回 IQGroupApi。</summary>
 public sealed record QGroupJoinRequest : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1163,6 +1246,7 @@ public sealed record QGroupJoinRequest : QEventPayload
 ### QGroupDisband
 
 ```csharp
+/// <summary>群解散。</summary>
 public sealed record QGroupDisband : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1173,6 +1257,7 @@ public sealed record QGroupDisband : QEventPayload
 ### QPeerPinChange
 
 ```csharp
+/// <summary>会话置顶变更。</summary>
 public sealed record QPeerPinChange : QEventPayload
 {
     public required QMessageScene Scene { get; init; }
@@ -1184,6 +1269,7 @@ public sealed record QPeerPinChange : QEventPayload
 ### QMessageRecall
 
 ```csharp
+/// <summary>消息撤回的 QQ 原始信息。</summary>
 public sealed record QMessageRecall : QEventPayload
 {
     public required QMessageScene Scene { get; init; }
@@ -1198,6 +1284,7 @@ public sealed record QMessageRecall : QEventPayload
 ### QGroupMemberIncrease
 
 ```csharp
+/// <summary>群成员增加的 QQ 原始信息。</summary>
 public sealed record QGroupMemberIncrease : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1212,6 +1299,7 @@ public sealed record QGroupMemberIncrease : QEventPayload
 ### QGroupMemberDecrease
 
 ```csharp
+/// <summary>群成员减少的 QQ 原始信息。</summary>
 public sealed record QGroupMemberDecrease : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1225,6 +1313,7 @@ public sealed record QGroupMemberDecrease : QEventPayload
 ### QFriendRequestReceived
 
 ```csharp
+/// <summary>好友请求的 QQ 原始信息。</summary>
 public sealed record QFriendRequestReceived : QEventPayload
 {
     public required string InitiatorId { get; init; }
@@ -1237,6 +1326,7 @@ public sealed record QFriendRequestReceived : QEventPayload
 ### QGroupInvitation
 
 ```csharp
+/// <summary>机器人被邀请入群的 QQ 原始信息。</summary>
 public sealed record QGroupInvitation : QEventPayload
 {
     public required string GroupId { get; init; }
@@ -1249,6 +1339,7 @@ public sealed record QGroupInvitation : QEventPayload
 ### QBotOffline
 
 ```csharp
+/// <summary>机器人离线的 QQ 原始信息。</summary>
 public sealed record QBotOffline : QEventPayload
 {
     public string? Reason { get; init; }
@@ -1260,26 +1351,38 @@ public sealed record QBotOffline : QEventPayload
 ### QOfficialMessageTarget
 
 ```csharp
+/// <summary>QQ 官方机器人消息目标。单聊/群聊 Id 是开放平台 openid；频道 Id 是 channel_id；频道私信 Id 是 guild_id。</summary>
 public sealed record QOfficialMessageTarget(QOfficialMessageScene Scene, string Id);
 ```
 
 ### QOfficialMessage
 
 ```csharp
+/// <summary>一条 QQ 官方消息。根据消息种类限制可组合的正文和键盘。</summary>
 public abstract record QOfficialMessage
 {
-    public static QOfficialMessage Text(string content) => new QOfficialTextMessage(content);
+    public static QOfficialMessage Text(string content)
+    {
+        return new QOfficialTextMessage(content);
+    }
 
-    public static QOfficialMessage Markdown(QOfficialMarkdown markdown, QOfficialKeyboard? keyboard = null) =>
-        new QOfficialMarkdownMessage(markdown, keyboard);
+    public static QOfficialMessage Markdown(QOfficialMarkdown markdown, QOfficialKeyboard? keyboard = null)
+    {
+        return new QOfficialMarkdownMessage(markdown, keyboard);
+    }
 
     /// <summary>创建本地媒体消息；媒体上传由适配器在发送时完成。</summary>
     public static QOfficialMessage Media(QOfficialMediaType type, Stream content, string fileName,
-        string? caption = null) => new QOfficialMediaSourceMessage(type, content, fileName, caption);
+        string? caption = null)
+    {
+        return new QOfficialMediaSourceMessage(type, content, fileName, caption);
+    }
 
     /// <summary>创建已上传媒体消息，可在被动回复时复用 file_info。</summary>
-    public static QOfficialMessage Media(QOfficialMedia media, string? caption = null) =>
-        new QOfficialUploadedMediaMessage(media, caption);
+    public static QOfficialMessage Media(QOfficialMedia media, string? caption = null)
+    {
+        return new QOfficialUploadedMediaMessage(media, caption);
+    }
 }
 ```
 
@@ -1330,6 +1433,7 @@ public enum QOfficialMessageScene
 对应主消息段：[`MarkdownSegment`](../segments#markdownsegment)
 
 ```csharp
+/// <summary>QQ 官方 Markdown 消息。发送时在自定义内容和模板之间选择一种。</summary>
 public abstract record QOfficialMarkdown
 {
     /// <summary>图片转存失败时拒绝发送整条消息。</summary>
@@ -1362,6 +1466,7 @@ public sealed record QMarkdownParameter(string Key, IReadOnlyList<string> Values
 ### QOfficialEmbed
 
 ```csharp
+/// <summary>QQ 官方 Embed 卡片。字段格式按官方 Embed 消息模型定义。</summary>
 public sealed record QOfficialEmbed
 {
     public string? Title { get; init; }
@@ -1388,6 +1493,7 @@ public sealed record QOfficialEmbedField(string Name);
 对应主消息段：[`MessageButton`](../segments#messagebutton)
 
 ```csharp
+/// <summary>QQ 官方按钮键盘。模板 ID 和自定义按钮内容互斥。</summary>
 public abstract record QOfficialKeyboard;
 ```
 
@@ -1402,6 +1508,7 @@ public sealed record QKeyboardTemplate(string Id) : QOfficialKeyboard;
 对应主消息段：[`MessageButton`](../segments#messagebutton)
 
 ```csharp
+/// <summary>自定义按钮最多五行，每行最多五个按钮；需要开放平台开通相应能力。</summary>
 public sealed record QInlineKeyboard(IReadOnlyList<QKeyboardRow> Rows) : QOfficialKeyboard;
 ```
 
@@ -1418,8 +1525,10 @@ public sealed record QKeyboardButton
 {
     /// <summary>在同一键盘内唯一。</summary>
     public string? Id { get; init; }
+
     /// <summary>仅回调按钮有效；组内一个按钮操作后，其余按钮变灰。</summary>
     public string? GroupId { get; init; }
+
     public required QKeyboardRenderData RenderData { get; init; }
     public required QKeyboardAction Action { get; init; }
 }
@@ -1450,15 +1559,21 @@ public sealed record QKeyboardAction
 {
     public required QKeyboardActionType Type { get; init; }
     public required QKeyboardPermission Permission { get; init; }
+
     /// <summary>跳转 URL、回调数据或指令内容，依 Type 而定。</summary>
     public required string Data { get; init; }
+
     public required string UnsupportTips { get; init; }
+
     /// <summary>仅指令按钮有效；是否引用本消息。</summary>
     public bool? Reply { get; init; }
+
     /// <summary>仅指令按钮有效；点击后直接发送指令。</summary>
     public bool? Enter { get; init; }
+
     /// <summary>仅指令按钮有效；设置后忽略 Enter。值 1 唤起手机端选图器。</summary>
     public int? Anchor { get; init; }
+
     public QKeyboardModal? Modal { get; init; }
 }
 ```
@@ -1466,6 +1581,7 @@ public sealed record QKeyboardAction
 ### QKeyboardModal
 
 ```csharp
+/// <summary>按钮点击二次确认。Content 最多 40 字符且不能包含 URL，按钮文字最多 4 字符。</summary>
 public sealed record QKeyboardModal(string Content, string? ConfirmText = null, string? CancelText = null);
 ```
 
@@ -1487,6 +1603,7 @@ public sealed record QKeyboardPermission
 {
     public required QKeyboardPermissionType Type { get; init; }
     public IReadOnlyList<string>? SpecifyUserIds { get; init; }
+
     /// <summary>仅频道的指定身份组权限有效。</summary>
     public IReadOnlyList<string>? SpecifyRoleIds { get; init; }
 }
@@ -1507,6 +1624,7 @@ public enum QKeyboardPermissionType
 ### QOfficialMessageReply
 
 ```csharp
+/// <summary>被动回复信息。主动发送时留空。</summary>
 public sealed record QOfficialMessageReply
 {
     public string? MessageId { get; init; }
@@ -1521,6 +1639,7 @@ public sealed record QOfficialMessageReply
 ### QOfficialMediaType
 
 ```csharp
+/// <summary>QQ 官方群媒体类型。</summary>
 public enum QOfficialMediaType
 {
     Image = 1,
@@ -1533,6 +1652,7 @@ public enum QOfficialMediaType
 ### QOfficialMedia
 
 ```csharp
+/// <summary>已上传到 QQ 官方平台的媒体引用，可用于后续发送。</summary>
 public sealed record QOfficialMedia(string FileInfo, QOfficialMediaType Type, string FileName);
 ```
 
@@ -1549,6 +1669,7 @@ public enum QOfficialStreamContentType
 ### QOfficialInteractionResponseCode
 
 ```csharp
+/// <summary>QQ 官方互动事件响应码。</summary>
 public enum QOfficialInteractionResponseCode
 {
     Success = 0,
@@ -1558,6 +1679,64 @@ public enum QOfficialInteractionResponseCode
     NoPermission = 4,
     ManagersOnly = 5
 }
+```
+
+## 官方图片素材
+
+### QOfficialImageMaterial
+
+```csharp
+/// <summary>Url 为 qqbot-media:// 引用；PreviewUrl 是短效地址，不应持久化。</summary>
+public sealed record QOfficialImageMaterial(string ImageId, string Url)
+{
+    public string? FileName { get; init; }
+    public string? PreviewUrl { get; init; }
+    public DateTimeOffset? CreatedAt { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
+}
+```
+
+### QOfficialImageMaterialPage
+
+```csharp
+public sealed record QOfficialImageMaterialPage(
+    IReadOnlyList<QOfficialImageMaterial> Images, string? NextCursor, int Total);
+```
+
+## 异常
+
+### QPlatformException
+
+```csharp
+/// <summary>QQ 平台拒绝了某个操作。适配器负责识别错误码，插件只按类型处理结果。</summary>
+public abstract class QPlatformException(string message, string operation, int? errorCode, string? detail)
+    : Exception(message)
+{
+    /// <summary>被拒绝的操作，例如“群黑名单查询”。</summary>
+    public string Operation { get; } = operation;
+
+    public int? ErrorCode { get; } = errorCode;
+
+    public string? Detail { get; } = detail;
+
+    private protected static string Code(int? errorCode) => errorCode?.ToString() ?? "unknown";
+}
+```
+
+### QPermissionDeniedException
+
+```csharp
+/// <summary>平台未给当前机器人开通某个 QQ 接口权限。</summary>
+public sealed class QPermissionDeniedException(string operation, int? errorCode, string? detail = null)
+    : QPlatformException($"QQ 平台未授权接口：{operation}（错误码 {Code(errorCode)}）", operation, errorCode, detail);
+```
+
+### QLimitExceededException
+
+```csharp
+/// <summary>QQ 平台限制了操作次数，例如每群每天一次的 @全体成员。</summary>
+public sealed class QLimitExceededException(string operation, int? errorCode, string? detail = null)
+    : QPlatformException($"QQ 平台操作次数已用完：{operation}（错误码 {Code(errorCode)}）", operation, errorCode, detail);
 ```
 
 ## 群管理能力标记

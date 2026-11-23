@@ -1,0 +1,1023 @@
+{
+ "IQFriendApi.SendNudgeAsync#0": {
+  "summary": "发送戳一戳。",
+  "wrap": true,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "isSelf": "是否戳机器人自己。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFriendApi.SendProfileLikeAsync#0": {
+  "summary": "给用户资料名片点赞。",
+  "wrap": true,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "count": "请求执行的次数。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFriendApi.DeleteFriendAsync#0": {
+  "summary": "删除好友。",
+  "wrap": false,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFriendApi.GetFriendRequestsAsync#0": {
+  "summary": "获取好友请求列表。",
+  "wrap": true,
+  "params": {
+   "limit": "本页请求数量。",
+   "isFiltered": "是否处理被协议端过滤的请求。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回好友请求列表。"
+ },
+ "IQFriendApi.AcceptFriendRequestAsync#0": {
+  "summary": "接受好友请求。initiatorUid 来自 QFriendRequest.InitiatorUid 或好友请求事件的 Token。",
+  "wrap": true,
+  "params": {
+   "initiatorUid": "好友请求返回的发起者 UID。",
+   "isFiltered": "是否处理被协议端过滤的请求。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFriendApi.RejectFriendRequestAsync#0": {
+  "summary": "拒绝好友申请。",
+  "wrap": true,
+  "params": {
+   "initiatorUid": "好友请求返回的发起者 UID。",
+   "isFiltered": "是否处理被协议端过滤的请求。",
+   "reason": "可选的拒绝理由。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFriendApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQGroupApi.Capabilities#0": {
+  "summary": "适配器实现的能力，不代表账号已获得平台授权。",
+  "wrap": false
+ },
+ "IQGroupApi.GetGroupListAsync#0": {
+  "summary": "查询当前账号的群列表。",
+  "wrap": true,
+  "params": {
+   "noCache": "是否绕过协议端缓存。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回群列表。"
+ },
+ "IQGroupApi.GetGroupInfoAsync#0": {
+  "summary": "查询指定群的资料。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "noCache": "是否绕过协议端缓存。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回群资料。"
+ },
+ "IQGroupApi.GetGroupMemberListAsync#0": {
+  "summary": "查询指定群的成员列表。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "noCache": "是否绕过协议端缓存。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回成员列表。"
+ },
+ "IQGroupApi.GetGroupMemberInfoAsync#0": {
+  "summary": "查询群内指定成员的资料。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userId": "当前实例内的用户 ID。",
+   "noCache": "是否绕过协议端缓存。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回成员资料。"
+ },
+ "IQGroupApi.SetGroupNameAsync#0": {
+  "summary": "修改群名。",
+  "wrap": false,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "name": "群名。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SetGroupAvatarAsync#0": {
+  "summary": "修改群头像。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "imageUri": "图片 URI，由适配器解析。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SetMemberCardAsync#0": {
+  "summary": "修改群成员名片。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userId": "当前实例内的用户 ID。",
+   "card": "群名片。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SetMemberSpecialTitleAsync#0": {
+  "summary": "修改群成员专属头衔。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userId": "当前实例内的用户 ID。",
+   "title": "成员专属头衔。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SetMemberAdminAsync#0": {
+  "summary": "设置或取消群管理员。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userId": "当前实例内的用户 ID。",
+   "isSet": "是否设置；false 为取消。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.MuteMemberAsync#0": {
+  "summary": "禁言指定成员，零时长解除禁言。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userId": "当前实例内的用户 ID。",
+   "duration": "禁言时长；零表示解除禁言。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SetWholeMuteAsync#0": {
+  "summary": "设置或取消全员禁言。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "isMute": "是否开启全员禁言。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.KickMemberAsync#0": {
+  "summary": "移出指定群成员。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userId": "当前实例内的用户 ID。",
+   "rejectAddRequest": "踢人后是否拒绝再次入群，依平台语义执行。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.QuitGroupAsync#0": {
+  "summary": "让机器人退出指定群。",
+  "wrap": false,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SendNudgeAsync#0": {
+  "summary": "发送戳一戳。",
+  "wrap": false,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userId": "当前实例内的用户 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SendMessageReactionAsync#0": {
+  "summary": "添加或移除消息表情回应。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "messageId": "当前会话的消息 ID。",
+   "faceId": "QQ 表情 ID。",
+   "isAdd": "是否添加回应；false 为移除。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.SendMessageReactionAsync#1": {
+  "summary": "发送消息表情回应(指定 Face/Emoji 类型)。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "messageId": "当前会话的消息 ID。",
+   "reactionId": "回应 ID，与 reactionType 对应。",
+   "reactionType": "QQ 表情或 Emoji 回应类型。",
+   "isAdd": "是否添加回应；false 为移除。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.GetAnnouncementsAsync#0": {
+  "summary": "查询群公告。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回群公告列表。"
+ },
+ "IQGroupApi.SendAnnouncementAsync#0": {
+  "summary": "发布群公告。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "content": "公告正文。",
+   "imageUri": "图片 URI，由适配器解析。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.DeleteAnnouncementAsync#0": {
+  "summary": "删除指定群公告。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "announcementId": "群公告 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.GetEssenceMessagesAsync#0": {
+  "summary": "查询一页群精华消息。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "pageIndex": "页索引，按协议端约定。",
+   "pageSize": "每页数量。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回本页精华消息。"
+ },
+ "IQGroupApi.GetEssenceMessagesPageAsync#0": {
+  "summary": "获取一页群精华消息，并返回是否已到最后一页。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "pageIndex": "页索引，按协议端约定。",
+   "pageSize": "每页数量。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回消息列表 Messages 与是否最后一页 IsEnd。"
+ },
+ "IQGroupApi.SetEssenceMessageAsync#0": {
+  "summary": "设置或取消精华消息。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "messageId": "当前会话的消息 ID。",
+   "isSet": "是否设置；false 为取消。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.AcceptJoinRequestAsync#0": {
+  "summary": "按原样返回的申请对象接受申请或邀请他人入群。",
+  "wrap": true,
+  "params": {
+   "request": "查询或事件返回的完整入群申请对象。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.RejectJoinRequestAsync#0": {
+  "summary": "拒绝入群申请，可选择拒绝理由及同时拉黑。",
+  "wrap": true,
+  "params": {
+   "request": "查询或事件返回的完整入群申请对象。",
+   "reason": "可选的拒绝理由。",
+   "addToBlacklist": "拒绝申请时是否同时拉黑；需适配器支持。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.GetJoinRequestsAsync#0": {
+  "summary": "统一分页申请列表；Cursor 是不透明分页凭据。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "cursor": "上一页返回的 NextCursor；null 从第一页开始。",
+   "limit": "本页请求数量。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回申请列表 Requests 和下一页游标 NextCursor；null 表示没有下一页。"
+ },
+ "IQGroupApi.GetMuteStateAsync#0": {
+  "summary": "查询群禁言状态和平台返回的定时、周期规则。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回群禁言状态及定时、周期规则。"
+ },
+ "IQGroupApi.GetGroupBlacklistAsync#0": {
+  "summary": "分页查询群黑名单；需要 `QGroupCapabilities.MemberBlacklist`，平台未授权时抛出 `QPermissionDeniedException`。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "cursor": "上一页返回的 NextCursor；null 从第一页开始。",
+   "limit": "本页请求数量。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回黑名单用户 Members 和下一页游标 NextCursor；null 表示没有下一页。"
+ },
+ "IQGroupApi.UpdateGroupBlacklistAsync#0": {
+  "summary": "把用户加入或移出群黑名单；需要 `QGroupCapabilities.MemberBlacklist`。仍在群内的用户无法加入。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "userIds": "要加入或移出的用户 ID。",
+   "add": "true 加入黑名单，false 移出。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回平台报告失败的用户 ID；全部成功时为空。"
+ },
+ "IQGroupApi.GetBotStateAsync#0": {
+  "summary": "查询机器人在群内的状态；需要 `QGroupCapabilities.BotState`。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "`Member` 是机器人自己的群成员资料（群内 ID、角色、入群时间），另含主动推送许可与消息接收设置。"
+ },
+ "IQGroupApi.SetMemberMutesAsync#0": {
+  "summary": "按项设置成员禁言，零时长解除禁言。先验证全部参数，再逐项执行；失败不回滚已完成的项，继续处理剩余项。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "members": "本次操作的成员及禁言时长列表。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回每项的 Succeeded、Failed、Unknown 或 NotExecuted 状态。Unknown 不能假定服务端未执行；取消抛 QBatchOperationCanceledException，可读取 PartialResult。"
+ },
+ "IQGroupApi.GetNotificationsAsync#0": {
+  "summary": "获取群通知列表(入群申请/邀请/管理员变更/踢人/退群)。返回通知与下一页起始序号。",
+  "wrap": true,
+  "params": {
+   "cursor": "上一页返回的 NextCursor；null 从第一页开始。",
+   "isFiltered": "是否处理被协议端过滤的请求。",
+   "limit": "本页请求数量。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回通知列表 Notifications 和下一页游标 NextCursor。"
+ },
+ "IQGroupApi.AcceptInvitationAsync#0": {
+  "summary": "接受他人邀请机器人入群。invitationId 来自群邀请事件的 Token。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "invitationId": "群邀请事件返回的邀请 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.RejectInvitationAsync#0": {
+  "summary": "拒绝邀请机器人入群。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "invitationId": "群邀请事件返回的邀请 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApi.入群审批示例#0": {
+  "wrap": true
+ },
+ "IQGroupApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQGroupApprovalStrategyApi.GetApprovalStrategiesAsync#0": {
+  "summary": "分页查询入群自动审批策略。",
+  "wrap": true,
+  "params": {
+   "cursor": "上一页返回的 NextCursor；null 从第一页开始。",
+   "limit": "本页请求数量。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回策略列表 Strategies 和下一页游标 NextCursor。"
+ },
+ "IQGroupApprovalStrategyApi.CreateApprovalStrategyAsync#0": {
+  "summary": "创建入群自动审批策略。",
+  "wrap": true,
+  "params": {
+   "options": "创建策略的配置。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回新建的审批策略。"
+ },
+ "IQGroupApprovalStrategyApi.UpdateApprovalStrategyAsync#0": {
+  "summary": "修改指定入群自动审批策略。",
+  "wrap": true,
+  "params": {
+   "strategyId": "平台返回的自动审批策略 ID。",
+   "update": "需要修改的策略字段。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回修改后的审批策略。"
+ },
+ "IQGroupApprovalStrategyApi.DeleteApprovalStrategyAsync#0": {
+  "summary": "删除指定入群自动审批策略。",
+  "wrap": false,
+  "params": {
+   "strategyId": "平台返回的自动审批策略 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApprovalStrategyApi.ExecuteApprovalStrategyAsync#0": {
+  "summary": "触发平台异步扫描；返回不代表已完成。",
+  "wrap": false,
+  "params": {
+   "strategyId": "平台返回的自动审批策略 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQGroupApprovalStrategyApi.UpdateApprovalWhitelistAsync#0": {
+  "summary": "加入或移除策略白名单中的 QQ 号码。",
+  "wrap": true,
+  "params": {
+   "strategyId": "平台返回的自动审批策略 ID。",
+   "qqNumbers": "QQ 号码字符串列表。",
+   "add": "是否加入白名单；false 为移除。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回平台报告的白名单变更数量。"
+ },
+ "IQGroupApprovalStrategyApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQFileApi.UploadPrivateFileAsync#0": {
+  "summary": "上传私聊文件。",
+  "wrap": true,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "fileUri": "文件 URI，由适配器解析。",
+   "fileName": "文件名。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回上传文件的 ID。"
+ },
+ "IQFileApi.UploadGroupFileAsync#0": {
+  "summary": "上传群文件。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "fileUri": "文件 URI，由适配器解析。",
+   "fileName": "文件名。",
+   "parentFolderId": "父文件夹 ID；默认 / 为根目录。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回上传文件的 ID。"
+ },
+ "IQFileApi.GetPrivateFileDownloadUrlAsync#0": {
+  "summary": "获取私聊文件下载链接。",
+  "wrap": true,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "fileId": "文件 ID。",
+   "fileHash": "文件哈希。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回下载链接。"
+ },
+ "IQFileApi.GetPrivateFileDownloadUrlAsync#1": {
+  "summary": "获取私聊文件下载链接，并指定文件是否由机器人自己发送。",
+  "wrap": true,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "fileId": "文件 ID。",
+   "fileHash": "文件哈希。",
+   "isSelfSend": "文件是否由机器人自己发送。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回下载链接。"
+ },
+ "IQFileApi.GetGroupFileDownloadUrlAsync#0": {
+  "summary": "获取群文件下载链接。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "fileId": "文件 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回下载链接。"
+ },
+ "IQFileApi.GetGroupFilesAsync#0": {
+  "summary": "查询父目录下的群文件和文件夹。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "parentFolderId": "父文件夹 ID；默认 / 为根目录。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回文件列表 Files 和文件夹列表 Folders。"
+ },
+ "IQFileApi.MoveGroupFileAsync#0": {
+  "summary": "移动群文件到另一个文件夹。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "fileId": "文件 ID。",
+   "targetFolderId": "目标文件夹 ID。",
+   "parentFolderId": "父文件夹 ID；默认 / 为根目录。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFileApi.RenameGroupFileAsync#0": {
+  "summary": "重命名群文件。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "fileId": "文件 ID。",
+   "newFileName": "新的文件名。",
+   "parentFolderId": "父文件夹 ID；默认 / 为根目录。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFileApi.DeleteGroupFileAsync#0": {
+  "summary": "删除群文件。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "fileId": "文件 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFileApi.CreateGroupFolderAsync#0": {
+  "summary": "创建群文件夹。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "folderName": "待创建的文件夹名。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回创建的文件夹 ID。"
+ },
+ "IQFileApi.RenameGroupFolderAsync#0": {
+  "summary": "重命名群文件夹。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "folderId": "文件夹 ID。",
+   "newFolderName": "新的文件夹名。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFileApi.DeleteGroupFolderAsync#0": {
+  "summary": "删除群文件夹。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "folderId": "文件夹 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFileApi.PersistGroupFileAsync#0": {
+  "summary": "将群文件转存为永久文件。",
+  "wrap": true,
+  "params": {
+   "groupId": "当前实例内的群 ID。",
+   "fileId": "文件 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQFileApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQSystemApi.GetUserProfileAsync#0": {
+  "summary": "查询用户资料。",
+  "wrap": false,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回用户资料。"
+ },
+ "IQSystemApi.GetFriendListAsync#0": {
+  "summary": "查询好友列表。",
+  "wrap": true,
+  "params": {
+   "noCache": "是否绕过协议端缓存。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回好友列表。"
+ },
+ "IQSystemApi.GetFriendInfoAsync#0": {
+  "summary": "查询好友资料。",
+  "wrap": true,
+  "params": {
+   "userId": "当前实例内的用户 ID。",
+   "noCache": "是否绕过协议端缓存。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回好友资料。"
+ },
+ "IQSystemApi.GetPeerPinsAsync#0": {
+  "summary": "获取置顶的好友和群。",
+  "wrap": true,
+  "params": {
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回置顶好友 Friends 与置顶群 Groups。"
+ },
+ "IQSystemApi.SetAvatarAsync#0": {
+  "summary": "修改机器人账号头像。",
+  "wrap": false,
+  "params": {
+   "imageUri": "图片 URI，由适配器解析。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQSystemApi.SetNicknameAsync#0": {
+  "summary": "修改机器人账号昵称。",
+  "wrap": false,
+  "params": {
+   "nickname": "账号昵称。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQSystemApi.SetBioAsync#0": {
+  "summary": "修改机器人账号简介。",
+  "wrap": false,
+  "params": {
+   "bio": "账号简介。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQSystemApi.GetCookiesAsync#0": {
+  "summary": "查询指定域名的账号 Cookie。",
+  "wrap": false,
+  "params": {
+   "domain": "需要查询 Cookie 的域名。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回指定域名的 Cookie。"
+ },
+ "IQSystemApi.GetCsrfTokenAsync#0": {
+  "summary": "查询账号 CSRF Token。",
+  "wrap": false,
+  "params": {
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回账号 CSRF Token。"
+ },
+ "IQSystemApi.GetLoginInfoAsync#0": {
+  "summary": "获取登录账号信息。",
+  "wrap": false,
+  "params": {
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回登录账号信息。"
+ },
+ "IQSystemApi.GetImplInfoAsync#0": {
+  "summary": "获取协议实现端信息(实现名/版本/QQ协议类型)。",
+  "wrap": false,
+  "params": {
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回协议实现端信息。"
+ },
+ "IQSystemApi.GetCustomFaceUrlListAsync#0": {
+  "summary": "获取收藏表情 URL 列表。",
+  "wrap": false,
+  "params": {
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回收藏表情 URL 列表。"
+ },
+ "IQSystemApi.SetPeerPinAsync#0": {
+  "summary": "设置会话置顶。",
+  "wrap": true,
+  "params": {
+   "scene": "好友、群或临时会话场景。",
+   "peerId": "会话 ID，与 scene 对应。",
+   "isPinned": "是否置顶会话。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQSystemApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQMessageApi.SendMessageAsync#0": {
+  "summary": "用 QQ 原生段发送 LightApp、合并转发等消息。",
+  "wrap": true,
+  "params": {
+   "scene": "好友、群或临时会话场景。",
+   "peerId": "会话 ID，与 scene 对应。",
+   "segments": "QQ 原生出站消息段。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQMessageApi.SendMessageDetailedAsync#0": {
+  "summary": "发送 QQ 原生消息，并返回消息序列号和发送时间。",
+  "wrap": true,
+  "params": {
+   "scene": "好友、群或临时会话场景。",
+   "peerId": "会话 ID，与 scene 对应。",
+   "segments": "QQ 原生出站消息段。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回消息 ID 与发送时间。"
+ },
+ "IQMessageApi.GetMessageAsync#0": {
+  "summary": "获取单条消息(QQ 原生形态)。",
+  "wrap": true,
+  "params": {
+   "scene": "好友、群或临时会话场景。",
+   "peerId": "会话 ID，与 scene 对应。",
+   "messageId": "当前会话的消息 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回找到的原生消息；不存在时为 null。"
+ },
+ "IQMessageApi.GetHistoryMessagesAsync#0": {
+  "summary": "获取历史消息(QQ 原生形态)。返回消息与下一页起始序号。",
+  "wrap": true,
+  "params": {
+   "scene": "好友、群或临时会话场景。",
+   "peerId": "会话 ID，与 scene 对应。",
+   "cursor": "上一页返回的 NextCursor；null 从第一页开始。",
+   "limit": "本页请求数量。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回消息列表 Messages 和下一页游标 NextCursor。"
+ },
+ "IQMessageApi.RecallMessageAsync#0": {
+  "summary": "撤回消息。",
+  "wrap": true,
+  "params": {
+   "scene": "好友、群或临时会话场景。",
+   "peerId": "会话 ID，与 scene 对应。",
+   "messageId": "当前会话的消息 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQMessageApi.GetResourceTempUrlAsync#0": {
+  "summary": "把接收到的资源 ID 解析为临时下载 URL。",
+  "wrap": true,
+  "params": {
+   "resourceId": "收到的资源 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回下载链接。"
+ },
+ "IQMessageApi.GetForwardedMessagesAsync#0": {
+  "summary": "读取合并转发中的原生消息。",
+  "wrap": true,
+  "params": {
+   "forwardId": "合并转发资源 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回合并转发中的消息列表。"
+ },
+ "IQMessageApi.MarkAsReadAsync#0": {
+  "summary": "将指定会话标记为已读。",
+  "wrap": true,
+  "params": {
+   "scene": "好友、群或临时会话场景。",
+   "peerId": "会话 ID，与 scene 对应。",
+   "messageId": "当前会话的消息 ID。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQMessageApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQOfficialMessageApi.SendAsync#0": {
+  "summary": "发送一条类型化 QQ 官方消息；媒体类型需要适配器同时实现 IQOfficialMediaApi。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "message": "类型化的官方出站消息。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMessageApi.SendTextAsync#0": {
+  "summary": "发送官方文本消息，可通过 reply 指定消息或事件被动回复。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "content": "待发送的纯文本。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMessageApi.SendArkAsync#0": {
+  "summary": "发送 QQ 官方 Ark 模板消息；不支持时抛出 NotSupportedException。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "templateId": "平台批准的 Ark 模板编号。",
+   "fields": "模板字段及内容。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMessageApi.SendEmbedAsync#0": {
+  "summary": "发送 QQ 官方 Embed 卡片消息。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "embed": "Embed 卡片内容。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMessageApi.CanSendMarkdown#0": {
+  "summary": "探测适配器是否支持目标和按钮形式；平台权限可能变化，返回 true 不保证发送成功。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "markdown": "自定义 Markdown 或模板 Markdown。",
+   "keyboard": "可选的消息底部按钮。"
+  },
+  "returns": "返回适配器是否支持此目标与按钮形式；true 不保证平台授权。"
+ },
+ "IQOfficialMessageApi.SendMarkdownAsync#0": {
+  "summary": "发送 Markdown，可附带底部按钮。自定义按钮是否可用取决于开放平台权限和发送场景。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "markdown": "自定义 Markdown 或模板 Markdown。",
+   "keyboard": "可选的消息底部按钮。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMessageApi.AcknowledgeInteractionAsync#0": {
+  "summary": "回应按钮互动。每个 InteractionId 只能回应一次且会过期；适配器应及时确认，避免耗时的插件处理让客户端持续显示加载。",
+  "wrap": true,
+  "params": {
+   "interactionId": "按钮互动事件的 InteractionId。",
+   "code": "回应按钮互动的结果代码。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQOfficialMessageApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQOfficialMediaApi.UploadAsync#0": {
+  "summary": "上传本地媒体并返回可复用的官方 file_info。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "type": "媒体类型。",
+   "content": "待上传的可读媒体流。",
+   "fileName": "文件名。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回可复用的上传媒体引用。"
+ },
+ "IQOfficialMediaApi.SendAsync#0": {
+  "summary": "发送已上传媒体；可传入消息或事件用于被动回复。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "media": "已上传的媒体引用。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMediaApi.SendWithCaptionAsync#0": {
+  "summary": "发送官方媒体并附带文本说明；图片说明可通过同一条富媒体消息发送。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "media": "已上传的媒体引用。",
+   "content": "随媒体发送的文字说明。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMediaApi.UploadAndSendAsync#0": {
+  "summary": "上传并发送媒体。没有 reply 时使用平台主动发送接口。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "type": "媒体类型。",
+   "content": "待上传的可读媒体流。",
+   "fileName": "文件名。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMediaApi.UploadAndSendWithCaptionAsync#0": {
+  "summary": "上传媒体并在同一条富媒体消息中附带文本说明。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "type": "媒体类型。",
+   "content": "待上传的可读媒体流。",
+   "fileName": "文件名。",
+   "caption": "随媒体一起发送的文字说明。",
+   "reply": "被动回复的消息或事件凭据；null 表示未指定。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回发送后的消息 ID。"
+ },
+ "IQOfficialMediaApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQOfficialDirectMessageApi.SendTypingAsync#0": {
+  "summary": "发送私聊输入状态，使用被动回复凭据。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "reply": "必传的被动回复凭据，来自消息或事件。",
+   "duration": "输入状态的持续时间。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQOfficialDirectMessageApi.BeginStream#0": {
+  "summary": "创建流式回复会话，结束后需释放。",
+  "wrap": true,
+  "params": {
+   "target": "官方消息目标，含场景与 ID。",
+   "reply": "必传的被动回复凭据，来自消息或事件。",
+   "contentType": "流式回复内容类型。"
+  },
+  "returns": "返回可异步释放的流式回复会话。"
+ },
+ "IQOfficialDirectMessageApi.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ },
+ "IQOfficialMessageStream.HasStarted#0": {
+  "summary": "流式回复是否已开始。",
+  "wrap": false
+ },
+ "IQOfficialMessageStream.AppendAsync#0": {
+  "summary": "更新流式回复的完整可见文本。",
+  "wrap": false,
+  "params": {
+   "cumulativeText": "截至本次调用的完整可见文本，不是新增片段。",
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "完成后无返回值。"
+ },
+ "IQOfficialMessageStream.CompleteAsync#0": {
+  "summary": "完成流式回复，返回最终消息 ID。",
+  "wrap": false,
+  "params": {
+   "cancellationToken": "取消令牌；默认不主动取消。"
+  },
+  "returns": "返回完成后的消息 ID。"
+ },
+ "IQOfficialMessageStream.相关类型#0": {
+  "summary": "见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。"
+ }
+}

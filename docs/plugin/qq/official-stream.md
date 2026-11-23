@@ -1,6 +1,6 @@
 # 官方流式会话（IQOfficialMessageStream）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.1.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 由 `IQOfficialDirectMessageApi.BeginStream` 返回；使用完调用 `DisposeAsync` 或 `await using`。
 
