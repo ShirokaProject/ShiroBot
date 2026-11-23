@@ -1,6 +1,6 @@
 # 原生消息（IDiscordMessageApi）
 
-命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。两种账号都实现。
+命名空间：`ShiroBot.Model.Discord`。两种账号都实现。
 
 Discord 原生消息：Embed、组件、投票、附件、编辑、置顶、批量删除和 Reaction 管理。
 

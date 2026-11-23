@@ -313,7 +313,7 @@ def generate(platform):
         for interface, slug, label in interfaces:
             header, members = interface_members(source, interface)
             page = [f"# {label}（{interface}）", "",
-                    f"命名空间：`{namespace}`。{title} Model ABI：`{abi}`。{availability}", ""]
+                    f"命名空间：`{namespace}`。{availability}", ""]
             if header:
                 page += [header, ""]
             page += ["```csharp", f"var api = Context.GetAdapterExtension<{interface}>();", "if (api is null) return;", "```", "",
@@ -352,7 +352,7 @@ def generate(platform):
              f"- [{title} 特有能力与示例](./{key}-model)", ""]
     (DOCS / f"{key}-reference.md").write_text("\n".join(index), encoding="utf-8")
 
-    page = [f"# {title} C# 类型参考", "", f"命名空间：`{namespace}`。以下完整声明对应 {title} Model ABI `{abi}`。", "",
+    page = [f"# {title} C# 类型参考", "", f"命名空间：`{namespace}`。", "",
             "`required` 属性必须初始化；`init` 属性在创建对象时设置；位置式 record 使用所列构造参数。继承类型同时拥有基类属性。", ""]
     seen = set()
     for file_name, label in platform["types"]:

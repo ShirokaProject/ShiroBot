@@ -82,8 +82,6 @@ flowchart LR
 
 ## 生命周期作用域（可选）
 
-需要宿主 1.0.2（SDK ABI 1.4.0.0）。
-
 接收循环、心跳计时器、`ClientWebSocket` 等资源停止后若未结束或释放，旧程序集就无法回收，热重载和卸载时需要重启宿主。实现 `ILifetimeAwareAdapter` 后，宿主在每次 `StartAsync()` 前注入新的 `Lifetime`，停止时统一清理已登记的资源；配置触发的重启也使用新作用域：
 
 ```csharp

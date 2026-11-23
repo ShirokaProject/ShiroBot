@@ -1,6 +1,6 @@
 # inline 模式（ITelegramInlineApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
+命名空间：`ShiroBot.Model.Telegram`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
 
 inline 模式（在任意会话输入 @机器人 查询），仅机器人。需要在 BotFather 开启。
 

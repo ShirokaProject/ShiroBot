@@ -1,6 +1,6 @@
 # 服务器管理（IDiscordGuildApi）
 
-命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。两种账号都实现。
+命名空间：`ShiroBot.Model.Discord`。两种账号都实现。
 
 服务器、频道、角色、成员、封禁、邀请、表情和子区管理。
 

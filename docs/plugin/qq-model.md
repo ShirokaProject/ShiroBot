@@ -112,7 +112,7 @@ QQPlatform 可用 `GlobalUserId` 保留额外的 `user_openid`。
 
 官方通用按钮映射声明最多 5 行、每行 5 个按钮，按钮不能和媒体混发；通用请求最多一段媒体，普通文本最多 5000 字符。QQ 专属模板键盘、Ark、特殊按钮参数等仍保留 QQ Model 扩展。
 
-SDK ABI 1.5.0.0 新增的编辑消息、批量删除、置顶、输入状态、封禁和 `MessageEditedEvent` 取决于 QQ 适配器是否实现；未实现时调用抛出 `NotSupportedException`，批量删除会退回逐条删除。
+通用的编辑消息、批量删除、置顶、输入状态、封禁和 `MessageEditedEvent` 取决于 QQ 适配器是否实现；未实现时调用抛出 `NotSupportedException`，批量删除会退回逐条删除。
 
 **文件**：Milky 将单独的 `FileSegment` 映射到群/私聊文件上传，不返回消息 ID：成功结果的 `UploadedFile` 包含文件 ID，`MessageId` 为空且 `Reference` 为 null，文件 ID 不能用于撤回或订阅引用回复；当前不自动拆分文本与文件混合消息。
 `IFileService` 上传时，Milky 的 `UploadPublishes` / `IsPublished` 为 true，上传即已发给接收者；官方为 false，返回的是尚未发送的媒体凭据。

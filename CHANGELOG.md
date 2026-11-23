@@ -2,7 +2,7 @@
 
 ## 1.0.4（未发布）
 
-对比 1.0.3。宿主、`ShiroBot.SDK` / `ShiroBot.Templates` 包为 1.0.4，内嵌 Dashboard 仍为 1.0.3。
+对比 1.0.3。
 
 ### 主要更新
 

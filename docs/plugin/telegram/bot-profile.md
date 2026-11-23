@@ -1,6 +1,6 @@
 # 命令菜单与资料（ITelegramBotProfileApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
+命名空间：`ShiroBot.Model.Telegram`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
 
 机器人的命令菜单、名称与介绍，仅机器人。自身资料见 `ITelegramClientApi.GetMeAsync`。
 

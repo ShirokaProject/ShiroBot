@@ -26,8 +26,6 @@ if (sent.Reference is { } reference)
 
 ## 编辑、置顶与输入状态
 
-需要宿主 1.0.4（SDK ABI 1.5.0.0）。
-
 ```csharp
 await Context.Message.SendTypingAsync(new ChannelReference(message.InstanceId!, message.Channel));
 var sent = await Context.Message.ReplyAsync(message, "处理中…");

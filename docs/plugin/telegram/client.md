@@ -1,6 +1,6 @@
 # 账号信息（ITelegramClientApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。两种账号都实现。
+命名空间：`ShiroBot.Model.Telegram`。两种账号都实现。
 
 当前实例的账号与传输信息，两种账号都实现。
 

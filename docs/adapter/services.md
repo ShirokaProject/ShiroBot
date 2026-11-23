@@ -32,7 +32,7 @@ public sealed class MyMessageService : IMessageService
 }
 ```
 
-SDK ABI 1.5.0.0 新增的编辑、批量删除、置顶、输入状态和封禁带有默认实现：`DeleteMessagesAsync` 默认逐条调用 `DeleteMessageAsync`，其余默认抛出 `NotSupportedException`。平台支持时请实现它们，否则插件只能按平台分别调用扩展接口。
+编辑、批量删除、置顶、输入状态和封禁带有默认实现：`DeleteMessagesAsync` 默认逐条调用 `DeleteMessageAsync`，其余默认抛出 `NotSupportedException`。平台支持时请实现它们，否则插件只能按平台分别调用扩展接口。
 
 `SendToProtocolAsync` 代表适配器自己的协议调用，示例需替换为实际实现。`DeleteMessageAsync`、查询消息与历史消息使用同一套 ID 映射；收到平台事件时也要使用相同的 `MessageId` 和 `Channel.Id`。
 

@@ -1,6 +1,6 @@
 # 账号操作（ITelegramAccountApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。仅用户账号（MTProto 登录）实现；机器人适配器上为 null。
+命名空间：`ShiroBot.Model.Telegram`。仅用户账号（MTProto 登录）实现；机器人适配器上为 null。
 
 用户账号特有的操作，仅用户账号（MTProto 登录；机器人适配器不实现）。历史消息、完整成员列表、会话列表和好友 使用 SDK 通用服务（`GetHistoryMessagesAsync`、`GetMembersAsync`、`GetChannelsAsync`、`GetFriendsAsync`）。
 

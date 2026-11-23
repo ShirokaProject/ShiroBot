@@ -1,6 +1,6 @@
 # 原生消息（ITelegramMessageApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。两种账号都实现。
+命名空间：`ShiroBot.Model.Telegram`。两种账号都实现。
 
 Telegram 原生消息：投票、位置、相册、发票、编辑、转发、输入状态和回调提示。
 

@@ -1,6 +1,6 @@
 # 交互与应用命令（IDiscordInteractionApi）
 
-命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。仅机器人账号（Developer Portal 创建的机器人）实现；用户账号适配器上为 null。
+命名空间：`ShiroBot.Model.Discord`。仅机器人账号（Developer Portal 创建的机器人）实现；用户账号适配器上为 null。
 
 交互回复与应用命令，仅机器人。交互令牌有效期 15 分钟，首次回复必须在 3 秒内发出。 适配器自动确认交互时（`AutoAcknowledges`），首次回复已用延迟回复占用，只能使用 `EditOriginalAsync` 和 `FollowupAsync`；弹窗、自动补全和临时可见的首次回复需要关闭自动确认。
 

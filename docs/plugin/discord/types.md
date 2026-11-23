@@ -1,6 +1,6 @@
 # Discord C# 类型参考
 
-命名空间：`ShiroBot.Model.Discord`。以下完整声明对应 Discord Model ABI `1.1.0.0`。
+命名空间：`ShiroBot.Model.Discord`。
 
 `required` 属性必须初始化；`init` 属性在创建对象时设置；位置式 record 使用所列构造参数。继承类型同时拥有基类属性。
 

@@ -1,6 +1,6 @@
 # QQ 接口与契约语义
 
-`ShiroBot.Model.QQ` 当前 ABI 为 **1.1.0.0**，用户、群与消息 ID 统一使用不透明字符串。
+`ShiroBot.Model.QQ` 的用户、群与消息 ID 统一使用不透明字符串。
 SDK 与宿主的版本要求见 [ABI 兼容性与版本](./api-compatibility)。
 
 ## 插件入口

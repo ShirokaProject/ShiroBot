@@ -1,6 +1,6 @@
 # Bot API 原始调用（ITelegramBotApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
+命名空间：`ShiroBot.Model.Telegram`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
 
 直接调用任意 Bot API 方法，覆盖本模型没有建模的功能；仅 Bot API 传输的机器人适配器实现。 只使用 System.Text.Json 类型，插件无需引用适配器程序集。适配器负责长轮询：调用 getUpdates 或 setWebhook 会与之冲突。
 

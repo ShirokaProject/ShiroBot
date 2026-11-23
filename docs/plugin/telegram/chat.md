@@ -1,6 +1,6 @@
 # 会话管理（ITelegramChatApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。两种账号都实现。
+命名空间：`ShiroBot.Model.Telegram`。两种账号都实现。
 
 Telegram 会话、成员、话题和邀请管理。改名（含话题名）、退出、踢出、禁言、删除单条消息和成员资料使用 SDK 通用服务 （`SetChannelNameAsync`、`LeaveChannelAsync`、`KickMemberAsync`、`MuteMemberAsync`、`DeleteMessageAsync`、`GetMemberAsync`）， 这里只放通用服务表达不了的部分。
 

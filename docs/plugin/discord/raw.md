@@ -1,6 +1,6 @@
 # 原始调用（IDiscordRawApi）
 
-命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。两种账号都实现。
+命名空间：`ShiroBot.Model.Discord`。两种账号都实现。
 
 直接调用任意 Discord REST 路由、发送 Gateway 指令并接收原始 Dispatch，覆盖本模型没有建模的功能。 只使用 System.Text.Json 类型，插件无需引用适配器程序集。
 

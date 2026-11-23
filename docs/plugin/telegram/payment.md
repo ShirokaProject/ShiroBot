@@ -1,6 +1,6 @@
 # 支付（ITelegramPaymentApi）
 
-命名空间：`ShiroBot.Model.Telegram`。Telegram Model ABI：`1.1.0.0`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
+命名空间：`ShiroBot.Model.Telegram`。仅机器人账号（BotFather 创建的机器人）实现；用户账号适配器上为 null。
 
 发票与 Telegram Stars 收款，仅机器人。发送发票使用 `ITelegramMessageApi.SendAsync` 和 `TelegramInvoiceContent`。
 

@@ -1,6 +1,6 @@
 # 账号信息（IDiscordClientApi）
 
-命名空间：`ShiroBot.Model.Discord`。Discord Model ABI：`1.1.0.0`。两种账号都实现。
+命名空间：`ShiroBot.Model.Discord`。两种账号都实现。
 
 当前实例的账号信息、自身资料、用户查询与在线状态，两种账号都实现。
 

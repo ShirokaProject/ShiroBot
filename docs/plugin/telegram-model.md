@@ -6,12 +6,6 @@
 机器人适配器和用户账号适配器共用这一套 Model，平台 ID 都是 `telegram`；各自只实现自己账号能用的接口，
 插件通过 `GetAdapterExtension<T>()` 是否返回 `null` 判断。
 
-本文对应宿主与 SDK 1.0.4（Telegram Model ABI `1.1.0.0`）。只使用 `TelegramUser` 原有成员的组件可在更早的宿主上运行。
-
-```csharp
-[assembly: RequiresShiroBotPackage("shirobot.model.telegram", MinimumVersion = "1.0.4")]
-```
-
 完整签名见 [接口参考](./telegram-reference) 与 [C# 类型参考](./telegram/types)。
 
 ## 常用 Model 类型

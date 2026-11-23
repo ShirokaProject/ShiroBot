@@ -3,12 +3,6 @@
 `ShiroBot.Model.Discord` 补充通用 SDK 无法表达的 Discord 数据与操作。插件先使用 `ShiroBot.SDK.Models`
 处理普通消息，再按需探测 Discord 扩展接口。Model 由宿主提供，插件不需要引用适配器程序集。
 
-本文对应宿主与 SDK 1.0.4（Discord Model ABI `1.1.0.0`）。只使用 `DiscordUser` 原有成员的组件可在更早的宿主上运行。
-
-```csharp
-[assembly: RequiresShiroBotPackage("shirobot.model.discord", MinimumVersion = "1.0.4")]
-```
-
 ## 账号类型
 
 官方机器人适配器和用户账号适配器共用这套 Model，平台 ID 都是 `discord`，各自只实现自己账号能用的接口，其他接口返回 `null`。
