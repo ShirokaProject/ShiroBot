@@ -82,7 +82,9 @@ protected override void ConfigureRoutes()
 
 适配器把无法映射成通用事件的内容放进 `PlatformEvent`，用 `Kind` 区分事件类型，`Raw` 保存平台 Model 的负载：
 
-```csharp
+::: code-group
+
+```csharp [QQ]
 using ShiroBot.Model.QQ;
 
 Events.MapPlatform(QEventKinds.OfficialButtonInteraction, evt =>
@@ -94,7 +96,32 @@ Events.MapPlatform(QEventKinds.OfficialButtonInteraction, evt =>
 });
 ```
 
-QQ 事件详见 [QQ Model](/plugin/qq-model)，官方按钮事件详见[官方 Markdown 与按钮](/plugin/qq-official)。
+```csharp [Telegram]
+using ShiroBot.Model.Telegram;
+
+Events.MapPlatform(TelegramEventKinds.ChatJoinRequest, async evt =>
+{
+    if (evt.Raw is not TelegramChatJoinRequest request) return;
+    var chatApi = Context.GetAdapterExtension<ITelegramChatApi>();
+    if (chatApi is not null)
+        await chatApi.ApproveJoinRequestAsync(request.Chat.ChatId.ToString(), request.User.UserId.ToString());
+});
+```
+
+```csharp [Discord]
+using ShiroBot.Model.Discord;
+
+Events.MapPlatform(DiscordEventKinds.VoiceStateUpdate, evt =>
+{
+    if (evt.Raw is DiscordVoiceStateUpdated { ChannelId: null } left)
+        BotLog.Info($"{left.UserId} 离开了语音");
+    return Task.CompletedTask;
+});
+```
+
+:::
+
+各平台的事件 Kind 与负载类型见 [QQ](/plugin/qq-model#qq-特有事件)、[Telegram](/plugin/telegram-model#事件)、[Discord](/plugin/discord-model#入站内容与事件)；QQ 官方按钮事件另见[官方 Markdown 与按钮](/plugin/qq-official)。
 
 ## 优先级与已处理
 

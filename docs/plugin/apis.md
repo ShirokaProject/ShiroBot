@@ -42,7 +42,11 @@ var member = await Context.Channel.GetMemberAsync(groupId, userId);
 
 ## 平台特有能力
 
-```csharp
+通用接口表达不了的操作通过平台 Model 的扩展接口调用，适配器未实现时返回 `null`：
+
+::: code-group
+
+```csharp [QQ]
 using ShiroBot.Model.QQ;
 
 var groupApi = Context.GetAdapterExtension<IQGroupApi>();
@@ -50,7 +54,26 @@ if (groupApi?.Capabilities.HasFlag(QGroupCapabilities.Nudge) == true)
     await groupApi.SendNudgeAsync(groupId, userId);
 ```
 
-可选扩展未实现时返回 `null`。Milky 和 QQ 官方适配器共用 `IQGroupApi`，通过 `Capabilities` 区分支持的操作。QQ 官方消息专有功能通过 `IQOfficialMessageApi` 提供。QQ 的用户、群和消息 ID 均使用字符串，插件无需转换成数字；ID 仍属于原适配器实例，不能跨平台互换。分别参见 [QQ 特有能力](/plugin/qq-model)与[官方 Markdown 与按钮](/plugin/qq-official)。
+```csharp [Telegram]
+using ShiroBot.Model.Telegram;
+
+var chatApi = Context.GetAdapterExtension<ITelegramChatApi>();
+if (chatApi is not null)
+    await chatApi.PinMessageAsync(message.Channel.Id, message.MessageId);
+```
+
+```csharp [Discord]
+using ShiroBot.Model.Discord;
+
+var messageApi = Context.GetAdapterExtension<IDiscordMessageApi>();
+if (messageApi is not null)
+    await messageApi.PinAsync(message.Channel, message.MessageId);
+```
+
+:::
+
+用户、会话和消息 ID 都是字符串，只在来源适配器实例内有效，不能跨平台互换。各平台的接口与示例见
+[QQ](./qq-model)、[Telegram](./telegram-model)、[Discord](./discord-model) 特有能力。
 
 ## 适配器实例与后台发送
 
@@ -199,13 +222,13 @@ GroupCommands.MapExact("#status", async message =>
 
 ## 通用富消息与互动
 
-普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/models#富消息、按钮与表情回应)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。
+普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/models#富消息、按钮与表情回应)，各平台支持见 [QQ](./qq-model#通用能力支持)、[Telegram](./telegram-model#通用能力支持)、[Discord](./discord-model#通用能力支持)。
 
 ## 通用文件上传与发送
 
 直接发送文件优先使用 `Context.Message.ReplyAsync(message, new FileSegment(fileUri) { FileName = "report.pdf" })`，并检查 `SentMessage.IsSuccess`。
-Milky 将单独的文件段映射到群/私聊文件上传；它不返回消息 ID，成功结果的 `UploadedFile` 包含文件 ID，`MessageId` 为空且 `Reference` 为 null。文件 ID 不能用于撤回消息或订阅引用回复。Milky 当前不自动拆分文本与文件混合消息。
+部分平台把文件作为独立上传发送，不返回消息 ID：此时成功结果的 `UploadedFile` 包含文件 ID，`MessageId` 为空且 `Reference` 为 null。
 
 需要单独上传时使用 `Context.GetAdapterExtension<IFileService>()`，在当前实例作用域内调用 `UploadAsync(channel, request)`。先检查 `GetFileCapabilities(channel).CanUpload`。
-Milky 的 `UploadPublishes`/结果 `IsPublished` 为 true，上传已向接收者发布文件；官方为 false，返回的是尚未发送的媒体凭据。不能仅凭上传成功向用户报告已经发送，也不能跨实例或会话复用文件 ID。通用接口尚未提供上传凭据的后续发送方法。
-QQ `IQFileApi` 保持独立并保留原有方法；Milky 的两个入口共享上传实现。
+`UploadPublishes` / 结果的 `IsPublished` 说明上传是否已经发给接收者；为 false 时返回的只是尚未发送的媒体凭据，不能据此向用户报告已经发送。文件 ID 不能跨实例或会话复用；通用接口尚未提供上传凭据的后续发送方法。
+各平台的具体行为见 [QQ](./qq-model#通用能力支持)、[Telegram](./telegram-model#通用能力支持)、[Discord](./discord-model#通用能力支持)。

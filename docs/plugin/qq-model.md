@@ -81,3 +81,37 @@ Events.MapPlatform(QEventKinds.GroupNudge, evt =>
 
 
 通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](./models#富消息、按钮与表情回应)。
+
+## 群管理与入群审批
+
+QQ Model 的用户、群和消息 ID 使用字符串。
+群信息、成员查询、禁言、踢人和入群审批统一通过 `GetAdapterExtension<IQGroupApi>()` 获取。
+使用 `Capabilities` 检查适配器实现的操作；平台权限仍由 QQ 控制。
+自动审批策略和白名单通过 `IQGroupApprovalStrategyApi` 探测。
+
+两种适配器的入群申请均使用 `QEventKinds.GroupJoinRequest` 和 `QGroupJoinRequest`，
+将原申请对象传给 `AcceptJoinRequestAsync` / `RejectJoinRequestAsync` 即可。
+成员事件 Raw 使用 `QGroupMemberIncrease` / `QGroupMemberDecrease`。
+QQPlatform 可用 `GlobalUserId` 保留额外的 `user_openid`。
+官方事件需订阅 `GROUP_MEMBER_EVENT`（`1 << 24`）；管理接口仍需平台权限。
+
+完整签名见 [QQ C# 接口参考](./qq-reference)，契约语义见 [QQ 接口审阅](./qq-interface-review)。
+
+## 通用能力支持
+
+通用富消息、按钮、Reaction 和文件上传在两种 QQ 适配器上的表现：
+
+| 能力 | QQ 官方群聊/私聊 | Milky |
+| --- | --- | --- |
+| 发送 Markdown | 原生；须为唯一正文 | 显式转文本；接收支持 MarkdownSegment |
+| 链接按钮 | 原生 | 显式转标签和 URL |
+| 回调按钮及点击 | 原生，自动确认 | 不支持 |
+| 通用卡片 | 显式转 Markdown 或文本 | 显式转文本 |
+| 通用 Reaction | 群聊/私聊暂未实现 | 群聊支持 Unicode 与平台表情 |
+| 互动回复 | 文本或 Markdown | 不支持 |
+
+官方通用按钮映射声明最多 5 行、每行 5 个按钮，按钮不能和媒体混发；通用请求最多一段媒体，普通文本最多 5000 字符。QQ 专属模板键盘、Ark、特殊按钮参数等仍保留 QQ Model 扩展。
+
+**文件**：Milky 将单独的 `FileSegment` 映射到群/私聊文件上传，不返回消息 ID：成功结果的 `UploadedFile` 包含文件 ID，`MessageId` 为空且 `Reference` 为 null，文件 ID 不能用于撤回或订阅引用回复；当前不自动拆分文本与文件混合消息。
+`IFileService` 上传时，Milky 的 `UploadPublishes` / `IsPublished` 为 true，上传即已发给接收者；官方为 false，返回的是尚未发送的媒体凭据。
+QQ `IQFileApi` 保持独立并保留原有方法；Milky 的两个入口共享上传实现。

@@ -54,6 +54,21 @@
 
 取得接口后，未实现的方法仍可能抛出 `NotSupportedException`。权限不足等失败由 Discord 返回，适配器抛出带状态码和错误内容的异常。
 
+## 通用能力支持
+
+| 能力 | Discord |
+| --- | --- |
+| 发送 Markdown | 原生 Discord Markdown |
+| 链接按钮 | 原生组件（action row） |
+| 回调按钮及点击 | 原生，默认自动确认（defer）；按钮 ID 与 Data 可往返恢复 |
+| 通用卡片 | 原生 Embed：标题、说明、图片、链接、字段 |
+| 通用 Reaction | Unicode 与平台表情；添加和删除自己的回应 |
+| 互动回复 | 支持 |
+| @全体成员 | 入站 @everyone / @here；出站 @everyone |
+| 文件上传 | multipart 同时发布，`IsPublished` 为 true；返回的文件 ID 限定在当前实例和会话 |
+
+逐项对照见[消息段对照](./segments)。
+
 ## 斜杠命令与交互
 
 ```csharp

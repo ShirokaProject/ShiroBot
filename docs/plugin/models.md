@@ -191,22 +191,16 @@ if (reactions is not null)
     await reactions.SetReactionAsync(message.Reference, new UnicodeReactionEmoji("👍"));
 ```
 
-可选能力为 `Unicode`、`PlatformEmoji`。查询使用当前选择的实例；操作使用消息引用中的来源实例，即使服务曾在另一个实例下取得也会正确路由。平台表情只能在其来源实例内使用，`GuildId` 可以进一步限定范围；不会把 QQ 表情 ID 当作 Unicode。
+可选能力为 `Unicode`、`PlatformEmoji`。查询使用当前选择的实例；操作使用消息引用中的来源实例，即使服务曾在另一个实例下取得也会正确路由。平台表情只能在其来源实例内使用，`GuildId` 可以进一步限定范围；不会把平台表情 ID 当作 Unicode。
 
 `MessageReactionEvent` 同样继承 `PlatformEvent`，包含 `MessageId`、`Emoji`、`IsAdded`、可空的 `User` 和 `Count`，以及完整 `Reference`；平台没有提供的数据保持未知。
 
-### 当前适配器支持
+### 各平台支持
 
-| 能力 | QQ 官方群聊/私聊 | Milky |
-| --- | --- | --- |
-| 发送 Markdown | 原生；须为唯一正文 | 显式转文本；接收支持 MarkdownSegment |
-| 链接按钮 | 原生 | 显式转标签和 URL |
-| 回调按钮及点击 | 原生，自动确认 | 不支持 |
-| 通用卡片 | 显式转 Markdown 或文本 | 显式转文本 |
-| 通用 Reaction | 群聊/私聊暂未实现 | 群聊支持 Unicode 与平台表情 |
-| 互动回复 | 文本或 Markdown | 不支持 |
+各适配器对 Markdown、按钮、卡片、Reaction 和互动回复的支持不同，发送前用能力查询判断，需要降级时显式允许。
+具体支持情况见 [QQ](./qq-model#通用能力支持)、[Telegram](./telegram-model#通用能力支持)、[Discord](./discord-model#通用能力支持)。
 
-官方通用按钮映射声明最多 5 行、每行 5 个按钮，按钮不能和媒体混发；通用请求最多一段媒体，普通文本最多 5000 字符。QQ 专属模板键盘、Ark、特殊按钮参数等仍保留 QQ Model 扩展。Typing、流式回复、通用审批和文件存储服务尚未提供通用接口。
+Typing、流式回复、通用审批和文件存储服务尚未提供通用接口。
 
 ## 事件
 
@@ -231,18 +225,3 @@ if (reactions is not null)
 | `PlatformEvent` | 平台特有事件；用 `Kind` 区分，`Raw` 承载平台 Model |
 
 如何订阅与处理，参见[接收消息与事件](/plugin/routes-events)。
-
-### QQ 群管理与事件
-
-QQ Model 的用户、群和消息 ID 使用字符串。
-群信息、成员查询、禁言、踢人和入群审批统一通过 `GetAdapterExtension<IQGroupApi>()` 获取。
-使用 `Capabilities` 检查适配器实现的操作；平台权限仍由 QQ 控制。
-自动审批策略和白名单通过 `IQGroupApprovalStrategyApi` 探测。
-
-两种适配器的入群申请均使用 `QEventKinds.GroupJoinRequest` 和 `QGroupJoinRequest`，
-将原申请对象传给 `AcceptJoinRequestAsync` / `RejectJoinRequestAsync` 即可。
-成员事件 Raw 使用 `QGroupMemberIncrease` / `QGroupMemberDecrease`。
-QQPlatform 可用 `GlobalUserId` 保留额外的 `user_openid`。
-官方事件需订阅 `GROUP_MEMBER_EVENT`（`1 << 24`）；管理接口仍需平台权限。
-
-完整签名见 [QQ C# 接口参考](/plugin/qq-reference)，契约语义见 [QQ 接口审阅](/plugin/qq-interface-review)。

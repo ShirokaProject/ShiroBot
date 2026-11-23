@@ -58,6 +58,21 @@
 
 取得接口后，未实现的方法仍可能抛出 `NotSupportedException`。平台权限由 Telegram 校验，失败时抛出 `InvalidOperationException`，消息包含错误码与说明。
 
+## 通用能力支持
+
+| 能力 | Telegram |
+| --- | --- |
+| 发送 Markdown | 原生 MarkdownV2，语法遵循 Telegram |
+| 链接按钮 | 原生 inline keyboard |
+| 回调按钮及点击 | 原生，自动 answerCallbackQuery；按钮 ID 与 Data 可往返恢复 |
+| 通用卡片 | 无原生卡片；显式允许 `CardAsMarkdown` / `CardAsText` 时由 SDK 降级 |
+| 通用 Reaction | Unicode 与自定义表情；设置一个或清除自己的回应 |
+| 互动回复 | 支持 |
+| @全体成员 | 不支持：Telegram 没有全员提及 |
+| 文件上传 | `sendDocument` 同时发布，`IsPublished` 为 true；返回的文件 ID 限定在当前实例和会话 |
+
+逐项对照见[消息段对照](./segments)。
+
 ## 发送原生内容
 
 ```csharp
