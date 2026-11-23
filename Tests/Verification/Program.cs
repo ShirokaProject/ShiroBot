@@ -270,6 +270,7 @@ await PluginDashboardVerification.RunAsync();
 await PluginWebPageVerification.RunAsync();
 await PluginWebSafetyVerification.RunAsync();
 await ContactDirectoryVerification.RunAsync();
+ContextForwardingVerification.Run();
 if (args is not ["--without-adapter-reload-isolation"])
     await AdapterReloadIsolationVerification.RunAsync();
 
@@ -695,7 +696,7 @@ Console.WriteLine("Plugin config nested patch verification passed.");
 Console.WriteLine("Adapter config apply and rollback verification passed.");
 
 {
-    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.4.0.0");
+    AssertAssemblyVersion(typeof(IBotPlugin).Assembly, "1.5.0.0");
     AssertAssemblyVersion(typeof(QGroup).Assembly, "1.1.0.0");
     AssertAssemblyVersion(typeof(DiscordUser).Assembly, "1.1.0.0");
     AssertAssemblyVersion(typeof(TelegramUser).Assembly, "1.1.0.0");
@@ -2787,7 +2788,7 @@ try
         hostStatus.MessageFrequency[11].End != new TimeOnly(0, 0) ||
         hostStatus.Healthy || hostStatus.LatestError != "adapter failed" || !expiredStatus.Healthy ||
         hostStatus.Runtime.ProcessorCount != Environment.ProcessorCount || hostStatus.Runtime.MemoryBytes <= 0 ||
-        string.IsNullOrEmpty(hostStatus.Runtime.Architecture) || hostStatus.SdkAbiVersion != "1.4.0.0")
+        string.IsNullOrEmpty(hostStatus.Runtime.Architecture) || hostStatus.SdkAbiVersion != "1.5.0.0")
         throw new InvalidOperationException("Host status snapshot does not match the overview data.");
     var statusBot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false));
     using var statusPlugin = new PluginContext(statusBot, "status-plugin", Path.Combine(tempRoot, "status-plugin"),

@@ -320,6 +320,16 @@ internal sealed class BotContext
             return Current.MuteMemberAsync(channelId, userId, duration, cancellationToken);
         }
 
+        public Task BanMemberAsync(string channelId, string userId, CancellationToken cancellationToken = default)
+        {
+            return Current.BanMemberAsync(channelId, userId, cancellationToken);
+        }
+
+        public Task UnbanMemberAsync(string channelId, string userId, CancellationToken cancellationToken = default)
+        {
+            return Current.UnbanMemberAsync(channelId, userId, cancellationToken);
+        }
+
         public Task LeaveChannelAsync(string channelId, CancellationToken cancellationToken = default)
         {
             return Current.LeaveChannelAsync(channelId, cancellationToken);

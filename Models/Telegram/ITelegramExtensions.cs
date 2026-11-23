@@ -273,13 +273,6 @@ public interface ITelegramMessageApi
         throw new NotSupportedException();
     }
 
-    /// <summary>批量删除，1–100 条；48 小时前的消息通常无法删除。</summary>
-    Task DeleteMessagesAsync(Channel channel, IReadOnlyList<string> messageIds,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
     /// <summary>显示“正在输入”等状态约 5 秒。</summary>
     Task SendChatActionAsync(Channel channel, TelegramChatAction action, CancellationToken cancellationToken = default)
     {

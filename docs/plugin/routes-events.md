@@ -76,7 +76,7 @@ protected override void ConfigureRoutes()
 }
 ```
 
-可订阅的通用事件包括 `MessageDeletedEvent`、`MemberJoinedEvent`、`MemberLeftEvent`、`FriendRequestEvent`、`GuildInviteEvent` 和 `BotOfflineEvent`。所有类型继承 `BotEvent`，并带有 `Platform`、可选 `SelfId` 与 `Raw`。新增类型只需用 `Events.Map<TEvent>()` 注册。
+可订阅的通用事件包括 `MessageEditedEvent`（消息被编辑，不会再次触发命令）、`MessageDeletedEvent`、`MemberJoinedEvent`、`MemberLeftEvent`、`FriendRequestEvent`、`GuildInviteEvent` 和 `BotOfflineEvent`。所有类型继承 `BotEvent`，并带有 `Platform`、可选 `SelfId` 与 `Raw`。新增类型只需用 `Events.Map<TEvent>()` 注册。
 
 ## 接收平台特有事件
 

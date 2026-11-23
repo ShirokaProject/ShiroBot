@@ -33,6 +33,40 @@ public sealed record MessageDeletedEvent : BotEvent
     public string? OperatorId { get; init; }
 }
 
+/// <summary>
+///     消息被编辑。字段与 <see cref="MessageEvent"/> 一致，<see cref="Segments"/> 为编辑后的完整内容。
+///     编辑不会再次触发命令或 <see cref="MessageEvent"/> 处理。
+/// </summary>
+public sealed record MessageEditedEvent : BotEvent
+{
+    public required string MessageId { get; init; }
+
+    public required Channel Channel { get; init; }
+
+    /// <summary>原消息的发送者。</summary>
+    public required User Sender { get; init; }
+
+    /// <summary>发送者在当前渠道内的成员信息，私聊或未知时为 null。</summary>
+    public Member? Member { get; init; }
+
+    /// <summary>编辑后的消息段。</summary>
+    public required IReadOnlyList<MessageSegment> Segments { get; init; }
+
+    /// <summary>编辑时间；平台未提供时为适配器收到事件的时间。</summary>
+    public DateTimeOffset EditedAt { get; init; }
+
+    public MessageReference Reference =>
+        new(InstanceId ?? throw new InvalidOperationException("Message has no source instance."), Channel, MessageId);
+
+    public bool IsDirect => Channel.Type == ChannelType.Direct;
+
+    /// <summary>编辑后的纯文本内容（拼接所有文本段）。</summary>
+    public string GetPlainText()
+    {
+        return string.Concat(Segments.OfType<TextSegment>().Select(segment => segment.Text));
+    }
+}
+
 /// <summary>成员加入群 / 频道。</summary>
 public sealed record MemberJoinedEvent : BotEvent
 {

@@ -145,6 +145,35 @@ internal sealed class MessageContext(
         await DeleteMessageAsync(message.Channel, message.MessageId, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task EditMessageAsync(MessageReference message, OutgoingMessage content,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        using var scope = useInstance(message.InstanceId);
+        await EditMessageAsync(message.Channel, message.MessageId, content, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task PinMessageAsync(MessageReference message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        using var scope = useInstance(message.InstanceId);
+        await PinMessageAsync(message.Channel, message.MessageId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task UnpinMessageAsync(MessageReference message, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        using var scope = useInstance(message.InstanceId);
+        await UnpinMessageAsync(message.Channel, message.MessageId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SendTypingAsync(ChannelReference channel, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        using var scope = useInstance(channel.InstanceId);
+        await SendTypingAsync(channel.Channel, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<MessageEvent?> GetMessageAsync(MessageReference message,
         CancellationToken cancellationToken = default)
     {
@@ -188,6 +217,34 @@ internal sealed class MessageContext(
     public Task DeleteMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
     {
         return getMessageRoute().Service.DeleteMessageAsync(channel, messageId, cancellationToken);
+    }
+
+    public Task DeleteMessagesAsync(Channel channel, IReadOnlyList<string> messageIds,
+        CancellationToken cancellationToken = default)
+    {
+        return getMessageRoute().Service.DeleteMessagesAsync(channel, messageIds, cancellationToken);
+    }
+
+    public Task EditMessageAsync(Channel channel, string messageId, OutgoingMessage message,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        return getMessageRoute().Service.EditMessageAsync(channel, messageId, message, cancellationToken);
+    }
+
+    public Task PinMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
+    {
+        return getMessageRoute().Service.PinMessageAsync(channel, messageId, cancellationToken);
+    }
+
+    public Task UnpinMessageAsync(Channel channel, string messageId, CancellationToken cancellationToken = default)
+    {
+        return getMessageRoute().Service.UnpinMessageAsync(channel, messageId, cancellationToken);
+    }
+
+    public Task SendTypingAsync(Channel channel, CancellationToken cancellationToken = default)
+    {
+        return getMessageRoute().Service.SendTypingAsync(channel, cancellationToken);
     }
 
     public async Task<MessageEvent?> GetMessageAsync(Channel channel, string messageId,

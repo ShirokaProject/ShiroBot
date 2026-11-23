@@ -45,6 +45,7 @@ await _events.PublishAsync(new MessageEvent
 | 协议事件 | 通用类型 |
 | --- | --- |
 | 收到消息 | `MessageEvent` |
+| 消息被编辑 | `MessageEditedEvent`；字段与 `MessageEvent` 相同，不要再另发平台事件 |
 | 消息撤回或删除 | `MessageDeletedEvent` |
 | 成员加入或离开 | `MemberJoinedEvent` / `MemberLeftEvent` |
 | 好友请求 | `FriendRequestEvent` |

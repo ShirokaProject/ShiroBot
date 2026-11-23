@@ -1169,9 +1169,6 @@ Telegram 特有事件。适配器以 `PlatformEvent` 上报：`Kind` 为下列�
 ```csharp
 public static class TelegramEventKinds
 {
-    /// <summary>消息或频道消息被编辑；<see cref="TelegramMessageEdited"/>。</summary>
-    public const string MessageEdited = "message_edited";
-
     /// <summary>其他成员的状态变化（需要管理员权限并订阅 chat_member）；<see cref="TelegramChatMemberUpdated"/>。</summary>
     public const string ChatMemberUpdated = "chat_member_updated";
 
@@ -1223,21 +1220,6 @@ public abstract record TelegramEventPayload
     public JsonElement Json { get; init; }
 
     public TelegramJsonFormat JsonFormat { get; init; }
-}
-```
-
-### TelegramMessageEdited
-
-编辑后的消息，内容按 SDK 消息段映射。
-
-```csharp
-public sealed record TelegramMessageEdited : TelegramEventPayload
-{
-    public required Channel Channel { get; init; }
-    public required string MessageId { get; init; }
-    public required TelegramMessage Message { get; init; }
-    public IReadOnlyList<MessageSegment> Segments { get; init; } = [];
-    public bool IsChannelPost { get; init; }
 }
 ```
 

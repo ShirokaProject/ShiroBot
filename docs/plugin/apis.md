@@ -24,6 +24,29 @@ if (sent.Reference is { } reference)
 
 `Context.Message` 是 `IMessageContext`，也提供 `GetMessageAsync`、`GetHistoryMessagesAsync` 和 `GetResourceUrlAsync`。资源段支持的 URI 形式由适配器决定。
 
+## 编辑、置顶与输入状态
+
+需要宿主 1.0.4（SDK ABI 1.5.0.0）。
+
+```csharp
+await Context.Message.SendTypingAsync(new ChannelReference(message.InstanceId!, message.Channel));
+var sent = await Context.Message.ReplyAsync(message, "处理中…");
+if (sent.Reference is { } reference)
+{
+    await Context.Message.EditMessageAsync(reference, new OutgoingMessage { Segments = [new TextSegment("处理完成")] });
+    await Context.Message.PinMessageAsync(reference);
+}
+
+await Context.Message.DeleteMessagesAsync(message.Channel, messageIds);
+```
+
+- `EditMessageAsync` 传入编辑后的完整内容；`Segments` 为空时只替换按钮，`Buttons` 也为空则移除按钮。不能修改引用。各平台能编辑的范围不同，例如 Telegram 不能把文字消息改成图片，不支持时抛出 `NotSupportedException`。
+- `DeleteMessagesAsync` 在平台有批量接口时一次删除，否则逐条删除。
+- `SendTypingAsync` 显示的“正在输入”通常几秒后或发出消息时消失，长任务需要定时重复调用。
+- 收到别人编辑消息时触发 `MessageEditedEvent`，不会再次触发命令；见[接收消息与事件](/plugin/routes-events)。
+
+各平台的支持情况见 [QQ](./qq-model#通用能力支持)、[Telegram](./telegram-model#通用能力支持)、[Discord](./discord-model#通用能力支持)。
+
 宿主在通用发送、回复和引用回复入口拦截适配器发送异常，按适配器实例记录错误，并返回 `IsSuccess = false`、空 `MessageId` 和 `ErrorMessage`，原始异常不再传给插件。依赖发送成功的操作（例如缓存消息 ID、订阅回复、撤回）应先检查 `IsSuccess`。取消、参数为空和来源实例选择错误仍会抛出异常。其他消息操作、用户/频道服务和平台专有扩展保留原有异常语义，不支持的方法仍会抛出 `NotSupportedException`。
 
 ## 查询用户与频道
@@ -38,7 +61,7 @@ var members = await Context.Channel.GetMembersAsync(groupId);
 var member = await Context.Channel.GetMemberAsync(groupId, userId);
 ```
 
-`Context.Channel` 还定义了改名、踢人、禁言和退出频道等操作；`Context.User` 定义了好友请求处理。是否可用取决于适配器与协议。
+`Context.Channel` 还定义了改名、踢人、禁言、封禁与解封（`BanMemberAsync` / `UnbanMemberAsync`，被封禁的成员不能再加入）和退出频道等操作；`Context.User` 定义了好友请求处理。是否可用取决于适配器与协议。
 
 ## 平台特有能力
 

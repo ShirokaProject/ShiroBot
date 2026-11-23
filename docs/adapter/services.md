@@ -4,8 +4,8 @@
 
 | 接口 | 当前方法 | 映射目标 |
 | --- | --- | --- |
-| `IMessageService` | `SendMessageAsync`、`DeleteMessageAsync`、`GetMessageAsync`、`GetHistoryMessagesAsync`、`GetResourceUrlAsync` | 通用 `MessageSegment`、`MessageEvent` 和 `SentMessage` |
-| `IChannelService` | `GetChannelsAsync`、`GetChannelAsync`、`GetMembersAsync`、`GetMemberAsync`、`SetChannelNameAsync`、`KickMemberAsync`、`MuteMemberAsync`、`LeaveChannelAsync` | 群、频道、话题及其成员 |
+| `IMessageService` | `SendMessageAsync`、`DeleteMessageAsync`、`DeleteMessagesAsync`、`EditMessageAsync`、`PinMessageAsync`、`UnpinMessageAsync`、`SendTypingAsync`、`GetMessageAsync`、`GetHistoryMessagesAsync`、`GetResourceUrlAsync` | 通用 `MessageSegment`、`MessageEvent` 和 `SentMessage` |
+| `IChannelService` | `GetChannelsAsync`、`GetChannelAsync`、`GetMembersAsync`、`GetMemberAsync`、`SetChannelNameAsync`、`KickMemberAsync`、`MuteMemberAsync`、`BanMemberAsync`、`UnbanMemberAsync`、`LeaveChannelAsync` | 群、频道、话题及其成员 |
 | `IUserService` | `GetSelfAsync`、`GetUserAsync`、`GetFriendsAsync`、`AcceptFriendRequestAsync`、`RejectFriendRequestAsync` | 机器人、用户、好友和好友请求 |
 | `IEventService` | `EventReceived` | 向宿主发布 `BotEvent`；实现方式见[上报事件](/adapter/events) |
 
@@ -31,6 +31,8 @@ public sealed class MyMessageService : IMessageService
     }
 }
 ```
+
+SDK ABI 1.5.0.0 新增的编辑、批量删除、置顶、输入状态和封禁带有默认实现：`DeleteMessagesAsync` 默认逐条调用 `DeleteMessageAsync`，其余默认抛出 `NotSupportedException`。平台支持时请实现它们，否则插件只能按平台分别调用扩展接口。
 
 `SendToProtocolAsync` 代表适配器自己的协议调用，示例需替换为实际实现。`DeleteMessageAsync`、查询消息与历史消息使用同一套 ID 映射；收到平台事件时也要使用相同的 `MessageId` 和 `Channel.Id`。
 

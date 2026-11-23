@@ -185,25 +185,6 @@ Task BulkDeleteAsync(
 
 `Task`。完成后无返回值。
 
-## TriggerTypingAsync
-
-显示“正在输入”约 10 秒，或直到机器人发送消息。
-
-```csharp
-Task TriggerTypingAsync(Channel channel, CancellationToken cancellationToken = default);
-```
-
-### 参数
-
-| 参数 | C# 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `channel` | `Channel` | `必传` | 目标 SDK 频道；私聊为 `Channel.Direct(用户 ID)`，适配器自动打开私聊。 |
-| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
-
-### 返回
-
-`Task`。完成后无返回值。
-
 ## GetReactionUsersAsync
 
 查询对消息添加了某个表情的用户。

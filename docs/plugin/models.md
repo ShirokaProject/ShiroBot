@@ -217,6 +217,7 @@ Typing、流式回复、通用审批和文件存储服务尚未提供通用接�
 | 类型 | 场景 |
 | --- | --- |
 | `MessageEvent` | 收到消息 |
+| `MessageEditedEvent` | 消息被编辑；字段与 `MessageEvent` 相同，`Segments` 为编辑后的内容 |
 | `MessageDeletedEvent` | 消息撤回或删除 |
 | `MemberJoinedEvent` / `MemberLeftEvent` | 成员加入或离开 |
 | `FriendRequestEvent` | 好友或私聊请求 |

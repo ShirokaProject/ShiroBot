@@ -53,6 +53,19 @@ public interface IMessageContext : IMessageService
         CancellationToken cancellationToken = default);
 
     Task DeleteMessageAsync(MessageReference message, CancellationToken cancellationToken = default);
+
+    /// <summary>编辑消息，在消息的来源实例上执行。</summary>
+    Task EditMessageAsync(MessageReference message, OutgoingMessage content,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>置顶消息，在消息的来源实例上执行。</summary>
+    Task PinMessageAsync(MessageReference message, CancellationToken cancellationToken = default);
+
+    /// <summary>取消置顶，在消息的来源实例上执行。</summary>
+    Task UnpinMessageAsync(MessageReference message, CancellationToken cancellationToken = default);
+
+    /// <summary>在指定实例的会话中显示“正在输入”。</summary>
+    Task SendTypingAsync(ChannelReference channel, CancellationToken cancellationToken = default);
     Task<MessageEvent?> GetMessageAsync(MessageReference message, CancellationToken cancellationToken = default);
 
     // ─── 发送 ───

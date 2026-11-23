@@ -43,6 +43,18 @@ public interface IChannelService
         throw new NotSupportedException($"Current adapter does not support '{nameof(MuteMemberAsync)}'.");
     }
 
+    /// <summary>封禁成员：移出并阻止其再次加入，直到 <see cref="UnbanMemberAsync"/>。与 <see cref="KickMemberAsync"/> 不同，被踢出的成员可以重新加入。</summary>
+    Task BanMemberAsync(string channelId, string userId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException($"Current adapter does not support '{nameof(BanMemberAsync)}'.");
+    }
+
+    /// <summary>解除封禁，不会把成员拉回。</summary>
+    Task UnbanMemberAsync(string channelId, string userId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException($"Current adapter does not support '{nameof(UnbanMemberAsync)}'.");
+    }
+
     Task LeaveChannelAsync(string channelId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException($"Current adapter does not support '{nameof(LeaveChannelAsync)}'.");

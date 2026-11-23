@@ -207,30 +207,6 @@ Task<string> CopyAsync(
 
 `Task<string>`。异步返回 `string`。
 
-## DeleteMessagesAsync
-
-批量删除，1–100 条；48 小时前的消息通常无法删除。
-
-```csharp
-Task DeleteMessagesAsync(
-    Channel channel,
-    IReadOnlyList<string> messageIds,
-    CancellationToken cancellationToken = default
-);
-```
-
-### 参数
-
-| 参数 | C# 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `channel` | `Channel` | `必传` | 目标 SDK 频道；私聊为 `Channel.Direct(用户 ID)`。 |
-| `messageIds` | `IReadOnlyList<string>` | `必传` | 消息 ID 列表。 |
-| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
-
-### 返回
-
-`Task`。完成后无返回值。
-
 ## SendChatActionAsync
 
 显示“正在输入”等状态约 5 秒。

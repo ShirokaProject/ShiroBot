@@ -45,7 +45,7 @@
 | --- | --- | --- |
 | 账号信息 | `IDiscordClientApi` | 账号类型、上传上限、自身资料、用户查询、在线状态与活动、修改用户名和头像 |
 | 服务器管理 | `IDiscordGuildApi` | 服务器与频道查询；频道创建、修改、删除与权限覆盖；角色增删改；成员查询、搜索、角色、昵称、超时、移出；封禁；邀请；表情；子区 |
-| 原生消息 | `IDiscordMessageApi` | 发送与编辑富消息；公告推送；置顶；批量删除；输入状态；Reaction 用户与清除；投票结束与投票者 |
+| 原生消息 | `IDiscordMessageApi` | 发送与编辑富消息；公告推送；置顶；批量删除（可写审计日志原因）；Reaction 用户与清除；投票结束与投票者 |
 | 交互与命令（仅机器人） | `IDiscordInteractionApi` | 应用 ID；回复、延迟、更新组件消息、弹窗、自动补全、编辑/删除原回复、后续消息；命令查询、整体注册、单个新增或更新、删除 |
 | 账号操作（仅用户账号） | `IDiscordAccountApi` | 私聊列表、通过邀请加入服务器、标记已读 |
 | 原始调用 | `IDiscordRawApi` | 任意 REST 路由（含文件上传与审计日志原因）、Gateway 指令、原始 Dispatch |
@@ -66,6 +66,11 @@
 | 互动回复 | 支持 |
 | @全体成员 | 入站 @everyone / @here；出站 @everyone |
 | 文件上传 | multipart 同时发布，`IsPublished` 为 true；返回的文件 ID 限定在当前实例和会话 |
+| 编辑消息 | 正文、Embed、按钮和附件；新内容中的附件替换原有附件；不能编辑成贴纸 |
+| 批量删除 | 14 天内的消息按每批 2–100 条批量删除，更早的消息逐条删除 |
+| 置顶与输入状态 | 置顶 API；`typing` 约 10 秒后消失 |
+| 封禁与解封 | 服务器封禁，不删除历史消息 |
+| 消息编辑事件 | 带作者的 `MESSAGE_UPDATE` 映射为 `MessageEditedEvent`；机器人自己的编辑不上报 |
 
 逐项对照见[消息段对照](./segments)。
 
@@ -138,8 +143,9 @@ await messages.SendAsync(message.Channel, new DiscordMessageContent
 | `DiscordSegmentKinds.Components` | `DiscordComponents`（原始 JSON） |
 
 Discord 特有的 Gateway 事件以 `PlatformEvent` 上报，`Kind` 为事件名小写；`DiscordEventKinds` 列出的事件 `Raw`
-为对应负载（消息编辑、服务器、频道与子区、成员更新、角色、封禁、语音状态、输入、Reaction 清除、投票、邀请），
-其他事件为 `JsonElement`。消息、删除、成员加入与离开、交互和 Reaction 仍映射为 SDK 事件。
+为对应负载（服务器、频道与子区、成员更新、角色、封禁、语音状态、输入、Reaction 清除、投票、邀请），
+其他事件为 `JsonElement`。消息、编辑（`MessageEditedEvent`）、删除、成员加入与离开、交互和 Reaction 仍映射为 SDK 事件；
+只更新 Embed 等、没有作者的部分 `MESSAGE_UPDATE` 以 `message_update` 平台事件上报。
 
 ```csharp
 Events.MapPlatform(DiscordEventKinds.VoiceStateUpdate, evt =>

@@ -17,7 +17,7 @@ shared assemblies maintain their own ABI versions.
 
 | ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
-| 1.0.4 | 1.4.0.0 | 1.1.0.0 | 1.1.0.0 | 1.1.0.0 |
+| 1.0.4 | 1.5.0.0 | 1.1.0.0 | 1.1.0.0 | 1.1.0.0 |
 | 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.2 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
@@ -38,7 +38,8 @@ members, permissions, embeds, components, polls, slash commands, interaction res
 presence, typed Gateway events and raw REST/Gateway access. Both Models serve bot and user-account
 adapters under one platform ID. The QQ Model (ABI 1.1.0.0) adds group blacklists, the bot's group state,
 richer group and user profiles and official image materials. The host rolls back plugin updates that fail
-to load and removes plugins and adapters reliably. The SDK ABI is unchanged.
+to load and removes plugins and adapters reliably. SDK ABI 1.5.0.0 adds message editing, batch deletion, pinning, typing indicators, member bans and
+`MessageEditedEvent`; the new service members have default implementations, so existing adapters keep loading.
 
 Version 1.0.3 targets .NET 11 and adds adapter Dashboard pages and actions, SSE log streaming,
 persistent logs and configurable message prefixes. SDK and built-in Model ABI versions remain unchanged.

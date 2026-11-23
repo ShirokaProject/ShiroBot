@@ -1037,9 +1037,6 @@ Discord 特有事件。适配器以 `PlatformEvent` 上报：`Kind` 为 Gateway 
 ```csharp
 public static class DiscordEventKinds
 {
-    /// <summary>消息被编辑；<see cref="DiscordMessageEdited"/>。</summary>
-    public const string MessageEdited = "message_edited";
-
     /// <summary>服务器可用或机器人加入服务器；<see cref="DiscordGuildAvailable"/>。</summary>
     public const string GuildCreate = "guild_create";
 
@@ -1121,20 +1118,6 @@ public abstract record DiscordEventPayload
 
     /// <summary>Gateway 原始 data。</summary>
     public JsonElement Json { get; init; }
-}
-```
-
-### DiscordMessageEdited
-
-编辑后的消息；部分编辑（如只更新 Embed）时内容可能缺失。
-
-```csharp
-public sealed record DiscordMessageEdited : DiscordEventPayload
-{
-    public required Channel Channel { get; init; }
-    public required string MessageId { get; init; }
-    public required DiscordMessage Message { get; init; }
-    public IReadOnlyList<MessageSegment> Segments { get; init; } = [];
 }
 ```
 

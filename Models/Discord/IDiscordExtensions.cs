@@ -305,12 +305,6 @@ public interface IDiscordMessageApi
         throw new NotSupportedException();
     }
 
-    /// <summary>显示“正在输入”约 10 秒，或直到机器人发送消息。</summary>
-    Task TriggerTypingAsync(Channel channel, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
     /// <param name="emoji">Unicode 表情，或自定义表情的 name:id。</param>
     /// <summary>查询对消息添加了某个表情的用户。</summary>
     Task<IReadOnlyList<DiscordUser>> GetReactionUsersAsync(Channel channel, string messageId, string emoji, int limit = 25,

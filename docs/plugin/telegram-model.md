@@ -48,7 +48,7 @@
 | 账号操作（仅用户账号） | `ITelegramAccountApi` | 会话列表、通过邀请链接加入、标记已读、通讯录、点击其他机器人的回调按钮 |
 | 账号信息 | `ITelegramClientApi` | 账号类型、传输方式、文件上限、自身资料、已见用户；两种账号都实现 |
 | 会话管理 | `ITelegramChatApi` | 会话资料、成员数、成员与管理员查询；封禁、解封、限制、提升、头衔、默认权限；简介、头像；置顶；邀请链接；入群审批；话题的创建、修改、关闭、重开和删除 |
-| 原生消息 | `ITelegramMessageApi` | 发送原生内容；编辑文本、说明和键盘（包括 inline 消息）；转发、复制、批量删除；输入状态；结束投票；带提示回答按钮回调（仅机器人） |
+| 原生消息 | `ITelegramMessageApi` | 发送原生内容；编辑文本、说明和键盘（包括 inline 消息）；转发、复制；输入状态（含上传图片等动作）；结束投票；带提示回答按钮回调（仅机器人） |
 | inline 模式（仅机器人） | `ITelegramInlineApi` | 回答 inline 查询 |
 | 支付（仅机器人） | `ITelegramPaymentApi` | 付款前确认、收货方式、Telegram Stars 退款与余额；发送发票使用 `TelegramInvoiceContent` |
 | 机器人资料（仅机器人） | `ITelegramBotProfileApi` | 命令菜单（按范围和语言）、名称与介绍 |
@@ -70,6 +70,11 @@
 | 互动回复 | 支持 |
 | @全体成员 | 不支持：Telegram 没有全员提及 |
 | 文件上传 | `sendDocument` 同时发布，`IsPublished` 为 true；返回的文件 ID 限定在当前实例和会话 |
+| 编辑消息 | 文字、说明、按钮和媒体；不能把文字消息改成媒体，也不能改成贴纸；内容未变化时视为成功 |
+| 批量删除 | `deleteMessages`，每批 100 条；48 小时前的消息通常无法删除，群内需要删除权限 |
+| 置顶与输入状态 | `pinChatMessage` / `unpinChatMessage`；`sendChatAction` typing，话题内同样有效 |
+| 封禁与解封 | `banChatMember` / `unbanChatMember`（解封不会把仍在群内的成员移出） |
+| 消息编辑事件 | `edited_message` / `edited_channel_post` 映射为 `MessageEditedEvent` |
 
 逐项对照见[消息段对照](./segments)。
 
@@ -129,7 +134,6 @@ Telegram 特有事件以 `PlatformEvent` 上报，`Kind` 为 `TelegramEventKinds
 
 | Kind | Raw | 说明 |
 | --- | --- | --- |
-| `MessageEdited` | `TelegramMessageEdited` | 消息或频道消息被编辑，内容已映射为 SDK 段 |
 | `ChatMemberUpdated` / `MyChatMemberUpdated` | `TelegramChatMemberUpdated` | 成员或机器人自身的状态变化 |
 | `ChatJoinRequest` | `TelegramChatJoinRequest` | 入群申请，用 `ITelegramChatApi` 审批 |
 | `InlineQuery` / `ChosenInlineResult` | `TelegramInlineQuery` / `TelegramChosenInlineResult` | inline 模式 |
@@ -137,7 +141,7 @@ Telegram 特有事件以 `PlatformEvent` 上报，`Kind` 为 `TelegramEventKinds
 | `PreCheckoutQuery` / `ShippingQuery` | `TelegramPreCheckoutQuery` / `TelegramShippingQuery` | 支付流程，需及时回答 |
 | `ChatBoost` / `ChatBoostRemoved` | `TelegramChatBoost` | 助力变化 |
 
-其他没有建模的 Update 以 Bot API 字段名为 `Kind`，`Raw` 为 `JsonElement`。消息、按钮回调、成员加入与离开、Reaction
+其他没有建模的 Update 以 Bot API 字段名为 `Kind`，`Raw` 为 `JsonElement`。消息、消息编辑（`MessageEditedEvent`）、按钮回调、成员加入与离开、Reaction
 仍映射为对应的 SDK 事件。
 
 ```csharp

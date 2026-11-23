@@ -349,6 +349,7 @@ internal sealed class HostEventDispatcher(
             MessageEvent { IsDirect: false } message => message.Channel.Id,
             MemberJoinedEvent e => e.Channel.Id,
             MemberLeftEvent e => e.Channel.Id,
+            MessageEditedEvent { IsDirect: false } e => e.Channel.Id,
             MessageDeletedEvent { Channel.Type: not ChannelType.Direct } e => e.Channel.Id,
             PlatformEvent { Channel: { Type: not ChannelType.Direct } channel } => channel.Id,
             _ => null
@@ -363,6 +364,10 @@ internal sealed class HostEventDispatcher(
                 $"{Display(message.Channel.Name, message.Channel.Id, showId)} {Display(message.Member?.DisplayName ?? message.Sender.Name, message.Sender.Id, showId)}发送: {GetMessageSegments(message.Segments)}",
             MessageEvent message =>
                 $"{Display(message.Sender.Name, message.Sender.Id, showId)}发送: {GetMessageSegments(message.Segments)}",
+            MessageEditedEvent { IsDirect: false } e =>
+                $"{Display(e.Channel.Name, e.Channel.Id, showId)} {Display(e.Member?.DisplayName ?? e.Sender.Name, e.Sender.Id, showId)}编辑消息: {GetMessageSegments(e.Segments)}",
+            MessageEditedEvent e =>
+                $"{Display(e.Sender.Name, e.Sender.Id, showId)}编辑消息: {GetMessageSegments(e.Segments)}",
             MessageDeletedEvent e => $"{e.Channel.Id} 中消息 {e.MessageId} 被撤回",
             MemberJoinedEvent e => $"用户 {e.UserId} 加入 {e.Channel.Id}",
             MemberLeftEvent e => $"用户 {e.UserId} 离开 {e.Channel.Id}",
@@ -409,6 +414,7 @@ internal sealed class HostEventDispatcher(
     {
         return evt switch
         {
+            MessageEditedEvent => "消息编辑",
             MessageDeletedEvent => "消息撤回",
             MemberJoinedEvent => "成员加入",
             MemberLeftEvent => "成员离开",
