@@ -17,6 +17,7 @@
 - 新增可选扩展接口 `IDiscordClientApi`（账号类型、自身资料、在线状态）、`IDiscordGuildApi`、`IDiscordMessageApi`、仅机器人的 `IDiscordInteractionApi`、仅用户账号的 `IDiscordAccountApi`，以及只使用 System.Text.Json 类型的 `IDiscordRawApi`（任意 REST 路由、Gateway 指令和原始 Dispatch）。
 - 新增 Discord 事件负载和 `DiscordEventKinds`：服务器、频道与子区、成员、角色、封禁、语音状态、输入、Reaction 清除、投票和邀请；`DiscordMessage` 提供消息原生资料，`DiscordSegmentKinds` 约定 Embed、贴纸、投票和组件的 `RawSegment`。`DiscordUser` 新增 `AvatarUrl`。
 
+- 容器镜像改为自带运行时的单文件主程序（linux-musl self-contained），基础镜像换成只含系统依赖的 `runtime-deps:11.0-alpine`。在 Dashboard 中更新主程序时下载同样的自包含包，新版本即使需要更新的 .NET 运行时也能直接更新，不必等新镜像。
 - 插件和适配器模板的发布工作流改用 `actions/setup-dotnet@v6.0.0`：v4 不接受 `latest`，用模板生成的项目在还原前就会失败。已有项目可照此修改 `.github/workflows/release.yml`。
 - 文档新增 Telegram 与 Discord 的 C# 接口参考与类型参考，按通用接口、机器人接口、用户账号接口分组，结构与 QQ Model 相同；由 `scripts/generate_model_reference.py` 从源码生成。
 
@@ -33,6 +34,7 @@
 
 ### 升级说明
 
+- 容器用户需要拉取一次新镜像（`docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d`）切换到自包含主程序，之后可以在 Dashboard 中更新。旧镜像在面板里更新时仍下载不带运行时的包。
 - SDK ABI 升至 `1.5.0.0`，QQ、Discord、Telegram Model ABI 均升至 `1.1.0.0`；都只新增成员，新增的服务成员带默认实现，按 `1.4.0.0` / `1.0.0.0` 编译的插件和适配器无需重新构建。
 - 引用 SDK 1.5 新成员或新增 QQ、Discord、Telegram 类型的组件需要 1.0.4 及以上的宿主；只使用原有成员的组件不受影响。
 

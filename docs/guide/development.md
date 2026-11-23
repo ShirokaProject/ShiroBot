@@ -36,7 +36,7 @@ dotnet run --project Tests/Verification/ShiroBot.Verification.csproj
 podman build --ignorefile container/Containerfile.dockerignore -f container/Containerfile -t shirobot:local .
 ```
 
-Docker 也可使用 `docker build -f container/Containerfile -t shirobot:local .`。容器版与 Release 中的 `linux-musl` framework-dependent 包使用同一个单文件主程序，Dashboard 自更新下载的也是它；镜像通过 `SHIROBOT_HOME=/app` 固定宿主目录，自更新的主程序放在数据卷的 `/data/host`。
+Docker 也可使用 `docker build -f container/Containerfile -t shirobot:local .`。容器版与 Release 中的 `linux-musl` self-contained 包使用同一个单文件主程序，Dashboard 自更新下载的也是它，因此不依赖镜像里的 .NET 运行时；镜像通过 `SHIROBOT_HOME=/app` 固定宿主目录，自更新的主程序放在数据卷的 `/data/host`。
 
 ## 文档
 

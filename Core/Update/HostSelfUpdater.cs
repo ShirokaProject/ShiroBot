@@ -153,7 +153,7 @@ internal static class HostSelfUpdater
             // Only a version that starts on this runtime may replace the working one.
             if (await SelfCheckAsync(replacement, cancellationToken).ConfigureAwait(false) is { } failure)
                 return new HostPowerResult(false, HostEnvironmentInfo.RunMode == "docker"
-                    ? "新版本无法在当前镜像中运行，可能需要新的 .NET 运行时或系统依赖，请更新镜像：docker compose pull && docker compose up -d。（" +
+                    ? "新版本无法在当前镜像中运行，可能需要新的系统依赖，请更新镜像：docker compose pull && docker compose up -d。（" +
                       failure + "）"
                     : "新版本无法在当前环境中运行，可能需要安装新的 .NET 运行时。（" + failure + "）");
 

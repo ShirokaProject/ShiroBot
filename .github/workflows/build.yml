@@ -196,18 +196,19 @@ jobs:
           if-no-files-found: error
 
       - name: Stage container binary
-        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
+        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'self-contained'
         run: |
           set -euo pipefail
           runtime='${{ matrix.runtime }}'
           arch=amd64
           if [ "$runtime" = linux-musl-arm64 ]; then arch=arm64; fi
-          # The image ships the release asset's binary, so Dashboard self-updates replace it with the same kind.
+          # The image ships the self-contained release binary, so Dashboard self-updates download the same
+          # kind and never depend on the .NET runtime of an older image.
           mkdir -p "artifacts/container/$arch"
-          cp "artifacts/host/${runtime}-framework-dependent/ShiroBot" "artifacts/container/$arch/ShiroBot"
+          cp "artifacts/host/${runtime}-self-contained/ShiroBot" "artifacts/container/$arch/ShiroBot"
 
       - name: Upload container files
-        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
+        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'self-contained'
         uses: actions/upload-artifact@v7.0.2
         with:
           name: shirobot-container-${{ matrix.runtime }}
