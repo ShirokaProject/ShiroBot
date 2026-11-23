@@ -16,6 +16,8 @@
 
 ## 常用 Model 类型
 
+各平台类型与 SDK 主消息段的对应关系见[消息段对照](./segments)；类型参考中每个对应类型都标有“对应主消息段”。
+
 | 名称 | 类型 | 必填字段 | 描述 |
 | --- | --- | --- | --- |
 | `TelegramUser` | 实体 | `UserId`、`FirstName` | 用户；`LanguageCode`、`IsPremium` 为可选资料 |

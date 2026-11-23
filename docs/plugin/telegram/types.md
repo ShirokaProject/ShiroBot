@@ -432,6 +432,8 @@ public enum TelegramParseMode
 
 ### TelegramSendOptions
 
+对应主消息段：[`QuoteSegment`](../segments#quotesegment)
+
 Telegram 原生消息的公共发送选项。目标会话使用 SDK `Channel`，话题频道 ID 为 `chatId:threadId`。
 
 ```csharp
@@ -472,6 +474,8 @@ public abstract record TelegramReplyMarkup;
 
 ### TelegramInlineKeyboard
 
+对应主消息段：[`MessageButton`](../segments#messagebutton)
+
 消息下方的内联键盘，最多 100 个按钮。
 
 ```csharp
@@ -479,6 +483,8 @@ public sealed record TelegramInlineKeyboard(IReadOnlyList<IReadOnlyList<Telegram
 ```
 
 ### TelegramInlineButton
+
+对应主消息段：[`MessageButton`](../segments#messagebutton)
 
 内联按钮，必须且只能设置一种动作。
 
@@ -591,6 +597,8 @@ public abstract record TelegramOutgoingContent;
 
 ### TelegramTextContent
 
+对应主消息段：[`TextSegment`](../segments#textsegment)、[`MarkdownSegment`](../segments#markdownsegment)
+
 格式化文本。
 
 ```csharp
@@ -614,6 +622,8 @@ public enum TelegramPollType
 ```
 
 ### TelegramPollContent
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 投票或测验，2–12 个选项。
 
@@ -639,6 +649,8 @@ public sealed record TelegramPollContent(string Question, IReadOnlyList<string> 
 
 ### TelegramLocationContent
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 位置；设置 `LivePeriod` 时为实时位置。
 
 ```csharp
@@ -657,6 +669,8 @@ public sealed record TelegramLocationContent(double Latitude, double Longitude) 
 
 ### TelegramVenueContent
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 地点。
 
 ```csharp
@@ -668,6 +682,8 @@ public sealed record TelegramVenueContent(double Latitude, double Longitude, str
 ```
 
 ### TelegramContactContent
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 联系人名片。
 
@@ -683,6 +699,8 @@ public sealed record TelegramContactContent(string PhoneNumber, string FirstName
 
 ### TelegramDiceContent
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 随机动画表情，Telegram 决定点数。
 
 ```csharp
@@ -690,6 +708,8 @@ public sealed record TelegramDiceContent(string Emoji = "🎲") : TelegramOutgoi
 ```
 
 ### TelegramStickerContent
+
+对应主消息段：[`EmojiSegment`](../segments#emojisegment)
 
 贴纸。
 
@@ -714,6 +734,8 @@ public enum TelegramMediaKind
 ```
 
 ### TelegramMediaItem
+
+对应主消息段：[`ImageSegment`](../segments#imagesegment)、[`AudioSegment`](../segments#audiosegment)、[`VideoSegment`](../segments#videosegment)、[`FileSegment`](../segments#filesegment)
 
 相册中的一项。
 
@@ -746,6 +768,8 @@ public sealed record TelegramLabeledPrice(string Label, long Amount);
 ```
 
 ### TelegramInvoiceContent
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 发票。使用 Telegram Stars 时 `Currency` 为 XTR，且不需要支付服务商令牌。
 
@@ -1009,6 +1033,8 @@ public static class TelegramSegmentKinds
 
 ### TelegramLocation
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record TelegramLocation(double Latitude, double Longitude)
 {
@@ -1020,6 +1046,8 @@ public sealed record TelegramLocation(double Latitude, double Longitude)
 
 ### TelegramVenue
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record TelegramVenue(TelegramLocation Location, string Title, string Address)
 {
@@ -1029,6 +1057,8 @@ public sealed record TelegramVenue(TelegramLocation Location, string Title, stri
 ```
 
 ### TelegramContact
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
 public sealed record TelegramContact(string PhoneNumber, string FirstName)
@@ -1044,6 +1074,8 @@ public sealed record TelegramContact(string PhoneNumber, string FirstName)
 
 ### TelegramDice
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record TelegramDice(string Emoji, int Value);
 ```
@@ -1055,6 +1087,8 @@ public sealed record TelegramPollOption(string Text, int VoterCount);
 ```
 
 ### TelegramPoll
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 投票的当前状态。
 
@@ -1079,6 +1113,8 @@ public sealed record TelegramPoll
 ```
 
 ### TelegramSuccessfulPayment
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 成功付款的服务消息。
 
@@ -1115,6 +1151,8 @@ public sealed record TelegramTextEntity(string Type, int Offset, int Length)
 ```
 
 ### TelegramFormattedText
+
+对应主消息段：[`TextSegment`](../segments#textsegment)、[`MarkdownSegment`](../segments#markdownsegment)、[`RawSegment`](../segments#rawsegment)
 
 消息文本或说明及其格式实体；SDK 文本段只保留纯文本。
 

@@ -372,3 +372,7 @@ def generate(platform):
 
 for item in PLATFORMS:
     generate(item)
+
+# 类型页重新生成后补回“对应主消息段”链接。
+import runpy
+runpy.run_path(str(ROOT / "scripts" / "generate_segment_map.py"))

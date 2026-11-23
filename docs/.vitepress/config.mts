@@ -108,6 +108,7 @@ export default defineConfig({
           text: 'Model',
           items: [
             { text: '通用 Model', link: '/plugin/models' },
+            { text: '消息段对照', link: '/plugin/segments' },
             {
               text: 'QQ Model',
               collapsed: true,

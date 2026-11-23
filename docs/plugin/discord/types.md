@@ -224,6 +224,8 @@ public sealed record DiscordMember
 
 ### DiscordEmoji
 
+对应主消息段：[`EmojiSegment`](../segments#emojisegment)
+
 服务器自定义表情。
 
 ```csharp
@@ -327,6 +329,8 @@ public sealed record DiscordRoleOptions
 
 ### DiscordEmbed
 
+对应主消息段：[`CardSegment`](../segments#cardsegment)、[`RawSegment`](../segments#rawsegment)
+
 Embed（卡片）。发送限制：标题 256、描述 4096、字段 25 个、总文本 6000 字符。
 
 ```csharp
@@ -395,6 +399,8 @@ public abstract record DiscordComponent;
 
 ### DiscordActionRow
 
+对应主消息段：[`MessageButton`](../segments#messagebutton)
+
 一行组件：最多 5 个按钮，或 1 个下拉菜单。
 
 ```csharp
@@ -420,6 +426,8 @@ public enum DiscordButtonStyle
 ```
 
 ### DiscordButton
+
+对应主消息段：[`MessageButton`](../segments#messagebutton)
 
 按钮。非链接按钮点击后产生 `DiscordInteractionKind.MessageComponent` 交互。
 
@@ -525,6 +533,8 @@ public sealed record DiscordRawComponent(JsonElement Json) : DiscordComponent;
 
 ### DiscordAllowedMentions
 
+对应主消息段：[`MentionSegment`](../segments#mentionsegment)、[`MentionAllSegment`](../segments#mentionallsegment)
+
 控制消息中的提及是否真正通知对方。默认只通知被回复的用户以外显式列出的提及。
 
 ```csharp
@@ -548,6 +558,8 @@ public sealed record DiscordAllowedMentions
 ```
 
 ### DiscordAttachment
+
+对应主消息段：[`ImageSegment`](../segments#imagesegment)、[`AudioSegment`](../segments#audiosegment)、[`VideoSegment`](../segments#videosegment)、[`FileSegment`](../segments#filesegment)
 
 随消息上传的附件。
 
@@ -608,6 +620,8 @@ public enum DiscordMessageFlags
 ```
 
 ### DiscordMessageContent
+
+对应主消息段：[`TextSegment`](../segments#textsegment)、[`MarkdownSegment`](../segments#markdownsegment)、[`QuoteSegment`](../segments#quotesegment)
 
 Discord 原生消息内容，用于发送、编辑和交互回复。
 
@@ -729,6 +743,8 @@ public enum DiscordStickerFormat
 
 ### DiscordSticker
 
+对应主消息段：[`EmojiSegment`](../segments#emojisegment)、[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record DiscordSticker(ulong StickerId, string Name, DiscordStickerFormat Format);
 ```
@@ -740,6 +756,8 @@ public sealed record DiscordPollAnswer(int AnswerId, string Text, int Count, boo
 ```
 
 ### DiscordPoll
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 消息中的投票及当前结果。
 
@@ -757,6 +775,8 @@ public sealed record DiscordPoll
 ```
 
 ### DiscordComponents
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 入站消息的组件原始 JSON。
 

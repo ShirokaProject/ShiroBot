@@ -656,11 +656,15 @@ public abstract record QIncomingSegment;
 
 ### QIncomingText
 
+对应主消息段：[`TextSegment`](../segments#textsegment)
+
 ```csharp
 public sealed record QIncomingText(string Text) : QIncomingSegment;
 ```
 
 ### QIncomingMention
+
+对应主消息段：[`MentionSegment`](../segments#mentionsegment)
 
 ```csharp
 public sealed record QIncomingMention(string UserId, string Name) : QIncomingSegment;
@@ -668,17 +672,23 @@ public sealed record QIncomingMention(string UserId, string Name) : QIncomingSeg
 
 ### QIncomingMentionAll
 
+对应主消息段：[`MentionAllSegment`](../segments#mentionallsegment)
+
 ```csharp
 public sealed record QIncomingMentionAll : QIncomingSegment;
 ```
 
 ### QIncomingFace
 
+对应主消息段：[`EmojiSegment`](../segments#emojisegment)
+
 ```csharp
 public sealed record QIncomingFace(string FaceId, bool IsLarge = false) : QIncomingSegment;
 ```
 
 ### QIncomingReply
+
+对应主消息段：[`QuoteSegment`](../segments#quotesegment)
 
 ```csharp
 public sealed record QIncomingReply(string MessageId) : QIncomingSegment
@@ -691,6 +701,8 @@ public sealed record QIncomingReply(string MessageId) : QIncomingSegment
 ```
 
 ### QIncomingImage
+
+对应主消息段：[`ImageSegment`](../segments#imagesegment)
 
 ```csharp
 public sealed record QIncomingImage(string ResourceId, string TempUrl) : QIncomingSegment
@@ -706,6 +718,8 @@ public sealed record QIncomingImage(string ResourceId, string TempUrl) : QIncomi
 
 ### QIncomingRecord
 
+对应主消息段：[`AudioSegment`](../segments#audiosegment)
+
 ```csharp
 public sealed record QIncomingRecord(string ResourceId, string TempUrl) : QIncomingSegment
 {
@@ -714,6 +728,8 @@ public sealed record QIncomingRecord(string ResourceId, string TempUrl) : QIncom
 ```
 
 ### QIncomingVideo
+
+对应主消息段：[`VideoSegment`](../segments#videosegment)
 
 ```csharp
 public sealed record QIncomingVideo(string ResourceId, string TempUrl) : QIncomingSegment
@@ -726,6 +742,8 @@ public sealed record QIncomingVideo(string ResourceId, string TempUrl) : QIncomi
 
 ### QIncomingFile
 
+对应主消息段：[`FileSegment`](../segments#filesegment)
+
 ```csharp
 public sealed record QIncomingFile(string FileId, string FileName, long FileSize) : QIncomingSegment
 {
@@ -734,6 +752,8 @@ public sealed record QIncomingFile(string FileId, string FileName, long FileSize
 ```
 
 ### QIncomingForward
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
 public sealed record QIncomingForward(string ForwardId) : QIncomingSegment
@@ -746,6 +766,8 @@ public sealed record QIncomingForward(string ForwardId) : QIncomingSegment
 
 ### QIncomingMarketFace
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record QIncomingMarketFace(string EmojiId, string Url) : QIncomingSegment
 {
@@ -757,17 +779,23 @@ public sealed record QIncomingMarketFace(string EmojiId, string Url) : QIncoming
 
 ### QIncomingLightApp
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record QIncomingLightApp(string AppName, string JsonPayload) : QIncomingSegment;
 ```
 
 ### QIncomingXml
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record QIncomingXml(int ServiceId, string XmlPayload) : QIncomingSegment;
 ```
 
 ### QIncomingMarkdown
+
+对应主消息段：[`MarkdownSegment`](../segments#markdownsegment)
 
 ```csharp
 public sealed record QIncomingMarkdown(string Content) : QIncomingSegment;
@@ -781,11 +809,15 @@ public abstract record QOutgoingSegment;
 
 ### QOutgoingText
 
+对应主消息段：[`TextSegment`](../segments#textsegment)
+
 ```csharp
 public sealed record QOutgoingText(string Text) : QOutgoingSegment;
 ```
 
 ### QOutgoingMention
+
+对应主消息段：[`MentionSegment`](../segments#mentionsegment)
 
 ```csharp
 public sealed record QOutgoingMention(string UserId) : QOutgoingSegment;
@@ -793,11 +825,15 @@ public sealed record QOutgoingMention(string UserId) : QOutgoingSegment;
 
 ### QOutgoingMentionAll
 
+对应主消息段：[`MentionAllSegment`](../segments#mentionallsegment)
+
 ```csharp
 public sealed record QOutgoingMentionAll : QOutgoingSegment;
 ```
 
 ### QOutgoingFace
+
+对应主消息段：[`EmojiSegment`](../segments#emojisegment)
 
 ```csharp
 public sealed record QOutgoingFace(string FaceId, bool IsLarge = false) : QOutgoingSegment;
@@ -805,11 +841,15 @@ public sealed record QOutgoingFace(string FaceId, bool IsLarge = false) : QOutgo
 
 ### QOutgoingReply
 
+对应主消息段：[`QuoteSegment`](../segments#quotesegment)
+
 ```csharp
 public sealed record QOutgoingReply(string MessageId) : QOutgoingSegment;
 ```
 
 ### QOutgoingImage
+
+对应主消息段：[`ImageSegment`](../segments#imagesegment)
 
 ```csharp
 public sealed record QOutgoingImage(string Uri) : QOutgoingSegment
@@ -823,11 +863,15 @@ public sealed record QOutgoingImage(string Uri) : QOutgoingSegment
 
 ### QOutgoingRecord
 
+对应主消息段：[`AudioSegment`](../segments#audiosegment)
+
 ```csharp
 public sealed record QOutgoingRecord(string Uri) : QOutgoingSegment;
 ```
 
 ### QOutgoingVideo
+
+对应主消息段：[`VideoSegment`](../segments#videosegment)
 
 ```csharp
 public sealed record QOutgoingVideo(string Uri) : QOutgoingSegment
@@ -838,11 +882,15 @@ public sealed record QOutgoingVideo(string Uri) : QOutgoingSegment
 
 ### QOutgoingLightApp
 
+对应主消息段：[`RawSegment`](../segments#rawsegment)
+
 ```csharp
 public sealed record QOutgoingLightApp(string JsonPayload) : QOutgoingSegment;
 ```
 
 ### QForwardedMessage
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
 public sealed record QForwardedMessage(string UserId, string SenderName, IReadOnlyList<QOutgoingSegment> Segments)
@@ -853,6 +901,8 @@ public sealed record QForwardedMessage(string UserId, string SenderName, IReadOn
 ```
 
 ### QOutgoingForward
+
+对应主消息段：[`RawSegment`](../segments#rawsegment)
 
 ```csharp
 public sealed record QOutgoingForward(IReadOnlyList<QForwardedMessage> Messages) : QOutgoingSegment
@@ -1277,6 +1327,8 @@ public enum QOfficialMessageScene
 
 ### QOfficialMarkdown
 
+对应主消息段：[`MarkdownSegment`](../segments#markdownsegment)
+
 ```csharp
 public abstract record QOfficialMarkdown
 {
@@ -1286,6 +1338,8 @@ public abstract record QOfficialMarkdown
 ```
 
 ### QCustomMarkdown
+
+对应主消息段：[`MarkdownSegment`](../segments#markdownsegment)
 
 ```csharp
 public sealed record QCustomMarkdown(string Content) : QOfficialMarkdown;
@@ -1331,6 +1385,8 @@ public sealed record QOfficialEmbedField(string Name);
 
 ### QOfficialKeyboard
 
+对应主消息段：[`MessageButton`](../segments#messagebutton)
+
 ```csharp
 public abstract record QOfficialKeyboard;
 ```
@@ -1342,6 +1398,8 @@ public sealed record QKeyboardTemplate(string Id) : QOfficialKeyboard;
 ```
 
 ### QInlineKeyboard
+
+对应主消息段：[`MessageButton`](../segments#messagebutton)
 
 ```csharp
 public sealed record QInlineKeyboard(IReadOnlyList<QKeyboardRow> Rows) : QOfficialKeyboard;

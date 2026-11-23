@@ -31,12 +31,15 @@ await Context.Message.SendMessageAsync(
 
 | 类型 | 内容 |
 | --- | --- |
-| `TextSegment` | 文本 |
-| `MentionSegment` / `MentionAllSegment` | 提及用户或全体成员 |
-| `QuoteSegment` | 引用消息 ID |
-| `EmojiSegment` | 平台表情 ID 与可选降级文本 |
-| `ImageSegment` / `AudioSegment` / `VideoSegment` / `FileSegment` | 媒体 URI 与可选元数据 |
-| `RawSegment` | 通用模型不能表示的平台原生段，含 `Platform`、`Kind`、`Payload` |
+| [`TextSegment`](./segments#textsegment) | 文本 |
+| [`MentionSegment`](./segments#mentionsegment) / [`MentionAllSegment`](./segments#mentionallsegment) | 提及用户或全体成员 |
+| [`QuoteSegment`](./segments#quotesegment) | 引用消息 ID |
+| [`EmojiSegment`](./segments#emojisegment) | 平台表情 ID 与可选降级文本 |
+| [`ImageSegment`](./segments#imagesegment) / [`AudioSegment`](./segments#audiosegment) / [`VideoSegment`](./segments#videosegment) / [`FileSegment`](./segments#filesegment) | 媒体 URI 与可选元数据 |
+| [`MarkdownSegment`](./segments#markdownsegment) / [`CardSegment`](./segments#cardsegment) | Markdown 正文与卡片，见[富消息](#富消息、按钮与表情回应) |
+| [`RawSegment`](./segments#rawsegment) | 通用模型不能表示的平台原生段，含 `Platform`、`Kind`、`Payload` |
+
+点击类型查看它在 QQ、Telegram、Discord Model 中对应的类型和适配器的处理方式，见[消息段对照](./segments)。
 
 适配器决定各消息段能否发送。插件收到 `RawSegment` 时，应先检查平台与负载类型再转型。
 

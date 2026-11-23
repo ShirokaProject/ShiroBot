@@ -39,6 +39,8 @@ QQ 原生消息使用 `IQMessageApi`，官方 Markdown 使用独立的 `IQOffici
 
 ## QQ 原生消息与段
 
+各平台类型与 SDK 主消息段的对应关系见[消息段对照](./segments)；类型参考中每个对应类型都标有“对应主消息段”。
+
 `QIncomingMessage` 有好友、群和临时会话子类型。当前定义的消息段如下；具体适配器可能只支持其中一部分。
 
 - **入站 `QIncomingSegment`**：文本、@ 用户、@ 全体、QQ 表情、引用、图片、语音、视频、文件、合并转发、商城表情、小程序或卡片、XML、Markdown。
