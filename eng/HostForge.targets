@@ -1,0 +1,66 @@
+<Project>
+  <!--
+    ChsBuffer.Avalonia.AppHost from the ShiroBot fork of HostForge (greepar/HostForge, branch shirobot).
+    The fork's packages carry a prerelease label that nuget.org never has, and are attached to a release
+    of the fork. Restore reads them from eng/hostforge, so this target downloads the missing ones before
+    the restore graph is built and checks each file against its SHA-256 below.
+
+    To update: build the shirobot branch of the fork, attach the nupkgs of its nuget-avalonia-apphost
+    artifact to a new release, then change HostForgeReleaseTag, the items below and the version in
+    Directory.Packages.props.
+  -->
+  <PropertyGroup>
+    <HostForgeReleaseTag>v12.2.0.10-shirobot.1</HostForgeReleaseTag>
+    <HostForgeReleaseUrl>https://github.com/greepar/HostForge/releases/download/$(HostForgeReleaseTag)/</HostForgeReleaseUrl>
+    <HostForgePackagesDir>$(MSBuildThisFileDirectory)hostforge/</HostForgePackagesDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.12.2.0.10-shirobot.1.nupkg" Sha256="62e3f7a84b77161cbec60cdc930bbb5e3d7c5744bbb10d2f8e4f2a7cdbfba69c" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.Build.12.0.10-shirobot.1.nupkg" Sha256="567c0dfaa85783e591d25802551b7e777812e36a7f1783b8916dd0b1324a3e2a" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.linux-arm64.12.0.10-shirobot.1.nupkg" Sha256="9f038cbf75228c7241bc998224ddaacc8ccb73d15d48315c643f24e63599366f" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.linux-musl-arm64.12.0.10-shirobot.1.nupkg" Sha256="978c9eb5759c3657f705a25214c5092f62274aaf0e2baecc9ba3d03f86a5cb4c" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.linux-musl-x64.12.0.10-shirobot.1.nupkg" Sha256="b0746123a803939899e2ff8949be7aa7c0a846ad1ccc37d450f3a653b2ac79b4" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.linux-x64.12.0.10-shirobot.1.nupkg" Sha256="22baa6ff4f717b8be0a3452c099d332838fbf7d719fb9a7361ddc19a8a016783" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.osx-arm64.12.2.0.10-shirobot.1.nupkg" Sha256="7b358227a26d467b0c7b624d1b341cd8aafc7860e753094632790cec33f3bb30" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.osx-x64.12.2.0.10-shirobot.1.nupkg" Sha256="b4e9d58f624d3669c1cfee7bd3bb96319ac4014dc6d7dfc0f28039d5220b579d" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.win-arm64.12.0.10-shirobot.1.nupkg" Sha256="1f13e763daf513cda00f74e8b4db8065aba53d5e4f69717db5ca5a00e761fb23" />
+    <HostForgePackage Include="ChsBuffer.Avalonia.AppHost.win-x64.12.0.10-shirobot.1.nupkg" Sha256="28ad7222ad1b6f138134ca973f7f8287a98af699470f03f128b79266ebd7077c" />
+  </ItemGroup>
+
+  <Target Name="AcquireHostForgePackages"
+          BeforeTargets="_GenerateRestoreGraphProjectEntry;_GenerateProjectRestoreGraph;Restore">
+    <PropertyGroup>
+      <_HostForgeDownloadDir>$(HostForgePackagesDir).download/$([System.Guid]::NewGuid().ToString('N'))/</_HostForgeDownloadDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_HostForgeMissingPackage Include="@(HostForgePackage)" Condition="!Exists('$(HostForgePackagesDir)%(Identity)')" />
+    </ItemGroup>
+
+    <!-- Download into a private directory and move only verified files, so a broken download never stays behind. -->
+    <DownloadFile SourceUrl="$(HostForgeReleaseUrl)%(_HostForgeMissingPackage.Identity)"
+                  DestinationFolder="$(_HostForgeDownloadDir)"
+                  Retries="3"
+                  RetryDelayMilliseconds="2000"
+                  Condition="'@(_HostForgeMissingPackage)' != ''" />
+    <VerifyFileHash File="$(_HostForgeDownloadDir)%(_HostForgeMissingPackage.Identity)"
+                    Hash="%(_HostForgeMissingPackage.Sha256)"
+                    Algorithm="SHA256"
+                    Condition="'@(_HostForgeMissingPackage)' != ''" />
+    <Move SourceFiles="@(_HostForgeMissingPackage->'$(_HostForgeDownloadDir)%(Identity)')"
+          DestinationFolder="$(HostForgePackagesDir)"
+          Condition="'@(_HostForgeMissingPackage)' != ''" />
+    <RemoveDir Directories="$(_HostForgeDownloadDir)" Condition="'@(_HostForgeMissingPackage)' != ''" />
+
+    <!-- Files that were already present are checked too, so a stale or edited package fails here, not at runtime. -->
+    <VerifyFileHash File="$(HostForgePackagesDir)%(HostForgePackage.Identity)"
+                    Hash="%(HostForgePackage.Sha256)"
+                    Algorithm="SHA256" />
+
+    <OnError ExecuteTargets="_CleanHostForgeDownload" />
+  </Target>
+
+  <Target Name="_CleanHostForgeDownload">
+    <RemoveDir Directories="$(_HostForgeDownloadDir)" Condition="'$(_HostForgeDownloadDir)' != ''" />
+  </Target>
+</Project>
