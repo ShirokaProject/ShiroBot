@@ -89,6 +89,9 @@ internal sealed class HostEventDispatcher(
         }).ConfigureAwait(false);
     }
 
+    /// <summary>Completes once the startup plugin load has finished, successfully or not.</summary>
+    internal Task InitialPluginsReady => _initialPluginsReady.Task;
+
     internal void MarkInitialPluginsReady()
     {
         _initialPluginsReady.TrySetResult();

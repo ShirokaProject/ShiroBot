@@ -111,6 +111,30 @@ internal sealed class AutoUpdateScheduler : IDisposable
         }
     }
 
+    /// <summary>
+    ///     Runs <paramref name="run" /> now, outside the schedule but never alongside a scheduled run, e.g. to finish a
+    ///     run that a host update restarted.
+    /// </summary>
+    public async Task RunNowAsync(Func<CancellationToken, Task> run)
+    {
+        if (Interlocked.Exchange(ref _running, 1) != 0) return;
+        try
+        {
+            await run(_stopping.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            BotLog.Error("自动更新失败: " + ex.Message);
+        }
+        finally
+        {
+            Volatile.Write(ref _running, 0);
+        }
+    }
+
     private DateOnly? ReadLastRun()
     {
         try

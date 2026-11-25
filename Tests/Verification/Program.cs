@@ -2664,6 +2664,22 @@ try
         throw new InvalidOperationException("Skipped major versions are not notified exactly once per version.");
     Console.WriteLine("Auto-update exclusion and major version policy verification passed.");
 
+    var resumePath = Path.Combine(tempRoot, "auto-update", "resume.json");
+    var startedAt = new DateTimeOffset(2026, 11, 25, 18, 0, 0, TimeSpan.Zero);
+    new HostUpdateResume(resumePath).Save(new HostUpdateResumeState("1.0.3", "1.0.4", startedAt));
+    // A new instance stands in for the restarted host reading what the old one wrote.
+    if (new HostUpdateResume(resumePath).Take() != new HostUpdateResumeState("1.0.3", "1.0.4", startedAt) ||
+        new HostUpdateResume(resumePath).Take() is not null)
+        throw new InvalidOperationException("Host update resume state did not survive a restart exactly once.");
+    new HostUpdateResume(resumePath).Save(new HostUpdateResumeState("1.0.3", "1.0.4", startedAt));
+    new HostUpdateResume(resumePath).Clear();
+    await File.WriteAllTextAsync(Path.Combine(tempRoot, "auto-update", "broken.json"), "{not json");
+    if (new HostUpdateResume(resumePath).Take() is not null ||
+        new HostUpdateResume(Path.Combine(tempRoot, "auto-update", "broken.json")).Take() is not null ||
+        File.Exists(Path.Combine(tempRoot, "auto-update", "broken.json")))
+        throw new InvalidOperationException("A cleared or unreadable host update resume state was resumed or kept.");
+    Console.WriteLine("Host update resume state verification passed.");
+
     var autoUpdateState = Path.Combine(tempRoot, "auto-update", "last-run");
     var autoUpdateConfig = new CoreConfig { Update = new UpdateConfig { Adapters = true, Time = "02:00" } };
     var autoUpdateClock = new AutoUpdateTestClock(scheduledDay.AddHours(2).AddMinutes(5));

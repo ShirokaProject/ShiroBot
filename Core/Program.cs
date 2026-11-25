@@ -319,6 +319,8 @@ public static class Program
             services.AddSingleton<OwnerNotify>(ownerNotifier.NotifyAsync);
             services.AddSingleton(new SkippedMajorNotices(
                 Path.Combine(BasePath, "cache", "auto-update-skipped-major.json")));
+            services.AddSingleton(new HostUpdateResume(
+                Path.Combine(BasePath, "cache", "auto-update-resume.json")));
             services.AddSingleton<AutoUpdateRunner>();
             services.AddSingleton<HostCommandHandler>();
             services.AddHostHttpServer();
@@ -379,6 +381,8 @@ public static class Program
                 Path.Combine(BasePath, "cache", "auto-update-last-run"));
             if (coreConfig.Update.Any)
                 CH.Info($"已开启自动更新，每天 {coreConfig.Update.Time} 检查更新。");
+            // A host update restarted into this process: report it and finish the run once plugins are loaded.
+            _ = autoUpdates.RunNowAsync(autoUpdateRunner.ResumeAsync);
 
             // ─── 控制台交互 ───
             var configuredConsoleOption = parserResult.GetValue(noConsoleOption);

@@ -12,12 +12,13 @@ using ShiroBot.SDK.Abstractions;
 namespace ShiroBot.Update;
 
 /// <summary>
-///     One automatic update pass over the enabled kinds: plugins, then adapters, then the host. A host update restarts the
-///     process
-///     itself; otherwise updates that could only be staged restart the host when
-///     <see cref="UpdateConfig.RestartOnPending" /> is on. What happened is sent to the owners as one
-///     summary, before any restart; a run with nothing to update sends nothing. Excluded plugins and adapters are left
-///     alone, and with <see cref="UpdateConfig.SkipMajor" /> a new major version is reported once instead of applied.
+///     One automatic update pass over the enabled kinds. The host goes first: when it updates, the process restarts
+///     straight away and <see cref="ResumeAsync" /> finishes the plugins and adapters in the new host, so a plugin built
+///     for the new host is never loaded into the old one. Otherwise plugins, then adapters, are updated here; updates
+///     that could only be staged restart the host when <see cref="UpdateConfig.RestartOnPending" /> is on. What
+///     happened is sent to the owners as one summary, before any restart and again once a host update has come up; a
+///     run with nothing to update sends nothing. Excluded plugins and adapters are left alone, and with
+///     <see cref="UpdateConfig.SkipMajor" /> a new major version is reported once instead of applied.
 /// </summary>
 internal sealed class AutoUpdateRunner(
     CoreConfig config,
@@ -30,7 +31,8 @@ internal sealed class AutoUpdateRunner(
     HostRuntimeState runtimeState,
     HostPowerControl powerControl,
     OwnerNotify notifyOwners,
-    SkippedMajorNotices skippedMajors)
+    SkippedMajorNotices skippedMajors,
+    HostUpdateResume hostUpdateResume)
 {
     // Runs never overlap: the scheduler starts the next one only after this one returns.
     private readonly List<string> _report = [];
@@ -40,33 +42,8 @@ internal sealed class AutoUpdateRunner(
         _report.Clear();
         try
         {
-            var pending = new List<string>();
-            if (config.Update.Plugins) await UpdatePluginsAsync(pending, cancellationToken).ConfigureAwait(false);
-            if (config.Update.Adapters) await UpdateAdaptersAsync(pending, cancellationToken).ConfigureAwait(false);
             if (config.Update.Host && await UpdateHostAsync(cancellationToken).ConfigureAwait(false)) return;
-
-            if (pending.Count == 0)
-            {
-                BotLog.Info("自动更新完成。");
-                await SendReportAsync(cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            var names = string.Join("、", pending);
-            if (!config.Update.RestartOnPending)
-            {
-                Report($"{names} 无法热替换，新版本已暂存，需要重启宿主完成更新。", true);
-                await SendReportAsync(cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            Report($"{names} 无法热替换，正在重启宿主完成更新…", true);
-            await SendReportAsync(cancellationToken).ConfigureAwait(false);
-            var restart = powerControl.Restart();
-            if (restart.Ok) return;
-            BotLog.Error("自动重启失败，请手动重启宿主: " + restart.Message);
-            await notifyOwners("【ShiroBot 自动更新】自动重启失败，请手动重启宿主: " + restart.Message, null, cancellationToken)
-                .ConfigureAwait(false);
+            await UpdateComponentsAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
         {
@@ -74,6 +51,63 @@ internal sealed class AutoUpdateRunner(
             await SendReportAsync(CancellationToken.None).ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>
+    ///     Finishes a run that a host update interrupted, if there is one: once the startup plugin load is done,
+    ///     reports whether the host came up on the new version, then updates plugins and adapters as the run would have.
+    /// </summary>
+    public async Task ResumeAsync(CancellationToken cancellationToken)
+    {
+        if (hostUpdateResume.Take() is not { } state) return;
+        _report.Clear();
+        try
+        {
+            await eventDispatcher.InitialPluginsReady.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var current = HostSelfUpdater.CurrentVersion;
+            if (Updater.IsNewerVersion(state.To, current))
+                Report($"主程序重启后仍是 {current}，更新到 {state.To} 没有生效，请检查宿主日志。", true);
+            else
+                Report($"主程序已从 {state.From} 更新到 {current}。");
+            await UpdateComponentsAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
+        {
+            Report("自动更新中断: " + ex.Message, true);
+            await SendReportAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Updates plugins and adapters, then sends the report, restarting for staged updates if allowed.</summary>
+    private async Task UpdateComponentsAsync(CancellationToken cancellationToken)
+    {
+        var pending = new List<string>();
+        if (config.Update.Plugins) await UpdatePluginsAsync(pending, cancellationToken).ConfigureAwait(false);
+        if (config.Update.Adapters) await UpdateAdaptersAsync(pending, cancellationToken).ConfigureAwait(false);
+
+        if (pending.Count == 0)
+        {
+            BotLog.Info("自动更新完成。");
+            await SendReportAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var names = string.Join("、", pending);
+        if (!config.Update.RestartOnPending)
+        {
+            Report($"{names} 无法热替换，新版本已暂存，需要重启宿主完成更新。", true);
+            await SendReportAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        Report($"{names} 无法热替换，正在重启宿主完成更新…", true);
+        await SendReportAsync(cancellationToken).ConfigureAwait(false);
+        var restart = powerControl.Restart();
+        if (restart.Ok) return;
+        BotLog.Error("自动重启失败，请手动重启宿主: " + restart.Message);
+        await notifyOwners("【ShiroBot 自动更新】自动重启失败，请手动重启宿主: " + restart.Message, null, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -227,9 +261,14 @@ internal sealed class AutoUpdateRunner(
                 return false;
             }
 
-            // The update restarts the host, so the owners hear about this run first.
-            Report($"主程序 {check.CurrentVersion} → {check.LatestVersion}，正在更新并重启…");
+            // The update restarts the host, so the owners hear about it first; the restarted host reports the
+            // outcome and updates plugins and adapters from there.
+            var resumes = config.Update.Plugins || config.Update.Adapters;
+            Report($"主程序 {check.CurrentVersion} → {check.LatestVersion}，正在更新并重启" +
+                   (resumes ? "，重启后再检查插件和适配器更新…" : "…"));
             await SendReportAsync(cancellationToken).ConfigureAwait(false);
+            hostUpdateResume.Save(new HostUpdateResumeState(check.CurrentVersion, check.LatestVersion!,
+                DateTimeOffset.UtcNow));
             var result = await HostSelfUpdater.ApplyAsync(check.AssetDownloadUrl!, powerControl, cancellationToken)
                 .ConfigureAwait(false);
             if (result.Ok)
@@ -238,11 +277,13 @@ internal sealed class AutoUpdateRunner(
                 return true;
             }
 
+            hostUpdateResume.Clear();
             Report("主程序自动更新失败: " + result.Message, true);
             return false;
         }
         catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
         {
+            hostUpdateResume.Clear();
             Report("主程序自动更新失败: " + ex.Message, true);
             return false;
         }
