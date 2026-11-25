@@ -1,9 +1,4 @@
-"""Resolve central NuGet dependencies to the latest stable versions before CI builds.
-
-A package pinned to a prerelease version keeps it: such a pin is deliberate (for example
-ChsBuffer.Avalonia.AppHost from the ShiroBot fork of HostForge, which nuget.org does not have),
-and the latest stable version would replace it with a different build.
-"""
+"""Resolve central NuGet dependencies to the latest stable versions before CI builds."""
 import concurrent.futures
 import json
 from pathlib import Path
@@ -25,11 +20,7 @@ def latest_stable(package):
 def main():
     path = Path(__file__).resolve().parents[2] / "Directory.Packages.props"
     source = path.read_text()
-    current = {node.attrib["Include"]: node.attrib["Version"] for node in ET.fromstring(source).iter("PackageVersion")}
-    for package, version in current.items():
-        if "-" in version:
-            print(f"{package}: {version} (prerelease pin, kept)", flush=True)
-    packages = [package for package, version in current.items() if "-" not in version]
+    packages = [node.attrib["Include"] for node in ET.fromstring(source).iter("PackageVersion")]
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         resolved = dict(pool.map(latest_stable, packages))
     for package, version in resolved.items():
