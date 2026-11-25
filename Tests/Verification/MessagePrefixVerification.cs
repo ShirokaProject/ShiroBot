@@ -22,7 +22,9 @@ internal static class MessagePrefixVerification
 
     public static async Task RunAsync()
     {
-        if (new CoreConfig().PluginRoutes.RequireMessagePrefix)
+        var defaults = new CoreConfig().PluginRoutes;
+        if (defaults.MessagePrefix.Length != 0 || defaults.RequiresMessagePrefix("any") ||
+            defaults.HasMessagePrefixRequirements())
             throw new Exception("Prefix requirement must be off by default");
         VerifyViews();
         var root = Path.Combine(Path.GetTempPath(), "shirobot-prefix-" + Guid.NewGuid().ToString("N"));
@@ -96,18 +98,21 @@ internal static class MessagePrefixVerification
         var routeFields = schemaJson.EnumerateArray()
             .First(item => item.GetProperty("key").GetString() == "plugin_routes").GetProperty("fields");
         if (routeFields.EnumerateArray().All(item => item.GetProperty("key").GetString() != "message_prefix") ||
-            routeFields.EnumerateArray().All(item => item.GetProperty("key").GetString() != "require_message_prefix"))
-            throw new Exception("Host config schema hid the prefix settings");
+            routeFields.EnumerateArray().Any(item => item.GetProperty("key").GetString() == "require_message_prefix"))
+            throw new Exception("Host config schema hid the prefix or kept the retired switch");
 
-        PatchCore("{\"plugin_routes\":{\"message_prefix\":\"!\",\"require_message_prefix\":true}}");
+        // A config written before the switch was removed still loads, and saving the prefix drops the old key.
+        manager.SetConfigValue(path, "plugin_routes.require_message_prefix", false);
+        PatchCore("{\"plugin_routes\":{\"message_prefix\":\"!\",\"require_message_prefix\":false}}");
         var saved = await manager.LoadCoreConfig();
-        if (saved.PluginRoutes.MessagePrefix != "!" || !saved.PluginRoutes.RequireMessagePrefix)
-            throw new Exception("Host config API did not persist prefix settings");
+        if (saved.PluginRoutes.MessagePrefix != "!" || !saved.PluginRoutes.RequiresMessagePrefix("any") ||
+            (await File.ReadAllTextAsync(path)).Contains("require_message_prefix", StringComparison.Ordinal))
+            throw new Exception("Host config API did not persist the prefix as required or kept the retired switch");
         var savedText = await File.ReadAllTextAsync(path);
         foreach (var json in new[]
                  {
                      "{\"plugin_routes\":{\"message_prefix\":null}}",
-                     "{\"plugin_routes\":{\"message_prefix\":\"partial\",\"require_message_prefix\":\"true\"}}"
+                     "{\"plugin_routes\":{\"message_prefix\":\"partial\",\"default\":\"blacklist\"}}"
                  })
         {
             try
@@ -230,7 +235,7 @@ internal static class MessagePrefixVerification
         var bot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
         var policy = new PluginRouteConfig
         {
-            MessagePrefix = "!", RequireMessagePrefix = true,
+            MessagePrefix = "!",
             Default = new PluginRouteRuleConfig { Mode = "blacklist" },
             PrefixModes = { ["exempt"] = "disabled" }
         };
@@ -258,7 +263,7 @@ internal static class MessagePrefixVerification
         policy.Plugins["required"] = new PluginRouteRuleConfig { Mode = "whitelist", Groups = ["allowed"] };
         Expect(await Send(Message("!blocked", false)), "exempt:!blocked", "fallback:blocked");
         policy.Plugins.Clear();
-        policy.RequireMessagePrefix = false;
+        policy.PrefixModes["fallback"] = "disabled";
         policy.PrefixModes["required"] = "required";
         Expect(await Send(Message("plain", true)), "exempt:plain", "required:plain", "fallback:plain");
         Expect(await Send(Message("!again", true)), "exempt:!again", "required:again", "fallback:!again");
@@ -271,7 +276,7 @@ internal static class MessagePrefixVerification
         Expect(await Send(Message("bot:standalone", false)), "exempt:bot:standalone", "required:standalone",
             "fallback:bot:standalone");
         policy.MessagePrefix = "!";
-        policy.RequireMessagePrefix = true;
+        policy.PrefixModes.Remove("fallback");
         Expect(await Send(Message("!global", true)), "exempt:!global", "required:!global", "fallback:global");
         Expect(await Send(Message("bot:local", true)), "exempt:bot:local", "required:local", "fallback:bot:local");
         policy.Prefixes["command"] = "cmd:";
@@ -284,7 +289,7 @@ internal static class MessagePrefixVerification
 
         var updated = new PluginRouteConfig
         {
-            MessagePrefix = "$", RequireMessagePrefix = true,
+            MessagePrefix = "$",
             Default = new PluginRouteRuleConfig { Mode = "blacklist" },
             PrefixModes = { ["EXEMPT"] = "disabled" }
         };
@@ -355,7 +360,7 @@ internal static class MessagePrefixVerification
     {
         var logs = new HostLogHub();
         var bot = new BotContext(null, [], [], new WebHostContext("http://127.0.0.1", false), logs);
-        var policy = new PluginRouteConfig { MessagePrefix = "!", RequireMessagePrefix = true };
+        var policy = new PluginRouteConfig { MessagePrefix = "!" };
         var dispatcher = new HostEventDispatcher(new Lock(), bot.ReplySubscriptions,
             new HostRuntimeState(DateTimeOffset.UtcNow), logs, routePolicy: policy);
         var received = new List<string>();

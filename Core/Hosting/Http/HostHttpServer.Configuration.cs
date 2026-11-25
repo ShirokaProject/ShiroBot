@@ -84,7 +84,7 @@ internal sealed partial class HostHttpServer
                     ? item with
                     {
                         Fields = item.Fields?.Where(field =>
-                            field.Key is "default" or "message_prefix" or "require_message_prefix").ToArray()
+                            field.Key is "default" or "message_prefix").ToArray()
                     }
                     : item)
         ];
@@ -139,7 +139,6 @@ internal sealed partial class HostHttpServer
         string? defaultRouteMode = null;
         string[]? defaultRouteGroups = null;
         string? messagePrefix = null;
-        bool? requireMessagePrefix = null;
         bool? saveLogs = null;
         int? logRetention = null;
         if (patch.TryGetProperty("logs", out var logsPatch))
@@ -166,10 +165,8 @@ internal sealed partial class HostHttpServer
                 messagePrefix = prefixPatch.ValueKind == JsonValueKind.String
                     ? prefixPatch.GetString()!
                     : throw new InvalidOperationException("plugin_routes.message_prefix 必须是字符串。");
-            if (routesPatch.TryGetProperty("require_message_prefix", out var requirePatch))
-                requireMessagePrefix = requirePatch.ValueKind is JsonValueKind.True or JsonValueKind.False
-                    ? requirePatch.GetBoolean()
-                    : throw new InvalidOperationException("plugin_routes.require_message_prefix 必须是布尔值。");
+            // require_message_prefix was removed (a non-empty prefix now means required); older dashboards may still
+            // send it, so it is accepted and ignored.
             if (routesPatch.TryGetProperty("default", out var defaultPatch))
             {
                 if (defaultPatch.ValueKind != JsonValueKind.Object)
@@ -221,9 +218,11 @@ internal sealed partial class HostHttpServer
         if (defaultRouteGroups is not null)
             configManager.SetConfigValue(configPath, "plugin_routes.default.groups", defaultRouteGroups);
         if (messagePrefix is not null)
+        {
             configManager.SetConfigValue(configPath, "plugin_routes.message_prefix", messagePrefix);
-        if (requireMessagePrefix is { } requirePrefix)
-            configManager.SetConfigValue(configPath, "plugin_routes.require_message_prefix", requirePrefix);
+            // Drop the retired switch so the file no longer suggests it still applies.
+            configManager.RemoveConfigValue(configPath, "plugin_routes.require_message_prefix");
+        }
         if (saveLogs is { } saveToFile)
             configManager.SetConfigValue(configPath, "logs.save_to_file", saveToFile);
         if (logRetention is { } retentionDays)

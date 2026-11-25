@@ -1077,7 +1077,8 @@ internal sealed partial class HostHttpServer
             custom_prefix = routePolicy.Prefixes.TryGetValue(pluginId, out var custom) ? custom : string.Empty,
             effective_prefix = routePolicy.GetMessagePrefix(pluginId),
             message_prefix = routePolicy.MessagePrefix,
-            default_require_prefix = routePolicy.RequireMessagePrefix,
+            // Kept for older dashboards: a non-empty global prefix is now always required by default.
+            default_require_prefix = !string.IsNullOrWhiteSpace(routePolicy.MessagePrefix),
             effective_require_prefix = !string.IsNullOrWhiteSpace(routePolicy.GetMessagePrefix(pluginId)) &&
                                        routePolicy.RequiresMessagePrefix(pluginId)
         };
