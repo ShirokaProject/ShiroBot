@@ -60,10 +60,6 @@
         <PackageReference Include="Avalonia.Markup.Xaml.Loader" />
         <PackageReference Include="Avalonia.Skia" />
         <PackageReference Include="Avalonia.Themes.Fluent" />
-        <PackageReference Include="ChsBuffer.Avalonia.AppHost">
-          <PrivateAssets>all</PrivateAssets>
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
         <PackageReference Include="Spectre.Console" />
         <PackageReference Include="System.CommandLine" />
         <PackageReference Include="Tomlyn" />
