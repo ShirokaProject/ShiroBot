@@ -247,7 +247,7 @@ internal static class MessagePrefixVerification
         foreach (var direct in new[] { false, true })
         {
             Expect(await Send(Message("hello", direct)), "exempt:hello", "required:hello", "fallback:hello");
-            Expect(await Send(Message("!hello", direct)), "exempt:!hello", "required:!hello", "fallback:!hello");
+            Expect(await Send(Message("!hello", direct)), "exempt:!hello", "required:hello", "fallback:hello");
             var command = Message("! #help", direct);
             Expect(await Send(command), "command:#help");
             if (!command.IsHandled()) throw new Exception("Stripped command did not mark original as handled");
@@ -256,24 +256,24 @@ internal static class MessagePrefixVerification
         }
 
         policy.Plugins["required"] = new PluginRouteRuleConfig { Mode = "whitelist", Groups = ["allowed"] };
-        Expect(await Send(Message("!blocked", false)), "exempt:!blocked", "fallback:!blocked");
+        Expect(await Send(Message("!blocked", false)), "exempt:!blocked", "fallback:blocked");
         policy.Plugins.Clear();
         policy.RequireMessagePrefix = false;
         policy.PrefixModes["required"] = "required";
         Expect(await Send(Message("plain", true)), "exempt:plain", "required:plain", "fallback:plain");
-        Expect(await Send(Message("!again", true)), "exempt:!again", "required:!again", "fallback:!again");
+        Expect(await Send(Message("!again", true)), "exempt:!again", "required:again", "fallback:!again");
 
         policy.Prefixes["required"] = "bot:";
-        Expect(await Send(Message("bot:custom", true)), "exempt:bot:custom", "required:bot:custom",
+        Expect(await Send(Message("bot:custom", true)), "exempt:bot:custom", "required:custom",
             "fallback:bot:custom");
         Expect(await Send(Message("!global", true)), "exempt:!global", "required:!global", "fallback:!global");
         policy.MessagePrefix = "";
-        Expect(await Send(Message("bot:standalone", false)), "exempt:bot:standalone", "required:bot:standalone",
+        Expect(await Send(Message("bot:standalone", false)), "exempt:bot:standalone", "required:standalone",
             "fallback:bot:standalone");
         policy.MessagePrefix = "!";
         policy.RequireMessagePrefix = true;
-        Expect(await Send(Message("!global", true)), "exempt:!global", "required:!global", "fallback:!global");
-        Expect(await Send(Message("bot:local", true)), "exempt:bot:local", "required:bot:local", "fallback:bot:local");
+        Expect(await Send(Message("!global", true)), "exempt:!global", "required:!global", "fallback:global");
+        Expect(await Send(Message("bot:local", true)), "exempt:bot:local", "required:local", "fallback:bot:local");
         policy.Prefixes["command"] = "cmd:";
         policy.PrefixModes["command"] = "required";
         var customCommand = Message("cmd:#help", true);
@@ -290,7 +290,7 @@ internal static class MessagePrefixVerification
         };
         policy.CopyFrom(updated);
         if (policy.Prefixes.Count != 0) throw new Exception("Hot config did not clear removed custom prefixes");
-        Expect(await Send(Message("$hot", false)), "exempt:$hot", "required:$hot", "fallback:$hot");
+        Expect(await Send(Message("$hot", false)), "exempt:$hot", "required:hot", "fallback:hot");
         Expect(await Send(Message("!old", false)), "exempt:!old", "required:!old", "fallback:!old");
         var confirmation = false;
         using (bot.ReplySubscriptions.Subscribe("host",
@@ -377,20 +377,20 @@ internal static class MessagePrefixVerification
         {
             await Send(Message("hello", direct), "all:hello", "custom:hello", "override:hello", "events:hello",
                 "mixed:raw:hello");
-            await Send(Message("!hello", direct), "all:!hello", "custom:!hello", "override:!hello", "events:!hello",
-                "mixed:raw:!hello");
+            await Send(Message("!hello", direct), "all:hello", "custom:hello", "override:hello", "events:hello",
+                "mixed:raw:hello");
             await Send(Message("#help", direct), "all:#help", "custom:#help", "override:#help", "events:#help",
                 "mixed:raw:#help");
-            await Send(Message("!#help", direct), "all:!#help", "custom:!#help", "override:!#help", "events:!#help",
-                "mixed:raw:!#help", "mixed:command:#help", "command:#help");
+            await Send(Message("!#help", direct), "all:#help", "custom:#help", "override:#help", "events:#help",
+                "mixed:raw:#help", "mixed:command:#help", "command:#help");
             await Send(
                 Message("#help", direct) with { Segments = [new MentionSegment("bot"), new TextSegment("#help")] },
                 "all:#help", "custom:#help", "override:#help", "events:#help", "mixed:raw:#help", "mixed:command:#help",
                 "command:#help", "mention:#help");
             await Send(
                 Message("!#help", direct) with { Segments = [new MentionSegment("bot"), new TextSegment("!#help")] },
-                "all:!#help", "custom:!#help", "override:!#help", "events:!#help", "mixed:raw:!#help",
-                "mixed:command:#help", "command:#help", "mention:!#help");
+                "all:#help", "custom:#help", "override:#help", "events:#help", "mixed:raw:#help",
+                "mixed:command:#help", "command:#help", "mention:#help");
             // A MapMention callback receives any matching @ event, even when it mentions someone else.
             // Mentioning someone else does not bypass an ordinary command's prefix requirement.
             await Send(
@@ -401,7 +401,7 @@ internal static class MessagePrefixVerification
         }
 
         Console.WriteLine(
-            "PASS @ routes and raw listeners bypass prefixes; mixed plugins still gate commands; @ bot bypasses commands; @ others does not.");
+            "PASS @ routes and raw listeners bypass prefixes and receive prefixed messages stripped; mixed plugins still gate commands; @ bot bypasses commands; @ others does not.");
 
         return;
 

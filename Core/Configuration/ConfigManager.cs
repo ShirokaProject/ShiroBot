@@ -189,11 +189,11 @@ public class ApiHostConfig
 
 public class PluginRouteConfig
 {
-    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；留空不限制。命令匹配前去掉前缀；@ 机器人、整条消息监听和插件自定义判断不受限制。", Label = "消息触发前缀", Default = "",
+    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；留空不限制。对要求前缀的插件，带前缀的消息去掉前缀后再交给插件；@ 机器人、整条消息监听和插件自定义判断不要求前缀。", Label = "消息触发前缀", Default = "",
         Order = 11)]
     public string MessagePrefix { get; set; } = string.Empty;
 
-    [ConfigField("默认关闭。开启后，精确／前缀命令路由要求触发前缀；@ 机器人、整条消息监听和自定义判断照常接收原文。可按插件覆盖；前缀为空时不限制。", Label = "默认要求触发前缀",
+    [ConfigField("默认关闭。开启后，精确／前缀命令路由要求触发前缀，带前缀的消息去掉前缀后交给插件；@ 机器人、整条消息监听和自定义判断不要求前缀。可按插件覆盖；前缀为空时不限制。", Label = "默认要求触发前缀",
         Default = "false", Order = 10)]
     public bool RequireMessagePrefix { get; set; }
 
