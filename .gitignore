@@ -18,7 +18,3 @@ MilkyModelGenerator.Net/QBotSharp.Model/
 
 # Python release tooling cache
 __pycache__/
-
-# HostForge packages that eng/HostForge.targets downloads
-eng/hostforge/*.nupkg
-eng/hostforge/.download/

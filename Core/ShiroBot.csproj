@@ -11,13 +11,11 @@
         <Configurations>Debug;Release</Configurations>
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
         <!-- Framework-dependent hosts accept every .NET 11 patch, regardless of the build SDK. -->
+        <TargetLatestRuntimePatch Condition="'$(SelfContained)' != 'true'">false</TargetLatestRuntimePatch>
+        <RuntimeFrameworkVersion Condition="'$(SelfContained)' != 'true'">11.0.0</RuntimeFrameworkVersion>
         <RollForward>LatestPatch</RollForward>
-        <!-- Self-contained hosts run on the singlefilehost of ChsBuffer.Avalonia.AppHost, which embeds the native
-             runtime it was linked with, so they bundle the managed frameworks of that same runtime: 11.0.0 for
-             Microsoft.NETCore.App (the package fails the build with HFAVA001 otherwise) and, with the latest patch
-             off, the matching Microsoft.AspNetCore.App. Update both with the package. -->
-        <TargetLatestRuntimePatch>false</TargetLatestRuntimePatch>
-        <RuntimeFrameworkVersion>11.0.0</RuntimeFrameworkVersion>
+        <!-- Self-contained hosts still bundle the latest runtime patch supplied by the SDK. -->
+        <TargetLatestRuntimePatch Condition="'$(SelfContained)' == 'true'">true</TargetLatestRuntimePatch>
         <!-- Prefer Workstation GC for typical bot workloads and lower idle memory use. -->
         <ServerGarbageCollection Condition="'$(ServerGarbageCollection)' == ''">false</ServerGarbageCollection>
     </PropertyGroup>
@@ -54,8 +52,6 @@
         <DebuggerSupport>true</DebuggerSupport>
         <StackTraceSupport>true</StackTraceSupport>
     </PropertyGroup>
-
-    <Import Project="$(MSBuildThisFileDirectory)../eng/HostForge.targets" />
 
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
