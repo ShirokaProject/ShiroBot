@@ -2678,6 +2678,13 @@ try
         new HostUpdateResume(Path.Combine(tempRoot, "auto-update", "broken.json")).Take() is not null ||
         File.Exists(Path.Combine(tempRoot, "auto-update", "broken.json")))
         throw new InvalidOperationException("A cleared or unreadable host update resume state was resumed or kept.");
+    new HostUpdateResume(resumePath).Save(new HostUpdateResumeState(null, null, startedAt,
+        [new StagedComponentUpdate(StagedComponentUpdate.Plugin, "ShiroStatus", "1.0.2", "1.0.3"),
+            new StagedComponentUpdate(StagedComponentUpdate.Adapter, "onebot", "1.1.0", "1.2.0")]));
+    if (new HostUpdateResume(resumePath).Take() is not { From: null, To: null, Staged: [var resumedPlugin, var resumedAdapter] } ||
+        resumedPlugin != new StagedComponentUpdate(StagedComponentUpdate.Plugin, "ShiroStatus", "1.0.2", "1.0.3") ||
+        resumedAdapter.Label != "适配器 onebot" || resumedAdapter.To != "1.2.0")
+        throw new InvalidOperationException("Staged plugin and adapter updates did not survive a restart.");
     Console.WriteLine("Host update resume state verification passed.");
 
     var autoUpdateState = Path.Combine(tempRoot, "auto-update", "last-run");

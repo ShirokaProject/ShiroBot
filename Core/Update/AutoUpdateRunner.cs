@@ -39,9 +39,12 @@ internal sealed class AutoUpdateRunner(
     private readonly List<string> _report = [];
     private readonly List<string> _updated = [];
 
-    // Set while resuming after a host update, so the summary leads with it and lists the rest as updated along with it.
+    // Set while resuming after a restart, so the summary leads with how the restart went.
     private string? _hostLine;
-    private bool _hostUpdated;
+    private string _updatedHeading = UpdatedHeading;
+    private string? _failedHeading;
+
+    private const string UpdatedHeading = "以下插件和适配器已更新：";
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -60,8 +63,9 @@ internal sealed class AutoUpdateRunner(
     }
 
     /// <summary>
-    ///     Finishes a run that a host update interrupted, if there is one: once the startup plugin load is done,
-    ///     reports whether the host came up on the new version, then updates plugins and adapters as the run would have.
+    ///     Finishes a run that a restart interrupted, if there is one. Once the startup plugin load is done, it reports
+    ///     whether the host and the staged plugins and adapters came up on their new versions; after a host update it
+    ///     then updates plugins and adapters as the run would have.
     /// </summary>
     public async Task ResumeAsync(CancellationToken cancellationToken)
     {
@@ -70,14 +74,27 @@ internal sealed class AutoUpdateRunner(
         try
         {
             await eventDispatcher.InitialPluginsReady.WaitAsync(cancellationToken).ConfigureAwait(false);
-            var current = HostSelfUpdater.CurrentVersion;
-            _hostUpdated = !Updater.IsNewerVersion(state.To, current);
-            _hostLine = _hostUpdated
-                ? $"主程序已从 {state.From} 更新到 {current}，更新成功。"
-                : $"主程序重启后仍是 {current}，更新到 {state.To} 没有生效，请检查宿主日志。";
-            if (_hostUpdated) BotLog.Info(_hostLine);
-            else BotLog.Warning(_hostLine);
-            await UpdateComponentsAsync(cancellationToken).ConfigureAwait(false);
+            if (state.To is { } target)
+            {
+                var current = HostSelfUpdater.CurrentVersion;
+                var updated = !Updater.IsNewerVersion(target, current);
+                _hostLine = updated
+                    ? $"主程序已从 {state.From} 更新到 {current}，更新成功。"
+                    : $"主程序重启后仍是 {current}，更新到 {target} 没有生效，请检查宿主日志。";
+                if (updated) _updatedHeading = "以下插件和适配器也一并更新了：";
+                if (updated) BotLog.Info(_hostLine);
+                else BotLog.Warning(_hostLine);
+            }
+
+            if (state.Staged is { Count: > 0 } staged)
+            {
+                _updatedHeading = "重启完成，" + UpdatedHeading;
+                _failedHeading = "重启完成，但以下更新没有成功：";
+                ReportStaged(staged);
+            }
+
+            if (state.To is not null) await UpdateComponentsAsync(cancellationToken).ConfigureAwait(false);
+            else await SendReportAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
         {
@@ -87,10 +104,43 @@ internal sealed class AutoUpdateRunner(
         }
     }
 
+    /// <summary>
+    ///     Checks each staged plugin and adapter against what the restarted host is running: on its new version it
+    ///     counts as updated, otherwise the replacement or the load failed and the owners are told which.
+    /// </summary>
+    private void ReportStaged(IReadOnlyList<StagedComponentUpdate> staged)
+    {
+        var plugins = pluginManager.GetLoadedPluginSnapshot();
+        var adapters = adapterPackages.List();
+        foreach (var item in staged)
+        {
+            string? running;
+            string? loadError = null;
+            if (item.Kind == StagedComponentUpdate.Adapter)
+            {
+                running = adapters.FirstOrDefault(package =>
+                    string.Equals(package.Id, item.Id, StringComparison.OrdinalIgnoreCase))?.Version;
+            }
+            else
+            {
+                running = plugins.FirstOrDefault(plugin =>
+                    string.Equals(plugin.Name, item.Id, StringComparison.OrdinalIgnoreCase))?.Version;
+                if (running is null) loadError = pluginManager.GetPluginLoadError(item.Id);
+            }
+
+            if (running is not null && !Updater.IsNewerVersion(item.To, running))
+                Updated(item.Label, item.From, running);
+            else if (running is not null)
+                Report($"{item.Label} 替换为 {item.To} 失败，仍是 {running}，下次启动会重试，详情见宿主日志。", true);
+            else
+                Report($"{item.Label} {item.To} 加载失败: {loadError ?? "请检查宿主日志。"}", true);
+        }
+    }
+
     /// <summary>Updates plugins and adapters, then sends the report, restarting for staged updates if allowed.</summary>
     private async Task UpdateComponentsAsync(CancellationToken cancellationToken)
     {
-        var pending = new List<string>();
+        var pending = new List<StagedComponentUpdate>();
         if (config.Update.Plugins) await UpdatePluginsAsync(pending, cancellationToken).ConfigureAwait(false);
         if (config.Update.Adapters) await UpdateAdaptersAsync(pending, cancellationToken).ConfigureAwait(false);
 
@@ -101,7 +151,7 @@ internal sealed class AutoUpdateRunner(
             return;
         }
 
-        var names = string.Join("、", pending);
+        var names = string.Join("、", pending.Select(item => $"{item.Label} {item.To}"));
         if (!config.Update.RestartOnPending)
         {
             Report($"{names} 无法热替换，新版本已暂存，需要重启宿主完成更新。", true);
@@ -109,10 +159,12 @@ internal sealed class AutoUpdateRunner(
             return;
         }
 
-        Report($"{names} 无法热替换，正在重启宿主完成更新…", true);
+        Report($"{names} 无法热替换，新版本已暂存，正在重启宿主完成更新…", true);
         await SendReportAsync(cancellationToken).ConfigureAwait(false);
+        hostUpdateResume.Save(new HostUpdateResumeState(null, null, DateTimeOffset.UtcNow, pending));
         var restart = powerControl.Restart();
         if (restart.Ok) return;
+        hostUpdateResume.Clear();
         BotLog.Error("自动重启失败，请手动重启宿主: " + restart.Message);
         await notifyOwners("【ShiroBot 自动更新】自动重启失败，请手动重启宿主: " + restart.Message, null, cancellationToken)
             .ConfigureAwait(false);
@@ -150,7 +202,8 @@ internal sealed class AutoUpdateRunner(
         _report.Clear();
         _updated.Clear();
         _hostLine = null;
-        _hostUpdated = false;
+        _updatedHeading = UpdatedHeading;
+        _failedHeading = null;
     }
 
     /// <summary>
@@ -164,13 +217,14 @@ internal sealed class AutoUpdateRunner(
         if (_hostLine is not null) lines.Add(_hostLine);
         if (_updated.Count > 0)
         {
-            lines.Add(_hostUpdated ? "以下插件和适配器也一并更新了：" : "以下插件和适配器已更新：");
+            lines.Add(_updatedHeading);
             lines.AddRange(_updated.Select(line => "· " + line));
         }
 
         if (_report.Count > 0)
         {
             if (lines.Count > 1) lines.Add("另外：");
+            else if (_failedHeading is not null) lines.Add(_failedHeading);
             lines.AddRange(_report.Select(line => "· " + line));
         }
 
@@ -178,7 +232,7 @@ internal sealed class AutoUpdateRunner(
         await notifyOwners(string.Join("\n", lines), null, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task UpdatePluginsAsync(List<string> pending, CancellationToken cancellationToken)
+    private async Task UpdatePluginsAsync(List<StagedComponentUpdate> pending, CancellationToken cancellationToken)
     {
         foreach (var plugin in pluginManager.GetLoadedPluginSnapshot()
                      .Where(plugin => !string.IsNullOrWhiteSpace(plugin.GithubRepo)))
@@ -212,9 +266,10 @@ internal sealed class AutoUpdateRunner(
                     continue;
                 }
 
-                Report(result.Message, true);
+                BotLog.Warning(result.Message);
                 runtimeState.RecommendRestart("plugin-update:" + plugin.Name, result.Message);
-                pending.Add("插件 " + plugin.Name);
+                pending.Add(new StagedComponentUpdate(StagedComponentUpdate.Plugin, plugin.Name, plugin.Version,
+                    update.LatestVersion));
             }
             catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
             {
@@ -223,7 +278,7 @@ internal sealed class AutoUpdateRunner(
         }
     }
 
-    private async Task UpdateAdaptersAsync(List<string> pending, CancellationToken cancellationToken)
+    private async Task UpdateAdaptersAsync(List<StagedComponentUpdate> pending, CancellationToken cancellationToken)
     {
         var installed = adapterPackages.List();
         if (installed.Count == 0) return;
@@ -271,8 +326,9 @@ internal sealed class AutoUpdateRunner(
                     cancellationToken).ConfigureAwait(false);
                 if (outcome.PendingRestart)
                 {
-                    Report($"适配器 {package.Id} 当前版本无法热替换，{probe.Version} 已暂存，将在重启宿主时替换。", true);
-                    pending.Add("适配器 " + package.Id);
+                    BotLog.Warning($"适配器 {package.Id} 当前版本无法热替换，{probe.Version} 已暂存，将在重启宿主时替换。");
+                    pending.Add(new StagedComponentUpdate(StagedComponentUpdate.Adapter, package.Id, package.Version,
+                        probe.Version));
                 }
                 else if (outcome.Result!.StartError is { } startError)
                 {
