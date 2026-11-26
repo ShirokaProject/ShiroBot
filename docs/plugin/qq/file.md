@@ -401,6 +401,96 @@ Task<string> ForwardGroupFileToFriendAsync(
 
 `Task<string>`。返回新的文件 ID。
 
+## UploadFlashFilesAsync
+
+上传文件并创建闪传分享。上传进度通过 `QEventKinds.FlashFileTransfer` 事件上报。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<QFlashShare> UploadFlashFilesAsync(
+    IReadOnlyList<string> fileUris,
+    string? title = null,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `fileUris` | `IReadOnlyList<string>` | `必传` | 要上传的文件，支持 http(s)://、file://、base64://。 |
+| `title` | `string?` | `null` | 闪传标题；null 由协议端决定。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QFlashShare>`。返回文件集 ID、分享链接和过期时间。
+
+## DownloadFlashFilesAsync
+
+开始下载闪传文件集。方法在下载开始后返回；进度和完成通过 `QEventKinds.FlashFileTransfer` 事件上报，完成事件的文件列表带本地路径。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task DownloadFlashFilesAsync(
+    string shareLinkOrFileSetId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `shareLinkOrFileSetId` | `string` | `必传` | 分享链接（http(s):// 开头）或文件集 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task`。下载开始后完成，不等下载结束。
+
+## GetFlashFileSetAsync
+
+获取闪传文件集详情。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<QFlashFileSet> GetFlashFileSetAsync(
+    string shareLinkOrFileSetId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `shareLinkOrFileSetId` | `string` | `必传` | 分享链接（http(s):// 开头）或文件集 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QFlashFileSet>`。返回标题、分享链接、总大小和文件列表。
+
+## ReshareFlashFilesAsync
+
+重新分享还没过期的闪传文件集。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<QFlashShare> ReshareFlashFilesAsync(
+    string fileSetId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `fileSetId` | `string` | `必传` | 文件集 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QFlashShare>`。返回新的分享链接和过期时间。
+
 ## 相关类型
 
 见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。

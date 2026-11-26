@@ -348,6 +348,41 @@ public interface IQFileApi
     {
         throw new NotSupportedException();
     }
+
+    /// <summary>上传文件并创建闪传分享，返回文件集 ID、分享链接和过期时间。上传进度通过 <see cref="QEventKinds.FlashFileTransfer" /> 事件上报。</summary>
+    /// <param name="fileUris">要上传的文件，支持 http(s)://、file://、base64://。</param>
+    /// <param name="title">闪传标题，null 由协议端决定。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<QFlashShare> UploadFlashFilesAsync(IReadOnlyList<string> fileUris, string? title = null,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>开始下载闪传文件集。方法在下载开始后返回；进度和完成（含本地路径）通过 <see cref="QEventKinds.FlashFileTransfer" /> 事件上报。</summary>
+    /// <param name="shareLinkOrFileSetId">分享链接（http(s):// 开头）或文件集 ID。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task DownloadFlashFilesAsync(string shareLinkOrFileSetId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>获取闪传文件集详情。</summary>
+    /// <param name="shareLinkOrFileSetId">分享链接（http(s):// 开头）或文件集 ID。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<QFlashFileSet> GetFlashFileSetAsync(string shareLinkOrFileSetId,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>重新分享还没过期的闪传文件集，返回新的分享链接和过期时间。</summary>
+    /// <param name="fileSetId">文件集 ID。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<QFlashShare> ReshareFlashFilesAsync(string fileSetId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
 }
 
 /// <summary>QQ 账号/资料扩展服务。</summary>

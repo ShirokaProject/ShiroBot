@@ -195,6 +195,62 @@ public sealed record QGroupFolder
 }
 ```
 
+### QFlashFile
+
+QQ Model `1.2.0.0` 新增。
+
+```csharp
+/// <summary>闪传文件集里的一个文件。</summary>
+public sealed record QFlashFile(string Name, long Size)
+{
+    /// <summary>本地路径；下载完成后由适配器填写，其他时候为 null。</summary>
+    public string? Path { get; init; }
+}
+```
+
+### QFlashShare
+
+QQ Model `1.2.0.0` 新增。
+
+```csharp
+/// <summary>闪传分享：上传或重新分享后得到的文件集 ID、分享链接和过期时间。</summary>
+public sealed record QFlashShare(string FileSetId, string ShareLink, DateTimeOffset ExpiresAt);
+```
+
+### QFlashFileSet
+
+QQ Model `1.2.0.0` 新增。
+
+```csharp
+/// <summary>闪传文件集详情。</summary>
+public sealed record QFlashFileSet
+{
+    public required string FileSetId { get; init; }
+    public string? Title { get; init; }
+    public required string ShareLink { get; init; }
+
+    /// <summary>文件总大小（字节）。</summary>
+    public long TotalSize { get; init; }
+
+    public IReadOnlyList<QFlashFile> Files { get; init; } = [];
+}
+```
+
+### QFlashTransferState
+
+QQ Model `1.2.0.0` 新增。
+
+```csharp
+/// <summary>闪传传输阶段。</summary>
+public enum QFlashTransferState
+{
+    Uploading = 0,
+    Uploaded = 1,
+    Downloading = 2,
+    Downloaded = 3
+}
+```
+
 ### QEssenceMessage
 
 ```csharp
@@ -833,6 +889,19 @@ public sealed record QIncomingFile(string FileId, string FileName, long FileSize
 }
 ```
 
+### QIncomingFlashFile
+
+闪传文件，QQ Model `1.2.0.0` 新增。
+
+```csharp
+/// <summary>闪传文件（收到的闪传分享）。用 <see cref="IQFileApi.GetFlashFileSetAsync" /> 查看详情。</summary>
+public sealed record QIncomingFlashFile(string FileSetId, string Title) : QIncomingSegment
+{
+    /// <summary>协议原样提供的场景类型，含义未公开。</summary>
+    public int SceneType { get; init; }
+}
+```
+
 ### QIncomingForward
 
 对应主消息段：[`RawSegment`](../segments#rawsegment)
@@ -1071,6 +1140,8 @@ public static class QEventKinds
     public const string GroupJoinRequest = "group_join_request";
     public const string GroupDisband = "group_disband";
     public const string PeerPinChange = "peer_pin_change";
+    /// <summary>闪传上传或下载的进度与完成。Raw 为 <see cref="QFlashFileTransfer"/>。</summary>
+    public const string FlashFileTransfer = "flash_file_transfer";
 }
 ```
 
@@ -1132,6 +1203,36 @@ public sealed record QFriendNudge : QEventPayload
 
     /// <summary>戳一戳动作图片 URL(存在时用于取代动作提示文本)。</summary>
     public string? DisplayActionImgUrl { get; init; }
+}
+```
+
+### QFlashFileTransfer
+
+QQ Model `1.2.0.0` 新增，Kind 为 `QEventKinds.FlashFileTransfer`。
+
+```csharp
+/// <summary>闪传上传或下载的进度与完成。</summary>
+public sealed record QFlashFileTransfer : QEventPayload
+{
+    public required QFlashTransferState State { get; init; }
+    public required string FileSetId { get; init; }
+    public string? Title { get; init; }
+    public string? ShareLink { get; init; }
+
+    /// <summary>文件列表；下载完成时带本地路径。</summary>
+    public IReadOnlyList<QFlashFile> Files { get; init; } = [];
+
+    /// <summary>已上传或已下载的字节数，传输中才有。</summary>
+    public long? TransferredSize { get; init; }
+
+    /// <summary>总字节数。</summary>
+    public long? TotalSize { get; init; }
+
+    /// <summary>当前速度（字节/秒）。</summary>
+    public long? Speed { get; init; }
+
+    /// <summary>预计剩余时间。</summary>
+    public TimeSpan? RemainingTime { get; init; }
 }
 ```
 

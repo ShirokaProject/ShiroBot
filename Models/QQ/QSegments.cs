@@ -55,6 +55,13 @@ public sealed record QIncomingFile(string FileId, string FileName, long FileSize
     public string? FileHash { get; init; }
 }
 
+/// <summary>闪传文件（收到的闪传分享）。用 <see cref="IQFileApi.GetFlashFileSetAsync" /> 查看详情。</summary>
+public sealed record QIncomingFlashFile(string FileSetId, string Title) : QIncomingSegment
+{
+    /// <summary>协议原样提供的场景类型，含义未公开。</summary>
+    public int SceneType { get; init; }
+}
+
 /// <summary>合并转发。</summary>
 public sealed record QIncomingForward(string ForwardId) : QIncomingSegment
 {
