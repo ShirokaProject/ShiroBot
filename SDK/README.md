@@ -1,443 +1,66 @@
 # ShiroBot.SDK
 
-`ShiroBot.SDK` provides the core contracts and helper APIs for ShiroBot plugins and adapters. The
-same package includes the built-in QQ, Discord, and Telegram Model contract assemblies; component
-outputs exclude these shared DLLs because the host supplies their runtime copies.
+Contracts and helpers for building [ShiroBot](https://github.com/ShirokaProject/ShiroBot) plugins and
+adapters. The package also contains the built-in QQ, Discord and Telegram Model contracts and the Avalonia
+rendering references, so one package reference is all a component needs.
 
-## Install
+The host supplies these assemblies at runtime; component outputs do not ship them.
 
-```xml
-<PackageReference Include="ShiroBot.SDK" Version="1.0.4" />
+## Getting started
+
+Create a project from the templates (recommended):
+
+```bash
+dotnet new install ShiroBot.Templates
+dotnet new shirobot-plugin -n MyPlugin
+```
+
+Or reference the package directly:
+
+```bash
+dotnet add package ShiroBot.SDK
+```
+
+A minimal plugin:
+
+```csharp
+using ShiroBot.SDK.Core;
+using ShiroBot.SDK.Plugin;
+
+[BotPlugin("HelloPlugin", Name = "HelloPlugin", Version = "1.0.0")]
+public sealed class HelloPlugin : PluginBase
+{
+    protected override void ConfigureRoutes()
+    {
+        AllCommands.MapExact("ping", message => Context.Message.ReplyAsync(message, "pong"));
+    }
+}
 ```
 
 ## Version and ABI
 
-The current source product version is **1.0.4**. Package versions follow the host product version;
-shared assemblies maintain their own ABI versions.
+Package versions follow the host version. Each shared assembly keeps its own ABI version:
 
 | ShiroBot.SDK (NuGet) | SDK ABI | QQ Model ABI | Discord Model ABI | Telegram Model ABI |
 | --- | --- | --- | --- | --- |
+| 1.0.5 | 1.5.0.0 | 1.2.0.0 | 1.1.0.0 | 1.1.0.0 |
 | 1.0.4 | 1.5.0.0 | 1.1.0.0 | 1.1.0.0 | 1.1.0.0 |
 | 1.0.3 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 | 1.0.2 | 1.4.0.0 | 1.0.0.0 | 1.0.0.0 | 1.0.0.0 |
 
-For each SDK or built-in Model assembly a component references, the ABI major version must match
-and the host-provided assembly version must be at least the referenced version. The host checks
-actual DLL references when loading plugins and adapters. Package versions do not replace these
-assembly-level checks.
-
-`ShiroBot.SDK` includes the Avalonia rendering contracts, compile references and AXAML build
-support. Plugins only need this single package, including plugins that render Avalonia controls.
-
-## Current release features
-
-Version 1.0.4 extends the Telegram Model (ABI 1.1.0.0) with chats, members, permissions, forum topics,
-invite links, polls, locations, media groups, reply keyboards, inline mode, payments, typed platform
-events and a raw Bot API call, and the Discord Model (ABI 1.1.0.0) with guilds, channels, roles,
-members, permissions, embeds, components, polls, slash commands, interaction responses, modals,
-presence, typed Gateway events and raw REST/Gateway access. Both Models serve bot and user-account
-adapters under one platform ID. The QQ Model (ABI 1.1.0.0) adds group blacklists, the bot's group state,
-richer group and user profiles and official image materials. The host rolls back plugin updates that fail
-to load and removes plugins and adapters reliably. SDK ABI 1.5.0.0 adds message editing, batch deletion, pinning, typing indicators, member bans and
-`MessageEditedEvent`; the new service members have default implementations, so existing adapters keep loading.
-
-Version 1.0.3 targets .NET 11 and adds adapter Dashboard pages and actions, SSE log streaming,
-persistent logs and configurable message prefixes. SDK and built-in Model ABI versions remain unchanged.
-
-Version 1.0.2 includes plugin and adapter lifetime scopes, named JSON services, the plugin event bus,
-and the `[PluginContract]` / `[PluginJson]` source generator. Consumers import provider DLLs as build
-inputs; generated contracts exchange JSON without sharing plugin assemblies at runtime.
-Plugins register authenticated Dashboard component pages with `Context.Dashboard.AddPage` and `Ui`.
-
-**Breaking change:** `IPluginServices` no longer inherits `IServiceProvider` and removes
-`RegisterSingleton<T>`, `GetService<T>` and `GetRequiredService<T>`. Components using those methods
-must migrate to named JSON services or generated contracts and rebuild. Assembly-version checks
-alone do not establish compatibility with removed members.
-
-## Plugin Usage
-
-Most plugins should inherit `PluginBase`.
-
-```csharp
-using ShiroBot.Model.Common;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Core;
-using ShiroBot.SDK.Plugin;
-
-[BotPlugin(
-    "HelloPlugin",
-    Name = "HelloPlugin",
-    Version = "1.0.0",
-    Description = "Example plugin",
-    GithubRepo = "example/HelloPlugin",
-    IsPluginSingleFile = false)]
-public sealed class HelloPlugin : PluginBase
-{
-    public override string Name => "HelloPlugin";
-
-    protected override void ConfigureRoutes()
-    {
-        GroupCommands.MapPrefix("#hello", async message =>
-        {
-            await Context.Message.ReplyAsync(message, "hello");
-        });
-
-        BotLog.Info("HelloPlugin loaded.");
-    }
-}
-```
-
-## Lifecycle
-
-Override `ConfigureRoutes()` for synchronous command/event route registration. Override
-`LoadAsync()` only when the plugin has real asynchronous initialization, and override
-`OnUnloadAsync()` for cleanup.
-
-```csharp
-protected override void ConfigureRoutes()
-{
-    GroupCommands.MapExact("#ping", HandlePingAsync);
-    GroupCommands.MapPrefix("#echo", HandleEchoAsync);
-}
-
-protected override async Task LoadAsync()
-{
-    await InitializeDatabaseAsync();
-}
-```
-
-`ConfigureRoutes()` runs after `Context` is assigned and before `LoadAsync()`. Existing plugins
-that register routes in `LoadAsync()` remain compatible. `PluginBase` automatically clears
-command routes, event routes and `Context` after unload.
-
-`OnUnloadAsync()` is called for hot unload and plugin updates. Process exit does not walk every
-plugin, so persistent state should be saved during normal operation rather than only on unload.
-
-## Calling Other Plugins
-
-Plugins provide and call services by name, and publish and subscribe to events, without sharing
-assemblies or objects; either side can unload and update on its own. See
-[Calling other plugins](../docs/plugin/interop.md).
-
-## Opt-in plugin packaging
-
-When a plugin or adapter references the published `ShiroBot.SDK` NuGet package, its
-`buildTransitive` targets can prepare a single-DLL component when the project explicitly opts in:
-
-```xml
-<PropertyGroup>
-  <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
-</PropertyGroup>
-```
-
-- assemblies carrying `BotPluginAttribute` or `BotAdapterAttribute` are detected automatically;
-- managed NuGet/project dependencies are merged into the plugin DLL with ILRepack;
-- host-shared contracts and rendering assemblies are not merged;
-- native NuGet package ID, exact version, SHA512, RID and asset paths are embedded as
-  `ShiroBot.PluginRuntimeManifest.json`;
-- native files and merged managed dependency DLLs are removed from the plugin output;
-- the generated `.deps.json` is removed after the plugin has been bundled.
-- Avalonia, SkiaSharp, HarfBuzzSharp and MicroCom managed/native/runtime assets are removed from
-  plugin build and publish outputs because the host supplies them.
-
-At runtime ShiroBot reads the embedded manifest without executing plugin code, downloads the
-required NuGet package, verifies SHA512, extracts only the best matching RID assets and deletes
-the temporary `.nupkg`. Extracted native files are cached under the plugin's `.shirobot/native`
-directory.
-
-No ILRepack target or native manifest needs to be copied into each component project. Packaging is
-disabled by default so ordinary libraries can reference the runtime SDK without changing their output.
-The enabled packaging flow can be customized when required:
-
-```xml
-<PropertyGroup>
-  <ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>
-
-  <!-- Previewer support changes OutputType/StartupObject and is separately opt-in. -->
-  <ShiroBotAvaloniaPreviewerSupport>true</ShiroBotAvaloniaPreviewerSupport>
-
-  <!-- Defaults to the NuGet.org v3 flat-container endpoint. -->
-  <ShiroBotNativePackageSource>https://packages.example.com/v3-flatcontainer</ShiroBotNativePackageSource>
-
-  <!-- Semicolon-separated assembly/package prefixes supplied by the host. -->
-  <ShiroBotPluginSharedAssemblies>Example.Shared</ShiroBotPluginSharedAssemblies>
-  <ShiroBotSharedNativePackagePrefixes>$(ShiroBotSharedNativePackagePrefixes);Example.Native.Host</ShiroBotSharedNativePackagePrefixes>
-</PropertyGroup>
-```
-
-Automatic targets are a NuGet `buildTransitive` feature. A source-level `ProjectReference` to
-`ShiroBot.SDK.csproj` does not import the packed targets; use the SDK package when validating the
-final distributable plugin.
-
-Avalonia compile references and AXAML build support flow from `ShiroBot.SDK`. The host intentionally
-does not enable `PublishTrimmed`; plugin discovery, configuration
-metadata and collectible loading use reflection paths that are not trimming-safe.
-
-## Plugin Actions
-
-Implement `IPluginActionProvider` to expose operations without handing plugin code an ASP.NET
-`HttpContext`. Each action is declared once and reachable from both front ends: the authenticated
-dashboard, and the host console as `action <plugin> <id>`.
-
-```csharp
-public IReadOnlyList<PluginActionDescriptor> Actions { get; } =
-[
-    new("reload", "Reload data", Tone: "primary")
-];
-
-public Task<PluginActionResult> ExecuteActionAsync(
-    string actionId,
-    CancellationToken cancellationToken = default) =>
-    Task.FromResult(new PluginActionResult(true, "Reloaded", Refresh: true));
-```
-
-## Command Routes
-
-`PluginBase` exposes two command routers:
-
-```csharp
-protected CommandRouter<GroupIncomingMessage> GroupCommands { get; }
-protected CommandRouter<FriendIncomingMessage> FriendCommands { get; }
-```
-
-Supported route types:
-
-```csharp
-GroupCommands.MapExact("#ping", HandlePingAsync);
-GroupCommands.MapPrefix("#echo", HandleEchoAsync);
-GroupCommands.MapAll(HandleAnyGroupMessageAsync);
-GroupCommands.MapWhen(message => message.HasMention(), HandleMentionAsync);
-GroupCommands.MapMention(botUserId, HandleMentionAsync);
-GroupCommands.MapReply(HandleReplyAsync);
-```
-
-Example handler:
-
-```csharp
-private Task HandlePingAsync(GroupIncomingMessage message) =>
-    Context.Message.ReplyAsync(message, "pong");
-```
-
-## Event Routes
-
-Map strongly typed events in `ConfigureRoutes()`.
-
-```csharp
-protected override void ConfigureRoutes()
-{
-    Events.Map<GroupMemberIncreaseEvent>(HandleMemberIncreaseAsync);
-    Events.MapWhen<GroupMessageReactionEvent>(e => e.IsAdd, HandleReactionAddAsync);
-}
-```
-
-`OnFriendMessageAsync` and `OnGroupMessageAsync` remain available for whole-message broadcasts.
-Use `Events.Map<TEvent>()` for every other event, including newly generated Model events.
-
-## Messages
-
-`Context.Message` exposes adapter message APIs plus helper overloads.
-
-```csharp
-await Context.Message.SendPrivateMessageAsync(userId, "hello");
-await Context.Message.SendGroupMessageAsync(groupId, "hello");
-await Context.Message.ReplyAsync(friendMessage, "pong");
-await Context.Message.ReplyAsync(groupMessage, "pong");
-await Context.Message.QuoteReplyAsync(groupMessage, "quoted reply");
-```
-
-Subscribe to replies for a sent message (default: automatically dispose on reply):
-
-```csharp
-var sent = await Context.Message.SendGroupMessageAsync(groupId, "reply to me");
-
-Context.Message.SubscribeReply(
-    sent.Reference ?? throw new InvalidOperationException("Send failed"),
-    TimeSpan.FromMinutes(5),
-    async reply => await Context.Message.ReplyAsync(reply, "got it"));
-```
-
-Pass `disposeOnReply: false` to keep listening until the timeout expires or the subscription is disposed manually:
-
-```csharp
-var subscription = Context.Message.SubscribeReply(
-    sent.Reference ?? throw new InvalidOperationException("Send failed"),
-    TimeSpan.FromMinutes(5),
-    async reply => await Context.Message.ReplyAsync(reply, "still listening"),
-    disposeOnReply: false);
-```
-
-Subscribe only to replies containing a matching text segment:
-
-```csharp
-Context.Message.SubscribeReply(
-    sent.Reference ?? throw new InvalidOperationException("Send failed"),
-    "confirm",
-    TimeSpan.FromMinutes(5),
-    async reply => await Context.Message.ReplyAsync(reply, "confirmed"));
-```
-
-Send segments directly:
-
-```csharp
-await Context.Message.SendGroupMessageAsync(
-    groupId,
-    new TextOutgoingSegment("hello"),
-    new ImageOutgoingSegment(fileUri));
-```
-
-## Incoming Message Helpers
-
-```csharp
-var text = message.GetPlainText();
-var reply = message.GetReply();
-var mentioned = message.HasMention(userId);
-var mentionAll = message.HasMentionAll();
-```
-
-## Config
-
-Plugin config is stored at:
-
-```text
-plugins/<PluginFolder>/config.toml
-```
-
-Load and save:
-
-```csharp
-var config = Context.Config.Load<MyPluginConfig>();
-Context.Config.Save(config);
-```
-
-Top-level properties annotated with `ConfigFieldAttribute` are written as stable `#` comments above
-their snake_case TOML keys. Labels, descriptions, options, ranges and placeholders are included when
-present, and repeated saves do not stack duplicate comments.
-
-Watch for config changes:
-
-```csharp
-private IDisposable? _configWatcher;
-
-protected override Task LoadAsync()
-{
-    _configWatcher = Context.Config.Watch<MyPluginConfig>(updated =>
-    {
-        // Apply new config.
-    });
-
-    return Task.CompletedTask;
-}
-
-protected override Task OnUnloadAsync()
-{
-    _configWatcher?.Dispose();
-    return Task.CompletedTask;
-}
-```
-
-`Watch<T>()` returns an `IDisposable`; dispose it during unload to avoid leaking a `FileSystemWatcher`.
-
-## Logging
-
-Use `BotLog` inside plugin code. The host scopes plugin dispatches to the plugin logger.
-
-```csharp
-using ShiroBot.SDK.Abstractions;
-
-BotLog.Info("plugin loaded");
-BotLog.Warning("something happened");
-BotLog.Error("operation failed");
-```
-
-## Bot Context
-
-`IBotContext` provides:
-
-- `File`
-- `Friend`
-- `Group`
-- `Message`
-- `System`
-- `Updater`
-- `Config`
-- `OwnerList`
-- `AdminList`
-- `Render`
-
-Admin helpers:
-
-```csharp
-if (!Context.IsAdmin(message.Sender.Id))
-{
-    await Context.Message.ReplyAsync(message, "permission denied");
-    return;
-}
-```
-
-## Adapter Usage
-
-Adapters implement `IBotAdapter`.
-
-```csharp
-using ShiroBot.SDK.Adapter;
-using ShiroBot.SDK.Config;
-using ShiroBot.SDK.Core;
-using ShiroBot.SDK.Plugin;
-
-[BotAdapter(
-    "MyAdapter",
-    Name = "MyAdapter",
-    Version = "1.0.0",
-    Protocol = "example",
-    ProtocolVersionRange = ">=1.0 <2.0")]
-public sealed class MyAdapter : IBotAdapter
-{
-    public IConfigContext Config { get; set; } = null!;
-    public IConsoleLogger Logger { get; set; } = null!;
-
-    public IFileService File { get; } = new MyFileService();
-    public IFriendService Friend { get; } = new MyFriendService();
-    public IGroupService Group { get; } = new MyGroupService();
-    public IMessageService Message { get; } = new MyMessageService();
-    public ISystemService System { get; } = new MySystemService();
-    public IEventService Event { get; } = new MyEventService();
-
-    public Task StartAsync()
-    {
-        var config = Config.Load<MyAdapterConfig>();
-        Logger.Info("adapter started");
-        return Task.CompletedTask;
-    }
-}
-```
-
-Adapter config is loaded from the adapter directory through `Config.Load<T>()`.
-
-`BotAdapterAttribute` is required and is the only adapter metadata source. `IEventService` exposes
-one `Func<Event, Task>` event named `EventReceived`; adapters publish every concrete model event
-through that stream. `StartAsync()` and `StopAsync()` are optional no-op lifecycle hooks. Adapter ABI
-is versioned with the shared SDK contract; SDK and Model ABI major series must match.
-
-
-通用 Markdown、基础按钮、卡片、互动事件及 Reaction 契约已加入 SDK，详见 [通用富消息与互动](../docs/plugin/rich-messages.md)。
-
-
-## Host-managed temporary files (1.0)
-
-```csharp
-var temporary = Context.CreateTempDirectory(TimeSpan.FromMinutes(10));
-var filePath = Path.Combine(temporary.Path, "card.png");
-await File.WriteAllBytesAsync(filePath, pngBytes, cancellationToken);
-// Use/upload the file before temporary.ExpiresAt; the host owns deletion.
-```
-
-Each call creates a unique directory under host `cache/plugin-temp`, scoped to the plugin.
-Retention starts at directory creation and must be positive. The host checks expiry every 30 seconds,
-retries locked directories, cleans on shutdown, and removes all previous-process leftovers before
-loading plugins at the next startup (even if their retention has not expired). This is disposable
-working storage, not a persistent cache. Store subscriptions, credentials and other durable state
-in plugin data/config instead. Other folders under host cache are not purged by this service.
-
-Custom sandbox pages use `Context.Dashboard.AddWebPage(id, title, new DashboardWebPage(assembly, resourcePrefix))`. Embed a self-contained HTML entry and read extra assets through the page-scoped bridge. See `Templates/Examples/DashboardWeb` and the Dashboard pages documentation.
-
-`DashboardWebPage.RequestAsync` accepts a page-scoped ASP.NET `HttpRequest` and returns `IResult`, supporting multipart uploads, raw binary bodies, HTTP status codes and streamed/Range responses. The browser uses `ShiroBotDashboard.request(path, init)` to obtain a standard `Response`; `call()` remains available for small JSON operations.
+A component loads when, for every SDK or Model assembly it references, the ABI major version matches the
+host's and the host's version is not lower. The host checks the actual DLL references when loading.
+
+## Documentation
+
+- [Create a plugin](https://docs.shiroka.org/plugin/)
+- [Messages and events](https://docs.shiroka.org/plugin/routes-events)
+- [Message segments](https://docs.shiroka.org/plugin/segments)
+- [Config and context](https://docs.shiroka.org/plugin/context-config)
+- [Calling other plugins](https://docs.shiroka.org/plugin/interop)
+- [Dashboard pages](https://docs.shiroka.org/plugin/dashboard-pages)
+- [Single-DLL packaging and native dependencies](https://docs.shiroka.org/plugin/packaging-native)
+- [Platform Models: QQ, Discord, Telegram](https://docs.shiroka.org/plugin/models)
+- [Create an adapter](https://docs.shiroka.org/adapter/)
+- [ABI compatibility](https://docs.shiroka.org/plugin/api-compatibility)
+- [Changelog](https://docs.shiroka.org/changelog/)
