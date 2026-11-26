@@ -287,6 +287,25 @@ internal static class MessagePrefixVerification
         policy.Prefixes["command"] = "!!";
         Expect(await Send(Message("!!#help", true)), "command:#help");
 
+        // Several prefixes, separated by spaces: any one triggers, and the longest match wins
+        policy.Prefixes.Remove("command");
+        policy.PrefixModes.Remove("command");
+        policy.Prefixes.Remove("required");
+        policy.MessagePrefix = "! 。 !!";
+        Expect(await Send(Message("。multi", true)), "exempt:。multi", "required:multi", "fallback:multi");
+        Expect(await Send(Message("!multi", true)), "exempt:!multi", "required:multi", "fallback:multi");
+        Expect(await Send(Message("!!x", true)), "exempt:!!x", "required:x", "fallback:x");
+        Expect(await Send(Message("。 #help", false)), "command:#help");
+        Expect(await Send(Message("/none", true)), "exempt:/none", "required:/none", "fallback:/none");
+        policy.Prefixes["required"] = "bot: 小白";
+        Expect(await Send(Message("小白 你好", true)), "exempt:小白 你好", "required:你好", "fallback:小白 你好");
+        Expect(await Send(Message("。global", true)), "exempt:。global", "required:。global", "fallback:global");
+        policy.Prefixes.Remove("required");
+        policy.MessagePrefix = "!";
+        if (!PluginRouteConfig.ParsePrefixes(" ! !!  ! ").SequenceEqual(["!!", "!"]) ||
+            PluginRouteConfig.ParsePrefixes("  ").Length != 0)
+            throw new Exception("Prefix list parsing is wrong");
+
         var updated = new PluginRouteConfig
         {
             MessagePrefix = "$",

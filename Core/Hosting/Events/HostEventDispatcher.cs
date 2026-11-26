@@ -116,28 +116,41 @@ internal sealed class HostEventDispatcher(
         var deliveries = new Dictionary<LoadedPluginHandle, MessageEvent>();
         var mentionsSelf = !string.IsNullOrWhiteSpace(message.SelfId) && message.HasMention(message.SelfId);
         var commandViews =
-            new Dictionary<string, (MessageEvent? Command, MessageEvent Dispatch)>(StringComparer.Ordinal);
+            new Dictionary<string, (bool Stripped, MessageEvent? Command, MessageEvent Dispatch)>(StringComparer.Ordinal);
         foreach (var prefix in new HashSet<string>(routePolicy.GetMessagePrefixes(), StringComparer.Ordinal))
         {
-            var command = MessageTriggerPrefix.Strip(message, prefix) ?? (mentionsSelf ? message : null);
-            commandViews[prefix] = (command, MessageCommandPrefix.CreateDispatchView(message, command));
+            var stripped = MessageTriggerPrefix.Strip(message, prefix);
+            var command = stripped ?? (mentionsSelf ? message : null);
+            commandViews[prefix] = (stripped is not null, command, MessageCommandPrefix.CreateDispatchView(message, command));
+        }
+
+        // A plugin may accept several prefixes: the longest one the message starts with decides its view, falling back
+        // to its first prefix (an @-mention, or no command at all).
+        var pluginPrefixes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        string? PrefixFor(LoadedPluginHandle plugin)
+        {
+            if (pluginPrefixes.TryGetValue(plugin.Name, out var chosen)) return chosen;
+            chosen = null;
+            if (routePolicy.RequiresMessagePrefix(plugin.Name))
+            {
+                var prefixes = routePolicy.GetPluginPrefixes(plugin.Name);
+                chosen = prefixes.FirstOrDefault(prefix => commandViews.TryGetValue(prefix, out var view) && view.Stripped)
+                         ?? prefixes.FirstOrDefault();
+            }
+
+            return pluginPrefixes[plugin.Name] = chosen;
         }
 
         foreach (var plugin in MatchMessageHandlers(message, message.IsDirect))
-        {
-            var prefix = routePolicy.GetMessagePrefix(plugin.Name);
-            deliveries[plugin] = routePolicy.RequiresMessagePrefix(plugin.Name) &&
-                                 commandViews.TryGetValue(prefix, out var view)
+            deliveries[plugin] = PrefixFor(plugin) is { } prefix && commandViews.TryGetValue(prefix, out var view)
                 ? view.Dispatch
                 : message;
-        }
 
         foreach (var (prefix, view) in commandViews)
         {
             if (view.Command is null) continue;
             foreach (var plugin in MatchMessageHandlers(view.Command, view.Command.IsDirect))
-                if (routePolicy.RequiresMessagePrefix(plugin.Name) &&
-                    string.Equals(routePolicy.GetMessagePrefix(plugin.Name), prefix, StringComparison.Ordinal))
+                if (string.Equals(PrefixFor(plugin), prefix, StringComparison.Ordinal))
                     deliveries[plugin] = view.Dispatch;
         }
 

@@ -189,7 +189,7 @@ public class ApiHostConfig
 
 public class PluginRouteConfig
 {
-    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；留空不限制。设置后，精确／前缀命令路由要求带前缀，带前缀的消息去掉前缀后交给插件；@ 机器人、整条消息监听和自定义判断不要求前缀。可按插件改为不使用前缀或使用自己的前缀。", Label = "消息触发前缀", Default = "",
+    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；多个前缀用空格分开（例如 ! / 。），任选其一即可触发；留空不限制。设置后，精确／前缀命令路由要求带前缀，带前缀的消息去掉前缀后交给插件；@ 机器人、整条消息监听和自定义判断不要求前缀。可按插件改为不使用前缀或使用自己的前缀。", Label = "消息触发前缀", Default = "",
         Order = 11)]
     public string MessagePrefix { get; set; } = string.Empty;
 
@@ -219,6 +219,24 @@ public class PluginRouteConfig
                !string.IsNullOrWhiteSpace(prefix)
             ? prefix
             : MessagePrefix;
+    }
+
+    /// <summary>The prefixes that trigger <paramref name="pluginName" />, longest first so "!!" wins over "!".</summary>
+    public IReadOnlyList<string> GetPluginPrefixes(string pluginName)
+    {
+        return ParsePrefixes(GetMessagePrefix(pluginName));
+    }
+
+    /// <summary>Splits a prefix setting into its prefixes: separated by whitespace, duplicates dropped, longest first.</summary>
+    public static string[] ParsePrefixes(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? []
+            :
+            [
+                .. value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.Ordinal)
+                    .OrderByDescending(prefix => prefix.Length)
+            ];
     }
 
     public string GetPrefixMode(string pluginName)
@@ -260,13 +278,13 @@ public class PluginRouteConfig
 
     public IEnumerable<string> GetMessagePrefixes()
     {
-        if (!string.IsNullOrWhiteSpace(MessagePrefix)) yield return MessagePrefix;
+        foreach (var prefix in ParsePrefixes(MessagePrefix)) yield return prefix;
         // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
         // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var entry in PrefixModes)
-            if (GetPrefixMode(entry.Key) == "required" && Prefixes.TryGetValue(entry.Key, out var prefix) &&
-                !string.IsNullOrWhiteSpace(prefix))
-                yield return prefix;
+            if (GetPrefixMode(entry.Key) == "required" && Prefixes.TryGetValue(entry.Key, out var custom))
+                foreach (var prefix in ParsePrefixes(custom))
+                    yield return prefix;
     }
 
     public bool AllowsGroup(string pluginName, string groupId)
