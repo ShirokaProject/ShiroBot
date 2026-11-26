@@ -1950,6 +1950,13 @@ try
     externalPackages.SetPackageEnabled("verification", true);
     if (!externalPackages.GetInstance(first.Id)!.Active)
         throw new InvalidOperationException("Turning the package back on did not restore its instances.");
+    // Starting one instance of a package that is off turns the package on for that instance only.
+    externalPackages.SetInstanceEnabled(second.Id, true);
+    externalPackages.SetPackageEnabled("verification", false);
+    externalPackages.SetInstanceEnabled(first.Id, true);
+    externalPackages.EnablePackageForInstance(externalPackages.GetInstance(first.Id)!);
+    if (!externalPackages.GetInstance(first.Id)!.Active || externalPackages.GetInstance(second.Id)!.Enabled)
+        throw new InvalidOperationException("Starting one instance of a disabled package started its other instances too.");
     var firstInstanceId = first.Id;
     AssertThrows<InvalidOperationException>(() =>
         externalPackages.UpdateInstance(firstInstanceId, "SECOND-instance", null));

@@ -193,6 +193,19 @@ internal sealed class AdapterPackageManager(string adapterRoot, string? coreConf
         else AdapterInstanceStore.Update(instance.ConfigPath, id, item => item.Enabled = enabled);
     }
 
+    /// <summary>
+    ///     Turns a disabled package on for one of its instances: the others were not running while it was off, so
+    ///     they are switched off first instead of starting with the package at the next start.
+    /// </summary>
+    public void EnablePackageForInstance(InstalledAdapterInstance instance)
+    {
+        foreach (var other in ListInstances().Where(item =>
+                     string.Equals(item.PackageId, instance.PackageId, StringComparison.OrdinalIgnoreCase) &&
+                     !string.Equals(item.Id, instance.Id, StringComparison.OrdinalIgnoreCase) && item.Enabled))
+            SetInstanceEnabled(other.Id, false);
+        SetPackageEnabled(instance.PackageId, true);
+    }
+
     public void DeleteInstance(string id)
     {
         var instance = GetInstance(id);

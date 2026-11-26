@@ -384,16 +384,13 @@ internal sealed partial class HostHttpServer
                         {
                             ok = false, error = "adapter_not_found", message = $"未找到适配器: {id}", restartRequired = false
                         });
-                    if (!instance.PackageEnabled)
-                        return Results.Conflict(new
-                        {
-                            ok = false, error = "adapter_package_disabled", message = "适配器已关闭，请先打开适配器。",
-                            restartRequired = false
-                        });
                     await reloadCoordinator.ExecuteAdapterMutationAsync(async () =>
                     {
                         await adapterManager.LoadInstanceAsync(instance).ConfigureAwait(false);
                         adapterPackages.SetInstanceEnabled(instance.Id, true);
+                        // Instances carry the switch now; a package that was turned off is turned back on for
+                        // this one only, so its other instances, which were not running, stay off.
+                        if (!instance.PackageEnabled) adapterPackages.EnablePackageForInstance(instance);
                     }).ConfigureAwait(false);
                     return Results.Ok(new { ok = true, restartRequired = false });
                 }
