@@ -41,10 +41,14 @@ internal sealed class AutoUpdateRunner(
 
     // Set while resuming after a restart, so the summary leads with how the restart went.
     private string? _hostLine;
+    private string? _hostNotes;
     private string _updatedHeading = UpdatedHeading;
     private string? _failedHeading;
 
     private const string UpdatedHeading = "以下插件和适配器已更新：";
+
+    // The host's release notes go into the success report, cut at this length with a link to the release.
+    private const int HostNotesLimit = 1500;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -82,6 +86,7 @@ internal sealed class AutoUpdateRunner(
                     ? $"主程序已从 {state.From} 更新到 {current}，更新成功。"
                     : $"主程序重启后仍是 {current}，更新到 {target} 没有生效，请检查宿主日志。";
                 if (updated) _updatedHeading = "以下插件和适配器也一并更新了：";
+                if (updated) _hostNotes = ReleaseNotesText.ToPlain(state.ReleaseNotes, HostNotesLimit, state.ReleaseUrl);
                 if (updated) BotLog.Info(_hostLine);
                 else BotLog.Warning(_hostLine);
             }
@@ -206,6 +211,7 @@ internal sealed class AutoUpdateRunner(
         _report.Clear();
         _updated.Clear();
         _hostLine = null;
+        _hostNotes = null;
         _updatedHeading = UpdatedHeading;
         _failedHeading = null;
     }
@@ -219,6 +225,7 @@ internal sealed class AutoUpdateRunner(
         if (_hostLine is null && _updated.Count == 0 && _report.Count == 0) return;
         var lines = new List<string> { "【ShiroBot 自动更新】" };
         if (_hostLine is not null) lines.Add(_hostLine);
+        if (_hostNotes is not null) lines.Add("更新内容：\n" + _hostNotes);
         if (_updated.Count > 0)
         {
             lines.Add(_updatedHeading);
@@ -371,7 +378,8 @@ internal sealed class AutoUpdateRunner(
             Report($"主程序 {check.CurrentVersion} → {check.LatestVersion}，正在更新并重启" +
                    (resumes ? "，插件和适配器会在重启后一起更新…" : "…"));
             await SendReportAsync(cancellationToken).ConfigureAwait(false);
-            hostUpdateResume.BeginHostUpdate(check.CurrentVersion, check.LatestVersion!);
+            hostUpdateResume.BeginHostUpdate(check.CurrentVersion, check.LatestVersion!, check.ReleaseNotes,
+                check.ReleaseUrl);
             var result = await HostSelfUpdater.ApplyAsync(check.AssetDownloadUrl!, powerControl, cancellationToken)
                 .ConfigureAwait(false);
             if (result.Ok)

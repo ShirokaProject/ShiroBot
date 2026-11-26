@@ -44,9 +44,9 @@ internal sealed class HostUpdateResume(string path)
     }
 
     /// <summary>Records a host update about to restart the host, keeping the components already staged.</summary>
-    public void BeginHostUpdate(string from, string to)
+    public void BeginHostUpdate(string from, string to, string? releaseNotes = null, string? releaseUrl = null)
     {
-        Save(new HostUpdateResumeState(from, to, DateTimeOffset.UtcNow, Read()?.Staged));
+        Save(new HostUpdateResumeState(from, to, DateTimeOffset.UtcNow, Read()?.Staged, releaseNotes, releaseUrl));
     }
 
     /// <summary>Forgets a host update that did not happen; staged components still wait for the next restart.</summary>
@@ -108,11 +108,15 @@ internal sealed class HostUpdateResume(string path)
 /// <param name="To">Host version being installed, or null when the restart is only for staged components.</param>
 /// <param name="StartedAt">When the restart was started.</param>
 /// <param name="Staged">Plugins and adapters staged for the restart.</param>
+/// <param name="ReleaseNotes">Notes of the host release being installed, sent with the success report.</param>
+/// <param name="ReleaseUrl">Page of that release.</param>
 internal sealed record HostUpdateResumeState(
     string? From,
     string? To,
     DateTimeOffset StartedAt,
-    IReadOnlyList<StagedComponentUpdate>? Staged = null);
+    IReadOnlyList<StagedComponentUpdate>? Staged = null,
+    string? ReleaseNotes = null,
+    string? ReleaseUrl = null);
 
 /// <summary>A plugin or adapter whose new version is applied by the next start.</summary>
 /// <param name="Kind"><c>plugin</c> or <c>adapter</c>.</param>
