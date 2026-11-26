@@ -88,8 +88,12 @@ internal sealed class AutoUpdateRunner(
 
             if (state.Staged is { Count: > 0 } staged)
             {
-                _updatedHeading = "重启完成，" + UpdatedHeading;
-                _failedHeading = "重启完成，但以下更新没有成功：";
+                if (state.To is null)
+                {
+                    _updatedHeading = "重启完成，" + UpdatedHeading;
+                    _failedHeading = "重启完成，但以下更新没有成功：";
+                }
+
                 ReportStaged(staged);
             }
 
@@ -151,20 +155,20 @@ internal sealed class AutoUpdateRunner(
             return;
         }
 
+        // Recorded either way, so whichever restart applies them, automatic or by hand, reports how they came up.
+        hostUpdateResume.AddStaged(pending);
         var names = string.Join("、", pending.Select(item => $"{item.Label} {item.To}"));
         if (!config.Update.RestartOnPending)
         {
-            Report($"{names} 无法热替换，新版本已暂存，需要重启宿主完成更新。", true);
+            Report($"{names} 无法热替换，新版本已暂存，需要重启宿主完成更新，重启后会发送更新结果。", true);
             await SendReportAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
 
         Report($"{names} 无法热替换，新版本已暂存，正在重启宿主完成更新…", true);
         await SendReportAsync(cancellationToken).ConfigureAwait(false);
-        hostUpdateResume.Save(new HostUpdateResumeState(null, null, DateTimeOffset.UtcNow, pending));
         var restart = powerControl.Restart();
         if (restart.Ok) return;
-        hostUpdateResume.Clear();
         BotLog.Error("自动重启失败，请手动重启宿主: " + restart.Message);
         await notifyOwners("【ShiroBot 自动更新】自动重启失败，请手动重启宿主: " + restart.Message, null, cancellationToken)
             .ConfigureAwait(false);
@@ -367,8 +371,7 @@ internal sealed class AutoUpdateRunner(
             Report($"主程序 {check.CurrentVersion} → {check.LatestVersion}，正在更新并重启" +
                    (resumes ? "，插件和适配器会在重启后一起更新…" : "…"));
             await SendReportAsync(cancellationToken).ConfigureAwait(false);
-            hostUpdateResume.Save(new HostUpdateResumeState(check.CurrentVersion, check.LatestVersion!,
-                DateTimeOffset.UtcNow));
+            hostUpdateResume.BeginHostUpdate(check.CurrentVersion, check.LatestVersion!);
             var result = await HostSelfUpdater.ApplyAsync(check.AssetDownloadUrl!, powerControl, cancellationToken)
                 .ConfigureAwait(false);
             if (result.Ok)
@@ -377,13 +380,13 @@ internal sealed class AutoUpdateRunner(
                 return true;
             }
 
-            hostUpdateResume.Clear();
+            hostUpdateResume.CancelHostUpdate();
             Report("主程序自动更新失败: " + result.Message, true);
             return false;
         }
         catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
         {
-            hostUpdateResume.Clear();
+            hostUpdateResume.CancelHostUpdate();
             Report("主程序自动更新失败: " + ex.Message, true);
             return false;
         }

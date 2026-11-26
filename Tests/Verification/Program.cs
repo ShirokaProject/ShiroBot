@@ -2685,6 +2685,21 @@ try
         resumedPlugin != new StagedComponentUpdate(StagedComponentUpdate.Plugin, "ShiroStatus", "1.0.2", "1.0.3") ||
         resumedAdapter.Label != "适配器 onebot" || resumedAdapter.To != "1.2.0")
         throw new InvalidOperationException("Staged plugin and adapter updates did not survive a restart.");
+    // Staged across several runs before a manual restart: the first version is kept, a host update keeps them, and
+    // a host update that does not happen leaves them waiting.
+    var stagedResume = new HostUpdateResume(resumePath);
+    stagedResume.AddStaged([new StagedComponentUpdate(StagedComponentUpdate.Plugin, "ShiroStatus", "1.0.2", "1.0.3")]);
+    stagedResume.AddStaged([new StagedComponentUpdate(StagedComponentUpdate.Plugin, "shirostatus", "1.0.2", "1.0.4"),
+        new StagedComponentUpdate(StagedComponentUpdate.Adapter, "onebot", "1.1.0", "1.2.0")]);
+    stagedResume.BeginHostUpdate("1.0.4", "1.0.5");
+    stagedResume.CancelHostUpdate();
+    if (new HostUpdateResume(resumePath).Take() is not
+        { From: null, To: null, Staged: [{ From: "1.0.2", To: "1.0.4" }, { Kind: StagedComponentUpdate.Adapter }] })
+        throw new InvalidOperationException("Staged updates were not merged across runs or were lost with a host update.");
+    stagedResume.BeginHostUpdate("1.0.4", "1.0.5");
+    stagedResume.CancelHostUpdate();
+    if (File.Exists(resumePath))
+        throw new InvalidOperationException("A host update that did not happen left a resume state with nothing staged.");
     Console.WriteLine("Host update resume state verification passed.");
 
     var autoUpdateState = Path.Combine(tempRoot, "auto-update", "last-run");
