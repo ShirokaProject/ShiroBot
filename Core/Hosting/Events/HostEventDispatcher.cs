@@ -142,9 +142,19 @@ internal sealed class HostEventDispatcher(
         }
 
         foreach (var plugin in MatchMessageHandlers(message, message.IsDirect))
-            deliveries[plugin] = PrefixFor(plugin) is { } prefix && commandViews.TryGetValue(prefix, out var view)
-                ? view.Dispatch
-                : message;
+        {
+            if (PrefixFor(plugin) is not { } prefix || !commandViews.TryGetValue(prefix, out var view))
+            {
+                deliveries[plugin] = message;
+                continue;
+            }
+
+            // A prefix the owner chose for this plugin means it should not answer on its own: without the prefix (or
+            // an @ to the bot) it gets nothing, not even its link detection or listen-to-everything routes. The global
+            // prefix only gates commands, so such plugins keep working when one is set for everyone.
+            if (view.Command is null && routePolicy.GetPrefixMode(plugin.Name) == "required") continue;
+            deliveries[plugin] = view.Dispatch;
+        }
 
         foreach (var (prefix, view) in commandViews)
         {

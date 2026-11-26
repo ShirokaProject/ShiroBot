@@ -265,19 +265,20 @@ internal static class MessagePrefixVerification
         policy.Plugins.Clear();
         policy.PrefixModes["fallback"] = "disabled";
         policy.PrefixModes["required"] = "required";
-        Expect(await Send(Message("plain", true)), "exempt:plain", "required:plain", "fallback:plain");
+        // An owner-chosen prefix: no prefix, nothing at all, even for listen-everything routes
+        Expect(await Send(Message("plain", true)), "exempt:plain", "fallback:plain");
         Expect(await Send(Message("!again", true)), "exempt:!again", "required:again", "fallback:!again");
 
         policy.Prefixes["required"] = "bot:";
         Expect(await Send(Message("bot:custom", true)), "exempt:bot:custom", "required:custom",
             "fallback:bot:custom");
-        Expect(await Send(Message("!global", true)), "exempt:!global", "required:!global", "fallback:!global");
+        Expect(await Send(Message("!global", true)), "exempt:!global", "fallback:!global");
         policy.MessagePrefix = "";
         Expect(await Send(Message("bot:standalone", false)), "exempt:bot:standalone", "required:standalone",
             "fallback:bot:standalone");
         policy.MessagePrefix = "!";
         policy.PrefixModes.Remove("fallback");
-        Expect(await Send(Message("!global", true)), "exempt:!global", "required:!global", "fallback:global");
+        Expect(await Send(Message("!global", true)), "exempt:!global", "fallback:global");
         Expect(await Send(Message("bot:local", true)), "exempt:bot:local", "required:local", "fallback:bot:local");
         policy.Prefixes["command"] = "cmd:";
         policy.PrefixModes["command"] = "required";
@@ -296,10 +297,10 @@ internal static class MessagePrefixVerification
         Expect(await Send(Message("!multi", true)), "exempt:!multi", "required:multi", "fallback:multi");
         Expect(await Send(Message("!!x", true)), "exempt:!!x", "required:x", "fallback:x");
         Expect(await Send(Message("。 #help", false)), "command:#help");
-        Expect(await Send(Message("/none", true)), "exempt:/none", "required:/none", "fallback:/none");
+        Expect(await Send(Message("/none", true)), "exempt:/none", "fallback:/none");
         policy.Prefixes["required"] = "bot: 小白";
         Expect(await Send(Message("小白 你好", true)), "exempt:小白 你好", "required:你好", "fallback:小白 你好");
-        Expect(await Send(Message("。global", true)), "exempt:。global", "required:。global", "fallback:global");
+        Expect(await Send(Message("。global", true)), "exempt:。global", "fallback:global");
         policy.Prefixes.Remove("required");
         policy.MessagePrefix = "!";
         if (!PluginRouteConfig.ParsePrefixes(" ! !!  ! ").SequenceEqual(["!!", "!"]) ||
@@ -423,6 +424,22 @@ internal static class MessagePrefixVerification
             await Send(Message("", direct) with { Segments = [new ImageSegment("file:///fixture.png")] },
                 "all:", "custom:", "override:", "events:", "mixed:raw:");
         }
+
+        // A MapWhen plugin (link detection like MyParser / GitHubView) set to its own prefix answers only when asked
+        policy.PrefixModes["custom"] = "required";
+        policy.PrefixModes["all"] = "required";
+        policy.Prefixes["all"] = "看";
+        await Send(Message("https://github.com/a/b", false), "override:https://github.com/a/b",
+            "events:https://github.com/a/b", "mixed:raw:https://github.com/a/b");
+        await Send(Message("!https://github.com/a/b", false), "custom:https://github.com/a/b",
+            "override:https://github.com/a/b", "events:https://github.com/a/b", "mixed:raw:https://github.com/a/b");
+        await Send(Message("看 https://github.com/a/b", false), "all:https://github.com/a/b",
+            "override:看 https://github.com/a/b", "events:看 https://github.com/a/b", "mixed:raw:看 https://github.com/a/b");
+        await Send(
+            Message("link", false) with { Segments = [new MentionSegment("bot"), new TextSegment("link")] },
+            "all:link", "custom:link", "override:link", "events:link", "mixed:raw:link", "mention:link");
+        policy.PrefixModes.Clear();
+        policy.Prefixes.Clear();
 
         Console.WriteLine(
             "PASS @ routes and raw listeners bypass prefixes and receive prefixed messages stripped; mixed plugins still gate commands; @ bot bypasses commands; @ others does not.");

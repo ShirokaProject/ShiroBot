@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -213,6 +214,18 @@ internal sealed partial class HostHttpServer
                     : throw new InvalidOperationException("update.time 必须是 HH:mm 格式的时间，例如 02:00。");
         }
 
+        // [api] addresses: a listen address the server cannot bind stops the host from starting at all, and
+        // then the Dashboard cannot reach it to undo the change, so both lists are checked before anything is saved.
+        string[]? listenUrls = null;
+        string[]? publicBaseUrls = null;
+        if (patch.TryGetProperty("api", out var apiAddresses) && apiAddresses.ValueKind == JsonValueKind.Object)
+        {
+            if (TryGetStringArray(apiAddresses, "listen_urls", out var requestedListen))
+                listenUrls = NormalizeUrls(requestedListen, "监听地址", true);
+            if (TryGetStringArray(apiAddresses, "public_base_url", out var requestedPublic))
+                publicBaseUrls = NormalizeUrls(requestedPublic, "外部基础 URL", false);
+        }
+
         if (defaultRouteMode is not null)
             configManager.SetConfigValue(configPath, "plugin_routes.default.mode", defaultRouteMode);
         if (defaultRouteGroups is not null)
@@ -292,22 +305,61 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "api.enable_dashboard", enableDashboard);
         }
 
-        if (TryGetStringArray(apiPatch, "listen_urls", out var listenUrls))
+        if (listenUrls is not null)
         {
             currentApiConfig.ListenUrls = listenUrls;
             configManager.SetConfigValue(configPath, "api.listen_urls", listenUrls);
         }
 
-        if (TryGetStringArray(apiPatch, "public_base_url", out var publicBaseUrl))
+        if (publicBaseUrls is not null)
         {
-            currentApiConfig.PublicBaseUrl = publicBaseUrl;
-            configManager.SetConfigValue(configPath, "api.public_base_url", publicBaseUrl);
+            currentApiConfig.PublicBaseUrl = publicBaseUrls;
+            configManager.SetConfigValue(configPath, "api.public_base_url", publicBaseUrls);
         }
 
         if (!TryGetString(apiPatch, "token", out var token)) return;
         currentApiConfig.Token = token;
         configManager.SetConfigValue(configPath, "api.token", token);
     }
+
+    /// <summary>
+    ///     Trimmed, non-empty http(s) addresses, or an error naming the first bad one. Listen addresses are what the
+    ///     server binds: a host (or * / + for every interface) and an optional port, without a path. Public base URLs
+    ///     may carry the path a reverse proxy serves the host under.
+    /// </summary>
+    internal static string[] NormalizeUrls(IEnumerable<string> values, string label, bool listen)
+    {
+        var urls = values.Select(value => value.Trim()).Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var url in urls)
+        {
+            var valid = listen ? IsListenUrl(url) : IsPublicUrl(url);
+            if (!valid)
+                throw new InvalidOperationException(listen
+                    ? $"{label}「{url}」无效，应为 http(s)://主机:端口，例如 http://127.0.0.1:7001 或 http://0.0.0.0:7001。"
+                    : $"{label}「{url}」无效，应为完整的 http(s) 地址，例如 https://bot.example.com。");
+        }
+
+        return urls;
+    }
+
+    private static bool IsListenUrl(string url)
+    {
+        var match = ListenUrlPattern().Match(url);
+        if (!match.Success) return false;
+        if (!match.Groups["port"].Success) return true;
+        return int.TryParse(match.Groups["port"].Value, out var port) && port is >= 1 and <= 65535;
+    }
+
+    private static bool IsPublicUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" &&
+               uri.Host.Length > 0 && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment);
+    }
+
+    [GeneratedRegex(@"^https?://(\*|\+|\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(?<port>\d{1,5}))?/?$",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ListenUrlPattern();
 
     private static bool TryGetString(JsonElement element, string propertyName, out string value)
     {

@@ -232,9 +232,14 @@ internal sealed partial class HostHttpServer(
 
     private static IEnumerable<string> GetListenUrls(ApiHostConfig config)
     {
-        return config.ListenUrls.Length > 0
-            ? config.ListenUrls.Where(url => !string.IsNullOrWhiteSpace(url))
-            : [ApiHostConfig.DefaultListenUrl];
+        // An address written by hand that the server cannot bind would stop the whole host; skip it and say so.
+        var urls = new List<string>();
+        foreach (var url in config.ListenUrls.Select(value => value.Trim()).Where(value => value.Length > 0))
+            if (IsListenUrl(url))
+                urls.Add(url);
+            else
+                ShiroBot.Terminal.ConsoleOutput.Warning($"已跳过无效的 API 监听地址「{url}」，请在 config.toml 的 [api] listen_urls 中修正。");
+        return urls.Count > 0 ? urls : [ApiHostConfig.DefaultListenUrl];
     }
 
     // ReSharper disable NotAccessedPositionalProperty.Local

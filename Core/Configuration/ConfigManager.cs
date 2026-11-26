@@ -149,19 +149,19 @@ public class ApiHostConfig
 {
     public const string DefaultListenUrl = "http://127.0.0.1:7001";
 
-    [ConfigField("启用 Dashboard 和外部工具访问主程序的 HTTP API。")]
+    [ConfigField("启用 Dashboard 和外部工具访问主程序的 HTTP API。", Label = "启用 HTTP API")]
     public bool Enable { get; set; } = true;
 
     [ConfigField("启用宿主内嵌 Dashboard 页面。默认开启；修改后重启宿主生效。关闭后 HTTP API 和插件 Web 路由仍可使用。", Label = "内嵌 Dashboard")]
     public bool EnableDashboard { get; set; } = true;
 
-    [ConfigField("API 服务监听的地址列表。", Type = "array")]
+    [ConfigField("API 服务监听的地址列表，格式 http(s)://主机:端口，例如 http://127.0.0.1:7001；0.0.0.0 允许局域网访问。修改后重启宿主生效。", Label = "监听地址", Type = "array")]
     public string[] ListenUrls { get; set; } = [DefaultListenUrl];
 
-    [ConfigField("API 鉴权令牌，始终启用鉴权；留空时启动自动生成并保存。", Type = "password")]
+    [ConfigField("API 鉴权令牌，始终启用鉴权；留空时启动自动生成并保存。", Label = "API 密钥", Type = "password")]
     public string Token { get; set; } = string.Empty;
 
-    [ConfigField("反向代理后的外部基础 URL 列表；插件生成链接使用第一个非空地址，空列表使用监听地址。", Type = "array")]
+    [ConfigField("反向代理后的外部基础 URL 列表，例如 https://bot.example.com；插件生成链接使用第一个非空地址，空列表使用监听地址。", Label = "外部基础 URL", Type = "array")]
     public string[] PublicBaseUrl { get; set; } = [];
 
     public string GetPrimaryBaseUrl()
@@ -189,7 +189,7 @@ public class ApiHostConfig
 
 public class PluginRouteConfig
 {
-    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；多个前缀用空格分开（例如 ! / 。），任选其一即可触发；留空不限制。设置后，精确／前缀命令路由要求带前缀，带前缀的消息去掉前缀后交给插件；@ 机器人、整条消息监听和自定义判断不要求前缀。可按插件改为不使用前缀或使用自己的前缀。", Label = "消息触发前缀", Default = "",
+    [ConfigField("群聊和私聊命令的触发前缀，区分大小写；可设置多个，带上任意一个即可触发；留空不限制。设置后，精确／前缀命令路由要求带前缀，带前缀的消息去掉前缀后交给插件；@ 机器人、整条消息监听和自定义判断（如链接解析）不要求前缀，但带前缀时收到的也是去掉前缀后的内容。插件单独设为“要求前缀”后，没带前缀的消息一律不交给它。", Label = "消息触发前缀", Type = "prefixes", Default = "",
         Order = 11)]
     public string MessagePrefix { get; set; } = string.Empty;
 

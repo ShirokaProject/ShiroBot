@@ -256,6 +256,7 @@ switch (args)
 RuntimeVersionBaselineVerification.Run();
 RestartNoticeVerification.Run();
 ReleaseNotesVerification.Run();
+ApiAddressVerification.Run();
 DeferredShadowCleanupVerification.Run();
 await HostDirectoryLockVerification.RunAsync();
 TomlFormattingVerification.Run();
