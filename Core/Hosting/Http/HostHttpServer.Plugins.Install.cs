@@ -72,6 +72,8 @@ internal sealed partial class HostHttpServer
                         {
                             exists = installed is not null,
                             installed_version = installed?.Version,
+                            // The dashboard keeps a disabled plugin disabled by default when replacing it.
+                            installed_enabled = installed is null ? (bool?)null : !IsDisabledPath(installed.AssemblyPath),
                             uploaded_version = package.Info.Version,
                             action = installed is null ? "install" : "replace"
                         }
@@ -332,6 +334,8 @@ internal sealed partial class HostHttpServer
                         {
                             exists = installed is not null,
                             installed_version = installed?.Version,
+                            // The dashboard keeps a disabled plugin disabled by default when replacing it.
+                            installed_enabled = installed is null ? (bool?)null : !IsDisabledPath(installed.AssemblyPath),
                             uploaded_version = package.Info.Version,
                             action = installed is null ? "install" : "replace"
                         }

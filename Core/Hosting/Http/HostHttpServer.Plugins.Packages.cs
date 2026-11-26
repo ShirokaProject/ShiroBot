@@ -31,33 +31,6 @@ internal sealed partial class HostHttpServer
         File.Move(disabledPath, enabledPath);
     }
 
-    private static string? FindDisabledPluginFile(PluginManager pluginManager, string id)
-    {
-        var pluginRootPath = pluginManager.PluginRootPath;
-        var pluginRoot = Path.GetFullPath(pluginRootPath);
-        if (!Directory.Exists(pluginRoot)) return null;
-
-        var aliases = GetPluginIdAliases(id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var pendingDeletion = StagedComponentUpdates.GetStagedDeletionTargets(pluginRoot);
-        return Directory.EnumerateFiles(pluginRoot, "*.dll.disable", SearchOption.AllDirectories)
-            .Where(path => !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, path))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(path =>
-            {
-                var info = TryProbeDisabledPluginInfo(pluginManager, path);
-                var enabledFileName = Path.GetFileNameWithoutExtension(path);
-                var fileName = Path.GetFileNameWithoutExtension(enabledFileName);
-                var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
-
-                return aliases.Contains(fileName) ||
-                       aliases.Contains(directoryName) ||
-                       (fileName.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
-                        aliases.Contains(fileName["ShiroBot.".Length..])) ||
-                       NameMatches(info?.Id, aliases) ||
-                       NameMatches(info?.Name, aliases);
-            });
-    }
-
     private static InstalledPluginInfo? FindInstalledPlugin(PluginManager pluginManager, string id)
     {
         var loaded = FindLoadedPlugin(pluginManager, id);
@@ -150,33 +123,6 @@ internal sealed partial class HostHttpServer
                 pluginManager.GetPluginLoadError(info.Id) is not null ? "error" : "disabled",
                 pluginManager.GetPluginLoadError(info.Id));
         }
-    }
-
-    private static PluginProbeInfo? TryProbeDisabledPluginInfo(PluginManager pluginManager, string disabledPath)
-    {
-        var tempEnabledPath = disabledPath[..^DisabledPluginSuffix.Length];
-        return pluginManager.TryProbePluginInfoFile(disabledPath)
-               ?? pluginManager.TryProbePluginInfoFile(tempEnabledPath);
-    }
-
-    private static bool NameMatches(string? candidate, HashSet<string> aliases)
-    {
-        if (string.IsNullOrWhiteSpace(candidate)) return false;
-        if (aliases.Contains(candidate)) return true;
-        return candidate.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
-               aliases.Contains(candidate["ShiroBot.".Length..]);
-    }
-
-    private static IEnumerable<string> GetPluginIdAliases(string id)
-    {
-        if (string.IsNullOrWhiteSpace(id)) yield break;
-
-        yield return id;
-        const string shiroBotPrefix = "ShiroBot.";
-        if (id.StartsWith(shiroBotPrefix, StringComparison.OrdinalIgnoreCase) && id.Length > shiroBotPrefix.Length)
-            yield return id[shiroBotPrefix.Length..];
-        else
-            yield return shiroBotPrefix + id;
     }
 
     private static (string Path, bool Directory) GetPluginDeleteTarget(string pluginRootPath, string targetPath,

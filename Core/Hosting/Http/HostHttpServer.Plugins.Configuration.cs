@@ -10,6 +10,8 @@ using ShiroBot.SDK.Core;
 using Tomlyn;
 using Tomlyn.Model;
 
+using static ShiroBot.Update.PluginUpdateService;
+
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer

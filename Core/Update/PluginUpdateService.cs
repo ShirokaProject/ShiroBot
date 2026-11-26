@@ -61,52 +61,72 @@ internal static class PluginUpdateService
             await Updater.DownloadFileAsync(assetUrl, packagePath, cancellationToken, MaxPluginUploadBytes, sha256)
                 .ConfigureAwait(false);
             var package = PreparePluginUploadPackage(pluginManager, packagePath);
-            var id = package.Info.Id;
-            if (expectedId is not null && !string.Equals(id, expectedId, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"更新包的插件 ID {id} 与 {expectedId} 不一致。");
-
-            var gate = GetOperationLock(id);
-            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                if (StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, id))
-                    throw new InvalidOperationException($"插件 {id} 已登记删除任务，请先重启宿主完成删除，再重新安装。");
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var loaded = pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
-                    string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase));
-                var installedPath = loaded?.AssemblyPath ?? FindInstalledPath(pluginManager, id);
-                var version = package.Info.Version;
-                if (installedPath is not null)
-                {
-                    var replacement = await ReplaceInstalledPluginAsync(pluginManager, eventDispatcher, routePolicy,
-                        package,
-                        new InstalledPluginInfo(installedPath, loaded?.Version ?? ""), loaded, true)
-                        .ConfigureAwait(false);
-                    if (replacement.PendingReason is not null)
-                        return new PluginUpdateResult(true, $"插件 {id} 当前版本无法热替换，{version} 已暂存，将在下次重启宿主时替换",
-                            replacement.PendingReason);
-                    await LoadReplacementAsync(pluginManager, eventDispatcher, routePolicy, id, version, replacement,
-                        loaded is not null).ConfigureAwait(false);
-                    return new PluginUpdateResult(false, $"插件 {id} 已更新到 {version}");
-                }
-
-                InstallUploadedPlugin(pluginManager, package);
-                await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
-                return pluginManager.GetLoadedPluginSnapshot().All(plugin =>
-                    !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))
-                    ? throw new InvalidOperationException(
-                        $"插件 {id} 的包已安装，但加载失败: {pluginManager.GetPluginLoadError(id) ?? "请检查宿主日志。"}")
-                    : new PluginUpdateResult(false, $"插件 {id} {version} 已安装并加载");
-            }
-            finally
-            {
-                gate.Release();
-            }
+            return await InstallPackageAsync(pluginManager, eventDispatcher, routePolicy, package, expectedId,
+                cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             TryDeleteDirectory(uploadRoot);
+        }
+    }
+
+    /// <summary>
+    ///     Installs a prepared package, replacing an installed copy of the same plugin, and loads it. A plugin that
+    ///     was disabled is updated in place and stays disabled.
+    /// </summary>
+    internal static async Task<PluginUpdateResult> InstallPackageAsync(
+        PluginManager pluginManager, HostEventDispatcher eventDispatcher, PluginRouteConfig routePolicy,
+        PluginUploadPackage package, string? expectedId, CancellationToken cancellationToken = default)
+    {
+        var id = package.Info.Id;
+        if (expectedId is not null && !string.Equals(id, expectedId, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"更新包的插件 ID {id} 与 {expectedId} 不一致。");
+
+        var gate = GetOperationLock(id);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (StagedComponentUpdates.HasStagedDeletion(pluginManager.PluginRootPath, id))
+                throw new InvalidOperationException($"插件 {id} 已登记删除任务，请先重启宿主完成删除，再重新安装。");
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var loaded = pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
+                string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase));
+            var installedPath = loaded?.AssemblyPath ?? FindInstalledPath(pluginManager, id);
+            var version = package.Info.Version;
+            if (installedPath is not null)
+            {
+                var replacement = await ReplaceInstalledPluginAsync(pluginManager, eventDispatcher, routePolicy,
+                    package,
+                    new InstalledPluginInfo(installedPath, loaded?.Version ?? ""), loaded, true)
+                    .ConfigureAwait(false);
+                if (replacement.PendingReason is not null)
+                    return new PluginUpdateResult(true, $"插件 {id} 当前版本无法热替换，{version} 已暂存，将在下次重启宿主时替换",
+                        replacement.PendingReason);
+                // A disabled plugin is updated in place and stays disabled; enabling it is the owner's call.
+                if (loaded is null && IsDisabledPath(installedPath))
+                {
+                    replacement.Commit();
+                    DisableInstalledEntry(pluginManager, replacement.EntryPath!);
+                    return new PluginUpdateResult(false, $"插件 {id} 已更新到 {version}，仍保持禁用");
+                }
+
+                await LoadReplacementAsync(pluginManager, eventDispatcher, routePolicy, id, version, replacement,
+                    loaded is not null).ConfigureAwait(false);
+                return new PluginUpdateResult(false, $"插件 {id} 已更新到 {version}");
+            }
+
+            InstallUploadedPlugin(pluginManager, package);
+            await pluginManager.ScheduleLoadPluginByName(eventDispatcher, routePolicy, id).ConfigureAwait(false);
+            return pluginManager.GetLoadedPluginSnapshot().All(plugin =>
+                !string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))
+                ? throw new InvalidOperationException(
+                    $"插件 {id} 的包已安装，但加载失败: {pluginManager.GetPluginLoadError(id) ?? "请检查宿主日志。"}")
+                : new PluginUpdateResult(false, $"插件 {id} {version} 已安装并加载");
+        }
+        finally
+        {
+            gate.Release();
         }
     }
 
@@ -149,11 +169,81 @@ internal static class PluginUpdateService
         }
     }
 
+    internal static string? FindDisabledPluginFile(PluginManager pluginManager, string id)
+    {
+        var pluginRootPath = pluginManager.PluginRootPath;
+        var pluginRoot = Path.GetFullPath(pluginRootPath);
+        if (!Directory.Exists(pluginRoot)) return null;
+
+        var aliases = GetPluginIdAliases(id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var pendingDeletion = StagedComponentUpdates.GetStagedDeletionTargets(pluginRoot);
+        return Directory.EnumerateFiles(pluginRoot, "*.dll.disable", SearchOption.AllDirectories)
+            .Where(path => !StagedComponentUpdates.IsPendingDeletion(pendingDeletion, path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(path =>
+            {
+                var info = TryProbeDisabledPluginInfo(pluginManager, path);
+                var enabledFileName = Path.GetFileNameWithoutExtension(path);
+                var fileName = Path.GetFileNameWithoutExtension(enabledFileName);
+                var directoryName = new DirectoryInfo(Path.GetDirectoryName(path) ?? pluginRoot).Name;
+
+                return aliases.Contains(fileName) ||
+                       aliases.Contains(directoryName) ||
+                       (fileName.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
+                        aliases.Contains(fileName["ShiroBot.".Length..])) ||
+                       NameMatches(info?.Id, aliases) ||
+                       NameMatches(info?.Name, aliases);
+            });
+    }
+
+    internal static PluginProbeInfo? TryProbeDisabledPluginInfo(PluginManager pluginManager, string disabledPath)
+    {
+        var tempEnabledPath = disabledPath[..^DisabledPluginSuffix.Length];
+        return pluginManager.TryProbePluginInfoFile(disabledPath)
+               ?? pluginManager.TryProbePluginInfoFile(tempEnabledPath);
+    }
+
+    internal static bool NameMatches(string? candidate, HashSet<string> aliases)
+    {
+        if (string.IsNullOrWhiteSpace(candidate)) return false;
+        if (aliases.Contains(candidate)) return true;
+        return candidate.StartsWith("ShiroBot.", StringComparison.OrdinalIgnoreCase) &&
+               aliases.Contains(candidate["ShiroBot.".Length..]);
+    }
+
+    internal static IEnumerable<string> GetPluginIdAliases(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) yield break;
+
+        yield return id;
+        const string shiroBotPrefix = "ShiroBot.";
+        if (id.StartsWith(shiroBotPrefix, StringComparison.OrdinalIgnoreCase) && id.Length > shiroBotPrefix.Length)
+            yield return id[shiroBotPrefix.Length..];
+        else
+            yield return shiroBotPrefix + id;
+    }
+
+    /// <summary>The installed entry DLL of a plugin, loaded or not; a disabled plugin's is the renamed <c>.disable</c> file.</summary>
     private static string? FindInstalledPath(PluginManager pluginManager, string id)
     {
         return pluginManager.GetLoadedPluginSnapshot().FirstOrDefault(plugin =>
                    string.Equals(plugin.Name, id, StringComparison.OrdinalIgnoreCase))?.AssemblyPath
-               ?? pluginManager.ResolveFirstPluginLoadCandidate(id);
+               ?? pluginManager.ResolveFirstPluginLoadCandidate(id)
+               ?? FindDisabledPluginFile(pluginManager, id);
+    }
+
+    internal static bool IsDisabledPath(string path)
+    {
+        return path.EndsWith(DisabledPluginSuffix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Renames a freshly written entry DLL so the plugin stays disabled, without the watcher loading it.</summary>
+    internal static void DisableInstalledEntry(PluginManager pluginManager, string entryPath)
+    {
+        var disabledPath = entryPath + DisabledPluginSuffix;
+        pluginManager.SuppressWatcherPath(entryPath);
+        pluginManager.SuppressWatcherPath(disabledPath);
+        File.Move(entryPath, disabledPath, true);
     }
 
     private static void TryDeleteDirectory(string path)

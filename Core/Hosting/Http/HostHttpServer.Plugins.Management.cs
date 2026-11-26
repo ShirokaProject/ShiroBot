@@ -12,6 +12,8 @@ using ShiroBot.SDK.Abstractions;
 using ShiroBot.SDK.Plugin;
 using ShiroBot.Update;
 
+using static ShiroBot.Update.PluginUpdateService;
+
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
@@ -397,9 +399,12 @@ internal sealed partial class HostHttpServer
             {
                 // An installed plugin that failed to load is exactly the one an update may fix.
                 var loadedPlugin = FindLoadedPlugin(pluginManager, id);
-                var installedInfo = loadedPlugin is null && pluginManager.ResolveFirstPluginLoadCandidate(id) is { } path
-                    ? pluginManager.TryProbePluginInfoFile(path)
-                    : null;
+                // A disabled plugin can be updated too; it stays disabled afterwards.
+                var installedInfo = loadedPlugin is not null ? null
+                    : pluginManager.ResolveFirstPluginLoadCandidate(id) is { } path ? pluginManager.TryProbePluginInfoFile(path)
+                    : FindDisabledPluginFile(pluginManager, id) is { } disabledPath
+                        ? TryProbeDisabledPluginInfo(pluginManager, disabledPath)
+                        : null;
                 if (loadedPlugin is null && installedInfo is null)
                     return Results.NotFound(new { ok = false, message = $"未找到已安装插件: {id}" });
                 var plugin = new

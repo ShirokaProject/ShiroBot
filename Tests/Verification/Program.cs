@@ -1342,6 +1342,18 @@ if (Environment.GetEnvironmentVariable("SHIROBOT_QQ_ADAPTER_PROBE") is { Length:
             throw new InvalidOperationException(
                 "The shared plugin updater retained removed package files or deleted user data.");
         Console.WriteLine("Shared plugin zip replacement and DLL update verification passed.");
+
+        // A disabled plugin is updated in place and stays disabled instead of being loaded.
+        var disabledEntry = nextReplacement.EntryPath! + ".disable";
+        File.Move(nextReplacement.EntryPath!, disabledEntry);
+        var disabledUpdate = await PluginUpdateService.InstallPackageAsync(pluginManager, dispatcher,
+            new PluginRouteConfig(), dllPackage, "SharedContractPluginProbe");
+        if (disabledUpdate.PendingRestart || !disabledUpdate.Message.Contains("仍保持禁用") ||
+            !File.Exists(disabledEntry) || File.Exists(nextReplacement.EntryPath) ||
+            pluginManager.GetLoadedPluginSnapshot().Any(plugin => plugin.Name == "SharedContractPluginProbe") ||
+            File.ReadAllText(Path.Combine(configDirectory, "data.json")) != "keep")
+            throw new InvalidOperationException("Updating a disabled plugin enabled or loaded it.");
+        Console.WriteLine("Disabled plugin update keeps the plugin disabled verification passed.");
     }
     finally
     {
