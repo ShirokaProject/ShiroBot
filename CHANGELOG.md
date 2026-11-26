@@ -6,7 +6,9 @@
 
 ### 主要更新
 
-- 宿主和 Dashboard 同步为 1.0.5；SDK ABI 与 QQ、Discord、Telegram Model ABI 不变。
+- 宿主和 Dashboard 同步为 1.0.5；QQ Model ABI 升至 `1.2.0.0`，SDK ABI 与 Discord、Telegram Model ABI 不变。
+- `IQSystemApi` 新增 `GetOnlineClientsAsync` 和 `QOnlineClient`，用于获取当前账号在其他设备上的登录（客户端 ID、设备名称、设备类型）。目前的 QQ 适配器还没有实现，调用会抛出 `NotSupportedException`。
+- `IQMessageApi` 新增 `ForwardSingleMessageAsync`，把一条已有消息单独转发给好友或群（不是合并转发），返回新消息的 ID；新增气泡视频消息段 `QIncomingBubbleVideo` / `QOutgoingBubbleVideo`，字段与普通视频相同；`IQFileApi` 新增 `ForwardGroupFileToGroupAsync` 和 `ForwardGroupFileToFriendAsync`，把群文件转发到其他群或好友，可选是否发出文件消息。目前的 QQ 适配器都还没有实现。
 - 消息触发前缀可以设置多个，带上任意一个即可触发；同时能匹配多个时取最长的。Dashboard 中以标签形式编辑，配置文件里仍是用空格分隔的一个字符串。
 - 设置了全局前缀就要求前缀，去掉了单独的「要求前缀」开关；带前缀的消息去掉前缀后再交给插件，命令、整条消息监听和插件自己的解析看到的是同一段文本。
 - 插件单独设为「要求前缀」后，没带前缀也没有 @ 机器人的消息一律不交给它，链接解析这类自动触发也不例外；跟随全局时只有命令要求前缀，自动触发照常工作。
@@ -28,7 +30,7 @@
 - 之前设置了全局前缀但没有打开「要求前缀」的，升级后会开始要求前缀。不需要前缀的话清空全局前缀，或把个别插件设为「不要求前缀」。
 - 已单独设为「要求前缀」的插件，升级后没有前缀的消息不再进入它的整条消息监听和自定义判断（例如 MyParser、GitHubView 的链接解析）。希望它们照常自动触发，请改回「跟随全局」。
 - 前缀按空格分隔，原来中间带空格的前缀（如 `hey bot`）会被当作两个前缀。
-- 插件和适配器无需重新构建。
+- QQ Model ABI 升至 `1.2.0.0`，只新增带默认实现的成员，按 `1.1.0.0` 编译的插件和适配器无需重新构建；用到这些新增成员（在线客户端、单条转发、群文件转发、气泡视频段）的组件需要 1.0.5 及以上的宿主。
 
 ## 1.0.4
 

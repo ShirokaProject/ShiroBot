@@ -11,7 +11,7 @@
     <!-- 宿主内嵌的 Dashboard 前端版本，对应 Shirobot.Dashboard 仓的 v<T> release 产物。 -->
     <ShirobotDashboardVersion>1.0.5</ShirobotDashboardVersion>
     <ShiroBotSdkAbiVersion>1.5.0.0</ShiroBotSdkAbiVersion>
-    <ShiroBotQqModelAbiVersion>1.1.0.0</ShiroBotQqModelAbiVersion>
+    <ShiroBotQqModelAbiVersion>1.2.0.0</ShiroBotQqModelAbiVersion>
     <ShiroBotDiscordModelAbiVersion>1.1.0.0</ShiroBotDiscordModelAbiVersion>
     <ShiroBotTelegramModelAbiVersion>1.1.0.0</ShiroBotTelegramModelAbiVersion>
   </PropertyGroup>

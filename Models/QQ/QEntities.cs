@@ -274,3 +274,16 @@ public sealed record QImplInfo
     /// <summary>承载协议版本(如 Milky 版本)。</summary>
     public string? ProtocolVersion { get; init; }
 }
+
+/// <summary>当前账号的一个在线客户端（同一账号在其他设备上的登录）。</summary>
+public sealed record QOnlineClient
+{
+    /// <summary>客户端 ID（协议的 app_id）。</summary>
+    public required long AppId { get; init; }
+
+    /// <summary>设备名称，例如「iPhone 15」。</summary>
+    public string? DeviceName { get; init; }
+
+    /// <summary>设备类型，例如 mobile、pc、pad。</summary>
+    public string? DeviceKind { get; init; }
+}

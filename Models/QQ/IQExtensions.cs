@@ -322,6 +322,32 @@ public interface IQFileApi
     {
         throw new NotSupportedException();
     }
+
+    /// <summary>把群文件转发到另一个群（服务端转存，不重新上传），返回目标群里的新文件 ID。</summary>
+    /// <param name="groupId">源文件所在的群号。</param>
+    /// <param name="fileId">源文件 ID。</param>
+    /// <param name="targetGroupId">目标群号。</param>
+    /// <param name="targetFolderId">目标群里的文件夹 ID，默认根目录。</param>
+    /// <param name="sendMessage">是否在目标群里发出这条文件消息。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<string> ForwardGroupFileToGroupAsync(string groupId, string fileId, string targetGroupId,
+        string targetFolderId = "/", bool sendMessage = true,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>把群文件作为私聊文件转发给好友，返回新的文件 ID。</summary>
+    /// <param name="groupId">源文件所在的群号。</param>
+    /// <param name="fileId">源文件 ID。</param>
+    /// <param name="userId">目标好友 QQ 号。</param>
+    /// <param name="sendMessage">是否在私聊里发出这条文件消息。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<string> ForwardGroupFileToFriendAsync(string groupId, string fileId, string userId,
+        bool sendMessage = true, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
 }
 
 /// <summary>QQ 账号/资料扩展服务。</summary>
@@ -382,6 +408,15 @@ public interface IQSystemApi
 
     /// <summary>获取协议实现端信息(实现名/版本/QQ协议类型)。</summary>
     Task<QImplInfo> GetImplInfoAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>获取当前账号的在线客户端列表（同一账号在其他设备上的登录）。</summary>
+    /// <param name="noCache">是否忽略缓存重新获取。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<IReadOnlyList<QOnlineClient>> GetOnlineClientsAsync(bool noCache = false,
+        CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
@@ -454,6 +489,19 @@ public interface IQMessageApi
 
     Task MarkAsReadAsync(QMessageScene scene, string peerId, string messageId,
         CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    /// <summary>把一条已有消息单独转发给好友或群（不是合并转发），返回转发后新消息的 ID。</summary>
+    /// <param name="scene">源消息所在的场景。</param>
+    /// <param name="peerId">源消息所在的会话 ID，与 scene 对应。</param>
+    /// <param name="messageId">要转发的消息 ID。</param>
+    /// <param name="targetScene">转发目标场景，只支持好友和群。</param>
+    /// <param name="targetPeerId">目标好友 QQ 号或群号。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<string> ForwardSingleMessageAsync(QMessageScene scene, string peerId, string messageId,
+        QMessageScene targetScene, string targetPeerId, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }

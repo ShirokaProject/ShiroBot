@@ -224,6 +224,26 @@ Task<QImplInfo> GetImplInfoAsync(CancellationToken cancellationToken = default);
 
 `Task<QImplInfo>`。返回协议实现端信息。
 
+## GetOnlineClientsAsync
+
+获取当前账号的在线客户端列表（同一账号在其他设备上的登录）。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<IReadOnlyList<QOnlineClient>> GetOnlineClientsAsync(bool noCache = false,
+    CancellationToken cancellationToken = default);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `noCache` | `bool` | `false` | 是否忽略缓存重新获取。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<IReadOnlyList<QOnlineClient>>`。返回在线客户端列表。
+
 ## GetCustomFaceUrlListAsync
 
 获取收藏表情 URL 列表。

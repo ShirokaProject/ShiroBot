@@ -372,6 +372,23 @@ public sealed record QImplInfo
 }
 ```
 
+### QOnlineClient
+
+```csharp
+/// <summary>当前账号的一个在线客户端（同一账号在其他设备上的登录）。</summary>
+public sealed record QOnlineClient
+{
+    /// <summary>客户端 ID（协议的 app_id）。</summary>
+    public required long AppId { get; init; }
+
+    /// <summary>设备名称，例如「iPhone 15」。</summary>
+    public string? DeviceName { get; init; }
+
+    /// <summary>设备类型，例如 mobile、pc、pad。</summary>
+    public string? DeviceKind { get; init; }
+}
+```
+
 ## 群管理与策略
 
 ### QJoinVerification
@@ -791,6 +808,20 @@ public sealed record QIncomingVideo(string ResourceId, string TempUrl) : QIncomi
 }
 ```
 
+### QIncomingBubbleVideo
+
+气泡视频，QQ Model `1.2.0.0` 新增。字段与 `QIncomingVideo` 相同，只是消息段类型不同。
+
+```csharp
+/// <summary>气泡视频：字段与 <see cref="QIncomingVideo" /> 相同，只是消息段类型不同。</summary>
+public sealed record QIncomingBubbleVideo(string ResourceId, string TempUrl) : QIncomingSegment
+{
+    public int Width { get; init; }
+    public int Height { get; init; }
+    public TimeSpan Duration { get; init; }
+}
+```
+
 ### QIncomingFile
 
 对应主消息段：[`FileSegment`](../segments#filesegment)
@@ -931,6 +962,18 @@ public sealed record QOutgoingRecord(string Uri) : QOutgoingSegment;
 
 ```csharp
 public sealed record QOutgoingVideo(string Uri) : QOutgoingSegment
+{
+    public string? ThumbUri { get; init; }
+}
+```
+
+### QOutgoingBubbleVideo
+
+气泡视频，QQ Model `1.2.0.0` 新增。字段与 `QOutgoingVideo` 相同，只是消息段类型不同；适配器不支持时应拒绝发送，而不是当作普通视频发出。
+
+```csharp
+/// <summary>气泡视频：字段与 <see cref="QOutgoingVideo" /> 相同，只是消息段类型不同。Uri 支持 http(s)://、file://、base64://。</summary>
+public sealed record QOutgoingBubbleVideo(string Uri) : QOutgoingSegment
 {
     public string? ThumbUri { get; init; }
 }

@@ -211,6 +211,36 @@ Task MarkAsReadAsync(
 
 `Task`。完成后无返回值。
 
+## ForwardSingleMessageAsync
+
+把一条已有消息单独转发给好友或群，不是合并转发。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<string> ForwardSingleMessageAsync(
+    QMessageScene scene,
+    string peerId,
+    string messageId,
+    QMessageScene targetScene,
+    string targetPeerId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `scene` | `QMessageScene` | `必传` | 源消息所在的场景。 |
+| `peerId` | `string` | `必传` | 源消息所在的会话 ID，与 scene 对应。 |
+| `messageId` | `string` | `必传` | 要转发的消息 ID。 |
+| `targetScene` | `QMessageScene` | `必传` | 转发目标场景，只支持 `Friend` 和 `Group`。 |
+| `targetPeerId` | `string` | `必传` | 目标好友 QQ 号或群号。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<string>`。返回转发后新消息的 ID。
+
 ## 相关类型
 
 见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。

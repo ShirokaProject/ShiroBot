@@ -343,6 +343,64 @@ Task PersistGroupFileAsync(
 
 `Task`。完成后无返回值。
 
+## ForwardGroupFileToGroupAsync
+
+把群文件转发到另一个群，由服务端转存，不重新上传。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<string> ForwardGroupFileToGroupAsync(
+    string groupId,
+    string fileId,
+    string targetGroupId,
+    string targetFolderId = "/",
+    bool sendMessage = true,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 源文件所在的群 ID。 |
+| `fileId` | `string` | `必传` | 源文件 ID。 |
+| `targetGroupId` | `string` | `必传` | 目标群 ID。 |
+| `targetFolderId` | `string` | `"/"` | 目标群里的文件夹 ID，默认根目录。 |
+| `sendMessage` | `bool` | `true` | 是否在目标群里发出这条文件消息。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<string>`。返回目标群里的新文件 ID。
+
+## ForwardGroupFileToFriendAsync
+
+把群文件作为私聊文件转发给好友。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<string> ForwardGroupFileToFriendAsync(
+    string groupId,
+    string fileId,
+    string userId,
+    bool sendMessage = true,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 源文件所在的群 ID。 |
+| `fileId` | `string` | `必传` | 源文件 ID。 |
+| `userId` | `string` | `必传` | 目标好友 QQ 号。 |
+| `sendMessage` | `bool` | `true` | 是否在私聊里发出这条文件消息。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<string>`。返回新的文件 ID。
+
 ## 相关类型
 
 见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。

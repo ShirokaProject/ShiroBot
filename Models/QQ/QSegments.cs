@@ -42,6 +42,14 @@ public sealed record QIncomingVideo(string ResourceId, string TempUrl) : QIncomi
     public TimeSpan Duration { get; init; }
 }
 
+/// <summary>气泡视频：字段与 <see cref="QIncomingVideo" /> 相同，只是消息段类型不同。</summary>
+public sealed record QIncomingBubbleVideo(string ResourceId, string TempUrl) : QIncomingSegment
+{
+    public int Width { get; init; }
+    public int Height { get; init; }
+    public TimeSpan Duration { get; init; }
+}
+
 public sealed record QIncomingFile(string FileId, string FileName, long FileSize) : QIncomingSegment
 {
     public string? FileHash { get; init; }
@@ -97,6 +105,12 @@ public sealed record QOutgoingImage(string Uri) : QOutgoingSegment
 public sealed record QOutgoingRecord(string Uri) : QOutgoingSegment;
 
 public sealed record QOutgoingVideo(string Uri) : QOutgoingSegment
+{
+    public string? ThumbUri { get; init; }
+}
+
+/// <summary>气泡视频：字段与 <see cref="QOutgoingVideo" /> 相同，只是消息段类型不同。Uri 支持 http(s)://、file://、base64://。</summary>
+public sealed record QOutgoingBubbleVideo(string Uri) : QOutgoingSegment
 {
     public string? ThumbUri { get; init; }
 }
