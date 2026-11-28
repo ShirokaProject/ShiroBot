@@ -63,13 +63,14 @@ var article = new HeyboxArticleDocumentViewModel
         new() { Text = "结束前，回头还能看见第一颗星。", Foreground = "#899FB7", Margin = new Thickness(0, 8) }
     ]
 };
-var cases = new (string Name, Func<ControlRenderOptions, Task<byte[]>> Render)[]
+var cases = new List<(string Name, Func<ControlRenderOptions, Task<byte[]>> Render)>
 {
     ("rss-post", options => renderer.RenderControlPngAsync<PostCard>(rss, options)),
     ("heybox-card", options => renderer.RenderControlPngAsync<HeyboxCard>(heybox, options)),
     ("bili-live", options => renderer.RenderControlPngAsync<BiliLiveCard>(live, options)),
     ("heybox-article", options => renderer.RenderControlPngAsync<HeyboxArticleDocument>(article, options))
 };
+using var preview = ExpandedCards.AddCases(cases, renderer, cover, avatar, output);
 var results = new List<CardResult>();
 
 try

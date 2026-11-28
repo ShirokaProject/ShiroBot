@@ -1,0 +1,453 @@
+{
+  "fonts": {
+    "family": "fonts:Lab#Noto Sans SC",
+    "faces": [
+      {
+        "weight": 400,
+        "sha256": "31431E5BEF20902E79A21FDFF3BE0C0E0E54011546267EE18F4F00740C11BD65"
+      },
+      {
+        "weight": 500,
+        "sha256": "3A52F9D863400C68ECCAA1380859FC22B9F3D75CA9B19D8635B8470AF279C670"
+      },
+      {
+        "weight": 600,
+        "sha256": "97549397A0519ADF5D4C27BBBEE5D7D34AC1C550EF37C41F9083B1E1F65AEBA4"
+      },
+      {
+        "weight": 700,
+        "sha256": "140B2AC5DDB375A800FEF30DDBE7E69985ECD303574CB88C06D23B6B6E2A8F55"
+      },
+      {
+        "weight": 800,
+        "sha256": "F3D60DB3A702021A64C6BD025AF57B30DC05975961C0966031CA4A0DFAF4F1B4"
+      },
+      {
+        "weight": 900,
+        "sha256": "55E83C072CEFC607F6C4BD327820A057BF7D7F90980D4909F76F9DFE0926A144"
+      }
+    ]
+  },
+  "cards": [
+    {
+      "sample": "rss-post-light",
+      "width": 1840,
+      "height": 1970,
+      "times": [
+        85.6861,
+        85.7058,
+        86.1234
+      ]
+    },
+    {
+      "sample": "heybox-card-light",
+      "width": 720,
+      "height": 1040,
+      "times": [
+        37.7798,
+        39.1622,
+        37.746
+      ]
+    },
+    {
+      "sample": "bili-live-light",
+      "width": 840,
+      "height": 580,
+      "times": [
+        31.8315,
+        33.0095,
+        31.5806
+      ]
+    },
+    {
+      "sample": "heybox-article-light",
+      "width": 1440,
+      "height": 2272,
+      "times": [
+        124.6959,
+        124.1004,
+        123.6192
+      ]
+    },
+    {
+      "sample": "github-description-light",
+      "width": 1400,
+      "height": 700,
+      "times": [
+        22.6773,
+        23.9806,
+        22.7225
+      ]
+    },
+    {
+      "sample": "jm-preview-light",
+      "width": 780,
+      "height": 1200,
+      "times": [
+        44.0483,
+        42.0602,
+        44.0781
+      ]
+    },
+    {
+      "sample": "media-light",
+      "width": 840,
+      "height": 414,
+      "times": [
+        9.2188,
+        11.6028,
+        9.1927
+      ]
+    },
+    {
+      "sample": "bili-article-light",
+      "width": 1440,
+      "height": 1712,
+      "times": [
+        60.38,
+        60.5532,
+        60.1172
+      ]
+    },
+    {
+      "sample": "bili-video-light",
+      "width": 620,
+      "height": 900,
+      "times": [
+        17.1635,
+        18.6441,
+        17.1049
+      ]
+    },
+    {
+      "sample": "bili-bangumi-light",
+      "width": 620,
+      "height": 900,
+      "times": [
+        16.62,
+        15.332,
+        16.5535
+      ]
+    },
+    {
+      "sample": "douyin-video-light",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        24.297,
+        25.99,
+        24.4105
+      ]
+    },
+    {
+      "sample": "douyin-comments-light",
+      "width": 1440,
+      "height": 1520,
+      "times": [
+        42.6257,
+        42.9032,
+        43.2288
+      ]
+    },
+    {
+      "sample": "netease-music-light",
+      "width": 640,
+      "height": 366,
+      "times": [
+        10.6721,
+        10.7517,
+        10.7472
+      ]
+    },
+    {
+      "sample": "weixin-video-light",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        24.2663,
+        23.8111,
+        23.8328
+      ]
+    },
+    {
+      "sample": "x-post-light",
+      "width": 840,
+      "height": 1294,
+      "times": [
+        24.6002,
+        25.1937,
+        24.8038
+      ]
+    },
+    {
+      "sample": "rss-bili-article-light",
+      "width": 1520,
+      "height": 1324,
+      "times": [
+        46.5862,
+        47.3729,
+        47.12
+      ]
+    },
+    {
+      "sample": "rss-bili-dynamic-light",
+      "width": 1520,
+      "height": 1252,
+      "times": [
+        45.0562,
+        44.8995,
+        55.7452
+      ]
+    },
+    {
+      "sample": "rss-bili-video-light",
+      "width": 1000,
+      "height": 980,
+      "times": [
+        23.1214,
+        23.3877,
+        23.1633
+      ]
+    },
+    {
+      "sample": "rss-article-light",
+      "width": 1840,
+      "height": 1640,
+      "times": [
+        62.965,
+        63.7719,
+        64.6164
+      ]
+    },
+    {
+      "sample": "rss-git-light",
+      "width": 1840,
+      "height": 524,
+      "times": [
+        21.76,
+        22.1778,
+        21.7121
+      ]
+    },
+    {
+      "sample": "rss-wordpress-light",
+      "width": 1840,
+      "height": 1772,
+      "times": [
+        67.2397,
+        68.1325,
+        68.6284
+      ]
+    },
+    {
+      "sample": "rss-post-dark",
+      "width": 1840,
+      "height": 1970,
+      "times": [
+        85.1909,
+        86.0692,
+        85.818
+      ]
+    },
+    {
+      "sample": "heybox-card-dark",
+      "width": 720,
+      "height": 1040,
+      "times": [
+        36.4442,
+        37.6475,
+        36.5673
+      ]
+    },
+    {
+      "sample": "bili-live-dark",
+      "width": 840,
+      "height": 580,
+      "times": [
+        35.194,
+        35.2983,
+        35.4771
+      ]
+    },
+    {
+      "sample": "heybox-article-dark",
+      "width": 1440,
+      "height": 2272,
+      "times": [
+        129.1088,
+        129.2406,
+        129.9184
+      ]
+    },
+    {
+      "sample": "github-description-dark",
+      "width": 1400,
+      "height": 700,
+      "times": [
+        21.0005,
+        21.2149,
+        20.8862
+      ]
+    },
+    {
+      "sample": "jm-preview-dark",
+      "width": 780,
+      "height": 1200,
+      "times": [
+        38.2232,
+        37.9849,
+        38.3676
+      ]
+    },
+    {
+      "sample": "media-dark",
+      "width": 840,
+      "height": 414,
+      "times": [
+        8.1885,
+        8.6712,
+        8.3937
+      ]
+    },
+    {
+      "sample": "bili-article-dark",
+      "width": 1440,
+      "height": 1712,
+      "times": [
+        57.2527,
+        57.5622,
+        58.2824
+      ]
+    },
+    {
+      "sample": "bili-video-dark",
+      "width": 620,
+      "height": 900,
+      "times": [
+        16.1936,
+        15.9584,
+        16.3182
+      ]
+    },
+    {
+      "sample": "bili-bangumi-dark",
+      "width": 620,
+      "height": 900,
+      "times": [
+        14.441,
+        14.6891,
+        14.3596
+      ]
+    },
+    {
+      "sample": "douyin-video-dark",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        24.1468,
+        23.4452,
+        23.752
+      ]
+    },
+    {
+      "sample": "douyin-comments-dark",
+      "width": 1440,
+      "height": 1520,
+      "times": [
+        41.3537,
+        41.484,
+        41.9705
+      ]
+    },
+    {
+      "sample": "netease-music-dark",
+      "width": 640,
+      "height": 366,
+      "times": [
+        10.17,
+        10.1641,
+        10.53
+      ]
+    },
+    {
+      "sample": "weixin-video-dark",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        23.2354,
+        24.2284,
+        23.2909
+      ]
+    },
+    {
+      "sample": "x-post-dark",
+      "width": 840,
+      "height": 1294,
+      "times": [
+        24.8867,
+        24.6759,
+        24.7749
+      ]
+    },
+    {
+      "sample": "rss-bili-article-dark",
+      "width": 1520,
+      "height": 1324,
+      "times": [
+        47.2222,
+        47.291,
+        48.0844
+      ]
+    },
+    {
+      "sample": "rss-bili-dynamic-dark",
+      "width": 1520,
+      "height": 1252,
+      "times": [
+        45.0565,
+        45.0324,
+        46.9129
+      ]
+    },
+    {
+      "sample": "rss-bili-video-dark",
+      "width": 1000,
+      "height": 980,
+      "times": [
+        23.3185,
+        23.7196,
+        23.9732
+      ]
+    },
+    {
+      "sample": "rss-article-dark",
+      "width": 1840,
+      "height": 1640,
+      "times": [
+        65.0389,
+        65.2643,
+        65.6138
+      ]
+    },
+    {
+      "sample": "rss-git-dark",
+      "width": 1840,
+      "height": 524,
+      "times": [
+        21.3468,
+        21.479,
+        21.2624
+      ]
+    },
+    {
+      "sample": "rss-wordpress-dark",
+      "width": 1840,
+      "height": 1772,
+      "times": [
+        68.9853,
+        69.1464,
+        68.705
+      ]
+    }
+  ]
+}

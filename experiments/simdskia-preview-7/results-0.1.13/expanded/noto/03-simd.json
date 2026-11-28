@@ -1,0 +1,453 @@
+{
+  "fonts": {
+    "family": "fonts:Lab#Noto Sans SC",
+    "faces": [
+      {
+        "weight": 400,
+        "sha256": "31431E5BEF20902E79A21FDFF3BE0C0E0E54011546267EE18F4F00740C11BD65"
+      },
+      {
+        "weight": 500,
+        "sha256": "3A52F9D863400C68ECCAA1380859FC22B9F3D75CA9B19D8635B8470AF279C670"
+      },
+      {
+        "weight": 600,
+        "sha256": "97549397A0519ADF5D4C27BBBEE5D7D34AC1C550EF37C41F9083B1E1F65AEBA4"
+      },
+      {
+        "weight": 700,
+        "sha256": "140B2AC5DDB375A800FEF30DDBE7E69985ECD303574CB88C06D23B6B6E2A8F55"
+      },
+      {
+        "weight": 800,
+        "sha256": "F3D60DB3A702021A64C6BD025AF57B30DC05975961C0966031CA4A0DFAF4F1B4"
+      },
+      {
+        "weight": 900,
+        "sha256": "55E83C072CEFC607F6C4BD327820A057BF7D7F90980D4909F76F9DFE0926A144"
+      }
+    ]
+  },
+  "cards": [
+    {
+      "sample": "rss-post-light",
+      "width": 1840,
+      "height": 1970,
+      "times": [
+        265.5349,
+        264.572,
+        237.2258
+      ]
+    },
+    {
+      "sample": "heybox-card-light",
+      "width": 720,
+      "height": 1040,
+      "times": [
+        339.7446,
+        163.9447,
+        165.8839
+      ]
+    },
+    {
+      "sample": "bili-live-light",
+      "width": 840,
+      "height": 580,
+      "times": [
+        109.7079,
+        125.9014,
+        123.4742
+      ]
+    },
+    {
+      "sample": "heybox-article-light",
+      "width": 1440,
+      "height": 2272,
+      "times": [
+        639.4077,
+        640.8343,
+        643.0974
+      ]
+    },
+    {
+      "sample": "github-description-light",
+      "width": 1400,
+      "height": 700,
+      "times": [
+        26.4541,
+        26.4262,
+        26.4062
+      ]
+    },
+    {
+      "sample": "jm-preview-light",
+      "width": 780,
+      "height": 1200,
+      "times": [
+        108.6497,
+        108.0455,
+        108.2945
+      ]
+    },
+    {
+      "sample": "media-light",
+      "width": 840,
+      "height": 414,
+      "times": [
+        11.0415,
+        10.9984,
+        10.9471
+      ]
+    },
+    {
+      "sample": "bili-article-light",
+      "width": 1440,
+      "height": 1712,
+      "times": [
+        80.1853,
+        80.793,
+        79.0879
+      ]
+    },
+    {
+      "sample": "bili-video-light",
+      "width": 620,
+      "height": 900,
+      "times": [
+        40.3245,
+        38.5022,
+        38.5765
+      ]
+    },
+    {
+      "sample": "bili-bangumi-light",
+      "width": 620,
+      "height": 900,
+      "times": [
+        34.4713,
+        36.129,
+        34.97
+      ]
+    },
+    {
+      "sample": "douyin-video-light",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        47.5395,
+        47.4871,
+        49.0041
+      ]
+    },
+    {
+      "sample": "douyin-comments-light",
+      "width": 1440,
+      "height": 1520,
+      "times": [
+        45.1007,
+        42.7866,
+        42.583
+      ]
+    },
+    {
+      "sample": "netease-music-light",
+      "width": 640,
+      "height": 366,
+      "times": [
+        46.1901,
+        45.9877,
+        46.0895
+      ]
+    },
+    {
+      "sample": "weixin-video-light",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        47.9276,
+        47.4602,
+        47.7834
+      ]
+    },
+    {
+      "sample": "x-post-light",
+      "width": 840,
+      "height": 1294,
+      "times": [
+        35.5045,
+        35.6785,
+        35.4227
+      ]
+    },
+    {
+      "sample": "rss-bili-article-light",
+      "width": 1520,
+      "height": 1324,
+      "times": [
+        72.2948,
+        72.3523,
+        72.3552
+      ]
+    },
+    {
+      "sample": "rss-bili-dynamic-light",
+      "width": 1520,
+      "height": 1252,
+      "times": [
+        68.923,
+        69.2892,
+        69.5225
+      ]
+    },
+    {
+      "sample": "rss-bili-video-light",
+      "width": 1000,
+      "height": 980,
+      "times": [
+        34.9806,
+        35.2195,
+        34.7227
+      ]
+    },
+    {
+      "sample": "rss-article-light",
+      "width": 1840,
+      "height": 1640,
+      "times": [
+        106.064,
+        105.8455,
+        106.2315
+      ]
+    },
+    {
+      "sample": "rss-git-light",
+      "width": 1840,
+      "height": 524,
+      "times": [
+        26.0703,
+        25.7145,
+        25.879
+      ]
+    },
+    {
+      "sample": "rss-wordpress-light",
+      "width": 1840,
+      "height": 1772,
+      "times": [
+        111.8586,
+        110.2986,
+        110.6092
+      ]
+    },
+    {
+      "sample": "rss-post-dark",
+      "width": 1840,
+      "height": 1970,
+      "times": [
+        136.2003,
+        137.9154,
+        137.8163
+      ]
+    },
+    {
+      "sample": "heybox-card-dark",
+      "width": 720,
+      "height": 1040,
+      "times": [
+        166.4057,
+        166.3542,
+        165.5702
+      ]
+    },
+    {
+      "sample": "bili-live-dark",
+      "width": 840,
+      "height": 580,
+      "times": [
+        114.1803,
+        115.4814,
+        115.2969
+      ]
+    },
+    {
+      "sample": "heybox-article-dark",
+      "width": 1440,
+      "height": 2272,
+      "times": [
+        579.9287,
+        577.2654,
+        579.1508
+      ]
+    },
+    {
+      "sample": "github-description-dark",
+      "width": 1400,
+      "height": 700,
+      "times": [
+        27.6815,
+        26.0279,
+        26.2159
+      ]
+    },
+    {
+      "sample": "jm-preview-dark",
+      "width": 780,
+      "height": 1200,
+      "times": [
+        104.6577,
+        104.1801,
+        104.1825
+      ]
+    },
+    {
+      "sample": "media-dark",
+      "width": 840,
+      "height": 414,
+      "times": [
+        11.0392,
+        11.0148,
+        12.2319
+      ]
+    },
+    {
+      "sample": "bili-article-dark",
+      "width": 1440,
+      "height": 1712,
+      "times": [
+        79.6392,
+        78.9012,
+        79.5155
+      ]
+    },
+    {
+      "sample": "bili-video-dark",
+      "width": 620,
+      "height": 900,
+      "times": [
+        38.2047,
+        37.5871,
+        38.5292
+      ]
+    },
+    {
+      "sample": "bili-bangumi-dark",
+      "width": 620,
+      "height": 900,
+      "times": [
+        34.3306,
+        35.2835,
+        35.8617
+      ]
+    },
+    {
+      "sample": "douyin-video-dark",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        46.0401,
+        47.5384,
+        46.3593
+      ]
+    },
+    {
+      "sample": "douyin-comments-dark",
+      "width": 1440,
+      "height": 1520,
+      "times": [
+        42.5382,
+        42.7397,
+        42.5174
+      ]
+    },
+    {
+      "sample": "netease-music-dark",
+      "width": 640,
+      "height": 366,
+      "times": [
+        48.3047,
+        47.1975,
+        47.2583
+      ]
+    },
+    {
+      "sample": "weixin-video-dark",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        45.6522,
+        45.7992,
+        47.0112
+      ]
+    },
+    {
+      "sample": "x-post-dark",
+      "width": 840,
+      "height": 1294,
+      "times": [
+        36.2033,
+        35.886,
+        35.9002
+      ]
+    },
+    {
+      "sample": "rss-bili-article-dark",
+      "width": 1520,
+      "height": 1324,
+      "times": [
+        71.071,
+        71.7861,
+        71.4234
+      ]
+    },
+    {
+      "sample": "rss-bili-dynamic-dark",
+      "width": 1520,
+      "height": 1252,
+      "times": [
+        68.9345,
+        68.2896,
+        68.4928
+      ]
+    },
+    {
+      "sample": "rss-bili-video-dark",
+      "width": 1000,
+      "height": 980,
+      "times": [
+        35.0128,
+        35.4739,
+        34.9407
+      ]
+    },
+    {
+      "sample": "rss-article-dark",
+      "width": 1840,
+      "height": 1640,
+      "times": [
+        106.665,
+        106.8468,
+        107.5754
+      ]
+    },
+    {
+      "sample": "rss-git-dark",
+      "width": 1840,
+      "height": 524,
+      "times": [
+        25.945,
+        25.749,
+        25.8765
+      ]
+    },
+    {
+      "sample": "rss-wordpress-dark",
+      "width": 1840,
+      "height": 1772,
+      "times": [
+        111.8135,
+        111.8391,
+        112.0414
+      ]
+    }
+  ]
+}

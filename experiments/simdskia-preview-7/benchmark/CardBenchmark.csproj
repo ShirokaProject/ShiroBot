@@ -9,5 +9,7 @@
     <ProjectReference Include="../../../Core/ShiroBot.csproj" />
     <Reference Include="Shirobot.Plugin.MyParser" HintPath="$(FixtureDirectory)/Shirobot.Plugin.MyParser.dll" />
     <Reference Include="Shirobot.Plugin.RssSubscriber" HintPath="$(FixtureDirectory)/Shirobot.Plugin.RssSubscriber.dll" />
+    <Reference Include="ShiroBot.Plugin.GithubView" HintPath="$(FixtureDirectory)/ShiroBot.Plugin.GithubView.dll" />
+    <Reference Include="ShiroBot.JmParser.merged" HintPath="$(FixtureDirectory)/ShiroBot.JmParser.merged.dll" />
   </ItemGroup>
 </Project>

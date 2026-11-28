@@ -35,6 +35,43 @@
 
 [默认字体汇总](results-0.1.13/default/summary.json) · [静态 Noto 汇总](results-0.1.13/noto/summary.json) · [BiliLiveCard 字体对照](results-0.1.13/noto/bili-live-font-comparison.png) · [浅色 Noto 总览](results-0.1.13/noto/overview-light.png) · [深色 Noto 总览](results-0.1.13/noto/overview-dark.png) · [Skia 布局日志](results-0.1.13/noto/skia-noto-layout.log) · [SimdSkia 布局日志](results-0.1.13/noto/simd-noto-layout.log)
 
+### 21 种卡片扩测
+
+在同一 macOS arm64 实验宿主上复跑 [21 种卡片](cards.json)，覆盖 MyParser、RSS、GitHubView 和 JmParser 的原始发布 DLL。沿用四轮独立进程及 192 DPI，每轮每用例预热 2 次、计时 3 次，表中统计取每后端合计 6 次的中位数。工作流默认配置仍是预热 3 次、计时 9 次。两种字体各有 42 个明暗用例，两个后端全部出图。
+
+| 字体设置 | 输出尺寸不同 | SimdSkia / Skia 耗时中位比 | 各用例耗时比范围 |
+| --- | ---: | ---: | ---: |
+| 系统默认字体 | 20 / 42 | 1.65× | 1.01–4.95× |
+| 统一静态 Noto | 0 / 42 | 1.63× | 1.01–4.90× |
+
+默认字体的尺寸差分布在 10 种卡片，包括 B 站直播、通用媒体、网易云、X 和六种 RSS 卡片。换成统一静态 Noto 后，这 42 对的宽高全部一致。抖音评论卡两种后端约 42 ms，GitHubView 浅色约 22.7 → 26.4 ms。网易云深色仍有约 4.64 倍，但绝对差约 37 ms。绝对差最大的是 Heybox 长文浅色，约 123.9 → 607.1 ms。
+
+[默认字体汇总](results-0.1.13/expanded/default/summary.json) · [静态 Noto 汇总](results-0.1.13/expanded/noto/summary.json) · [逐轮数据及环境](results-0.1.13/expanded) · [静态 Noto 浅色总览](results-0.1.13/expanded/noto/overview-light.png) · [静态 Noto 深色总览](results-0.1.13/expanded/noto/overview-dark.png)
+
+### 发布体积与原生库
+
+以 `b48abc4` 主线和扩测后的实验分支分别执行 Release 单文件发布。两边使用相同 SDK、相同 Dashboard 产物及 `IncludeNativeLibrariesForSelfExtract=true`。下表为单个可执行文件的十进制 MB。发布目录里的符号文件及原生旁置文件另计。
+
+| 发布目标 | 主线 Skia | 实验分支（双后端） | 差值 |
+| --- | ---: | ---: | ---: |
+| macOS arm64，依赖运行时 | 32.87 MB | 40.43 MB | +7.56 MB |
+| macOS arm64，自带运行时 | 137.32 MB | 144.88 MB | +7.56 MB |
+| Windows x64，依赖运行时 | 28.13 MB | 35.68 MB | +7.55 MB |
+
+在 macOS 上给两边设置全新的 `DOTNET_BUNDLE_EXTRACT_BASE_DIR` 并运行 `--self-check`，都实际解包了 `libSkiaSharp.dylib`（15.20 MB）和 `libHarfBuzzSharp.dylib`（2.92 MB）。Windows x64 只做了交叉发布和单文件清单检查，两边均包含 `libSkiaSharp.dll` 和 `libHarfBuzzSharp.dll`。实验分支还因桌面包在 Mac 上的选择产生一份 2.09 MB 的旁置 `libAvaloniaNative.dylib`。仓库发布流程的 ZIP 只取主可执行文件；本次 headless 自检和出图均使用离屏路径。
+
+独立最小程序使用相同的 Avalonia 12.2.0 和相同的文本出图代码。在 macOS arm64 依赖运行时的单文件发布中：
+
+| 渲染配置 | 可执行文件 | 首次运行解包 |
+| --- | ---: | --- |
+| `Avalonia.Headless` + `Avalonia.Skia` | 26.11 MB | Skia、HarfBuzz |
+| `Avalonia.Headless` + `SimdSkia.Avalonia`，沿用宿主注册顺序 | 13.25 MB | HarfBuzz |
+| `Avalonia.Headless` + `SimdSkia.Avalonia`，先注册 headless 再注册 SimdSkia，并排除 HarfBuzz 原生资产 | 10.32 MB | 空 |
+
+最后一组显式以 `ExcludeAssets="all"` 引用 `HarfBuzzSharp.NativeAssets.macOS 8.3.1.3`，运行后生成了含中文、拉丁字母和 😀 的 PNG，隔离的解包目录没有文件。沿用宿主注册顺序时，只排除该原生包会使文本测量抛出 `DllNotFoundException`，因为 headless 注册的 HarfBuzz 整形服务仍被使用。此结果限于最小离屏路径。实验宿主仍保留插件所需的 SkiaSharp 以及原版后端，不能用最小程序的体积推算迁移后的生产包大小。
+
+[发布文件及解包清单](results-0.1.13/publish-footprint.json)
+
 ---
 
 ## SimdSkia 0.1.0-preview.7 替换实验

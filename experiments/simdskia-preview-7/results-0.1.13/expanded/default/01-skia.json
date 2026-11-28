@@ -1,0 +1,428 @@
+{
+  "fonts": {
+    "family": "PingFang SC",
+    "faces": []
+  },
+  "cards": [
+    {
+      "sample": "rss-post-light",
+      "width": 1840,
+      "height": 1970,
+      "times": [
+        85.6987,
+        86.0835,
+        86.0768
+      ]
+    },
+    {
+      "sample": "heybox-card-light",
+      "width": 720,
+      "height": 1040,
+      "times": [
+        37.8126,
+        38.1429,
+        38.3621
+      ]
+    },
+    {
+      "sample": "bili-live-light",
+      "width": 840,
+      "height": 576,
+      "times": [
+        31.8014,
+        31.5137,
+        32.0269
+      ]
+    },
+    {
+      "sample": "heybox-article-light",
+      "width": 1440,
+      "height": 2272,
+      "times": [
+        123.8445,
+        121.7396,
+        122.6479
+      ]
+    },
+    {
+      "sample": "github-description-light",
+      "width": 1400,
+      "height": 700,
+      "times": [
+        22.0567,
+        22.1473,
+        21.9204
+      ]
+    },
+    {
+      "sample": "jm-preview-light",
+      "width": 780,
+      "height": 1200,
+      "times": [
+        42.948,
+        41.605,
+        42.2865
+      ]
+    },
+    {
+      "sample": "media-light",
+      "width": 840,
+      "height": 410,
+      "times": [
+        8.4265,
+        9.7329,
+        8.4498
+      ]
+    },
+    {
+      "sample": "bili-article-light",
+      "width": 1440,
+      "height": 1712,
+      "times": [
+        57.3683,
+        57.8499,
+        57.5516
+      ]
+    },
+    {
+      "sample": "bili-video-light",
+      "width": 620,
+      "height": 900,
+      "times": [
+        17.4017,
+        17.2971,
+        18.306
+      ]
+    },
+    {
+      "sample": "bili-bangumi-light",
+      "width": 620,
+      "height": 900,
+      "times": [
+        16.7433,
+        16.1088,
+        17.5983
+      ]
+    },
+    {
+      "sample": "douyin-video-light",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        27.7371,
+        24.4169,
+        24.8138
+      ]
+    },
+    {
+      "sample": "douyin-comments-light",
+      "width": 1440,
+      "height": 1520,
+      "times": [
+        44.4144,
+        42.8614,
+        42.769
+      ]
+    },
+    {
+      "sample": "netease-music-light",
+      "width": 640,
+      "height": 364,
+      "times": [
+        11.4121,
+        10.7767,
+        10.9657
+      ]
+    },
+    {
+      "sample": "weixin-video-light",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        24.1388,
+        23.7066,
+        24.7244
+      ]
+    },
+    {
+      "sample": "x-post-light",
+      "width": 840,
+      "height": 1290,
+      "times": [
+        24.2115,
+        25.6812,
+        24.2554
+      ]
+    },
+    {
+      "sample": "rss-bili-article-light",
+      "width": 1520,
+      "height": 1312,
+      "times": [
+        46.1412,
+        46.651,
+        46.59
+      ]
+    },
+    {
+      "sample": "rss-bili-dynamic-light",
+      "width": 1520,
+      "height": 1240,
+      "times": [
+        44.2511,
+        44.0632,
+        44.2625
+      ]
+    },
+    {
+      "sample": "rss-bili-video-light",
+      "width": 1000,
+      "height": 980,
+      "times": [
+        23.088,
+        23.3889,
+        23.1209
+      ]
+    },
+    {
+      "sample": "rss-article-light",
+      "width": 1840,
+      "height": 1640,
+      "times": [
+        63.0027,
+        64.0093,
+        64.192
+      ]
+    },
+    {
+      "sample": "rss-git-light",
+      "width": 1840,
+      "height": 520,
+      "times": [
+        21.6044,
+        21.9768,
+        21.3925
+      ]
+    },
+    {
+      "sample": "rss-wordpress-light",
+      "width": 1840,
+      "height": 1768,
+      "times": [
+        67.8203,
+        68.021,
+        68.4299
+      ]
+    },
+    {
+      "sample": "rss-post-dark",
+      "width": 1840,
+      "height": 1970,
+      "times": [
+        85.0121,
+        87.0612,
+        88.2307
+      ]
+    },
+    {
+      "sample": "heybox-card-dark",
+      "width": 720,
+      "height": 1040,
+      "times": [
+        39.1522,
+        38.5635,
+        39.2442
+      ]
+    },
+    {
+      "sample": "bili-live-dark",
+      "width": 840,
+      "height": 576,
+      "times": [
+        37.396,
+        37.4902,
+        37.2252
+      ]
+    },
+    {
+      "sample": "heybox-article-dark",
+      "width": 1440,
+      "height": 2272,
+      "times": [
+        129.4488,
+        130.8817,
+        127.1387
+      ]
+    },
+    {
+      "sample": "github-description-dark",
+      "width": 1400,
+      "height": 700,
+      "times": [
+        20.8665,
+        21.4101,
+        21.1289
+      ]
+    },
+    {
+      "sample": "jm-preview-dark",
+      "width": 780,
+      "height": 1200,
+      "times": [
+        38.3229,
+        38.0843,
+        38.864
+      ]
+    },
+    {
+      "sample": "media-dark",
+      "width": 840,
+      "height": 410,
+      "times": [
+        8.4138,
+        9.5239,
+        8.3109
+      ]
+    },
+    {
+      "sample": "bili-article-dark",
+      "width": 1440,
+      "height": 1712,
+      "times": [
+        57.8047,
+        58.5463,
+        59.1254
+      ]
+    },
+    {
+      "sample": "bili-video-dark",
+      "width": 620,
+      "height": 900,
+      "times": [
+        15.7835,
+        16.356,
+        16.8431
+      ]
+    },
+    {
+      "sample": "bili-bangumi-dark",
+      "width": 620,
+      "height": 900,
+      "times": [
+        14.6527,
+        14.3787,
+        14.5753
+      ]
+    },
+    {
+      "sample": "douyin-video-dark",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        23.2734,
+        23.6511,
+        23.3956
+      ]
+    },
+    {
+      "sample": "douyin-comments-dark",
+      "width": 1440,
+      "height": 1520,
+      "times": [
+        41.8778,
+        42.6035,
+        41.9507
+      ]
+    },
+    {
+      "sample": "netease-music-dark",
+      "width": 640,
+      "height": 364,
+      "times": [
+        10.1735,
+        10.2552,
+        10.1856
+      ]
+    },
+    {
+      "sample": "weixin-video-dark",
+      "width": 720,
+      "height": 1280,
+      "times": [
+        24.2802,
+        23.0925,
+        23.4664
+      ]
+    },
+    {
+      "sample": "x-post-dark",
+      "width": 840,
+      "height": 1290,
+      "times": [
+        24.492,
+        24.8142,
+        24.289
+      ]
+    },
+    {
+      "sample": "rss-bili-article-dark",
+      "width": 1520,
+      "height": 1312,
+      "times": [
+        47.2867,
+        47.3701,
+        48.1561
+      ]
+    },
+    {
+      "sample": "rss-bili-dynamic-dark",
+      "width": 1520,
+      "height": 1240,
+      "times": [
+        45.1711,
+        44.736,
+        44.2989
+      ]
+    },
+    {
+      "sample": "rss-bili-video-dark",
+      "width": 1000,
+      "height": 980,
+      "times": [
+        23.2955,
+        23.4506,
+        23.1345
+      ]
+    },
+    {
+      "sample": "rss-article-dark",
+      "width": 1840,
+      "height": 1640,
+      "times": [
+        65.2817,
+        64.9356,
+        65.0411
+      ]
+    },
+    {
+      "sample": "rss-git-dark",
+      "width": 1840,
+      "height": 520,
+      "times": [
+        21.4395,
+        22.5191,
+        21.3692
+      ]
+    },
+    {
+      "sample": "rss-wordpress-dark",
+      "width": 1840,
+      "height": 1768,
+      "times": [
+        69.1527,
+        68.8722,
+        68.7654
+      ]
+    }
+  ]
+}

@@ -4,15 +4,22 @@ The experiment branch tracks ShiroBot's default branch, `master`, and now pins S
 
 ## 复跑 0.1.13 卡片测试
 
-在实验分支的仓库根目录运行。需要仓库 `global.json` 指定的 .NET 11 SDK 和 Python 3。默认用已登录的 GitHub CLI（`gh`）下载两个指定版本的插件发布包。
+在实验分支的仓库根目录运行。需要仓库 `global.json` 指定的 .NET 11 SDK 和 Python 3。默认用已登录的 GitHub CLI（`gh`）下载四个指定版本的插件发布产物。
 
 ```sh
 python3 experiments/simdskia-preview-7/benchmark/run.py artifacts/simdskia-benchmark
 ```
 
-已有发布包时，用 `--archives <目录>` 跳过 GitHub CLI 下载。目录内放 MyParser v0.6.15 的 `Shirobot.Plugin.MyParser.zip` 和 KotoSub v0.2.2 的 `Shirobot.Plugin.RssSubscriber.zip`。脚本校验 ZIP 的 SHA-256，并提取两份原始 DLL。 Windows 可用 `py -3` 代替 `python3`。[MyParser 发布包](https://github.com/ShirokaProject/Shirobot.Plugin.MyParser/releases/tag/v0.6.15) · [KotoSub 发布包](https://github.com/ShirokaProject/Shirobot.Plugin.KotoSub/releases/tag/v0.2.2)
+已有发布包时，用 `--archives <目录>` 跳过 GitHub CLI 下载。目录内放以下四份文件。脚本核对每个发布产物的 SHA-256，并从 ZIP 中提取原始 DLL。Windows 可用 `py -3` 代替 `python3`。
 
-默认在两套字体下各跑 `Skia → SimdSkia → SimdSkia → Skia`。四轮分别用独立进程，每轮覆盖四种卡片、明暗主题、192 DPI，每个用例预热 3 次，再记录 9 次耗时。计时覆盖宿主控件创建、布局、位图渲染和内存 PNG 编码。这个复跑程序直接调用实验分支宿主的渲染服务，报告中的历史耗时来自当时的独立探针。
+| 插件版本 | 发布文件 |
+| --- | --- |
+| [MyParser v0.6.15](https://github.com/ShirokaProject/Shirobot.Plugin.MyParser/releases/tag/v0.6.15) | `Shirobot.Plugin.MyParser.zip` |
+| [KotoSub v0.2.2](https://github.com/ShirokaProject/Shirobot.Plugin.KotoSub/releases/tag/v0.2.2) | `Shirobot.Plugin.RssSubscriber.zip` |
+| [GitHubView v1.1.1](https://github.com/greepar/ShiroBot.Plugin.GithubView/releases/tag/v1.1.1) | `ShiroBot.Plugin.GithubView.dll` |
+| [JmParser v1.3.4](https://github.com/greepar/ShiroBot.Plugin.JmParser/releases/tag/v1.3.4) | `ShiroBot.JmParser.dll` |
+
+默认在两套字体下各跑 `Skia → SimdSkia → SimdSkia → Skia`。四轮分别用独立进程，每轮覆盖 [21 种卡片](cards.json)、明暗主题、192 DPI，每个用例预热 3 次，再记录 9 次耗时。计时覆盖宿主控件创建、布局、位图渲染和内存 PNG 编码。这个复跑程序直接调用实验分支宿主的渲染服务，报告中的历史耗时来自当时的独立探针。
 
 如果要检查顺序或温度漂移，可以在新的输出目录反转顺序、在进程之间留出冷却时间，或只跑同字体组。
 
@@ -22,7 +29,7 @@ python3 experiments/simdskia-preview-7/benchmark/run.py artifacts/simdskia-rever
 
 - `environment.json` 记录提交、SDK、系统和每轮进程的 UTC 起止时间，可用于对齐外部温度和频率日志。
 - `default/summary.json` 和 `noto/summary.json` 汇总各用例的中位数、比值和尺寸。
-- 每轮子目录里的 `samples.json` 保留全部计时以及字体信息，还保存八张原尺寸 PNG。Noto 模式校验六个真实字重及运行时解析到的字体文件哈希。
+- 每轮子目录里的 `samples.json` 保留全部计时以及字体信息，还保存42 张原尺寸 PNG。Noto 模式校验六个真实字重及运行时解析到的字体文件哈希。
 
 ## Preview.7 archive
 

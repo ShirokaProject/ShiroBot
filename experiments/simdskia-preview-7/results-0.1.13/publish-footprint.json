@@ -1,0 +1,111 @@
+[
+  {
+    "variant": "master-win-x64",
+    "executable_bytes": 28131646,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dll": 1816088,
+      "libSkiaSharp.dll": 11628896
+    },
+    "extracted_files": null,
+    "publish_native_sidecars": {}
+  },
+  {
+    "variant": "experiment-expanded-win-x64",
+    "executable_bytes": 35678351,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dll": 1816088,
+      "libSkiaSharp.dll": 11628896
+    },
+    "extracted_files": null,
+    "publish_native_sidecars": {
+      "libAvaloniaNative.dylib": 2093600
+    }
+  },
+  {
+    "variant": "master-false",
+    "executable_bytes": 32873289,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "extracted_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "publish_native_sidecars": {}
+  },
+  {
+    "variant": "experiment-expanded-false",
+    "executable_bytes": 40434761,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "extracted_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "publish_native_sidecars": {
+      "libAvaloniaNative.dylib": 2093600
+    }
+  },
+  {
+    "variant": "master-true",
+    "executable_bytes": 137316825,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "extracted_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "publish_native_sidecars": {}
+  },
+  {
+    "variant": "experiment-expanded-true",
+    "executable_bytes": 144878281,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "extracted_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "publish_native_sidecars": {
+      "libAvaloniaNative.dylib": 2093600
+    }
+  },
+  {
+    "variant": "min-skia",
+    "executable_bytes": 26110102,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "extracted_files": {
+      "libHarfBuzzSharp.dylib": 2922800,
+      "libSkiaSharp.dylib": 15201456
+    },
+    "publish_native_sidecars": {}
+  },
+  {
+    "variant": "min-simd",
+    "executable_bytes": 13246214,
+    "bundled_native_files": {
+      "libHarfBuzzSharp.dylib": 2922800
+    },
+    "extracted_files": {
+      "libHarfBuzzSharp.dylib": 2922800
+    },
+    "publish_native_sidecars": {}
+  },
+  {
+    "variant": "min-simd-no-hb",
+    "executable_bytes": 10316966,
+    "bundled_native_files": {},
+    "extracted_files": {},
+    "publish_native_sidecars": {}
+  }
+]

@@ -19,14 +19,26 @@ FIXTURES = (
     (
         "ShirokaProject/Shirobot.Plugin.MyParser",
         "v0.6.15",
-        "Shirobot.Plugin.MyParser",
+        "Shirobot.Plugin.MyParser.zip",
         "7af59cdf169955e0ecbcca60ea2f5fcac69d59012611d5bc38dbd4c073389115",
     ),
     (
         "ShirokaProject/Shirobot.Plugin.KotoSub",
         "v0.2.2",
-        "Shirobot.Plugin.RssSubscriber",
+        "Shirobot.Plugin.RssSubscriber.zip",
         "9101a28ede06aeae1c8c665e39e1f470283b2fd923f1ca4f81667517d3461c58",
+    ),
+    (
+        "greepar/ShiroBot.Plugin.GithubView",
+        "v1.1.1",
+        "ShiroBot.Plugin.GithubView.dll",
+        "410bf0ed25c17163e8f47972341733e0572090d5ba4a7b0e78c21f57545c36e1",
+    ),
+    (
+        "greepar/ShiroBot.Plugin.JmParser",
+        "v1.3.4",
+        "ShiroBot.JmParser.dll",
+        "838b76f77d9de4dd5e8f401961bd4a47330875eace9bde852452840ba3e437f6",
     ),
 )
 
@@ -46,8 +58,7 @@ def prepare_fixtures(output, archives):
         archives = output / "downloads"
         archives.mkdir()
 
-    for repo, tag, name, expected_hash in FIXTURES:
-        filename = f"{name}.zip"
+    for repo, tag, filename, expected_hash in FIXTURES:
         archive = archives / filename
         if not archive.is_file() and archives == output / "downloads":
             subprocess.run(
@@ -58,10 +69,15 @@ def prepare_fixtures(output, archives):
         actual_hash = hashlib.sha256(archive.read_bytes()).hexdigest()
         if actual_hash != expected_hash:
             raise ValueError(f"{filename}: expected SHA-256 {expected_hash}, got {actual_hash}")
-        with zipfile.ZipFile(archive) as bundle:
-            dll = f"{name}.dll"
-            member, = [item for item in bundle.namelist() if Path(item).name == dll]
-            (dll_dir / dll).write_bytes(bundle.read(member))
+        if archive.suffix == ".zip":
+            with zipfile.ZipFile(archive) as bundle:
+                dll = f"{archive.stem}.dll"
+                member, = [item for item in bundle.namelist() if Path(item).name == dll]
+                (dll_dir / dll).write_bytes(bundle.read(member))
+        else:
+            # The v1.3.4 release asset is renamed after ILRepack. Match the assembly identity for .NET.
+            assembly = "ShiroBot.JmParser.merged.dll" if filename == "ShiroBot.JmParser.dll" else filename
+            (dll_dir / assembly).write_bytes(archive.read_bytes())
     return dll_dir
 
 
@@ -91,7 +107,7 @@ def summarize(runs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="new directory for PNGs and timing data")
-    parser.add_argument("--archives", type=Path, help="directory with the two original plugin ZIPs")
+    parser.add_argument("--archives", type=Path, help="directory with the original plugin release assets")
     parser.add_argument("--fonts", choices=["both", "default", "noto"], default="both")
     parser.add_argument("--first", choices=["skia", "simd"], default="skia")
     parser.add_argument("--warmups", type=int, default=3)

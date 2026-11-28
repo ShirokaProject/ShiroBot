@@ -1,0 +1,75 @@
+{
+  "commit": "8bc5bd89cc4d7ae154146249e9de602d3b549fc1",
+  "dotnet_sdk": "11.0.100",
+  "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
+  "architecture": "arm64",
+  "processor": "arm",
+  "dpi": 192,
+  "warmups": 2,
+  "samples": 3,
+  "between_runs_seconds": 0,
+  "sequence": [
+    "skia",
+    "simd",
+    "simd",
+    "skia"
+  ],
+  "runs": [
+    {
+      "mode": "default",
+      "backend": "skia",
+      "directory": "default/01-skia",
+      "started_utc": "2026-11-28T11:47:27+00:00",
+      "finished_utc": "2026-11-28T11:47:37+00:00"
+    },
+    {
+      "mode": "default",
+      "backend": "simd",
+      "directory": "default/02-simd",
+      "started_utc": "2026-11-28T11:47:37+00:00",
+      "finished_utc": "2026-11-28T11:47:59+00:00"
+    },
+    {
+      "mode": "default",
+      "backend": "simd",
+      "directory": "default/03-simd",
+      "started_utc": "2026-11-28T11:47:59+00:00",
+      "finished_utc": "2026-11-28T11:48:21+00:00"
+    },
+    {
+      "mode": "default",
+      "backend": "skia",
+      "directory": "default/04-skia",
+      "started_utc": "2026-11-28T11:48:21+00:00",
+      "finished_utc": "2026-11-28T11:48:30+00:00"
+    },
+    {
+      "mode": "noto",
+      "backend": "skia",
+      "directory": "noto/01-skia",
+      "started_utc": "2026-11-28T11:48:30+00:00",
+      "finished_utc": "2026-11-28T11:48:40+00:00"
+    },
+    {
+      "mode": "noto",
+      "backend": "simd",
+      "directory": "noto/02-simd",
+      "started_utc": "2026-11-28T11:48:40+00:00",
+      "finished_utc": "2026-11-28T11:49:02+00:00"
+    },
+    {
+      "mode": "noto",
+      "backend": "simd",
+      "directory": "noto/03-simd",
+      "started_utc": "2026-11-28T11:49:02+00:00",
+      "finished_utc": "2026-11-28T11:49:24+00:00"
+    },
+    {
+      "mode": "noto",
+      "backend": "skia",
+      "directory": "noto/04-skia",
+      "started_utc": "2026-11-28T11:49:24+00:00",
+      "finished_utc": "2026-11-28T11:49:33+00:00"
+    }
+  ]
+}
