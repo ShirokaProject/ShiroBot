@@ -2,44 +2,61 @@
 
 ## 控制台命令
 
-交互模式下输入 `help` 可以查看命令。
+命令按操作对象分组。输入时，匹配的命令及其参数会连同说明浮在输入行上方，一次补全一个词：先是命令，空格后是子命令，再是插件、适配器实例或市场 ID。↑↓ 选择，回车补全为选中项、再按一次回车执行，Tab 补全并在后面还有参数时加空格，Esc 收起；没有匹配时 ↑↓ 仍是历史命令。命令前可以加 `/`，只输入 `/` 会列出全部命令。
 
 | 命令 | 说明 |
 | --- | --- |
-| `plugins` | 显示已加载插件、程序集文件大小和宿主进程工作集 |
-| `adapters` | 显示已安装适配器 |
-| `adapter start\|stop\|reload <ID>` | 启动、停止或重载指定适配器实例，ID 见 Dashboard |
-| `actions` | 列出已加载插件注册的操作 |
-| `action <插件 ID> <操作 ID>` | 执行插件操作 |
-| `load <插件名或路径>` | 热加载插件 |
-| `unload <插件 ID>` | 热卸载插件 |
+| `plugin list` | 显示已加载插件、程序集文件大小和宿主进程工作集 |
+| `plugin market` | 浏览插件市场，标出已安装和可更新的插件 |
+| `plugin refresh` | 跳过 24 小时缓存，重新拉取插件市场 |
+| `plugin install <市场 ID>` | 从插件市场安装插件并加载；已安装时更新到市场版本 |
+| `plugin load <插件名或路径>` / `plugin unload <插件 ID>` | 热加载、热卸载插件 |
+| `plugin update` | 检查已加载插件的更新；`plugin update confirm\|cancel <ID>` 执行或取消 |
+| `plugin actions` / `plugin action <插件 ID> <操作 ID>` | 列出、执行插件注册的操作 |
+| `adapter list` / `adapter market` | 显示已安装的适配器实例、浏览适配器市场 |
+| `adapter refresh` | 重新拉取适配器市场 |
+| `adapter install <市场 ID>` | 从适配器市场安装适配器包；之后用 `adapter create` 创建实例 |
+| `adapter create <包 ID> <实例 ID>` | 创建停用的实例，编辑配置后启动 |
+| `adapter start\|stop\|reload\|config\|remove <实例 ID>` | 启动、停止、重载实例，显示其配置路径或删除实例 |
+| `update` | 检查主程序更新；`update confirm\|cancel <ID>` 执行或取消 |
+| `dashboard` | 在默认浏览器中打开 Dashboard 并自动登录；无法打开浏览器时（服务器、容器）输出登录链接 |
 | `restart` | 启动替代进程并退出当前进程 |
 | `api` | 显示或设置 API 鉴权信息 |
-| `update` | 查看或处理待确认更新 |
 | `path` | 打开程序目录 |
 | `log` | 开关普通日志输出 |
 | `clear` | 清空控制台 |
 | `exit` / `quit` | 正常退出 |
 
-进程退出会停止宿主 HTTP 服务、适配器和 Avalonia dispatcher，但不会逐个热卸载插件。
-插件程序集和剩余资源由操作系统随进程直接回收。
+进程退出时停止宿主 HTTP 服务、适配器和 Avalonia dispatcher；插件不会逐个热卸载，其程序集和剩余资源由操作系统回收。
 
 宿主命令只能从交互式控制台输入；好友私聊消息会交给插件的消息路由，不会被解释为宿主命令。`disable_console_input = true` 或 `--no-console` 会关闭交互式控制台输入。
 
-插件可实现 `IPluginActionProvider`，把操作同时提供给控制台与已鉴权的 Dashboard。`help` 会列出插件操作，`actions` 只列出插件操作；输入 `action <插件 ID> <操作 ID>` 执行。带 `RequiresConfirmation` 的操作会在控制台提示确认。写法见[插件操作与控制台](/plugin/actions)。
+插件可实现 `IPluginActionProvider`，把操作同时提供给控制台与已鉴权的 Dashboard。`plugin actions` 列出插件操作，输入 `plugin action <插件 ID> <操作 ID>` 执行。带 `RequiresConfirmation` 的操作会在控制台提示确认。写法见[插件操作与控制台](/plugin/actions)。
+
+宿主先初始化配置、基础设施并完成 HTTP 监听，再逐个启动适配器，最后加载插件。端口占用等宿主启动错误会在适配器登录前直接退出；单个适配器加载失败不会阻止后续实例加载。
+
+## 实时日志
+
+Dashboard 通过 `GET /api/v1/logs/stream` 接收 SSE（`text/event-stream`），前后端需一起更新；该接口不再使用 WebSocket。接口沿用 API 鉴权，原生 `EventSource` 可通过 `token` 查询参数传入密钥。可选参数 `source` 默认 `all`，`tail` 默认 100、最大 1000。
+
+事件使用 `data: <JSON>` 格式，`type` 为 `connected`、`history` 或 `logs`。`history` 和 `logs` 的 `data` 是日志数组。连接建立或重连时，前端用历史快照替换当前列表，再追加实时日志；重连恢复受 `tail` 上限限制。服务端每 15 秒发送注释心跳，并禁用响应和 Nginx 代理缓冲；其他反向代理也应对该路径关闭缓冲。
+
+日志突发时服务端每批最多推送 100 条已入队日志，前端每约 16 毫秒合并更新，页面保留最近 1000 条。慢客户端的队列同样有界，发送超时或队列满时断开，由浏览器重连。
+
+本地日志默认开启，保留 3 个自然日，可在 Dashboard 日志配置中修改。文件写入使用缓冲，每 250 毫秒刷新；读取历史、切换配置和正常释放日志服务时也会刷新。异常退出时，尚未刷新的日志可能丢失。历史文件扫描在发布锁外进行，不阻塞新日志入队。
 
 ## 热加载与热卸载
 
 把插件 DLL 放入插件目录后，可以执行：
 
 ```text
-load HelloPlugin
+plugin load HelloPlugin
 ```
 
-卸载时使用插件 ID，而不是显示名称：
+使用插件 ID 卸载：
 
 ```text
-unload HelloPlugin
+plugin unload HelloPlugin
 ```
 
 宿主会先停止为插件路由新事件，等待正在执行的事件结束，再调用插件清理逻辑并尝试回收程序集加载上下文。
@@ -70,7 +87,7 @@ Dashboard 的插件 actions 也使用同一套 active-dispatch 计数。执行�
 
 支持一个适配器包创建多个配置实例。在 Dashboard 展开适配器包并点击「添加实例」，填写唯一 ID，配置后启动。各适配器 config.toml 的 instances 包含统一实例清单和各自连接配置，WebUI/CLI 管理都会写回；手动编辑后重启生效。每个实例独立启停、重载和删除；重新上传同一包用于更新 DLL，增加账号请使用「添加实例」。更新会覆盖该包下所有实例使用的版本。
 
-宿主为每个运行实例创建独立的程序集副本，从副本加载适配器，配置仍使用安装目录中的 `config.toml`。替换安装目录里的 DLL 不会改写运行实例的程序集；重载失败时使用旧副本恢复，成功卸载后清理副本。如果旧宿主直接加载的 DLL 已被覆盖并出现 `Bad IL range`，需要重启一次，再由新版宿主加载独立副本。
+宿主为每个运行实例创建独立的程序集副本，从副本加载适配器，配置仍使用安装目录中的 `config.toml`。替换安装目录里的 DLL 不会改写运行实例的程序集；重载失败时使用运行前的副本恢复，成功卸载后清理副本。
 
 HTTP API 均需要宿主鉴权：
 
@@ -86,7 +103,7 @@ HTTP API 均需要宿主鉴权：
 | `POST /api/v1/adapters/<实例 ID>/reload` | 重载指定运行实例 |
 | `DELETE /api/v1/adapters/<实例 ID>` | 删除实例及连接配置，保留适配器包 |
 
-新安装不创建默认实例；旧实例迁移保留原 ID。实例 ID 不能重复或包含路径字符，新增配置不复制凭据。目录、备份和生命周期见[配置与部署](/adapter/deployment#同一个-dll-配置多个实例)，自动回复、后台发送和兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。
+安装包后需显式创建实例。实例 ID 不能重复或包含路径字符，新增配置不复制凭据。目录、备份和生命周期见[配置与部署](/adapter/deployment#同一个-dll-配置多个实例)，自动回复、后台发送和兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。
 
 离线管理支持 `adapter create <包 ID> <实例 ID>`、`adapter config <实例 ID>`、`adapter enable|disable <实例 ID>` 和 `adapter remove <实例 ID>`。离线命令在宿主停止时使用，运行中的控制台用 start/stop 即时启停。完整示例见[无 WebUI 管理](/adapter/deployment#没有-webui-时)。
 
@@ -102,14 +119,14 @@ plugins/<插件数据目录>/.shirobot/native/<包名>/<版本>/<RID>/
 
 ## 内存指标
 
-`plugins` 命令中的“程序集文件大小”是磁盘 DLL 大小，不是运行时内存。进程工作集包含：
+`plugin list` 命令中的“程序集文件大小”是磁盘 DLL 大小，不是运行时内存。进程工作集包含：
 
 - ShiroBot 宿主与 .NET 运行时。
 - 适配器和所有插件。
 - GC 堆、JIT 代码和线程栈。
 - Avalonia、Skia、HarfBuzz 等 native 内存。
 
-插件使用独立 ALC，但不使用独立 GC 堆或独立进程，因此宿主无法通过普通运行时 API 精确拆分每个插件的完整工作集。
+插件的 ALC 独立，但共享进程和 GC 堆，宿主无法通过普通运行时 API 精确拆分各插件的完整工作集。
 
 ## 更新前备份
 

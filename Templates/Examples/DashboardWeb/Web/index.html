@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>自定义编辑器</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 24px; }
+    textarea { display: block; box-sizing: border-box; width: 100%; min-height: 180px; padding: 12px; }
+    button { margin-top: 12px; padding: 8px 20px; }
+    output { display: block; margin-top: 16px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>自定义编辑器</h2>
+  <label for="text">输入内容</label>
+  <textarea id="text" maxlength="2000">你好，ShiroBot！</textarea>
+  <button id="preview" type="button">调用插件预览</button>
+  <output id="result" aria-live="polite"></output>
+  <h2>文件传输</h2>
+  <input id="file" type="file">
+  <button id="upload" type="button">上传并取回文件</button>
+  <button id="binary" type="button">测试二进制往返</button>
+  <button id="range" type="button">读取部分文件</button>
+  <output id="transfer" aria-live="polite"></output>
+  <script>
+    document.querySelector('#preview').addEventListener('click', async () => {
+      const button = document.querySelector('#preview');
+      button.disabled = true;
+      try {
+        const value = await window.ShiroBotDashboard.call('preview', { text: document.querySelector('#text').value });
+        document.querySelector('#result').textContent = `${value.text}\n共 ${value.length} 字符`;
+      } catch (error) {
+        document.querySelector('#result').textContent = error.message;
+      } finally { button.disabled = false; }
+    });
+    async function sendFile(file) {
+      const form = new FormData(); form.append('file', file);
+      const response = await window.ShiroBotDashboard.request('/files/echo', { method: 'POST', body: form });
+      if (!response.ok) throw new Error(await response.text());
+      const blob = await response.blob();
+      document.querySelector('#transfer').textContent = `传输完成：${blob.size} 字节，${blob.type}`;
+    }
+    document.querySelector('#upload').onclick = async () => {
+      try {
+        const file = document.querySelector('#file').files[0];
+        if (!file) throw new Error('请选择文件。');
+        await sendFile(file);
+      } catch (error) { document.querySelector('#transfer').textContent = error.message; }
+    };
+    document.querySelector('#binary').onclick = async () => {
+      try { await sendFile(new File([new Uint8Array([0, 1, 2, 255])], 'demo.bin', { type: 'application/octet-stream' })); }
+      catch (error) { document.querySelector('#transfer').textContent = error.message; }
+    };
+    document.querySelector('#range').onclick = async () => {
+      try {
+        const response = await window.ShiroBotDashboard.request('/sample.bin', { headers: { Range: 'bytes=2-5' } });
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        document.querySelector('#transfer').textContent = `HTTP ${response.status}：${[...bytes].join(', ')}；${response.headers.get('Content-Range')}`;
+      } catch (error) { document.querySelector('#transfer').textContent = error.message; }
+    };
+  </script>
+</body>
+</html>

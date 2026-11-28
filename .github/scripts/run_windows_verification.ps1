@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 function Invoke-Verification([string] $name, [string] $mode) {
     $output = Join-Path $PWD "$name-stdout.log"
     $errors = Join-Path $PWD "$name-stderr.log"
-    $process = Start-Process dotnet -ArgumentList "Tests/Verification/bin/Release/net10.0/ShiroBot.Verification.dll $mode" -PassThru -WindowStyle Hidden -RedirectStandardOutput $output -RedirectStandardError $errors
+    $process = Start-Process dotnet -ArgumentList "Tests/Verification/bin/Release/net11.0/ShiroBot.Verification.dll $mode" -PassThru -WindowStyle Hidden -RedirectStandardOutput $output -RedirectStandardError $errors
     try {
         if (-not $process.WaitForExit(120000)) {
             $lines = @(Get-Content $output)

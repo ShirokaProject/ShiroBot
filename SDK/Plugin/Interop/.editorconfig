@@ -1,0 +1,4 @@
+[*.cs]
+# These files intentionally share the published ShiroBot.SDK.Plugin namespace.
+# Moving them to .Interop would break separately compiled plugins.
+resharper_check_namespace_highlighting = none

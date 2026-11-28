@@ -20,32 +20,68 @@ public static class BotLog
         CurrentLogger.Value = logger;
         return new Scope(() => CurrentLogger.Value = previous);
     }
-    
+
     public static async Task RunScoped(IConsoleLogger? logger, Func<Task> action)
     {
         using var _ = BeginScope(logger);
         await action();
     }
 
-    public static void Log(string message) => Logger.Log(message);
-    public static void Info(string message) => Logger.Info(message);
-    public static void Success(string message) => Logger.Success(message);
-    public static void Warning(string message) => Logger.Warning(message);
-    public static void Error(string message) => Logger.Error(message);
+    public static void Log(string message)
+    {
+        Logger.Log(message);
+    }
+
+    public static void Info(string message)
+    {
+        Logger.Info(message);
+    }
+
+    public static void Success(string message)
+    {
+        Logger.Success(message);
+    }
+
+    public static void Warning(string message)
+    {
+        Logger.Warning(message);
+    }
+
+    public static void Error(string message)
+    {
+        Logger.Error(message);
+    }
 
     private sealed class Scope(Action onDispose) : IDisposable
     {
-        public void Dispose() => onDispose();
+        public void Dispose()
+        {
+            onDispose();
+        }
     }
 
     private sealed class DefaultLogger : IConsoleLogger
     {
         public bool IsEnabled { get; set; } = true;
 
-        void IConsoleLogger.Log(string message) { }
-        void IConsoleLogger.Info(string message) { }
-        void IConsoleLogger.Success(string message) { }
-        void IConsoleLogger.Warning(string message) { }
-        void IConsoleLogger.Error(string message) { }
+        void IConsoleLogger.Log(string message)
+        {
+        }
+
+        void IConsoleLogger.Info(string message)
+        {
+        }
+
+        void IConsoleLogger.Success(string message)
+        {
+        }
+
+        void IConsoleLogger.Warning(string message)
+        {
+        }
+
+        void IConsoleLogger.Error(string message)
+        {
+        }
     }
 }

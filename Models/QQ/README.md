@@ -9,8 +9,9 @@ component that uses these contracts should declare the runtime package requireme
 [assembly: RequiresShiroBotPackage("shirobot.model.qq", MinimumVersion = "0.9.4")]
 ```
 
-SDK and QQ Model ABI **1.0.0.0** are breaking changes. Rebuild adapters and plugins that reference
-`ShiroBot.Model.QQ`; the host rejects older QQ Model ABI references. All account, group,
+QQ Model ABI **1.1.0.0** adds contracts on top of 1.0.0.0: components built against 1.0.0.0 keep
+loading, while a component built against 1.1.0.0 needs a host that ships it. SDK and QQ Model ABI
+**1.0.0.0** were breaking changes; the host rejects QQ Model references from before them. All account, group,
 message and request IDs are opaque strings. Milky converts numeric IDs at its wire boundary;
 QQ Open Platform retains openids. IDs must come from the same adapter instance.
 

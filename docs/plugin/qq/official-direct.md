@@ -1,13 +1,13 @@
 # 官方私聊（IQOfficialDirectMessageApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQOfficialDirectMessageApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## SendTypingAsync
 
@@ -28,12 +28,12 @@ Task SendTypingAsync(
 | --- | --- | --- | --- |
 | `target` | `QOfficialMessageTarget` | `必传` | 官方消息目标，含场景与 ID。 |
 | `reply` | `QOfficialMessageReply` | `必传` | 必传的被动回复凭据，来自消息或事件。 |
-| `duration` | `TimeSpan` | `必传` | 禁言或输入状态的持续时间；零禁言时长表示解除禁言。 |
+| `duration` | `TimeSpan` | `必传` | 输入状态的持续时间。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## BeginStream
 

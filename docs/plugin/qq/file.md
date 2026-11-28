@@ -1,13 +1,13 @@
 # 文件（IQFileApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQFileApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## UploadPrivateFileAsync
 
@@ -191,7 +191,7 @@ Task MoveGroupFileAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## RenameGroupFileAsync
 
@@ -219,7 +219,7 @@ Task RenameGroupFileAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## DeleteGroupFileAsync
 
@@ -243,7 +243,7 @@ Task DeleteGroupFileAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## CreateGroupFolderAsync
 
@@ -293,7 +293,7 @@ Task RenameGroupFolderAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## DeleteGroupFolderAsync
 
@@ -317,11 +317,11 @@ Task DeleteGroupFolderAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## PersistGroupFileAsync
 
-把群文件转存为永久文件(阻止过期)。
+将群文件转存为永久文件。
 
 ```csharp
 Task PersistGroupFileAsync(
@@ -341,7 +341,155 @@ Task PersistGroupFileAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
+
+## ForwardGroupFileToGroupAsync
+
+把群文件转发到另一个群，由服务端转存，不重新上传。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<string> ForwardGroupFileToGroupAsync(
+    string groupId,
+    string fileId,
+    string targetGroupId,
+    string targetFolderId = "/",
+    bool sendMessage = true,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 源文件所在的群 ID。 |
+| `fileId` | `string` | `必传` | 源文件 ID。 |
+| `targetGroupId` | `string` | `必传` | 目标群 ID。 |
+| `targetFolderId` | `string` | `"/"` | 目标群里的文件夹 ID，默认根目录。 |
+| `sendMessage` | `bool` | `true` | 是否在目标群里发出这条文件消息。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<string>`。返回目标群里的新文件 ID。
+
+## ForwardGroupFileToFriendAsync
+
+把群文件作为私聊文件转发给好友。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<string> ForwardGroupFileToFriendAsync(
+    string groupId,
+    string fileId,
+    string userId,
+    bool sendMessage = true,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 源文件所在的群 ID。 |
+| `fileId` | `string` | `必传` | 源文件 ID。 |
+| `userId` | `string` | `必传` | 目标好友 QQ 号。 |
+| `sendMessage` | `bool` | `true` | 是否在私聊里发出这条文件消息。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<string>`。返回新的文件 ID。
+
+## UploadFlashFilesAsync
+
+上传文件并创建闪传分享。上传进度通过 `QEventKinds.FlashFileTransfer` 事件上报。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<QFlashShare> UploadFlashFilesAsync(
+    IReadOnlyList<string> fileUris,
+    string? title = null,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `fileUris` | `IReadOnlyList<string>` | `必传` | 要上传的文件，支持 http(s)://、file://、base64://。 |
+| `title` | `string?` | `null` | 闪传标题；null 由协议端决定。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QFlashShare>`。返回文件集 ID、分享链接和过期时间。
+
+## DownloadFlashFilesAsync
+
+开始下载闪传文件集。方法在下载开始后返回；进度和完成通过 `QEventKinds.FlashFileTransfer` 事件上报，完成事件的文件列表带本地路径。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task DownloadFlashFilesAsync(
+    string shareLinkOrFileSetId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `shareLinkOrFileSetId` | `string` | `必传` | 分享链接（http(s):// 开头）或文件集 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task`。下载开始后完成，不等下载结束。
+
+## GetFlashFileSetAsync
+
+获取闪传文件集详情。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<QFlashFileSet> GetFlashFileSetAsync(
+    string shareLinkOrFileSetId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `shareLinkOrFileSetId` | `string` | `必传` | 分享链接（http(s):// 开头）或文件集 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QFlashFileSet>`。返回标题、分享链接、总大小和文件列表。
+
+## ReshareFlashFilesAsync
+
+重新分享还没过期的闪传文件集。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<QFlashShare> ReshareFlashFilesAsync(
+    string fileSetId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `fileSetId` | `string` | `必传` | 文件集 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QFlashShare>`。返回新的分享链接和过期时间。
 
 ## 相关类型
 

@@ -1,108 +1,132 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO.Compression;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using ShiroBot.Configuration;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Logging;
-using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
-using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Plugins.Marketplace;
-using ShiroBot.Update;
-using ShiroBot.Console;
 using ShiroBot.Integrations.Avalonia;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Plugin;
+using ShiroBot.SDK.Models;
+using ShiroBot.Terminal;
+using ShiroBot.Update;
 
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapConfigurationEndpoints(RouteGroupBuilder api, ApiHostConfig config, ConfigManager configManager, string configPath)
-    {
-        api.MapGet("/config", async () => Results.Ok(CreateConfigResponse(await configManager.LoadCoreConfig().ConfigureAwait(false))));
-        api.MapPatch("/config", async (HttpContext context) =>
-        {
-            JsonDocument document;
-            try
-            {
-                document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
-                    .ConfigureAwait(false);
-            }
-            catch (JsonException)
-            {
-                return Results.BadRequest(new { ok = false, msg = "配置格式不是有效 JSON" });
-            }
-
-            using (document)
-            {
-                if (document.RootElement.ValueKind != JsonValueKind.Object)
-                {
-                    return Results.BadRequest(new { ok = false, msg = "配置更新内容必须是对象" });
-                }
-
-                try
-                {
-                    if (!document.RootElement.TryGetProperty("config", out var configPatch) ||
-                        configPatch.ValueKind != JsonValueKind.Object)
-                    {
-                        return Results.BadRequest(new { ok = false, msg = "请求必须包含 config 对象。" });
-                    }
-
-                    ApplyConfigPatch(configPatch, config, configManager, configPath);
-                    return Results.Ok(new
-                    {
-                        ok = true,
-                        msg = "配置更新成功",
-                        schema = GetCoreConfigSchema()
-                    });
-                }
-                catch (InvalidOperationException ex)
-                {
-                    return Results.BadRequest(new { ok = false, msg = ex.Message });
-                }
-            }
-        });
-    }
-
     private static readonly JsonSerializerOptions CoreConfigJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private static object[] GetCoreConfigSchema() => GetComponentConfigSchema(typeof(CoreConfig).Assembly)
-        .OfType<ConfigSchemaItem>()
-        .Where(item => item.Key is not "protocols")
-        .Select(item => item.Key == "plugin_routes"
-            ? item with { Fields = item.Fields?.Where(field => field.Key == "default").ToArray() }
-            : item)
-        .Cast<object>()
-        .ToArray();
-
-    private static object CreateConfigResponse(CoreConfig config) => new
+    internal sealed partial class SystemEndpoints
     {
-        schema = GetCoreConfigSchema(),
-        config = JsonSerializer.SerializeToElement(config, CoreConfigJsonOptions)
-    };
+        private void MapConfiguration(RouteGroupBuilder api)
+        {
+            var config = options.Value;
+            var configPath = configManager.CoreConfigPath;
+
+            api.MapGet("/config",
+                async () => Results.Ok(
+                    CreateConfigResponse(await configManager.LoadCoreConfig().ConfigureAwait(false))));
+            api.MapPatch("/config", async (HttpContext context) =>
+            {
+                JsonDocument document;
+                try
+                {
+                    document = await JsonDocument
+                        .ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
+                        .ConfigureAwait(false);
+                }
+                catch (JsonException)
+                {
+                    return Results.BadRequest(new { ok = false, message = "配置格式不是有效 JSON", msg = "配置格式不是有效 JSON" });
+                }
+
+                using (document)
+                {
+                    if (document.RootElement.ValueKind != JsonValueKind.Object)
+                        return Results.BadRequest(new { ok = false, message = "配置更新内容必须是对象", msg = "配置更新内容必须是对象" });
+
+                    try
+                    {
+                        if (!document.RootElement.TryGetProperty("config", out var configPatch) ||
+                            configPatch.ValueKind != JsonValueKind.Object)
+                            return Results.BadRequest(new
+                                { ok = false, message = "请求必须包含 config 对象。", msg = "请求必须包含 config 对象。" });
+
+                        ApplyConfigPatch(configPatch, config, configManager, configPath);
+                        return Results.Ok(new
+                        {
+                            ok = true,
+                            msg = "配置更新成功",
+                            schema = GetCoreConfigSchema()
+                        });
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        return Results.BadRequest(new { ok = false, message = ex.Message, msg = ex.Message });
+                    }
+                }
+            });
+        }
+    }
+
+    private static object[] GetCoreConfigSchema()
+    {
+        return
+        [
+            .. GetComponentConfigSchema(typeof(CoreConfig).Assembly)
+                .OfType<ConfigSchemaItem>()
+                .Where(item => item.Key is not "protocols")
+                .Select(item => item.Key == "plugin_routes"
+                    ? item with
+                    {
+                        Fields = item.Fields?.Where(field =>
+                            field.Key is "default" or "message_prefix").ToArray()
+                    }
+                    : item)
+        ];
+    }
+
+    private static object CreateConfigResponse(CoreConfig config)
+    {
+        return new
+        {
+            schema = GetCoreConfigSchema(),
+            config = JsonSerializer.SerializeToElement(config, CoreConfigJsonOptions)
+        };
+    }
+
+    /// <summary>
+    ///     Saves permission entries as canonical instanceId:userId, without blanks or repeats (instance IDs compare
+    ///     case-insensitively, as when matching); throws for an entry that is not instanceId:userId.
+    /// </summary>
+    private static string[] NormalizePermissionList(IEnumerable<string> entries)
+    {
+        return
+        [
+            .. entries.Where(entry => !string.IsNullOrWhiteSpace(entry))
+                .Select(ParsePermissionEntry)
+                .DistinctBy(entry => (entry.InstanceId.ToUpperInvariant(), entry.UserId))
+                .Select(entry => entry.ToConfigString())
+        ];
+    }
+
+    private static UserReference ParsePermissionEntry(string entry)
+    {
+        try
+        {
+            return UserReference.Parse(entry);
+        }
+        catch (Exception error) when (error is FormatException or ArgumentException)
+        {
+            throw new InvalidOperationException(
+                $"权限列表中的「{entry.Trim()}」格式不对：需要写成 实例ID:用户ID（如 qq:10001），不能只写账号。", error);
+        }
+    }
 
     private static void ApplyConfigPatch(
         JsonElement patch,
@@ -115,10 +139,35 @@ internal sealed partial class HostHttpServer
             throw new InvalidOperationException("运行中的 API 令牌不能设为空；可在控制台执行 api token 生成新令牌。");
         string? defaultRouteMode = null;
         string[]? defaultRouteGroups = null;
+        string? messagePrefix = null;
+        bool? saveLogs = null;
+        int? logRetention = null;
+        if (patch.TryGetProperty("logs", out var logsPatch))
+        {
+            if (logsPatch.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("logs 必须是对象。");
+            if (logsPatch.TryGetProperty("save_to_file", out var savePatch))
+                saveLogs = savePatch.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? savePatch.GetBoolean()
+                    : throw new InvalidOperationException("logs.save_to_file 必须是布尔值。");
+            if (logsPatch.TryGetProperty("retention_days", out var retentionPatch))
+            {
+                if (retentionPatch.ValueKind != JsonValueKind.Number || !retentionPatch.TryGetInt32(out var days) ||
+                    days is < 1 or > 3650)
+                    throw new InvalidOperationException("日志保留天数必须是 1–3650 的整数。");
+                logRetention = days;
+            }
+        }
+
         if (patch.TryGetProperty("plugin_routes", out var routesPatch))
         {
             if (routesPatch.ValueKind != JsonValueKind.Object)
                 throw new InvalidOperationException("plugin_routes 必须是对象。");
+            if (routesPatch.TryGetProperty("message_prefix", out var prefixPatch))
+                messagePrefix = prefixPatch.ValueKind == JsonValueKind.String
+                    ? prefixPatch.GetString()!
+                    : throw new InvalidOperationException("plugin_routes.message_prefix 必须是字符串。");
+            // require_message_prefix was removed (a non-empty prefix now means required); older dashboards may still
+            // send it, so it is accepted and ignored.
             if (routesPatch.TryGetProperty("default", out var defaultPatch))
             {
                 if (defaultPatch.ValueKind != JsonValueKind.Object)
@@ -129,25 +178,21 @@ internal sealed partial class HostHttpServer
                     if (defaultRouteMode == "default")
                         throw new InvalidOperationException("默认路由模式只能是 whitelist 或 blacklist。");
                 }
+
                 if (TryGetIdArray(defaultPatch, "groups", out var groups))
-                    defaultRouteGroups = groups.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct().ToArray();
+                    defaultRouteGroups =
+                        [.. groups.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct()];
             }
         }
+
         // Validated before anything is written, so a rejected value leaves the file untouched.
         var hasShowid = TryGetBool(patch, "showid", out var showid);
         var hasOwners = TryGetIdArray(patch, "owner_list", out var ownerList);
         var hasAdmins = TryGetIdArray(patch, "admin_list", out var adminList);
-        try
-        {
-            if (hasOwners) foreach (var entry in ownerList) ShiroBot.SDK.Models.UserReference.Parse(entry);
-            if (hasAdmins) foreach (var entry in adminList) ShiroBot.SDK.Models.UserReference.Parse(entry);
-        }
-        catch (Exception error) when (error is FormatException or ArgumentException)
-        {
-            throw new InvalidOperationException("权限列表必须使用 instanceId:userId，不能填写裸用户 ID。", error);
-        }
+        if (hasOwners) ownerList = NormalizePermissionList(ownerList);
+        if (hasAdmins) adminList = NormalizePermissionList(adminList);
         // Auto switches by the clock (dark 18:00–06:00); older dashboards sent "System" for it.
-        string? avaloniaTheme = TryGetString(patch, "avalonia_theme", out var requestedTheme)
+        var avaloniaTheme = TryGetString(patch, "avalonia_theme", out var requestedTheme)
             ? requestedTheme.Trim().ToLowerInvariant() switch
             {
                 "light" => "Light",
@@ -157,26 +202,51 @@ internal sealed partial class HostHttpServer
             }
             : null;
 
+        // [update]: validated up front like the rest, written below
         string? autoUpdateTime = null;
-        if (TryGetString(patch, "auto_update_time", out var requestedUpdateTime))
+        if (patch.TryGetProperty("update", out var updatePatch))
         {
-            autoUpdateTime = AutoUpdateSchedule.TryParseTime(requestedUpdateTime, out var parsedUpdateTime)
-                ? parsedUpdateTime.ToString("HH:mm", CultureInfo.InvariantCulture)
-                : throw new InvalidOperationException("auto_update_time 必须是 HH:mm 格式的时间，例如 02:00。");
+            if (updatePatch.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("update 配置必须是对象。");
+            if (TryGetString(updatePatch, "time", out var requestedUpdateTime))
+                autoUpdateTime = AutoUpdateSchedule.TryParseTime(requestedUpdateTime, out var parsedUpdateTime)
+                    ? parsedUpdateTime.ToString("HH:mm", CultureInfo.InvariantCulture)
+                    : throw new InvalidOperationException("update.time 必须是 HH:mm 格式的时间，例如 02:00。");
+        }
+
+        // [api] addresses: a listen address the server cannot bind stops the host from starting at all, and
+        // then the Dashboard cannot reach it to undo the change, so both lists are checked before anything is saved.
+        string[]? listenUrls = null;
+        string[]? publicBaseUrls = null;
+        if (patch.TryGetProperty("api", out var apiAddresses) && apiAddresses.ValueKind == JsonValueKind.Object)
+        {
+            if (TryGetStringArray(apiAddresses, "listen_urls", out var requestedListen))
+                listenUrls = NormalizeUrls(requestedListen, "监听地址", true);
+            if (TryGetStringArray(apiAddresses, "public_base_url", out var requestedPublic))
+                publicBaseUrls = NormalizeUrls(requestedPublic, "外部基础 URL", false);
         }
 
         if (defaultRouteMode is not null)
             configManager.SetConfigValue(configPath, "plugin_routes.default.mode", defaultRouteMode);
         if (defaultRouteGroups is not null)
             configManager.SetConfigValue(configPath, "plugin_routes.default.groups", defaultRouteGroups);
+        if (messagePrefix is not null)
+        {
+            configManager.SetConfigValue(configPath, "plugin_routes.message_prefix", messagePrefix);
+            // Drop the retired switch so the file no longer suggests it still applies.
+            configManager.RemoveConfigValue(configPath, "plugin_routes.require_message_prefix");
+        }
+        if (saveLogs is { } saveToFile)
+            configManager.SetConfigValue(configPath, "logs.save_to_file", saveToFile);
+        if (logRetention is { } retentionDays)
+            configManager.SetConfigValue(configPath, "logs.retention_days", retentionDays);
 
         if (hasShowid) configManager.SetConfigValue(configPath, "showid", showid);
 
         if (TryGetStringArray(patch, "protocols", out var protocols))
-        {
             configManager.SetConfigValue(configPath, "protocols",
-                protocols.Select(value => value.Trim()).Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
-        }
+                protocols.Select(value => value.Trim()).Where(value => value.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
 
         if (TryGetBool(patch, "enable_log", out var enableLog))
         {
@@ -185,29 +255,30 @@ internal sealed partial class HostHttpServer
         }
 
         if (TryGetBool(patch, "disable_console_input", out var disableConsoleInput))
-        {
             configManager.SetConfigValue(configPath, "disable_console_input", disableConsoleInput);
-        }
 
         if (TryGetNullableString(patch, "github_proxy", out var githubProxy))
-        {
             configManager.SetConfigValue(configPath, "github_proxy", githubProxy ?? string.Empty);
-        }
 
         if (TryGetString(patch, "host_update_repository", out var hostUpdateRepository))
-        {
             configManager.SetConfigValue(configPath, "host_update_repository", hostUpdateRepository);
-        }
 
-        foreach (var key in (string[])["auto_update_plugins", "auto_update_adapters", "auto_update_host", "owner_notifications"])
+        if (TryGetBool(patch, "owner_notifications", out var ownerNotifications))
+            configManager.SetConfigValue(configPath, "owner_notifications", ownerNotifications);
+
+        if (updatePatch.ValueKind == JsonValueKind.Object)
         {
-            if (TryGetBool(patch, key, out var enabled))
-                configManager.SetConfigValue(configPath, key, enabled);
+            foreach (var key in (string[])["plugins", "adapters", "host", "skip_major", "restart_on_pending"])
+                if (TryGetBool(updatePatch, key, out var enabled))
+                    configManager.SetConfigValue(configPath, "update." + key, enabled);
+            if (autoUpdateTime is not null)
+                configManager.SetConfigValue(configPath, "update.time", autoUpdateTime);
+            foreach (var key in (string[])["exclude_plugins", "exclude_adapters"])
+                if (TryGetStringArray(updatePatch, key, out var ids))
+                    configManager.SetConfigValue(configPath, "update." + key,
+                        ids.Select(value => value.Trim()).Where(value => value.Length > 0)
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
         }
-        if (autoUpdateTime is not null)
-            configManager.SetConfigValue(configPath, "auto_update_time", autoUpdateTime);
-        if (TryGetBool(patch, "auto_update_restart_on_pending", out var restartOnPending))
-            configManager.SetConfigValue(configPath, "auto_update_restart_on_pending", restartOnPending);
 
         if (avaloniaTheme is not null)
         {
@@ -215,21 +286,12 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "avalonia_theme", avaloniaTheme);
         }
 
-        if (hasOwners)
-        {
-            configManager.SetConfigValue(configPath, "owner_list", ownerList);
-        }
+        if (hasOwners) configManager.SetConfigValue(configPath, "owner_list", ownerList);
 
-        if (hasAdmins)
-        {
-            configManager.SetConfigValue(configPath, "admin_list", adminList);
-        }
+        if (hasAdmins) configManager.SetConfigValue(configPath, "admin_list", adminList);
 
         if (!patch.TryGetProperty("api", out var apiPatch)) return;
-        if (apiPatch.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidOperationException("api 配置必须是对象");
-        }
+        if (apiPatch.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("api 配置必须是对象");
 
         if (TryGetBool(apiPatch, "enable", out var apiEnable))
         {
@@ -243,33 +305,67 @@ internal sealed partial class HostHttpServer
             configManager.SetConfigValue(configPath, "api.enable_dashboard", enableDashboard);
         }
 
-        if (TryGetStringArray(apiPatch, "listen_urls", out var listenUrls))
+        if (listenUrls is not null)
         {
             currentApiConfig.ListenUrls = listenUrls;
             configManager.SetConfigValue(configPath, "api.listen_urls", listenUrls);
         }
 
-        if (TryGetStringArray(apiPatch, "public_base_url", out var publicBaseUrl))
+        if (publicBaseUrls is not null)
         {
-            currentApiConfig.PublicBaseUrl = publicBaseUrl;
-            configManager.SetConfigValue(configPath, "api.public_base_url", publicBaseUrl);
+            currentApiConfig.PublicBaseUrl = publicBaseUrls;
+            configManager.SetConfigValue(configPath, "api.public_base_url", publicBaseUrls);
         }
 
-        if (TryGetString(apiPatch, "token", out var token))
-        {
-            currentApiConfig.Token = token;
-            configManager.SetConfigValue(configPath, "api.token", token);
-        }
+        if (!TryGetString(apiPatch, "token", out var token)) return;
+        currentApiConfig.Token = token;
+        configManager.SetConfigValue(configPath, "api.token", token);
     }
+
+    /// <summary>
+    ///     Trimmed, non-empty http(s) addresses, or an error naming the first bad one. Listen addresses are what the
+    ///     server binds: a host (or * / + for every interface) and an optional port, without a path. Public base URLs
+    ///     may carry the path a reverse proxy serves the host under.
+    /// </summary>
+    internal static string[] NormalizeUrls(IEnumerable<string> values, string label, bool listen)
+    {
+        var urls = values.Select(value => value.Trim()).Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var url in urls)
+        {
+            var valid = listen ? IsListenUrl(url) : IsPublicUrl(url);
+            if (!valid)
+                throw new InvalidOperationException(listen
+                    ? $"{label}「{url}」无效，应为 http(s)://主机:端口，例如 http://127.0.0.1:7001 或 http://0.0.0.0:7001。"
+                    : $"{label}「{url}」无效，应为完整的 http(s) 地址，例如 https://bot.example.com。");
+        }
+
+        return urls;
+    }
+
+    private static bool IsListenUrl(string url)
+    {
+        var match = ListenUrlPattern().Match(url);
+        if (!match.Success) return false;
+        if (!match.Groups["port"].Success) return true;
+        return int.TryParse(match.Groups["port"].Value, out var port) && port is >= 1 and <= 65535;
+    }
+
+    private static bool IsPublicUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" &&
+               uri.Host.Length > 0 && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment);
+    }
+
+    [GeneratedRegex(@"^https?://(\*|\+|\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(?<port>\d{1,5}))?/?$",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ListenUrlPattern();
 
     private static bool TryGetString(JsonElement element, string propertyName, out string value)
     {
         value = string.Empty;
         if (!element.TryGetProperty(propertyName, out var property)) return false;
-        if (property.ValueKind != JsonValueKind.String)
-        {
-            throw new InvalidOperationException($"{propertyName} 必须是字符串");
-        }
+        if (property.ValueKind != JsonValueKind.String) throw new InvalidOperationException($"{propertyName} 必须是字符串");
 
         value = property.GetString() ?? string.Empty;
         return true;
@@ -281,9 +377,7 @@ internal sealed partial class HostHttpServer
         if (!element.TryGetProperty(propertyName, out var property)) return false;
         if (property.ValueKind == JsonValueKind.Null) return true;
         if (property.ValueKind != JsonValueKind.String)
-        {
             throw new InvalidOperationException($"{propertyName} 必须是字符串或 null");
-        }
 
         value = property.GetString();
         return true;
@@ -294,9 +388,7 @@ internal sealed partial class HostHttpServer
         value = false;
         if (!element.TryGetProperty(propertyName, out var property)) return false;
         if (property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
-        {
             throw new InvalidOperationException($"{propertyName} 必须是布尔值");
-        }
 
         value = property.GetBoolean();
         return true;
@@ -308,16 +400,19 @@ internal sealed partial class HostHttpServer
         value = [];
         if (!element.TryGetProperty(propertyName, out var property)) return false;
         if (property.ValueKind != JsonValueKind.Array)
-        {
             throw new InvalidOperationException($"{propertyName} 必须是字符串或数字数组");
-        }
 
-        value = property.EnumerateArray().Select(item => item.ValueKind switch
-        {
-            JsonValueKind.String => item.GetString() ?? string.Empty,
-            JsonValueKind.Number => item.GetRawText(),
-            _ => throw new InvalidOperationException($"{propertyName} 必须是字符串或数字数组")
-        }).ToArray();
+        value =
+        [
+            // Unaccepted JSON kinds are deliberately rejected by the default branch.
+            // ReSharper disable once SwitchExpressionHandlesSomeKnownEnumValuesWithExceptionInDefault
+            .. property.EnumerateArray().Select(item => item.ValueKind switch
+            {
+                JsonValueKind.String => item.GetString() ?? string.Empty,
+                JsonValueKind.Number => item.GetRawText(),
+                _ => throw new InvalidOperationException($"{propertyName} 必须是字符串或数字数组")
+            })
+        ];
         return true;
     }
 
@@ -325,21 +420,18 @@ internal sealed partial class HostHttpServer
     {
         value = [];
         if (!element.TryGetProperty(propertyName, out var property)) return false;
-        if (property.ValueKind != JsonValueKind.Array)
-        {
-            throw new InvalidOperationException($"{propertyName} 必须是字符串数组");
-        }
+        if (property.ValueKind != JsonValueKind.Array) throw new InvalidOperationException($"{propertyName} 必须是字符串数组");
 
-        value = property.EnumerateArray().Select(item =>
-        {
-            if (item.ValueKind != JsonValueKind.String)
+        value =
+        [
+            .. property.EnumerateArray().Select(item =>
             {
-                throw new InvalidOperationException($"{propertyName} 必须是字符串数组");
-            }
+                if (item.ValueKind != JsonValueKind.String)
+                    throw new InvalidOperationException($"{propertyName} 必须是字符串数组");
 
-            return item.GetString() ?? string.Empty;
-        }).ToArray();
+                return item.GetString() ?? string.Empty;
+            })
+        ];
         return true;
     }
-
 }

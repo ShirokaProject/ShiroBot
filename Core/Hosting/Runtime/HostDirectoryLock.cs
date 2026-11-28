@@ -5,7 +5,16 @@ internal sealed class HostDirectoryLock : IDisposable
 {
     private readonly FileStream _stream;
 
-    private HostDirectoryLock(FileStream stream) => _stream = stream;
+    private HostDirectoryLock(FileStream stream)
+    {
+        _stream = stream;
+    }
+
+    // Never delete host.lock. Closing the handle (including process termination) releases the lock.
+    public void Dispose()
+    {
+        _stream.Dispose();
+    }
 
     internal static HostDirectoryLock? TryAcquire(string hostDirectory)
     {
@@ -25,7 +34,4 @@ internal sealed class HostDirectoryLock : IDisposable
             return null;
         }
     }
-
-    // Never delete host.lock. Closing the handle (including process termination) releases the lock.
-    public void Dispose() => _stream.Dispose();
 }

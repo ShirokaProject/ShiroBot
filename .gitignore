@@ -9,8 +9,12 @@ META-INF/
 *.DotSettings.user
 artifacts/
 docker-data/
+container-data/
 Core/Assets/dashboard/
 MilkyModelGenerator.Net/output/
 MilkyModelGenerator.Net/QBotSharp.Model/
 .playwright-mcp/
 *.binlog
+
+# Python release tooling cache
+__pycache__/

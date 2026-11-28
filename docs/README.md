@@ -1,6 +1,6 @@
 # ShiroBot 文档站
 
-本目录是一个独立的 VitePress 工程，包含站点配置、Markdown 内容和 Node 依赖清单。
+本目录为独立的 VitePress 工程，包含站点配置、Markdown 文档和 Node 依赖清单。
 
 ## 本地开发
 

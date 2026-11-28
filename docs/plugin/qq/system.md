@@ -1,13 +1,13 @@
 # 账号与资料（IQSystemApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQSystemApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## GetUserProfileAsync
 
@@ -26,7 +26,7 @@ Task<QUserProfile> GetUserProfileAsync(string userId, CancellationToken cancella
 
 ### 返回
 
-`Task<QUserProfile>`。等待异步完成后取得签名所列模型或列表。
+`Task<QUserProfile>`。返回用户资料。
 
 ## GetFriendListAsync
 
@@ -48,7 +48,7 @@ Task<IReadOnlyList<QFriend>> GetFriendListAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QFriend>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QFriend>>`。返回好友列表。
 
 ## GetFriendInfoAsync
 
@@ -72,7 +72,7 @@ Task<QFriend> GetFriendInfoAsync(
 
 ### 返回
 
-`Task<QFriend>`。等待异步完成后取得签名所列模型或列表。
+`Task<QFriend>`。返回好友资料。
 
 ## GetPeerPinsAsync
 
@@ -111,7 +111,7 @@ Task SetAvatarAsync(string imageUri, CancellationToken cancellationToken = defau
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetNicknameAsync
 
@@ -130,7 +130,7 @@ Task SetNicknameAsync(string nickname, CancellationToken cancellationToken = def
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetBioAsync
 
@@ -149,7 +149,7 @@ Task SetBioAsync(string bio, CancellationToken cancellationToken = default);
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetCookiesAsync
 
@@ -168,7 +168,7 @@ Task<string> GetCookiesAsync(string domain, CancellationToken cancellationToken 
 
 ### 返回
 
-`Task<string>`。等待异步完成后取得签名所列模型或列表。
+`Task<string>`。返回指定域名的 Cookie。
 
 ## GetCsrfTokenAsync
 
@@ -186,7 +186,7 @@ Task<string> GetCsrfTokenAsync(CancellationToken cancellationToken = default);
 
 ### 返回
 
-`Task<string>`。等待异步完成后取得签名所列模型或列表。
+`Task<string>`。返回账号 CSRF Token。
 
 ## GetLoginInfoAsync
 
@@ -204,7 +204,7 @@ Task<QLoginInfo> GetLoginInfoAsync(CancellationToken cancellationToken = default
 
 ### 返回
 
-`Task<QLoginInfo>`。等待异步完成后取得签名所列模型或列表。
+`Task<QLoginInfo>`。返回登录账号信息。
 
 ## GetImplInfoAsync
 
@@ -222,7 +222,27 @@ Task<QImplInfo> GetImplInfoAsync(CancellationToken cancellationToken = default);
 
 ### 返回
 
-`Task<QImplInfo>`。等待异步完成后取得签名所列模型或列表。
+`Task<QImplInfo>`。返回协议实现端信息。
+
+## GetOnlineClientsAsync
+
+获取当前账号的在线客户端列表（同一账号在其他设备上的登录）。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<IReadOnlyList<QOnlineClient>> GetOnlineClientsAsync(bool noCache = false,
+    CancellationToken cancellationToken = default);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `noCache` | `bool` | `false` | 是否忽略缓存重新获取。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<IReadOnlyList<QOnlineClient>>`。返回在线客户端列表。
 
 ## GetCustomFaceUrlListAsync
 
@@ -240,7 +260,7 @@ Task<IReadOnlyList<string>> GetCustomFaceUrlListAsync(CancellationToken cancella
 
 ### 返回
 
-`Task<IReadOnlyList<string>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<string>>`。返回收藏表情 URL 列表。
 
 ## SetPeerPinAsync
 
@@ -266,7 +286,7 @@ Task SetPeerPinAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## 相关类型
 

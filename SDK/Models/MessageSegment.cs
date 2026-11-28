@@ -1,14 +1,17 @@
 namespace ShiroBot.SDK.Models;
 
 /// <summary>
-/// 平台无关的消息段基类。适配器无法映射到通用段的内容应使用 <see cref="RawSegment"/>。
+///     平台无关的消息段基类。适配器无法映射到通用段的内容应使用 <see cref="RawSegment" />。
 /// </summary>
 public abstract record MessageSegment;
 
 /// <summary>纯文本。</summary>
 public sealed record TextSegment(string Text) : MessageSegment
 {
-    public override string ToString() => Text;
+    public override string ToString()
+    {
+        return Text;
+    }
 }
 
 /// <summary>提及（@）某个用户。</summary>
@@ -28,14 +31,14 @@ public sealed record QuoteSegment(string MessageId) : MessageSegment
     public string? Preview { get; init; }
 }
 
-/// <summary>表情。<see cref="Id"/> 为平台表情 ID（QQ face id、Discord emoji id 等）。</summary>
+/// <summary>表情。<see cref="Id" /> 为平台表情 ID（QQ face id、Discord emoji id 等）。</summary>
 public sealed record EmojiSegment(string Id) : MessageSegment
 {
     /// <summary>Unicode 或 :name: 形式的降级文本。</summary>
     public string? Name { get; init; }
 }
 
-/// <summary>媒体资源段的公共基类。发送时 <see cref="Uri"/> 支持 http(s)、file、base64 等适配器约定的形式。</summary>
+/// <summary>媒体资源段的公共基类。发送时 <see cref="Uri" /> 支持 http(s)、file、base64 等适配器约定的形式。</summary>
 public abstract record ResourceSegment(string Uri) : MessageSegment
 {
     /// <summary>文件名，未知时为 null。</summary>
@@ -78,7 +81,7 @@ public sealed record FileSegment(string Uri) : ResourceSegment(Uri)
 }
 
 /// <summary>
-/// 平台特有消息段。通用模型无法表达的内容由适配器以自定义负载形式保留，
-/// 插件可按 <see cref="Platform"/> + <see cref="Kind"/> 识别并读取 <see cref="Payload"/>。
+///     平台特有消息段。通用模型无法表达的内容由适配器以自定义负载形式保留，
+///     插件可按 <see cref="Platform" /> + <see cref="Kind" /> 识别并读取 <see cref="Payload" />。
 /// </summary>
 public sealed record RawSegment(string Platform, string Kind, object Payload) : MessageSegment;

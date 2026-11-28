@@ -1,8 +1,7 @@
-# QQ 接口审阅（ABI 1.0）
+# QQ 接口与契约语义
 
-`ShiroBot.Model.QQ` 当前 ABI 为 **1.0.0.0**，用户、群与消息 ID 统一使用不透明字符串。
-宿主 1.0.0 提供 SDK ABI **1.2.0.0**；引用 SDK 或 QQ Model 0.x ABI 的组件必须重新编译。下方的旧类型名称仅用于迁移对照，不属于当前 API。
-宿主会拒绝加载引用旧 QQ Model ABI 的组件，避免运行后才报签名错误。
+`ShiroBot.Model.QQ` 的用户、群与消息 ID 统一使用不透明字符串。
+SDK 与宿主的版本要求见 [ABI 兼容性与版本](./api-compatibility)。
 
 ## 插件入口
 
@@ -24,7 +23,7 @@ if ((groups.Capabilities & QGroupCapabilities.JoinRequests) != 0)
 
 ## 主要签名
 
-以下为审阅摘要，完整定义位于 `Models/QQ/IQExtensions.cs`。
+常用签名如下，完整定义位于 `Models/QQ/IQExtensions.cs`。
 
 ```csharp
 QGroupCapabilities Capabilities { get; }
@@ -39,6 +38,9 @@ Task AcceptJoinRequestAsync(QGroupJoinRequest request, CancellationToken cancell
 Task RejectJoinRequestAsync(QGroupJoinRequest request, string? reason = null, bool addToBlacklist = false, CancellationToken cancellationToken = default);
 Task<QGroupMuteState> GetMuteStateAsync(string groupId, CancellationToken cancellationToken = default);
 Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QMemberMute> members, CancellationToken cancellationToken = default);
+Task<QGroupBlacklistPage> GetGroupBlacklistAsync(string groupId, string? cursor = null, int limit = 20, CancellationToken cancellationToken = default);
+Task<IReadOnlyList<string>> UpdateGroupBlacklistAsync(string groupId, IReadOnlyList<string> userIds, bool add = true, CancellationToken cancellationToken = default);
+Task<QGroupBotState> GetBotStateAsync(string groupId, CancellationToken cancellationToken = default);
 ```
 
 `QGroupJoinRequest` 必填 `GroupId`、`UserId`、`RequestId`。
@@ -59,35 +61,19 @@ Task<QBatchOperationResult> SetMemberMutesAsync(string groupId, IReadOnlyList<QM
 | 拒绝申请并拉黑 | 未声明 | 支持 |
 | 禁言状态及定时/周期规则查询 | 未声明 | 支持 |
 | 自动审批策略与白名单 | 未提供扩展 | 支持 |
+| 群黑名单查询与增删 | 未声明 | 支持 |
+| 机器人群内状态 | 未声明 | 支持 |
 
 `Capabilities` 描述适配器实现情况，不能替代 QQ 平台授权。
 自动审批策略使用可选的 `IQGroupApprovalStrategyApi`；策略 `GroupIds` 为适配器 ID，
 `GroupNumbers` 为 QQ 群号字符串，两者按平台规则择一。
-官方 Markdown、媒体及流式消息仍保留各自扩展接口，因为它们表达额外平台能力。
-
-## 迁移表
-
-| 旧接口或字段 | 新接口或字段 |
-| --- | --- |
-| 数值账号、群、消息、请求 ID | `string`，可空 ID 为 `string?` |
-| `IQOfficialGroupApi` | `IQGroupApi`，策略使用 `IQGroupApprovalStrategyApi` |
-| `IQSystemApi` 的群及成员查询 | `IQGroupApi` 同名方法 |
-| `QOfficialJoinRequest`、`QGroupInvitedJoinRequest` | `QGroupJoinRequest` |
-| 官方成员事件专属 Raw | `QGroupMemberIncrease` / `QGroupMemberDecrease`；额外 OpenID 在 `GlobalUserId` |
-| `OfficialGroupJoinRequest` / `GroupInvitedJoinRequest` 事件 Kind | `QEventKinds.GroupJoinRequest` |
-| `MessageSeq` | `MessageId` |
-| `NotificationSeq` / `InvitationSeq` | `NotificationId` / `InvitationId` |
-| 数值分页起点及返回值 | `cursor` / `NextCursor`，字符串 |
-| 按序号直接审批 | 传入 `QGroupJoinRequest` |
-
-数值计数、枚举、大小和时间仍保持原有语义；文件大小仍为 `long`。
-`QSentMessage.MessageId`、原生消息发送的返回 ID 也改为字符串。
+官方 Markdown、媒体和流式消息使用各自的扩展接口。
 
 ## 当前契约语义
 
 - SDK 身份使用 `UserReference`，权限按实例隔离；消息引用包含会话。
 - 所有 QQ 异步服务方法都有 `CancellationToken`；SDK 消息、群/频道、用户服务及带引用的路由也支持取消。
-- `QMemberMute` 使用属性初始化，只表达 UserId 和 Duration，不再暴露 UpdateExisting。
+- `QMemberMute` 使用属性初始化，包含 `UserId` 和 `Duration`。
 - 批量禁言先校验所有输入，再按项执行；没有事务或回滚保证。失败后继续后续项，结果按输入顺序返回。
 - `Succeeded` 为确认成功；`Failed` 为明确业务拒绝；`Unknown` 为无法确认服务端结果；`NotExecuted` 为未尝试。
   取消抛 `QBatchOperationCanceledException`，其 `PartialResult` 保留状态。不要无条件重试 Unknown 项。

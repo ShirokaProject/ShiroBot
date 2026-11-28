@@ -1,4 +1,10 @@
-# SimdSkia preview.7 experiment (2026-10-27)
+# SimdSkia renderer experiment
+
+The experiment branch tracks ShiroBot's default branch, `master`, and now pins SimdSkia 0.1.13 with Avalonia 12.2.0. See the [0.1.13 retest and remaining issues](REPORT.md#simdskia-0113-复测). Use `RENDER_LAB_BACKEND=skia` for the Skia comparison or leave it unset for SimdSkia. Set `RENDER_LAB_FONTS=matched` to load the same embedded fixture fonts in either backend. The font subsets cover the fixed retest fixtures.
+
+## Preview.7 archive
+
+The instructions below document the original snapshot at `276eb57`.
 
 This branch preserves an incomplete renderer migration for future testing. It is not a production replacement. The baseline is ShiroBot d2233a7; the main branch continues to use native Avalonia.Skia.
 

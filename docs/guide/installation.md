@@ -16,7 +16,7 @@
 ### 运行时类型
 
 - `self-contained`：自带 .NET 运行时，**推荐**，下载即可运行。
-- `framework-dependent`：体积更小，但需要预装 [ASP.NET Core 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)。
+- `framework-dependent`：体积更小，但需要预装 [ASP.NET Core 11 Runtime](https://dotnet.microsoft.com/download/dotnet/11.0)。
 
 ::: tip 不确定怎么选？
 - Windows 电脑：`win-x64-self-contained`
@@ -47,7 +47,7 @@ sudo apk add libstdc++ libgcc icu-libs fontconfig font-noto-cjk
 
 ## 准备目录
 
-解压后，安装组件并运行宿主时，常见目录结构如下。主程序按平台选择 `ShiroBot` 或 `ShiroBot.exe`，并非同时包含两者；运行时目录会按需生成。
+安装组件并运行宿主后的常见目录结构如下。主程序按平台提供 `ShiroBot` 或 `ShiroBot.exe`；运行时目录按需生成。
 
 ```text
 ShiroBot/
@@ -76,7 +76,7 @@ ShiroBot/
 
 单 DLL 插件也可以手动放在 `plugins/HelloPlugin.dll`，宿主仍为其提供 `plugins/<插件 ID>/` 数据目录。带私有依赖或静态资源的组件可以包含其他文件，不需要另行放入宿主共享的 SDK / Model DLL 或发布用 PDB。
 
-上述结构不要求存在 `backup/` 或 `diagnostics/`；自行保存的备份和诊断文件应单独保管。Docker 的主程序和缓存位于 `/app`，配置、适配器与插件持久数据位于挂载的数据卷 `/data`，详见[Docker 部署](#docker-部署)。
+备份和诊断文件可单独存入 `backup/`、`diagnostics/` 等目录。Docker 的主程序和缓存位于 `/app`，配置、适配器与插件持久数据位于挂载的数据卷 `/data`，详见[Docker 部署](#docker-部署)。
 
 ## 安装适配器
 
@@ -119,7 +119,7 @@ chmod +x ./ShiroBot
 ./ShiroBot
 ```
 
-framework-dependent 发布包仍然直接运行 `ShiroBot` / `ShiroBot.exe`，只是启动时会使用系统已经安装的 .NET 10 Runtime。
+framework-dependent 发布包也直接运行 `ShiroBot` / `ShiroBot.exe`，启动时使用系统安装的 .NET 11 Runtime。
 
 首次启动后检查以下内容：
 
@@ -153,12 +153,12 @@ framework-dependent 发布包仍然直接运行 `ShiroBot` / `ShiroBot.exe`，�
 
 每个版本都会发布 `linux/amd64` 与 `linux/arm64` 镜像：`ghcr.io/shirokaproject/shirobot:<版本>`、`:<主.次>` 与 `:latest`。镜像已包含渲染所需的 fontconfig 与中文字体。
 
-使用仓库根目录的 [`compose.yaml`](https://github.com/ShirokaProject/ShiroBot/blob/master/compose.yaml)：
+使用仓库 [`container/compose.yaml`](https://github.com/ShirokaProject/ShiroBot/blob/master/container/compose.yaml)，在仓库根目录运行：
 
 ```bash
-docker compose pull
-docker compose up -d
-docker compose logs -f shirobot
+docker compose -f container/compose.yaml pull
+docker compose -f container/compose.yaml up -d
+docker compose -f container/compose.yaml logs -f shirobot
 ```
 
 - 数据保存在命名卷 `shirobot_data` 中，挂载到容器的 `/data`：`config.toml`、`plugins/`、`adapters/` 都在这里，重建或升级容器不会删除。`compose.yaml` 显式指定卷名 `shirobot_data`，在哪个目录启动都使用同一个卷。
@@ -182,13 +182,13 @@ docker compose logs -f shirobot
 - 插件和适配器建议在 Dashboard 中安装、配置。需要手动修改配置文件时，在容器内编辑（以容器用户身份写入，宿主保存配置时不会遇到权限问题）：
 
   ```bash
-  docker compose exec shirobot vi /data/config.toml
+  docker compose -f container/compose.yaml exec shirobot vi /data/config.toml
   ```
 
 - Dashboard 默认只绑定本机 `http://127.0.0.1:7001/dashboard/`。远程访问请通过反向代理，并保留 API 鉴权。
-- 固定镜像版本：设置环境变量 `SHIROBOT_IMAGE_TAG=1.0.0` 后再执行 `docker compose pull` 和 `docker compose up -d`。
+- 固定镜像版本：将 `SHIROBOT_IMAGE_TAG` 设置为需要部署的镜像标签，再执行 `docker compose -f container/compose.yaml pull` 和 `docker compose -f container/compose.yaml up -d`。
 - 容器默认使用 UTC 时区，自动更新时间（默认 `02:00`）也按 UTC 计算。需要按本地时间执行时，在 `compose.yaml` 中设置 `TZ`，例如 `TZ: Asia/Shanghai`（文件中有注释示例）。
-- 可以直接在 Dashboard 中更新主程序：新版本下载到数据目录的 `host/`（默认 `/data/host`），先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose pull && docker compose up -d` 更新镜像。启动时如果镜像中的主程序不旧于 `host/` 中的版本，会删除该目录并使用镜像版本。
+- 可以直接在 Dashboard 中更新主程序：新版本下载到数据目录的 `host/`（默认 `/data/host`），先在当前容器中试运行，能正常启动才会安装并重启。新版本需要更新的 .NET 运行时或系统依赖时，面板会提示执行 `docker compose -f container/compose.yaml pull && docker compose -f container/compose.yaml up -d` 更新镜像。启动时如果镜像中的主程序版本不低于 `host/` 中的版本，会删除该目录并使用镜像版本。
 
 备份数据卷：
 
@@ -196,8 +196,6 @@ docker compose logs -f shirobot
 docker run --rm -v shirobot_data:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/shirobot-data.tgz -C /data .
 ```
-
-
 
 
 不使用 compose 时：

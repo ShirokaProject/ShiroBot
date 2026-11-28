@@ -1,6 +1,6 @@
 # 单 DLL 与 native 依赖
 
-`ShiroBot.SDK` NuGet 包内置 `buildTransitive` 构建目标。插件不需要在自己的项目中复制 ILRepack 配置或生成 `.deps.json`。
+`ShiroBot.SDK` NuGet 包通过 `buildTransitive` 提供依赖合并和 native 清单生成的构建目标。
 
 ## 自动处理流程
 
@@ -10,7 +10,17 @@
 2. 输出程序集包含 `BotPluginAttribute`。
 3. 项目显式设置 `<ShiroBotPluginPackagingEnabled>true</ShiroBotPluginPackagingEnabled>`。
 
-构建过程会：
+构建流程：
+
+```mermaid
+flowchart LR
+    D["收集依赖"] --> F["排除宿主共享程序集"]
+    F --> M["ILRepack 合并 managed DLL"]
+    M --> N["嵌入 native 依赖清单"]
+    N --> O["清理输出，保留插件主 DLL"]
+```
+
+各步骤处理如下：
 
 1. 收集插件的 managed NuGet 和项目依赖。
 2. 排除宿主共享程序集。
@@ -20,13 +30,13 @@
 6. 从插件输出中移除已合并 DLL 和延迟下载的 native 文件。
 7. 删除插件 `.deps.json`。
 
-因此部署时以插件主 DLL 为准。SDK、Model、Avalonia 等共享程序集由宿主提供，不会被合并进插件。
+部署插件主 DLL；SDK、Model、Avalonia 等共享程序集由宿主提供。
 
 ## managed 依赖示例
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ShiroBot.SDK" Version="1.0.0" />
+  <PackageReference Include="ShiroBot.SDK" Version="*" />
   <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
 </ItemGroup>
 ```
@@ -70,7 +80,7 @@ runtimes/osx-arm64/native/libexample.dylib
 <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.11" />
 ```
 
-构建产物不会包含所有平台 native 文件。插件 DLL 内只嵌入类似以下信息：
+插件 DLL 嵌入 native 依赖清单，运行时按平台下载所需文件。清单示例：
 
 ```json
 {
@@ -90,14 +100,15 @@ runtimes/osx-arm64/native/libexample.dylib
 }
 ```
 
-运行时宿主会：
+运行时宿主按 RID 选择资产：优先完整 RID（如 `osx-arm64`），再尝试系统级 RID（如 `osx`、`linux`、`linux-musl`、`win`），最后尝试 `any`。musl 的具体规则见下文。
 
-- 优先匹配完整 RID，例如 `osx-arm64`。
-- 再尝试系统级 RID，例如 `osx`、`linux`、`linux-musl` 或 `win`。
-- 最后尝试 `any`。
-- 使用 HTTPS 下载 `.nupkg` 并校验 SHA512。
-- 只释放匹配平台的文件。
-- 删除临时 `.nupkg` 并缓存释放结果。
+```mermaid
+flowchart LR
+    R["按 RID 选择资产"] --> D["HTTPS 下载 nupkg"]
+    D --> V["校验 SHA512"]
+    V --> E["释放当前平台文件并缓存"]
+    E --> C["删除临时 nupkg"]
+```
 
 ## 八个平台的兼容要求
 

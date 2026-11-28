@@ -1,13 +1,13 @@
 # 群管理（IQGroupApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQGroupApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 先检查 `Capabilities`。官方与 Milky 的 ID 都为字符串，但各自只在来源实例内有意义。入群审批传原申请对象，分页持续使用 NextCursor，即使当前页 Requests 为空。
 
@@ -39,7 +39,7 @@ Task<IReadOnlyList<QGroup>> GetGroupListAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QGroup>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QGroup>>`。返回群列表。
 
 ## GetGroupInfoAsync
 
@@ -63,7 +63,7 @@ Task<QGroup> GetGroupInfoAsync(
 
 ### 返回
 
-`Task<QGroup>`。等待异步完成后取得签名所列模型或列表。
+`Task<QGroup>`。返回群资料。
 
 ## GetGroupMemberListAsync
 
@@ -87,7 +87,7 @@ Task<IReadOnlyList<QGroupMember>> GetGroupMemberListAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QGroupMember>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QGroupMember>>`。返回成员列表。
 
 ## GetGroupMemberInfoAsync
 
@@ -113,7 +113,7 @@ Task<QGroupMember> GetGroupMemberInfoAsync(
 
 ### 返回
 
-`Task<QGroupMember>`。等待异步完成后取得签名所列模型或列表。
+`Task<QGroupMember>`。返回成员资料。
 
 ## SetGroupNameAsync
 
@@ -133,7 +133,7 @@ Task SetGroupNameAsync(string groupId, string name, CancellationToken cancellati
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetGroupAvatarAsync
 
@@ -157,7 +157,7 @@ Task SetGroupAvatarAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetMemberCardAsync
 
@@ -183,7 +183,7 @@ Task SetMemberCardAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetMemberSpecialTitleAsync
 
@@ -209,7 +209,7 @@ Task SetMemberSpecialTitleAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetMemberAdminAsync
 
@@ -235,7 +235,7 @@ Task SetMemberAdminAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## MuteMemberAsync
 
@@ -256,12 +256,12 @@ Task MuteMemberAsync(
 | --- | --- | --- | --- |
 | `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
 | `userId` | `string` | `必传` | 当前实例内的用户 ID。 |
-| `duration` | `TimeSpan` | `必传` | 禁言或输入状态的持续时间；零禁言时长表示解除禁言。 |
+| `duration` | `TimeSpan` | `必传` | 禁言时长；零表示解除禁言。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SetWholeMuteAsync
 
@@ -285,7 +285,7 @@ Task SetWholeMuteAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## KickMemberAsync
 
@@ -311,7 +311,7 @@ Task KickMemberAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## QuitGroupAsync
 
@@ -330,7 +330,7 @@ Task QuitGroupAsync(string groupId, CancellationToken cancellationToken = defaul
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SendNudgeAsync
 
@@ -350,7 +350,7 @@ Task SendNudgeAsync(string groupId, string userId, CancellationToken cancellatio
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SendMessageReactionAsync
 
@@ -378,7 +378,7 @@ Task SendMessageReactionAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## SendMessageReactionAsync
 
@@ -408,7 +408,7 @@ Task SendMessageReactionAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetAnnouncementsAsync
 
@@ -430,7 +430,7 @@ Task<IReadOnlyList<QGroupAnnouncement>> GetAnnouncementsAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QGroupAnnouncement>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QGroupAnnouncement>>`。返回群公告列表。
 
 ## SendAnnouncementAsync
 
@@ -450,13 +450,13 @@ Task SendAnnouncementAsync(
 | 参数 | C# 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
-| `content` | `string` | `必传` | 待发送的文本、Markdown 或可读媒体流，具体类型见签名。 |
+| `content` | `string` | `必传` | 公告正文。 |
 | `imageUri` | `string?` | `null` | 图片 URI，由适配器解析。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## DeleteAnnouncementAsync
 
@@ -480,7 +480,7 @@ Task DeleteAnnouncementAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetEssenceMessagesAsync
 
@@ -506,7 +506,7 @@ Task<IReadOnlyList<QEssenceMessage>> GetEssenceMessagesAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QEssenceMessage>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QEssenceMessage>>`。返回本页精华消息。
 
 ## GetEssenceMessagesPageAsync
 
@@ -558,7 +558,7 @@ Task SetEssenceMessageAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## AcceptJoinRequestAsync
 
@@ -580,7 +580,7 @@ Task AcceptJoinRequestAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## RejectJoinRequestAsync
 
@@ -606,7 +606,7 @@ Task RejectJoinRequestAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetJoinRequestsAsync
 
@@ -654,7 +654,81 @@ Task<QGroupMuteState> GetMuteStateAsync(
 
 ### 返回
 
-`Task<QGroupMuteState>`。等待异步完成后取得签名所列模型或列表。
+`Task<QGroupMuteState>`。返回群禁言状态及定时、周期规则。
+
+## GetGroupBlacklistAsync
+
+分页查询群黑名单；需要 `QGroupCapabilities.MemberBlacklist`，平台未授权时抛出 `QPermissionDeniedException`。
+
+```csharp
+Task<QGroupBlacklistPage> GetGroupBlacklistAsync(
+    string groupId,
+    string? cursor = null,
+    int limit = 20,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
+| `cursor` | `string?` | `null` | 上一页返回的 NextCursor；null 从第一页开始。 |
+| `limit` | `int` | `20` | 本页请求数量。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QGroupBlacklistPage>`。返回黑名单用户 Members 和下一页游标 NextCursor；null 表示没有下一页。
+
+## UpdateGroupBlacklistAsync
+
+把用户加入或移出群黑名单；需要 `QGroupCapabilities.MemberBlacklist`。仍在群内的用户无法加入。
+
+```csharp
+Task<IReadOnlyList<string>> UpdateGroupBlacklistAsync(
+    string groupId,
+    IReadOnlyList<string> userIds,
+    bool add = true,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
+| `userIds` | `IReadOnlyList<string>` | `必传` | 要加入或移出的用户 ID。 |
+| `add` | `bool` | `true` | true 加入黑名单，false 移出。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<IReadOnlyList<string>>`。返回平台报告失败的用户 ID；全部成功时为空。
+
+## GetBotStateAsync
+
+查询机器人在群内的状态；需要 `QGroupCapabilities.BotState`。
+
+```csharp
+Task<QGroupBotState> GetBotStateAsync(
+    string groupId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `groupId` | `string` | `必传` | 当前实例内的群 ID。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<QGroupBotState>`。`Member` 是机器人自己的群成员资料（群内 ID、角色、入群时间），另含主动推送许可与消息接收设置。
 
 ## SetMemberMutesAsync
 
@@ -728,7 +802,7 @@ Task AcceptInvitationAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## RejectInvitationAsync
 
@@ -752,7 +826,7 @@ Task RejectInvitationAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## 入群审批示例
 

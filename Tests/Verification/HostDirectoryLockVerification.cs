@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using ShiroBot.Hosting.Runtime;
 
+namespace ShiroBot.Verification;
+
 internal static class HostDirectoryLockVerification
 {
     internal static async Task RunAsync()
@@ -10,18 +12,19 @@ internal static class HostDirectoryLockVerification
         Directory.CreateDirectory(root);
         try
         {
-            using (var held = HostDirectoryLock.TryAcquire(root)
-                ?? throw new InvalidOperationException("First directory lock was rejected."))
+            using (HostDirectoryLock.TryAcquire(root)
+                   ?? throw new InvalidOperationException("First directory lock was rejected."))
             {
                 await AssertProbe(root, 73);
                 await AssertProbe(other, 0);
             }
+
             // A persistent lock file must never prevent a subsequent process from starting.
             if (!File.Exists(Path.Combine(root, "cache", "host.lock")))
                 throw new InvalidOperationException("Directory lock removed its stable lock file.");
             await AssertProbe(root, 0);
 
-            using var child = StartProbe(root, hold: true);
+            using var child = StartProbe(root, true);
             try
             {
                 var ready = await child.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(20));
@@ -34,11 +37,20 @@ internal static class HostDirectoryLockVerification
             }
             finally
             {
-                if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync(); }
+                if (!child.HasExited)
+                {
+                    child.Kill();
+                    await child.WaitForExitAsync();
+                }
             }
-            Console.WriteLine("Host directory lock cross-process exclusion, independent directories and crash recovery verification passed.");
+
+            Console.WriteLine(
+                "Host directory lock cross-process exclusion, independent directories and crash recovery verification passed.");
         }
-        finally { Directory.Delete(root, recursive: true); }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
     }
 
     private static Process StartProbe(string directory, bool hold = false)
@@ -66,11 +78,16 @@ internal static class HostDirectoryLockVerification
         {
             await probe.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
             if (probe.ExitCode != expectedExitCode)
-                throw new InvalidOperationException($"Lock probe expected {expectedExitCode}, got {probe.ExitCode}: {await probe.StandardError.ReadToEndAsync()}");
+                throw new InvalidOperationException(
+                    $"Lock probe expected {expectedExitCode}, got {probe.ExitCode}: {await probe.StandardError.ReadToEndAsync()}");
         }
         finally
         {
-            if (!probe.HasExited) { probe.Kill(); await probe.WaitForExitAsync(); }
+            if (!probe.HasExited)
+            {
+                probe.Kill();
+                await probe.WaitForExitAsync();
+            }
         }
     }
 }

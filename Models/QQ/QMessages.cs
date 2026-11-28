@@ -11,8 +11,10 @@ public abstract record QIncomingMessage
 
     public abstract QMessageScene Scene { get; }
 
-    public string GetPlainText() =>
-        string.Concat(Segments.OfType<QIncomingText>().Select(segment => segment.Text));
+    public string GetPlainText()
+    {
+        return string.Concat(Segments.OfType<QIncomingText>().Select(segment => segment.Text));
+    }
 }
 
 /// <summary>好友消息。</summary>

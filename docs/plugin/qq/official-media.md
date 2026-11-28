@@ -1,13 +1,13 @@
 # 官方媒体（IQOfficialMediaApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQOfficialMediaApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## UploadAsync
 
@@ -29,7 +29,7 @@ Task<QOfficialMedia> UploadAsync(
 | --- | --- | --- | --- |
 | `target` | `QOfficialMessageTarget` | `必传` | 官方消息目标，含场景与 ID。 |
 | `type` | `QOfficialMediaType` | `必传` | 媒体类型。 |
-| `content` | `Stream` | `必传` | 待发送的文本、Markdown 或可读媒体流，具体类型见签名。 |
+| `content` | `Stream` | `必传` | 待上传的可读媒体流。 |
 | `fileName` | `string` | `必传` | 文件名。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
@@ -83,7 +83,7 @@ Task<string> SendWithCaptionAsync(
 | --- | --- | --- | --- |
 | `target` | `QOfficialMessageTarget` | `必传` | 官方消息目标，含场景与 ID。 |
 | `media` | `QOfficialMedia` | `必传` | 已上传的媒体引用。 |
-| `content` | `string` | `必传` | 待发送的文本、Markdown 或可读媒体流，具体类型见签名。 |
+| `content` | `string` | `必传` | 随媒体发送的文字说明。 |
 | `reply` | `QOfficialMessageReply?` | `null` | 被动回复的消息或事件凭据；null 表示未指定。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
 
@@ -112,7 +112,7 @@ Task<string> UploadAndSendAsync(
 | --- | --- | --- | --- |
 | `target` | `QOfficialMessageTarget` | `必传` | 官方消息目标，含场景与 ID。 |
 | `type` | `QOfficialMediaType` | `必传` | 媒体类型。 |
-| `content` | `Stream` | `必传` | 待发送的文本、Markdown 或可读媒体流，具体类型见签名。 |
+| `content` | `Stream` | `必传` | 待上传的可读媒体流。 |
 | `fileName` | `string` | `必传` | 文件名。 |
 | `reply` | `QOfficialMessageReply?` | `null` | 被动回复的消息或事件凭据；null 表示未指定。 |
 | `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
@@ -143,7 +143,7 @@ Task<string> UploadAndSendWithCaptionAsync(
 | --- | --- | --- | --- |
 | `target` | `QOfficialMessageTarget` | `必传` | 官方消息目标，含场景与 ID。 |
 | `type` | `QOfficialMediaType` | `必传` | 媒体类型。 |
-| `content` | `Stream` | `必传` | 待发送的文本、Markdown 或可读媒体流，具体类型见签名。 |
+| `content` | `Stream` | `必传` | 待上传的可读媒体流。 |
 | `fileName` | `string` | `必传` | 文件名。 |
 | `caption` | `string` | `必传` | 随媒体一起发送的文字说明。 |
 | `reply` | `QOfficialMessageReply?` | `null` | 被动回复的消息或事件凭据；null 表示未指定。 |

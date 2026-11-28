@@ -29,19 +29,25 @@ public interface IConfigurableComponent<TConfig> : IConfigurableComponent
 
     Type IConfigurableComponent.ConfigType => typeof(TConfig);
 
-    object? IConfigurableComponent.CurrentConfig => CurrentConfigValue;
+    object IConfigurableComponent.CurrentConfig => CurrentConfigValue;
 
-    Task OnConfigLoadedAsync(TConfig config, CancellationToken cancellationToken) => Task.CompletedTask;
-
-    Task OnConfigChangedAsync(TConfig previous, TConfig current, CancellationToken cancellationToken);
-
-    async Task<object> IConfigurableComponent.InitializeConfigAsync(IConfigContext context, CancellationToken cancellationToken)
+    async Task<object> IConfigurableComponent.InitializeConfigAsync(IConfigContext context,
+        CancellationToken cancellationToken)
     {
         var config = context.Load<TConfig>();
         await OnConfigLoadedAsync(config, cancellationToken).ConfigureAwait(false);
         return config;
     }
 
-    Task IConfigurableComponent.ApplyConfigAsync(object candidate, CancellationToken cancellationToken) =>
-        OnConfigChangedAsync(CurrentConfigValue, (TConfig)candidate, cancellationToken);
+    Task IConfigurableComponent.ApplyConfigAsync(object candidate, CancellationToken cancellationToken)
+    {
+        return OnConfigChangedAsync(CurrentConfigValue, (TConfig)candidate, cancellationToken);
+    }
+
+    Task OnConfigLoadedAsync(TConfig config, CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    Task OnConfigChangedAsync(TConfig previous, TConfig current, CancellationToken cancellationToken);
 }

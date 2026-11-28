@@ -12,7 +12,8 @@ namespace ShiroBot.SharedContractPluginProbe;
     "SharedContractPluginProbe",
     Name = "Shared contract plugin probe",
     Version = "0.9.2",
-    SharedAssemblies = "ShiroBot.Model.QQ")]
+    SharedAssemblies = "ShiroBot.Model.QQ",
+    Priority = 5)]
 public sealed class SharedContractPluginProbe : PluginBase
 {
     public override string Name => "SharedContractPluginProbe";

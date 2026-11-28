@@ -7,27 +7,40 @@ internal static class DeferredShadowCleanup
 {
     internal const string DirectoryName = ".shadow-cleanup";
     private const string MarkerName = "pending.json";
-    private sealed record PendingShadow(string OriginalPath);
 
     internal static string? DeleteOrStage(string componentRoot, string shadowPath,
         Action<string>? deleteDirectory = null, Action<string, string>? moveDirectory = null)
     {
-        deleteDirectory ??= path => Directory.Delete(path, recursive: true);
+        deleteDirectory ??= path => Directory.Delete(path, true);
         moveDirectory ??= Directory.Move;
         ValidateOriginalPath(shadowPath);
         if (!Directory.Exists(shadowPath)) return null;
-        try { deleteDirectory(shadowPath); return null; }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        try
+        {
+            deleteDirectory(shadowPath);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
 
         var pending = Path.Combine(Path.GetFullPath(componentRoot), StagedComponentUpdates.DirectoryName,
-            DirectoryName, Path.GetFileName(Path.GetFullPath(shadowPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+            DirectoryName,
+            Path.GetFileName(Path.GetFullPath(shadowPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
         Directory.CreateDirectory(pending);
         // Write before attempting the move: a locked file or different volume may forbid moving.
         var marker = Path.Combine(pending, MarkerName);
         File.WriteAllText(marker + ".tmp", JsonSerializer.Serialize(new PendingShadow(Path.GetFullPath(shadowPath))));
-        File.Move(marker + ".tmp", marker, overwrite: true);
-        try { moveDirectory(shadowPath, Path.Combine(pending, "files")); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        File.Move(marker + ".tmp", marker, true);
+        try
+        {
+            moveDirectory(shadowPath, Path.Combine(pending, "files"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
         return pending;
     }
 
@@ -35,14 +48,18 @@ internal static class DeferredShadowCleanup
     {
         var root = Path.Combine(Path.GetFullPath(componentRoot), StagedComponentUpdates.DirectoryName, DirectoryName);
         if (!Directory.Exists(root)) return (0, []);
-        int applied = 0;
+        var applied = 0;
         var failed = new List<(string, string)>();
         string[] directories;
-        try { directories = Directory.GetDirectories(root); }
+        try
+        {
+            directories = Directory.GetDirectories(root);
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return (0, [(root, ex.Message)]);
         }
+
         foreach (var pending in directories)
         {
             if (!Guid.TryParseExact(Path.GetFileName(pending), "N", out _)) continue;
@@ -51,22 +68,31 @@ internal static class DeferredShadowCleanup
                 var marker = Path.Combine(pending, MarkerName);
                 var originalPath = File.Exists(marker)
                     ? (JsonSerializer.Deserialize<PendingShadow>(File.ReadAllText(marker))
-                        ?? throw new InvalidOperationException("影子 DLL 清理记录无效。")).OriginalPath
+                       ?? throw new InvalidOperationException("影子 DLL 清理记录无效。")).OriginalPath
                     : Path.Combine(Path.GetTempPath(), "ShiroBot", "plugin-reload", Path.GetFileName(pending));
                 // Queue names preserve the original GUID, including if an interrupted write or
                 // previous partial deletion removed the marker before cleanup finished.
                 ValidateOriginalPath(originalPath);
-                if (Directory.Exists(originalPath)) Directory.Delete(originalPath, recursive: true);
-                Directory.Delete(pending, recursive: true);
+                if (Directory.Exists(originalPath)) Directory.Delete(originalPath, true);
+                Directory.Delete(pending, true);
                 applied++;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or ArgumentException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+                                           or InvalidOperationException or ArgumentException)
             {
                 failed.Add((pending, ex.Message));
             }
         }
-        try { if (!Directory.EnumerateFileSystemEntries(root).Any()) Directory.Delete(root); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failed.Add((root, ex.Message)); }
+
+        try
+        {
+            if (!Directory.EnumerateFileSystemEntries(root).Any()) Directory.Delete(root);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            failed.Add((root, ex.Message));
+        }
+
         return (applied, failed);
     }
 
@@ -81,4 +107,6 @@ internal static class DeferredShadowCleanup
             (Directory.Exists(fullPath) && new DirectoryInfo(fullPath).LinkTarget is not null))
             throw new InvalidOperationException("拒绝清理影子 DLL 临时目录之外的路径。");
     }
+
+    private sealed record PendingShadow(string OriginalPath);
 }

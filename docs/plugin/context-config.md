@@ -6,7 +6,7 @@
 
 | 属性 | 用途 |
 | --- | --- |
-| `Context.Platform` | 当前实例的平台类型，例如 qq 或 qq-official |
+| `Context.Platform` | 当前实例的平台 ID，由适配器声明 |
 | `Context.InstanceId` | 当前适配器运行实例 ID |
 | `Context.UseInstance(id)` | 临时选择指定实例，作用域结束后恢复 |
 | `Context.AdapterInstance` / `Context.GetAdapterInstances()` | 当前实例与全部运行实例的信息 |
@@ -18,13 +18,15 @@
 | `Context.WebHost` | 宿主 HTTP 服务与公开地址 |
 | `Context.Updater` | 插件更新能力 |
 | `Context.Render` | 可选图片渲染服务 |
-| `Context.Services` | 发布、调用其他插件的共享服务 |
+| `Context.Services` | 发布、调用其他插件的共享服务；按名称的 JSON 服务不需要共享程序集 |
+| `Context.Lifetime` | 生命周期作用域：后台任务、计时器和资源在卸载时自动停止和释放 |
+| `Context.Bus` | 插件之间按主题发布和订阅 JSON 事件 |
 | `Context.CreateTempDirectory(retention)` | 创建由宿主按保留时长清理的临时目录 |
 | `Context.PluginDirectory` | 插件稳定数据目录 |
 | `Context.OwnerList` | 宿主所有者身份列表（`UserReference`） |
 | `Context.AdminList` | 宿主管理员身份列表（`UserReference`） |
 
-权限判断由 SDK 的 `Context.IsOwner` / `Context.IsAdmin` 接口完成。宿主中 owner 自动拥有 admin 权限：`IsAdmin(id)` 对 `owner_list` 或 `admin_list` 中的账号均返回 `true`，无需将 owner 重复加入 `admin_list`。两份列表热重载后，后续检查使用新配置。`Context.AdminList` 返回显式配置的管理员列表，不包含自动授予权限的 owner；插件应调用 `IsAdmin`，不要直接用 `AdminList.Contains` 判断权限，也不需要自行维护管理员名单。
+权限判断由 SDK 的 `Context.IsOwner` / `Context.IsAdmin` 接口完成。宿主中 owner 自动拥有 admin 权限：`IsAdmin(id)` 对 `owner_list` 或 `admin_list` 中的账号均返回 `true`，无需将 owner 重复加入 `admin_list`。两份列表热重载后，后续检查使用新配置。`Context.AdminList` 返回显式配置的管理员列表，不包含自动授予权限的 owner。插件应调用 `IsAdmin` 判断权限；`AdminList.Contains` 只检查显式列表。
 
 权限判断：
 
@@ -38,7 +40,7 @@ if (!Context.IsAdmin(message.Sender.Id))
 
 适配器可以只实现自己支持的服务方法。调用不支持的方法时会抛出 `NotSupportedException`，插件应按需要捕获并提供友好提示。
 
-事件处理期间这些服务绑定来源实例，跨 await 保留。后台发送、自动回复、回复订阅和旧 DLL 兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。平台、账号和实例的区别见[通用 Model](/plugin/models#事件)。
+事件处理期间这些服务绑定来源实例，跨 await 保留。后台发送、自动回复、回复订阅和程序集兼容性见[调用 API](/plugin/apis#适配器实例与后台发送)。平台、账号和实例的区别见[通用 Model](/plugin/models#事件)。
 
 ## 插件配置
 
@@ -84,6 +86,18 @@ public sealed class HelloPlugin : PluginBase<HelloConfig>
 
 业务代码通过 `Settings` 读取当前配置。配置类型可以位于共享项目；宿主沿 `IConfigurableComponent<TConfig>` 读取实际类型的字段元数据，Dashboard 会显示中文名称、说明和分组。
 
+保存账号或群号的 `List<string>` 字段可以声明为选择器，Dashboard 会列出运行中适配器实例的好友或群供搜索选择，仍可手动输入：
+
+```csharp
+[ConfigField("允许使用的用户", Label = "用户白名单", Type = "users")]
+public List<string> AllowedUsers { get; set; } = [];   // 保存为 实例ID:用户ID，用 UserReference.Parse 读取
+
+[ConfigField("生效的群", Label = "群列表", Type = "groups")]
+public List<string> Groups { get; set; } = [];         // 保存为群号
+```
+
+列表来自适配器的 `GetFriendsAsync` / `GetChannelsAsync`；不支持的适配器（如 QQ 官方机器人）只能手动输入。
+
 需要自行管理额外配置时，可使用 `Context.Config.Load<T>()`、`Save<T>()` 和 `Watch<T>()`。手动创建的订阅应在卸载时释放；普通配置无需另建监听器。
 
 `Config.Save<T>()` 和首次 `Config.Load<T>()` 生成文件时，会把顶层属性的 `ConfigFieldAttribute` 写到对应 snake_case 键上方。`Label`、`Description`、`Options`、`Min`/`Max` 和 `Placeholder` 会转换为合法 `#` 注释；重复保存不会重复堆叠注释。
@@ -96,7 +110,7 @@ Context.Config.SetValue("timeout_seconds", 30);
 
 ## 数据文件
 
-不要把运行时数据写到当前工作目录。使用插件数据目录：
+运行时数据写入插件数据目录：
 
 ```csharp
 var databasePath = Path.Combine(Context.PluginDirectory, "data.db");
@@ -106,7 +120,7 @@ Directory.CreateDirectory(cacheDirectory);
 
 即使单 DLL 位于 `plugins` 根目录，宿主也会为它提供稳定的 `plugins/<插件 ID>` 数据目录。
 
-当前 SDK 没有单独的 `CacheDirectory` API，插件使用上述 `Context.PluginDirectory` 下的 `cache` 子目录。该目录由插件创建和清理，只存放可重建数据；数据库、订阅和用户配置等持久数据不要放入缓存。宿主自身的 `cache/adapters` 用于适配器包元数据，不供插件存储数据。
+插件可在 `Context.PluginDirectory` 下创建并清理 `cache` 子目录，仅存放可重建数据；数据库、订阅和用户配置等持久数据应另行保存。宿主的 `cache/adapters` 仅用于适配器包元数据。
 
 ## 日志
 
@@ -166,14 +180,13 @@ SDK 的 `IMessageService`、`IChannelService`、`IUserService` 异步操作均�
 
 ## 更新时保护用户文件
 
-宿主更新插件包时，已有 `config.toml` 和插件根目录 `cookies/`、`data/`、`cache/`、`tmp/`、`logs/` 内的文件不会被新包覆盖或按旧安装清单删除。即使早期发布包将 Cookie 文件记录为程序资源，更新后也会保留，并从程序文件清单中移除。立即更新与重启后应用的暂存更新遵循同一规则。
+宿主更新插件包时，已有 `config.toml` 和插件根目录 `cookies/`、`data/`、`cache/`、`tmp/`、`logs/` 内的文件会保留，不被包内同名文件覆盖。立即更新与重启后应用的暂存更新遵循同一规则。
 
-插件发布包应仅包含程序和必要的静态资源，不要打包空 Cookie 文件。新插件应把可编辑的 Cookie 放在配置中（字段使用 `ConfigField(Type = "password")`），并明确配置文件中的值仍为明文。已有非空 Cookie 文件应进行一次性、不删除原文件的迁移；主动清空配置后不能再次自动导入旧凭据。迁移完成标记属于持久数据，不应放进可清理的缓存目录。
+插件发布包应仅包含程序和必要的静态资源，不要打包空 Cookie 文件。可编辑的 Cookie 可放在配置中，字段使用 `ConfigField(Type = "password")`；配置文件中的值仍为明文。凭据导入应保留原文件；主动清空配置后，不能自动从其他来源恢复凭据，导入状态应保存在持久数据中。
 
-未被旧安装清单登记的同名用户文件也不会被新包覆盖或认领；旧版无清单安装的 DLL 仍可更新。程序静态资源请放在独立的资源目录，避免使用上述运行数据目录。
+未列入程序安装清单的用户文件不会被覆盖或认领。程序静态资源请放在独立的资源目录，避免使用上述运行数据目录。
 
-
-## 宿主管理的临时目录（SDK 1.0.0）
+## 宿主管理的临时目录
 
 ```csharp
 var temp = Context.CreateTempDirectory(TimeSpan.FromMinutes(10));
@@ -186,7 +199,44 @@ var path = Path.Combine(temp.Path, "video.mp4");
 保留时长必须大于零，从创建时开始计算；宿主每 30 秒扫描到期目录，文件被占用时后续重试。
 Ctrl+C/正常退出时尝试清理；强制终止时遗留的文件，下次启动会在加载插件之前全部清理，未到期也不续存。
 清理只针对专用临时区，不影响 `cache/adapters`、Cookie 或插件持久数据。订阅记录、登录凭据等不要保存在临时目录。
-新接口要求宿主 1.0.0；不需要升级适配器才能使用宿主提供的此服务。
+临时目录由宿主管理，与适配器的文件上传能力独立。
+
+## 生命周期作用域
+
+计时器、后台循环、`HttpClient` 等资源若未在卸载时停止和释放，旧程序集就无法回收，需要重启宿主。将资源登记到 `Context.Lifetime` 后，宿主会统一清理，无需在 `OnUnloadAsync` 中逐个处理：
+
+```csharp
+protected override Task LoadAsync()
+{
+    var http = Context.Lifetime.Track(new HttpClient());          // 卸载时释放
+    Context.Lifetime.SetInterval(TimeSpan.FromMinutes(5), async ct => // 卸载时停止
+        await http.GetStringAsync("https://example.com/ping", ct));
+    _ = Context.Lifetime.Run(async ct =>                           // 卸载时取消并等待结束
+    {
+        while (!ct.IsCancellationRequested) await PollAsync(ct);
+    });
+    return Task.CompletedTask;
+}
+```
+
+```mermaid
+flowchart LR
+    S["取消 Lifetime.Stopping，停止接收新调用和事件"]
+    S --> D["等待正在处理的事件和调用"]
+    D --> W["等待 Run、SetInterval、SetTimeout 结束"]
+    W --> U["调用 OnUnloadAsync"]
+    U --> R["逆序释放 Track 资源、执行 Defer 回调"]
+```
+
+等待后台任务期间 `Context` 仍可用。任务超过卸载超时仍未结束时，插件保持驻留，宿主提示重启。
+
+随配置开关重建的功能可以放进子作用域，关闭时单独释放：`var feature = Context.Lifetime.CreateScope(); … await feature.DisposeAsync();`。
+
+不要直接订阅 `AppDomain`、`Console`、`TaskScheduler` 等静态事件，也不要把插件对象存进宿主或其他插件的静态集合。宿主无法解除这些引用，会导致插件程序集常驻内存。
+
+## 插件之间互相调用
+
+插件之间可以按名称提供和调用服务、发布和订阅事件：提供方用 `[PluginContract]` 声明契约，调用方放入提供方的 DLL，SDK 在构建时生成契约代码；运行时不共享程序集，任何一方都可以单独卸载和更新。用法和生命周期见[插件之间互相调用](./interop)。
 
 ## 插件目录与热更新
 

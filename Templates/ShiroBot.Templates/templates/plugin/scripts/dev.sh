@@ -54,7 +54,7 @@ if [ ! -f "$host_exe" ] || [ "$installed_version" != "$sdk_version" ]; then
 fi
 
 plugin_dir="$cache_dir/plugins/PluginTemplate"
-build_dir="bin/Debug/net10.0"
+build_dir="bin/Debug/net11.0"
 manifest="$plugin_dir/.shirobot-dev-files"
 mkdir -p "$plugin_dir"
 # Remove files copied by the previous run that the build no longer produces. Files the

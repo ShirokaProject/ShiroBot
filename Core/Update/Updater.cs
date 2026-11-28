@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
-using ShiroBot.SDK.Plugin;
-
 using ShiroBot.Hosting.Context;
+using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Update;
 
@@ -20,10 +20,21 @@ public sealed record GitHubPluginPackage(
 
 public static class Updater
 {
-    internal static HttpClient HttpClient { get; set; } = new();
-    private static readonly ConcurrentDictionary<string, PendingUpdateEntry> PendingUpdates = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, PendingUpdateEntry> PendingUpdates =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private static OwnerNotify _notifyOwners = (_, _, _) => Task.CompletedTask;
     private static string? _githubProxy;
+    private static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(30);
+    internal static HttpClient HttpClient { get; set; } = new();
+
+    /// <summary>
+    ///     Installs a host release and restarts. Set at startup so console, plugin and Dashboard requests all
+    ///     replace the executable the same way.
+    /// </summary>
+    internal static Func<string, CancellationToken, Task>? HostUpdateApplier { get; set; }
+
+    internal static Func<PluginUpdateRequest, CancellationToken, Task>? PluginUpdateApplier { get; set; }
 
     internal static void Initialize(OwnerNotify notifyOwners, string? githubProxy = null)
     {
@@ -31,7 +42,10 @@ public static class Updater
         _githubProxy = githubProxy;
     }
 
-    internal static void SetGithubProxy(string? githubProxy) => Volatile.Write(ref _githubProxy, githubProxy);
+    internal static void SetGithubProxy(string? githubProxy)
+    {
+        Volatile.Write(ref _githubProxy, githubProxy);
+    }
 
     public static async Task<GitHubReleaseUpdate?> CheckGitHubReleaseAsync(
         string repository,
@@ -40,20 +54,12 @@ public static class Updater
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repository))
-        {
             throw new ArgumentException("Repository cannot be empty.", nameof(repository));
-        }
 
         var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
-        if (release is null)
-        {
-            return null;
-        }
+        if (release is null) return null;
 
-        if (!IsNewerVersion(release.TagName, currentVersion))
-        {
-            return null;
-        }
+        if (!IsNewerVersion(release.TagName, currentVersion)) return null;
 
         return new GitHubReleaseUpdate(
             repository,
@@ -62,8 +68,10 @@ public static class Updater
             release.Name,
             release.HtmlUrl,
             release.Body,
-            release.Assets.FirstOrDefault(asset => asset.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))?.DownloadUrl,
-            release.Assets.FirstOrDefault(asset => asset.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))?.Name);
+            release.Assets.FirstOrDefault(asset => asset.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                ?.DownloadUrl,
+            release.Assets.FirstOrDefault(asset => asset.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                ?.Name);
     }
 
     public static async Task<GitHubReleaseUpdate?> CheckGitHubReleaseAssetAsync(
@@ -74,22 +82,16 @@ public static class Updater
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repository))
-        {
             throw new ArgumentException("Repository cannot be empty.", nameof(repository));
-        }
 
         if (string.IsNullOrWhiteSpace(assetName))
-        {
             throw new ArgumentException("Asset name cannot be empty.", nameof(assetName));
-        }
 
         var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
-        if (release is null || !IsNewerVersion(release.TagName, currentVersion))
-        {
-            return null;
-        }
+        if (release is null || !IsNewerVersion(release.TagName, currentVersion)) return null;
 
-        var asset = release.Assets.FirstOrDefault(item => string.Equals(item.Name, assetName, StringComparison.OrdinalIgnoreCase));
+        var asset = release.Assets.FirstOrDefault(item =>
+            string.Equals(item.Name, assetName, StringComparison.OrdinalIgnoreCase));
         return new GitHubReleaseUpdate(
             repository,
             NormalizeVersion(currentVersion),
@@ -107,7 +109,8 @@ public static class Updater
         bool includePrerelease = false,
         CancellationToken cancellationToken = default)
     {
-        var package = await GetLatestPluginPackageAsync(repository, includePrerelease, cancellationToken).ConfigureAwait(false);
+        var package = await GetLatestPluginPackageAsync(repository, includePrerelease, cancellationToken)
+            .ConfigureAwait(false);
         if (package is null || !IsNewerVersion(package.Version, currentVersion)) return null;
 
         return new GitHubReleaseUpdate(
@@ -127,20 +130,15 @@ public static class Updater
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repository))
-        {
             throw new ArgumentException("Repository cannot be empty.", nameof(repository));
-        }
 
         var release = await GetLatestReleaseAsync(repository, includePrerelease, cancellationToken);
-        if (release is null)
-        {
-            return null;
-        }
+        if (release is null) return null;
 
-        var asset = release.Assets.FirstOrDefault(item => item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                    ?? release.Assets.FirstOrDefault(item => item.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+        var asset =
+            release.Assets.FirstOrDefault(item => item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            ?? release.Assets.FirstOrDefault(item => item.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
         if (asset is null)
-        {
             return new GitHubPluginPackage(
                 repository,
                 NormalizeVersion(release.TagName),
@@ -150,7 +148,6 @@ public static class Updater
                 null,
                 null,
                 null);
-        }
 
         return new GitHubPluginPackage(
             repository,
@@ -162,12 +159,6 @@ public static class Updater
             asset.Name,
             Path.GetExtension(asset.Name).TrimStart('.').ToLowerInvariant());
     }
-
-    /// <summary>
-    /// Installs a host release and restarts. Set at startup so console, plugin and Dashboard requests all
-    /// replace the executable the same way.
-    /// </summary>
-    internal static Func<string, CancellationToken, Task>? HostUpdateApplier { get; set; }
 
     public static async Task<string> RequestHostUpdateAsync(
         GitHubReleaseUpdate update,
@@ -187,28 +178,28 @@ public static class Updater
                     throw new InvalidOperationException("宿主更新服务尚未初始化或缺少下载地址。");
             });
 
-        await NotifyOwnersAsync(
+        await _notifyOwners(
             $"检测到宿主更新: {update.CurrentVersion} -> {update.LatestVersion}\n" +
             $"来源: {update.Repository}\n" +
             (string.IsNullOrWhiteSpace(update.AssetName) ? string.Empty : $"文件: {update.AssetName}\n") +
-            ConfirmHint(id),
+            ConfirmHint(id, "update"),
             ConfirmByReply(id),
             cancellationToken);
 
         return id;
     }
 
-    internal static Func<PluginUpdateRequest, CancellationToken, Task>? PluginUpdateApplier { get; set; }
-
     public static async Task<string> RequestPluginUpdateAsync(
         PluginUpdateRequest request,
         CancellationToken cancellationToken = default)
-        => await RequestPluginUpdateAsync(
+    {
+        return await RequestPluginUpdateAsync(
             request,
             token => PluginUpdateApplier is { } apply
                 ? apply(request, token)
                 : throw new InvalidOperationException("插件更新服务尚未初始化。"),
             cancellationToken).ConfigureAwait(false);
+    }
 
     internal static async Task<string> RequestPluginUpdateAsync(
         PluginUpdateRequest request,
@@ -224,78 +215,86 @@ public static class Updater
             request.ReleaseUrl,
             executeAsync);
 
-        await NotifyOwnersAsync(
+        await _notifyOwners(
             $"检测到插件更新: {request.PluginName} {request.CurrentVersion} -> {request.LatestVersion}\n" +
             (string.IsNullOrWhiteSpace(request.ReleaseUrl) ? string.Empty : $"来源: {request.ReleaseUrl}\n") +
             (string.IsNullOrWhiteSpace(request.AssetDownloadUrl) ? string.Empty : $"文件: {request.AssetDownloadUrl}\n") +
-            ConfirmHint(id),
+            ConfirmHint(id, "plugin update"),
             ConfirmByReply(id),
             cancellationToken);
 
         return id;
     }
 
-    private static string ConfirmHint(string id) =>
-        $"回复本消息「确认」执行更新，「取消」放弃（{OwnerNotifier.ReplyWindow.TotalHours:0} 小时内有效）。\n" +
-        $"控制台: update confirm {id} / update cancel {id}";
+    /// <param name="command">The console command for this target: update for the host, plugin update for plugins.</param>
+    /// <param name="id">Identifier of the pending update.</param>
+    private static string ConfirmHint(string id, string command)
+    {
+        return $"回复本消息「确认」执行更新，「取消」放弃（{OwnerNotifier.ReplyWindow.TotalHours:0} 小时内有效）。\n" +
+               $"控制台: {command} confirm {id} / {command} cancel {id}";
+    }
 
     /// <summary>Lets an owner answer the update notification instead of using the console.</summary>
-    private static OwnerReplyHandler ConfirmByReply(string id) => async reply =>
+    private static OwnerReplyHandler ConfirmByReply(string id)
     {
-        switch (reply.Text)
+        return async reply =>
         {
-            case "确认" or "确定" or "confirm" or "yes" or "y":
-                if (!PendingUpdates.ContainsKey(id))
-                {
-                    await reply.RespondAsync("这个更新已经处理过或已取消。").ConfigureAwait(false);
-                    return true;
-                }
-                await reply.RespondAsync("开始执行更新…").ConfigureAwait(false);
-                try
-                {
-                    if (!await ConfirmUpdateAsync(id).ConfigureAwait(false))
+            switch (reply.Text)
+            {
+                case "确认" or "确定" or "confirm" or "yes" or "y":
+                    if (!PendingUpdates.ContainsKey(id))
+                    {
                         await reply.RespondAsync("这个更新已经处理过或已取消。").ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is not OutOfMemoryException)
-                {
-                    await reply.RespondAsync("更新失败: " + ex.Message).ConfigureAwait(false);
+                        return true;
+                    }
+
+                    await reply.RespondAsync("开始执行更新…").ConfigureAwait(false);
+                    try
+                    {
+                        if (!await ConfirmUpdateAsync(id).ConfigureAwait(false))
+                            await reply.RespondAsync("这个更新已经处理过或已取消。").ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        await reply.RespondAsync("更新失败: " + ex.Message).ConfigureAwait(false);
+                        return false;
+                    }
+
+                    return true;
+                case "取消" or "cancel" or "no" or "n":
+                    await reply.RespondAsync(CancelUpdate(id) ? "已取消这个更新。" : "这个更新已经处理过或已取消。").ConfigureAwait(false);
+                    return true;
+                default:
+                    await reply.RespondAsync("请回复「确认」或「取消」。").ConfigureAwait(false);
                     return false;
-                }
-                return true;
-            case "取消" or "cancel" or "no" or "n":
-                await reply.RespondAsync(CancelUpdate(id) ? "已取消这个更新。" : "这个更新已经处理过或已取消。").ConfigureAwait(false);
-                return true;
-            default:
-                await reply.RespondAsync("请回复「确认」或「取消」。").ConfigureAwait(false);
-                return false;
-        }
-    };
+            }
+        };
+    }
 
     public static IReadOnlyList<PendingUpdateInfo> GetPendingUpdates()
     {
-        return PendingUpdates.Values
-            .OrderBy(item => item.CreatedAt)
-            .Select(item => new PendingUpdateInfo(
-                item.Id,
-                item.Target,
-                item.Name,
-                item.CurrentVersion,
-                item.LatestVersion,
-                item.ReleaseUrl))
-            .ToList();
+        return
+        [
+            .. PendingUpdates.Values
+                .OrderBy(item => item.CreatedAt)
+                .Select(item => new PendingUpdateInfo(
+                    item.Id,
+                    item.Target,
+                    item.Name,
+                    item.CurrentVersion,
+                    item.LatestVersion,
+                    item.ReleaseUrl))
+        ];
     }
 
     public static async Task<bool> ConfirmUpdateAsync(string requestId, CancellationToken cancellationToken = default)
     {
-        if (!PendingUpdates.TryRemove(requestId, out var entry))
-        {
-            return false;
-        }
+        if (!PendingUpdates.TryRemove(requestId, out var entry)) return false;
 
         try
         {
             if (entry.Target == UpdateTarget.Host)
-                await NotifyOwnersAsync($"宿主更新即将执行并重启: {entry.Name} ({entry.Id})", cancellationToken);
+                await _notifyOwners($"宿主更新即将执行并重启: {entry.Name} ({entry.Id})", null, cancellationToken);
             await entry.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
@@ -303,9 +302,10 @@ public static class Updater
             PendingUpdates.TryAdd(requestId, entry);
             throw;
         }
+
         if (entry.Target == UpdateTarget.Host) return true;
 
-        await NotifyOwnersAsync($"更新任务已执行: {entry.Name} ({entry.Id})", cancellationToken);
+        await _notifyOwners($"更新任务已执行: {entry.Name} ({entry.Id})", null, cancellationToken);
         return true;
     }
 
@@ -314,8 +314,10 @@ public static class Updater
         return PendingUpdates.TryRemove(requestId, out _);
     }
 
-    public static Task UpdateSelfAsync(CancellationToken cancellationToken = default) =>
-        Task.FromException(new InvalidOperationException("请先检查宿主版本，再确认包含下载地址的更新请求。"));
+    public static Task UpdateSelfAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromException(new InvalidOperationException("请先检查宿主版本，再确认包含下载地址的更新请求。"));
+    }
 
     public static async Task DownloadFileAsync(
         string url,
@@ -327,12 +329,11 @@ public static class Updater
         using var request = new HttpRequestMessage(HttpMethod.Get, ApplyGithubProxy(url));
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
 
-        using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, null,
+            cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        if (maxBytes is { } limit && response.Content.Headers.ContentLength is { } contentLength && contentLength > limit)
-        {
-            throw new InvalidOperationException($"下载文件超过大小限制: {contentLength} > {limit}");
-        }
+        if (maxBytes is { } limit && response.Content.Headers.ContentLength is { } contentLength &&
+            contentLength > limit) throw new InvalidOperationException($"下载文件超过大小限制: {contentLength} > {limit}");
 
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var output = File.Create(destinationPath);
@@ -346,9 +347,7 @@ public static class Updater
 
             totalBytes += read;
             if (maxBytes is { } maximum && totalBytes > maximum)
-            {
                 throw new InvalidOperationException($"下载文件超过大小限制: {totalBytes} > {maximum}");
-            }
 
             hash.AppendData(buffer, 0, read);
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
@@ -358,10 +357,8 @@ public static class Updater
         {
             var actualSha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
             if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
-            {
                 throw new InvalidOperationException(
                     $"下载文件 SHA-256 校验失败。Expected {expectedSha256}, actual {actualSha256}。");
-            }
         }
     }
 
@@ -383,17 +380,13 @@ public static class Updater
         }
     }
 
-    public static async Task UpdatePluginAsync(string pluginName, string? assetDownloadUrl, string? targetPath, CancellationToken cancellationToken = default)
+    public static async Task UpdatePluginAsync(string pluginName, string? assetDownloadUrl, string? targetPath,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(assetDownloadUrl))
-        {
             throw new InvalidOperationException($"插件 {pluginName} 的更新缺少插件包下载地址。");
-        }
 
-        if (string.IsNullOrWhiteSpace(targetPath))
-        {
-            throw new InvalidOperationException($"插件 {pluginName} 的更新缺少目标路径。");
-        }
+        if (string.IsNullOrWhiteSpace(targetPath)) throw new InvalidOperationException($"插件 {pluginName} 的更新缺少目标路径。");
 
         var targetDirectory = Path.GetDirectoryName(Path.GetFullPath(targetPath)) ?? AppContext.BaseDirectory;
         var tempDirectory = Path.Combine(targetDirectory, ".tmp");
@@ -413,22 +406,18 @@ public static class Updater
         {
             await DownloadFileAsync(assetDownloadUrl, packagePath, cancellationToken);
             if (IsZipPackage(packagePath))
-            {
                 ExtractPluginEntryFromZip(packagePath, replacementPath, Path.GetFileName(targetPath));
-            }
             else
-            {
-                File.Copy(packagePath, replacementPath, overwrite: true);
-            }
+                File.Copy(packagePath, replacementPath, true);
 
-            if (File.Exists(targetPath)) File.Copy(targetPath, backupPath, overwrite: true);
+            if (File.Exists(targetPath)) File.Copy(targetPath, backupPath, true);
             try
             {
-                File.Move(replacementPath, targetPath, overwrite: true);
+                File.Move(replacementPath, targetPath, true);
             }
             catch
             {
-                if (File.Exists(backupPath)) File.Copy(backupPath, targetPath, overwrite: true);
+                if (File.Exists(backupPath)) File.Copy(backupPath, targetPath, true);
                 throw;
             }
         }
@@ -452,12 +441,16 @@ public static class Updater
     {
         using var archive = ZipFile.OpenRead(packagePath);
         var exactMatches = archive.Entries
-            .Where(entry => string.Equals(Path.GetFileName(entry.FullName), targetFileName, StringComparison.OrdinalIgnoreCase))
+            .Where(entry =>
+                string.Equals(Path.GetFileName(entry.FullName), targetFileName, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var matches = exactMatches.Length > 0
             ? exactMatches
-            : archive.Entries.Where(entry => entry.FullName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
-                                              !string.IsNullOrEmpty(entry.Name)).ToArray();
+            :
+            [
+                .. archive.Entries.Where(entry => entry.FullName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+                                                  !string.IsNullOrEmpty(entry.Name))
+            ];
         if (matches.Length != 1)
             throw new InvalidOperationException($"插件更新包中未找到唯一入口 DLL: {targetFileName}");
 
@@ -495,21 +488,7 @@ public static class Updater
         return id;
     }
 
-    private static Task NotifyOwnersAsync(string content, CancellationToken cancellationToken) =>
-        _notifyOwners(content, null, cancellationToken);
-
-    private static Task NotifyOwnersAsync(string content, OwnerReplyHandler onReply, CancellationToken cancellationToken) =>
-        _notifyOwners(content, onReply, cancellationToken);
-
     private static async Task<GitHubRelease?> GetLatestReleaseAsync(
-        string repository,
-        bool includePrerelease,
-        CancellationToken cancellationToken)
-    {
-        return await GetLatestReleaseFromApiAsync(repository, includePrerelease, cancellationToken);
-    }
-
-    private static async Task<GitHubRelease?> GetLatestReleaseFromApiAsync(
         string repository,
         bool includePrerelease,
         CancellationToken cancellationToken)
@@ -523,11 +502,15 @@ public static class Updater
         request.Headers.UserAgent.ParseAdd("ShiroBot-Updater");
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
 
-        using var response = await HttpClient.SendAsync(request, cancellationToken);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            return null;
-        }
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, ApiTimeout,
+            cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        // Anonymous API calls share 60 requests per hour per address; say so instead of a bare 403.
+        if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests &&
+            response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) &&
+            remaining.FirstOrDefault() == "0")
+            throw new HttpRequestException($"GitHub API 请求次数已达上限，请稍后再试（{repository}）。", null,
+                response.StatusCode);
 
         response.EnsureSuccessStatusCode();
 
@@ -547,15 +530,33 @@ public static class Updater
             GetReleaseAssets(item));
     }
 
+    /// <summary>
+    ///     Sends a request, reporting a timeout as <see cref="HttpRequestException" />. HttpClient signals its own
+    ///     timeout with a cancellation exception, which callers would otherwise mistake for a cancelled operation
+    ///     and skip their failure handling.
+    /// </summary>
+    private static async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+        HttpCompletionOption completion, TimeSpan? timeout, CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (timeout is { } limit) timeoutSource.CancelAfter(limit);
+        try
+        {
+            return await HttpClient.SendAsync(request, completion, timeoutSource.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new HttpRequestException($"请求 {request.RequestUri?.Host} 超时，请检查网络或 github_proxy 设置。", ex);
+        }
+    }
+
     internal static bool IsNewerVersion(string latestVersion, string currentVersion)
     {
         var normalizedLatest = NormalizeVersion(latestVersion);
         var normalizedCurrent = NormalizeVersion(currentVersion);
 
         if (Version.TryParse(normalizedLatest, out var latest) && Version.TryParse(normalizedCurrent, out var current))
-        {
             return latest > current;
-        }
 
         return !string.Equals(normalizedLatest, normalizedCurrent, StringComparison.OrdinalIgnoreCase);
     }
@@ -568,6 +569,31 @@ public static class Updater
             : trimmed;
     }
 
+    private static List<GitHubReleaseAsset> GetReleaseAssets(JsonElement release)
+    {
+        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array) return [];
+
+        var results = new List<GitHubReleaseAsset>();
+        // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.GetPropertyOrDefault("name");
+            var downloadUrl = asset.GetPropertyOrDefault("browser_download_url");
+            if (!string.IsNullOrWhiteSpace(downloadUrl)) results.Add(new GitHubReleaseAsset(name, downloadUrl));
+        }
+
+        return results;
+    }
+
+    private static string ApplyGithubProxy(string url)
+    {
+        var proxy = Volatile.Read(ref _githubProxy);
+        if (string.IsNullOrWhiteSpace(proxy)) return url;
+
+        return proxy.TrimEnd('/') + "/" + url;
+    }
+
     private sealed record GitHubRelease(
         string TagName,
         string Name,
@@ -576,27 +602,6 @@ public static class Updater
         IReadOnlyList<GitHubReleaseAsset> Assets);
 
     private sealed record GitHubReleaseAsset(string Name, string DownloadUrl);
-
-    private static IReadOnlyList<GitHubReleaseAsset> GetReleaseAssets(JsonElement release)
-    {
-        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var results = new List<GitHubReleaseAsset>();
-        foreach (var asset in assets.EnumerateArray())
-        {
-            var name = asset.GetPropertyOrDefault("name");
-            var downloadUrl = asset.GetPropertyOrDefault("browser_download_url");
-            if (!string.IsNullOrWhiteSpace(downloadUrl))
-            {
-                results.Add(new GitHubReleaseAsset(name, downloadUrl));
-            }
-        }
-
-        return results;
-    }
 
     private sealed record PendingUpdateEntry(
         string Id,
@@ -614,14 +619,6 @@ public static class Updater
             cancellationToken.ThrowIfCancellationRequested();
             return Execute(cancellationToken);
         }
-    }
-
-    private static string ApplyGithubProxy(string url)
-    {
-        var proxy = Volatile.Read(ref _githubProxy);
-        if (string.IsNullOrWhiteSpace(proxy)) return url;
-
-        return proxy.TrimEnd('/') + "/" + url;
     }
 }
 

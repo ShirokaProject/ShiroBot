@@ -3,6 +3,11 @@ name: Publish NuGet packages
 on:
   workflow_call:
     inputs:
+      source_ref:
+        description: Exact release source ref; defaults to the calling workflow ref
+        required: false
+        default: ''
+        type: string
       version:
         description: SDK package version; defaults to the calling release tag
         required: false
@@ -40,6 +45,8 @@ permissions:
 jobs:
   verify-core:
     uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ inputs.source_ref }}
 
   validate:
     runs-on: windows-latest
@@ -58,12 +65,20 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
+
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
 
       - name: Verify release gate regressions
         run: python -m unittest discover -s .github/scripts -p test_verify_nuget_release.py -v
@@ -73,11 +88,11 @@ jobs:
         env:
           VERSION_INPUT: ${{ inputs.version }}
           TEMPLATE_VERSION_INPUT: ${{ inputs.template_version }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.source_ref || github.ref_name }}
         shell: pwsh
         run: |
           $version = $env:VERSION_INPUT
-          if ([string]::IsNullOrWhiteSpace($version)) { $version = $env:RELEASE_TAG.TrimStart('v') }
+          if ([string]::IsNullOrWhiteSpace($version)) { $version = $env:RELEASE_TAG -replace '^refs/tags/', '' -replace '^v', '' }
           $templateVersion = $env:TEMPLATE_VERSION_INPUT
           if ([string]::IsNullOrWhiteSpace($templateVersion)) { $templateVersion = $version }
           foreach ($value in @($version, $templateVersion)) {
@@ -114,7 +129,7 @@ jobs:
 
       - name: Pack SDK packages
         if: inputs.template_version == ''
-        run: dotnet pack .\Packaging\ShiroBot.SDK.Package\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
+        run: dotnet pack .\SDK\Packaging\ShiroBot.SDK.Package.csproj -c Release -o artifacts\nuget --no-build --no-restore
 
       - name: Pack template package
         run: dotnet pack .\Templates\ShiroBot.Templates\ShiroBot.Templates.csproj -c Release -o artifacts\nuget --no-build --no-restore -p:Version=${{ steps.version.outputs.template }}
@@ -147,10 +162,15 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
 
       - uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
 
       - name: Download verified packages

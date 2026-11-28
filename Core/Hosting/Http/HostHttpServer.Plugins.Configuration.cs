@@ -1,54 +1,41 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
+using System.Collections;
 using System.Globalization;
-using System.IO.Compression;
 using System.Reflection;
 using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using ShiroBot.Configuration;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Logging;
-using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
 using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Plugins.Marketplace;
-using ShiroBot.Update;
-using ShiroBot.Console;
-using ShiroBot.Integrations.Avalonia;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Config;
-using ShiroBot.SDK.Plugin;
+using ShiroBot.SDK.Core;
 using Tomlyn;
 using Tomlyn.Model;
+
+using static ShiroBot.Update.PluginUpdateService;
 
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
+    private const int MaxConfigSectionDepth = 6;
+
+    private static readonly HashSet<string> ConfigListTypeNames = new(StringComparer.Ordinal)
+    {
+        "List`1", "IList`1", "IReadOnlyList`1", "ICollection`1", "IReadOnlyCollection`1", "IEnumerable`1",
+        "HashSet`1", "ISet`1", "IReadOnlySet`1", "SortedSet`1", "Collection`1", "ImmutableArray`1", "ImmutableList`1"
+    };
+
+    private static readonly HashSet<string> ConfigTextTypeNames = new(StringComparer.Ordinal)
+    {
+        "System.Uri", "System.Version", "System.DateTime", "System.DateTimeOffset", "System.TimeSpan",
+        "System.Guid", "System.DateOnly", "System.TimeOnly", "System.Char", "System.String"
+    };
+
     private static PluginConfigTarget? FindPluginForConfig(PluginManager pluginManager, string id)
     {
         var loaded = FindLoadedPlugin(pluginManager, id);
-        if (loaded is not null)
-        {
-            return new PluginConfigTarget(loaded.Name, loaded.AssemblyPath);
-        }
+        if (loaded is not null) return new PluginConfigTarget(loaded.Name, loaded.AssemblyPath);
 
-        var candidate = pluginManager.ResolvePluginLoadCandidates(pluginManager.PluginRootPath, id).FirstOrDefault();
+        var candidate = pluginManager.ResolveFirstPluginLoadCandidate(id);
         if (!string.IsNullOrWhiteSpace(candidate))
         {
             var info = pluginManager.TryProbePluginInfoFile(candidate);
@@ -56,24 +43,25 @@ internal sealed partial class HostHttpServer
         }
 
         var disabled = FindDisabledPluginFile(pluginManager, id);
-        if (!string.IsNullOrWhiteSpace(disabled))
+        if (string.IsNullOrWhiteSpace(disabled))
+        {
+            return null;
+        }
+
         {
             var info = TryProbeDisabledPluginInfo(pluginManager, disabled);
             return new PluginConfigTarget(info?.Id ?? id, disabled);
         }
-
-        return null;
     }
 
     private static string GetPluginConfigPath(PluginManager pluginManager, string assemblyPath, string pluginId)
     {
         var fullAssemblyPath = Path.GetFullPath(assemblyPath);
         if (fullAssemblyPath.EndsWith(DisabledPluginSuffix, StringComparison.OrdinalIgnoreCase))
-        {
             fullAssemblyPath = fullAssemblyPath[..^DisabledPluginSuffix.Length];
-        }
 
-        var pluginRoot = Path.GetFullPath(pluginManager.PluginRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var pluginRoot = Path.GetFullPath(pluginManager.PluginRootPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var assemblyDirectory = Path.GetFullPath(Path.GetDirectoryName(fullAssemblyPath) ?? pluginRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var pathComparison = OperatingSystem.IsWindows()
@@ -95,25 +83,30 @@ internal sealed partial class HostHttpServer
                ?? new Dictionary<string, object?>();
     }
 
-    private static object? ConvertTomlValue(object? value) => value switch
+    private static object? ConvertTomlValue(object? value)
     {
-        TomlTable table => table.ToDictionary(pair => pair.Key, pair => ConvertTomlValue(pair.Value)),
-        TomlTableArray tables => tables.Select(ConvertTomlValue).ToArray(),
-        TomlArray array => array.Select(ConvertTomlValue).ToArray(),
-        _ => value
-    };
+        return value switch
+        {
+            TomlTable table => table.ToDictionary(pair => pair.Key, pair => ConvertTomlValue(pair.Value)),
+            TomlTableArray tables => tables.Select(ConvertTomlValue).ToArray(),
+            TomlArray array => array.Select(ConvertTomlValue).ToArray(),
+            _ => value
+        };
+    }
 
     /// <summary>
-    /// Builds the config schema of an assembly that is loaded in the host, including the host itself.
-    /// Metadata is read from memory, so this also works for single-file publishes where
-    /// <see cref="Assembly.Location"/> is empty.
+    ///     Builds the config schema of an assembly that is loaded in the host, including the host itself.
+    ///     Metadata is read from memory, so this also works for single-file publishes where
+    ///     <see cref="Assembly.Location" /> is empty.
     /// </summary>
-    internal static object[] GetComponentConfigSchema(Assembly loadedAssembly) =>
-        GetComponentConfigSchema(null, loadedAssembly);
+    internal static object[] GetComponentConfigSchema(Assembly loadedAssembly)
+    {
+        return GetComponentConfigSchema(null, loadedAssembly);
+    }
 
     /// <summary>
-    /// Builds the config schema of a component. Initialized property defaults are only read when
-    /// <paramref name="loadedAssembly"/> is supplied; unloaded component files are inspected as metadata only.
+    ///     Builds the config schema of a component. Initialized property defaults are only read when
+    ///     <paramref name="loadedAssembly" /> is supplied; unloaded component files are inspected as metadata only.
     /// </summary>
     internal static unsafe object[] GetComponentConfigSchema(string? assemblyPath, Assembly? loadedAssembly = null)
     {
@@ -122,19 +115,20 @@ internal sealed partial class HostHttpServer
             if (loadedAssembly is not null)
             {
                 var configType = FindDeclaredConfigType(loadedAssembly);
-                if (configType is not null && configType.Assembly.TryGetRawMetadata(out var configBlob, out var configLength))
-                {
+                if (configType is not null &&
+                    configType.Assembly.TryGetRawMetadata(out var configBlob, out var configLength))
                     try
                     {
                         return BuildComponentConfigSchema(new MetadataReader(configBlob, configLength),
                             configType.Assembly, configType.FullName);
                     }
-                    finally { GC.KeepAlive(configType.Assembly); }
-                }
+                    finally
+                    {
+                        GC.KeepAlive(configType.Assembly);
+                    }
             }
 
             if (loadedAssembly is not null && loadedAssembly.TryGetRawMetadata(out var blob, out var length))
-            {
                 try
                 {
                     return BuildComponentConfigSchema(new MetadataReader(blob, length), loadedAssembly);
@@ -143,7 +137,6 @@ internal sealed partial class HostHttpServer
                 {
                     GC.KeepAlive(loadedAssembly);
                 }
-            }
 
             if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath)) return [];
 
@@ -157,8 +150,9 @@ internal sealed partial class HostHttpServer
 
             using var stream = File.OpenRead(assemblyPath);
             using var peReader = new PEReader(stream);
-            if (!peReader.HasMetadata) return [];
-            return BuildComponentConfigSchema(peReader.GetMetadataReader(), loadedAssembly);
+            return !peReader.HasMetadata
+                ? []
+                : BuildComponentConfigSchema(peReader.GetMetadataReader(), loadedAssembly);
         }
         catch (Exception ex) when (ex is BadImageFormatException or IOException or UnauthorizedAccessException)
         {
@@ -166,7 +160,8 @@ internal sealed partial class HostHttpServer
         }
     }
 
-    private static object[] BuildComponentConfigSchema(MetadataReader reader, Assembly? loadedAssembly, string? declaredTypeName = null)
+    private static object[] BuildComponentConfigSchema(MetadataReader reader, Assembly? loadedAssembly,
+        string? declaredTypeName = null)
     {
         TypeDefinitionHandle configTypeHandle = default;
         foreach (var typeHandle in reader.TypeDefinitions)
@@ -181,6 +176,7 @@ internal sealed partial class HostHttpServer
                     configTypeHandle = typeHandle;
                     break;
                 }
+
                 continue;
             }
 
@@ -190,41 +186,33 @@ internal sealed partial class HostHttpServer
                 return GetCustomAttributeTypeName(reader, attribute.Constructor)
                     .EndsWith("ConfigModelAttribute", StringComparison.Ordinal);
             });
-            if (explicitlyMarked)
-            {
-                configTypeHandle = typeHandle;
-                break;
-            }
-
-            if (reader.GetString(type.Name).Equals("PluginConfig", StringComparison.OrdinalIgnoreCase))
+            if (explicitlyMarked ||
+                reader.GetString(type.Name).Equals("PluginConfig", StringComparison.OrdinalIgnoreCase))
             {
                 configTypeHandle = typeHandle;
                 break;
             }
 
             if (configTypeHandle.IsNil && type.GetProperties().Any(propertyHandle =>
-                ReadConfigFieldAttribute(reader, reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes()) is not null))
-            {
+                    ReadConfigFieldAttribute(reader,
+                        reader.GetPropertyDefinition(propertyHandle).GetCustomAttributes()) is not null))
                 configTypeHandle = typeHandle;
-            }
         }
 
-        if (!configTypeHandle.IsNil)
+        if (configTypeHandle.IsNil)
+        {
+            return [];
+        }
+
         {
             var configType = reader.GetTypeDefinition(configTypeHandle);
             var typeNamespace = reader.GetString(configType.Namespace);
             var typeName = reader.GetString(configType.Name);
             var configTypeName = string.IsNullOrEmpty(typeNamespace) ? typeName : $"{typeNamespace}.{typeName}";
             var runtimeDefaults = ReadConfigModelDefaults(loadedAssembly, configTypeName);
-            return BuildConfigSchemaFields(reader, configTypeHandle, runtimeDefaults, [configTypeHandle])
-                .Cast<object>()
-                .ToArray();
+            return [.. BuildConfigSchemaFields(reader, configTypeHandle, runtimeDefaults, [configTypeHandle])];
         }
-
-        return [];
     }
-
-    private const int MaxConfigSectionDepth = 6;
 
     private static ConfigSchemaItem[] BuildConfigSchemaFields(
         MetadataReader reader,
@@ -233,11 +221,14 @@ internal sealed partial class HostHttpServer
         IReadOnlyList<TypeDefinitionHandle> path)
     {
         var type = reader.GetTypeDefinition(typeHandle);
-        return type.GetProperties()
-            .Select(propertyHandle => CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle), defaults, path))
-            .Where(item => item is not null)
-            .Cast<ConfigSchemaItem>()
-            .ToArray();
+        return
+        [
+            .. type.GetProperties()
+                .Select(propertyHandle =>
+                    CreateConfigSchemaItem(reader, reader.GetPropertyDefinition(propertyHandle), defaults, path))
+                .Where(item => item is not null)
+                .Cast<ConfigSchemaItem>()
+        ];
     }
 
     private static ConfigSchemaItem? CreateConfigSchemaItem(
@@ -294,10 +285,11 @@ internal sealed partial class HostHttpServer
         {
             Fields = ReadSectionFields(shape, defaultValue as IReadOnlyDictionary<string, object?>),
             ItemType = shape.Kind == "array" ? shape.Item?.Kind ?? "string" : null,
-            ItemFields = shape.Kind == "array" && shape.Item is { } item ? ReadSectionFields(item, null) : null
+            ItemFields = shape is { Kind: "array", Item: { } item } ? ReadSectionFields(item, null) : null
         };
 
-        ConfigSchemaItem[]? ReadSectionFields(ConfigTypeShape section, IReadOnlyDictionary<string, object?>? sectionDefaults)
+        ConfigSchemaItem[]? ReadSectionFields(ConfigTypeShape section,
+            IReadOnlyDictionary<string, object?>? sectionDefaults)
         {
             if (section.Kind != "section" || section.Section.IsNil) return null;
             // A model that references itself would recurse forever; stop and let the editor fall back to JSON.
@@ -318,20 +310,25 @@ internal sealed partial class HostHttpServer
                 return Convert.ToString(value, CultureInfo.InvariantCulture);
             return ConvertSchemaDefault(value);
         }
+
         switch (valueType)
         {
             case "boolean":
                 return bool.Parse(text);
             case "integer":
                 if (enumOptions is { Length: > 0 } &&
-                    Array.FindIndex(enumOptions, option => string.Equals(option, text, StringComparison.Ordinal)) is var enumIndex && enumIndex >= 0)
+                    Array.FindIndex(enumOptions, option => string.Equals(option, text, StringComparison.Ordinal)) is
+                        >= 0 and var enumIndex)
                     return (long)enumIndex;
-                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integerValue)) return integerValue;
-                if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var unsignedValue)) return unsignedValue;
-                throw new InvalidOperationException($"配置字段默认值不是有效整数: {text}");
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integerValue))
+                    return integerValue;
+                return ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var unsignedValue)
+                    ? unsignedValue
+                    : throw new InvalidOperationException($"配置字段默认值不是有效整数: {text}");
             case "number":
-                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue)) return numberValue;
-                throw new InvalidOperationException($"配置字段默认值不是有效数字: {text}");
+                return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var numberValue)
+                    ? numberValue
+                    : throw new InvalidOperationException($"配置字段默认值不是有效数字: {text}");
             case "array":
                 return JsonSerializer.Deserialize<JsonElement>(text);
             default:
@@ -339,46 +336,53 @@ internal sealed partial class HostHttpServer
         }
     }
 
-    private static object? GetTypeSystemDefault(string valueType) => valueType switch
+    private static object? GetTypeSystemDefault(string valueType)
     {
-        "boolean" => false,
-        "integer" => 0L,
-        "number" => 0D,
-        "string" => string.Empty,
-        "array" => Array.Empty<object>(),
-        _ => null
-    };
+        return valueType switch
+        {
+            "boolean" => false,
+            "integer" => 0L,
+            "number" => 0D,
+            "string" => string.Empty,
+            "array" => Array.Empty<object>(),
+            _ => null
+        };
+    }
 
     /// <summary>
-    /// Converts an initialized config value into the JSON shape the API uses: config objects become
-    /// dictionaries keyed by their TOML (snake_case) names, so nested defaults line up with nested fields.
+    ///     Converts an initialized config value into the JSON shape the API uses: config objects become
+    ///     dictionaries keyed by their TOML (snake_case) names, so nested defaults line up with nested fields.
     /// </summary>
-    private static object? ConvertSchemaDefault(object? value) => ConvertSchemaDefault(value, 0);
-
-    private static object? ConvertSchemaDefault(object? value, int depth) => value switch
+    private static object? ConvertSchemaDefault(object? value, int depth = 0)
     {
-        null => null,
-        Enum enumValue => enumValue.ToString(),
-        string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal => value,
-        _ when depth >= MaxConfigSectionDepth => null,
-        System.Collections.IDictionary map => map.Keys.Cast<object>().ToDictionary(
-            key => Convert.ToString(key, CultureInfo.InvariantCulture) ?? string.Empty,
-            key => ConvertSchemaDefault(map[key], depth + 1),
-            StringComparer.OrdinalIgnoreCase),
-        System.Collections.IEnumerable values => values.Cast<object?>().Select(item => ConvertSchemaDefault(item, depth + 1)).ToArray(),
-        DateTime or DateTimeOffset or TimeSpan or Guid or Uri or Version => Convert.ToString(value, CultureInfo.InvariantCulture),
-        _ => value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(property => property.CanRead && property.GetIndexParameters().Length == 0)
-            .ToDictionary(
-                property => NormalizeConfigKey(property.Name),
-                property => ConvertSchemaDefault(property.GetValue(value), depth + 1),
-                StringComparer.OrdinalIgnoreCase)
-    };
+        return value switch
+        {
+            null => null,
+            Enum enumValue => enumValue.ToString(),
+            string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double
+                or decimal => value,
+            _ when depth >= MaxConfigSectionDepth => null,
+            IDictionary map => map.Keys.Cast<object>().ToDictionary(
+                key => Convert.ToString(key, CultureInfo.InvariantCulture) ?? string.Empty,
+                key => ConvertSchemaDefault(map[key], depth + 1),
+                StringComparer.OrdinalIgnoreCase),
+            IEnumerable values => values.Cast<object?>()
+                .Select(item => ConvertSchemaDefault(item, depth + 1)).ToArray(),
+            DateTime or DateTimeOffset or TimeSpan or Guid or Uri or Version => Convert.ToString(value,
+                CultureInfo.InvariantCulture),
+            _ => value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(property => property.CanRead && property.GetIndexParameters().Length == 0)
+                .ToDictionary(
+                    property => NormalizeConfigKey(property.Name),
+                    property => ConvertSchemaDefault(property.GetValue(value), depth + 1),
+                    StringComparer.OrdinalIgnoreCase)
+        };
+    }
 
     /// <summary>
-    /// Reads initialized property values from a config model that is already loaded in the host.
-    /// Assemblies that are not loaded (disabled or not yet started components) are never loaded or
-    /// executed just to render a schema; their fields fall back to explicit or CLR defaults.
+    ///     Reads initialized property values from a config model that is already loaded in the host.
+    ///     Assemblies that are not loaded (disabled or not yet started components) are never loaded or
+    ///     executed just to render a schema; their fields fall back to explicit or CLR defaults.
     /// </summary>
     private static Dictionary<string, object?> ReadConfigModelDefaults(Assembly? loadedAssembly, string configTypeName)
     {
@@ -387,7 +391,7 @@ internal sealed partial class HostHttpServer
 
         try
         {
-            var configType = loadedAssembly.GetType(configTypeName, throwOnError: false, ignoreCase: false);
+            var configType = loadedAssembly.GetType(configTypeName, false, false);
             if (configType is null || configType.IsAbstract || configType.GetConstructor(Type.EmptyTypes) is null)
                 return defaults;
 
@@ -418,6 +422,10 @@ internal sealed partial class HostHttpServer
         CustomAttributeHandleCollection attributes)
     {
         var conditions = new List<ConfigFieldConditionSchema>();
+        // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
+        // Preserve the concrete enumerator and ordered parsing/early-exit behavior.
+        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator, ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var attributeHandle in attributes)
         {
             var attribute = reader.GetCustomAttribute(attributeHandle);
@@ -458,8 +466,11 @@ internal sealed partial class HostHttpServer
         return [.. conditions];
     }
 
-    private static ConfigFieldMetadata? ReadConfigFieldAttribute(MetadataReader reader, CustomAttributeHandleCollection attributes)
+    private static ConfigFieldMetadata? ReadConfigFieldAttribute(MetadataReader reader,
+        CustomAttributeHandleCollection attributes)
     {
+        // Metadata traversal avoids boxing its concrete enumerator.
+        // ReSharper disable once ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
         foreach (var attributeHandle in attributes)
         {
             var attribute = reader.GetCustomAttribute(attributeHandle);
@@ -477,10 +488,7 @@ internal sealed partial class HostHttpServer
                 _ = blob.ReadByte();
                 var typeCode = blob.ReadByte();
                 byte? arrayElementType = null;
-                if (typeCode == SerializedTypeSzArray)
-                {
-                    arrayElementType = blob.ReadByte();
-                }
+                if (typeCode == SerializedTypeSzArray) arrayElementType = blob.ReadByte();
 
                 var memberName = blob.ReadSerializedString();
                 switch (memberName)
@@ -518,7 +526,8 @@ internal sealed partial class HostHttpServer
                     case nameof(ConfigFieldMetadata.Default) when typeCode == SerializedTypeString:
                         metadata.Default = blob.ReadSerializedString();
                         break;
-                    case nameof(ConfigFieldMetadata.Options) when typeCode == SerializedTypeSzArray && arrayElementType == SerializedTypeString:
+                    case nameof(ConfigFieldMetadata.Options) when typeCode == SerializedTypeSzArray &&
+                                                                  arrayElementType == SerializedTypeString:
                         metadata.Options = ReadStringArray(ref blob);
                         break;
                     case nameof(ConfigFieldMetadata.Min) when typeCode == SerializedTypeR8:
@@ -541,7 +550,27 @@ internal sealed partial class HostHttpServer
 
     private static object? ReadConfigAttributeValue(ref BlobReader blob, byte typeCode)
     {
-        if (typeCode == SerializedTypeSzArray)
+        if (typeCode != SerializedTypeSzArray)
+        {
+            return typeCode switch
+            {
+                SerializedTypeBoolean => blob.ReadByte() != 0,
+                SerializedTypeI1 => blob.ReadSByte(),
+                SerializedTypeU1 => blob.ReadByte(),
+                SerializedTypeI2 => blob.ReadInt16(),
+                SerializedTypeU2 => blob.ReadUInt16(),
+                SerializedTypeI4 => blob.ReadInt32(),
+                SerializedTypeU4 => blob.ReadUInt32(),
+                SerializedTypeI8 => blob.ReadInt64(),
+                SerializedTypeU8 => blob.ReadUInt64(),
+                SerializedTypeR4 => blob.ReadSingle(),
+                SerializedTypeR8 => blob.ReadDouble(),
+                SerializedTypeString => blob.ReadSerializedString(),
+                SerializedTypeEnum => ReadConfigEnumAttributeValue(ref blob),
+                _ => null
+            };
+        }
+
         {
             var elementType = blob.ReadByte();
             var count = blob.ReadUInt32();
@@ -551,27 +580,9 @@ internal sealed partial class HostHttpServer
                 values[index] = ReadConfigAttributeValue(ref blob, elementType);
             return values;
         }
-
-        return typeCode switch
-        {
-            SerializedTypeBoolean => blob.ReadByte() != 0,
-            SerializedTypeI1 => blob.ReadSByte(),
-            SerializedTypeU1 => blob.ReadByte(),
-            SerializedTypeI2 => blob.ReadInt16(),
-            SerializedTypeU2 => blob.ReadUInt16(),
-            SerializedTypeI4 => blob.ReadInt32(),
-            SerializedTypeU4 => blob.ReadUInt32(),
-            SerializedTypeI8 => blob.ReadInt64(),
-            SerializedTypeU8 => blob.ReadUInt64(),
-            SerializedTypeR4 => blob.ReadSingle(),
-            SerializedTypeR8 => blob.ReadDouble(),
-            SerializedTypeString => blob.ReadSerializedString(),
-            SerializedTypeEnum => ReadConfigEnumAttributeValue(ref blob),
-            _ => null
-        };
     }
 
-    private static object ReadConfigEnumAttributeValue(ref BlobReader blob)
+    private static int ReadConfigEnumAttributeValue(ref BlobReader blob)
     {
         _ = blob.ReadSerializedString();
         return blob.ReadInt32();
@@ -581,8 +592,10 @@ internal sealed partial class HostHttpServer
     {
         return constructor.Kind switch
         {
-            HandleKind.MemberReference => GetTypeName(reader, reader.GetMemberReference((MemberReferenceHandle)constructor).Parent),
-            HandleKind.MethodDefinition => GetTypeName(reader, reader.GetMethodDefinition((MethodDefinitionHandle)constructor).GetDeclaringType()),
+            HandleKind.MemberReference => GetTypeName(reader,
+                reader.GetMemberReference((MemberReferenceHandle)constructor).Parent),
+            HandleKind.MethodDefinition => GetTypeName(reader,
+                reader.GetMethodDefinition((MethodDefinitionHandle)constructor).GetDeclaringType()),
             _ => string.Empty
         };
     }
@@ -596,24 +609,6 @@ internal sealed partial class HostHttpServer
             _ => string.Empty
         };
     }
-
-    /// <summary>
-    /// Shape of a config property for the editor: <c>section</c> is a nested config class with known
-    /// fields, <c>object</c> a free-form table (dictionary), <c>array</c> a list of <see cref="Item"/>.
-    /// </summary>
-    private sealed record ConfigTypeShape(string Kind, TypeDefinitionHandle Section = default, ConfigTypeShape? Item = null, bool IsEnum = false);
-
-    private static readonly HashSet<string> ConfigListTypeNames = new(StringComparer.Ordinal)
-    {
-        "List`1", "IList`1", "IReadOnlyList`1", "ICollection`1", "IReadOnlyCollection`1", "IEnumerable`1",
-        "HashSet`1", "ISet`1", "IReadOnlySet`1", "SortedSet`1", "Collection`1", "ImmutableArray`1", "ImmutableList`1"
-    };
-
-    private static readonly HashSet<string> ConfigTextTypeNames = new(StringComparer.Ordinal)
-    {
-        "System.Uri", "System.Version", "System.DateTime", "System.DateTimeOffset", "System.TimeSpan",
-        "System.Guid", "System.DateOnly", "System.TimeOnly", "System.Char", "System.String"
-    };
 
     private static ConfigTypeShape ReadConfigPropertyShape(MetadataReader reader, PropertyDefinition property)
     {
@@ -643,8 +638,10 @@ internal sealed partial class HostHttpServer
                     continue;
                 case SignatureTypeCode.Boolean:
                     return new ConfigTypeShape("boolean");
-                case SignatureTypeCode.SByte or SignatureTypeCode.Byte or SignatureTypeCode.Int16 or SignatureTypeCode.UInt16 or
-                    SignatureTypeCode.Int32 or SignatureTypeCode.UInt32 or SignatureTypeCode.Int64 or SignatureTypeCode.UInt64 or
+                case SignatureTypeCode.SByte or SignatureTypeCode.Byte or SignatureTypeCode.Int16
+                    or SignatureTypeCode.UInt16 or
+                    SignatureTypeCode.Int32 or SignatureTypeCode.UInt32 or SignatureTypeCode.Int64
+                    or SignatureTypeCode.UInt64 or
                     SignatureTypeCode.IntPtr or SignatureTypeCode.UIntPtr:
                     return new ConfigTypeShape("integer");
                 case SignatureTypeCode.Single or SignatureTypeCode.Double:
@@ -663,10 +660,12 @@ internal sealed partial class HostHttpServer
                     var genericType = blob.ReadTypeHandle();
                     var count = blob.ReadCompressedInteger();
                     var arguments = new ConfigTypeShape[count];
-                    for (var index = 0; index < count; index++) arguments[index] = ReadConfigTypeShape(reader, ref blob);
+                    for (var index = 0; index < count; index++)
+                        arguments[index] = ReadConfigTypeShape(reader, ref blob);
                     var (_, name) = GetConfigTypeName(reader, genericType);
                     if (name == "Nullable`1" && count == 1) return arguments[0];
-                    if (ConfigListTypeNames.Contains(name) && count == 1) return new ConfigTypeShape("array", Item: arguments[0]);
+                    if (ConfigListTypeNames.Contains(name) && count == 1)
+                        return new ConfigTypeShape("array", Item: arguments[0]);
                     return new ConfigTypeShape("object");
                 }
                 default:
@@ -682,25 +681,31 @@ internal sealed partial class HostHttpServer
         var fullName = ns.Length == 0 ? name : $"{ns}.{name}";
         if (fullName == "System.Decimal") return new ConfigTypeShape("number");
         if (ConfigTextTypeNames.Contains(fullName)) return new ConfigTypeShape("string");
-        if (handle.Kind == HandleKind.TypeDefinition) return new ConfigTypeShape("section", (TypeDefinitionHandle)handle);
-        // A type from another assembly: its fields are unknown here, so edit it as a free-form table.
-        return new ConfigTypeShape("object");
+        return handle.Kind == HandleKind.TypeDefinition
+            ? new ConfigTypeShape("section", (TypeDefinitionHandle)handle)
+            : new ConfigTypeShape("object");
     }
 
-    private static (string Namespace, string Name) GetConfigTypeName(MetadataReader reader, EntityHandle handle) => handle.Kind switch
+    private static (string Namespace, string Name) GetConfigTypeName(MetadataReader reader, EntityHandle handle)
     {
-        HandleKind.TypeDefinition => (reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)handle).Namespace),
-            reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)handle).Name)),
-        HandleKind.TypeReference => (reader.GetString(reader.GetTypeReference((TypeReferenceHandle)handle).Namespace),
-            reader.GetString(reader.GetTypeReference((TypeReferenceHandle)handle).Name)),
-        _ => (string.Empty, string.Empty)
-    };
+        return handle.Kind switch
+        {
+            HandleKind.TypeDefinition => (
+                reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)handle).Namespace),
+                reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)handle).Name)),
+            HandleKind.TypeReference => (
+                reader.GetString(reader.GetTypeReference((TypeReferenceHandle)handle).Namespace),
+                reader.GetString(reader.GetTypeReference((TypeReferenceHandle)handle).Name)),
+            _ => (string.Empty, string.Empty)
+        };
+    }
 
     private static bool IsEnumType(MetadataReader reader, EntityHandle typeHandle)
     {
         if (typeHandle.Kind != HandleKind.TypeDefinition) return false;
         return reader.GetTypeDefinition((TypeDefinitionHandle)typeHandle).GetFields()
-            .Any(field => string.Equals(reader.GetString(reader.GetFieldDefinition(field).Name), "value__", StringComparison.Ordinal));
+            .Any(field => string.Equals(reader.GetString(reader.GetFieldDefinition(field).Name), "value__",
+                StringComparison.Ordinal));
     }
 
     private static string[] ReadStringArray(ref BlobReader blob)
@@ -709,10 +714,7 @@ internal sealed partial class HostHttpServer
         if (count == uint.MaxValue) return [];
 
         var values = new string[count];
-        for (var i = 0; i < count; i++)
-        {
-            values[i] = blob.ReadSerializedString() ?? string.Empty;
-        }
+        for (var i = 0; i < count; i++) values[i] = blob.ReadSerializedString() ?? string.Empty;
 
         return values;
     }
@@ -723,7 +725,8 @@ internal sealed partial class HostHttpServer
         {
             var count = blob.ReadUInt32();
             if (count == uint.MaxValue) return;
-            for (var i = 0; i < count; i++) SkipConfigAttributeValue(ref blob, arrayElementType ?? SerializedTypeString, null);
+            for (var i = 0; i < count; i++)
+                SkipConfigAttributeValue(ref blob, arrayElementType ?? SerializedTypeString, null);
             return;
         }
 
@@ -760,10 +763,7 @@ internal sealed partial class HostHttpServer
         JsonElement patch,
         IEnumerable<object> schema)
     {
-        if (patch.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidOperationException("config 必须是对象。");
-        }
+        if (patch.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("config 必须是对象。");
 
         var fields = new Dictionary<string, ConfigSchemaItem>(StringComparer.OrdinalIgnoreCase);
         AddSchemaFields(fields, schema.OfType<ConfigSchemaItem>(), string.Empty);
@@ -781,14 +781,15 @@ internal sealed partial class HostHttpServer
             if (exists && ConfigValuesEqual(existing, value)) continue;
             // Tables and lists of tables have several TOML forms ([key], [[key]], inline) and must be
             // replaced as a whole; plain values and plain lists are updated in place.
-            if (ContainsConfigTable(value) || exists && ContainsConfigTable(existing))
+            if (ContainsConfigTable(value) || (exists && ContainsConfigTable(existing)))
                 configManager.ReplaceConfigValue(configPath, key, value);
             else
                 configManager.SetConfigValue(configPath, key, value);
         }
     }
 
-    private static void AddSchemaFields(Dictionary<string, ConfigSchemaItem> map, IEnumerable<ConfigSchemaItem> items, string prefix)
+    private static void AddSchemaFields(Dictionary<string, ConfigSchemaItem> map, IEnumerable<ConfigSchemaItem> items,
+        string prefix)
     {
         foreach (var item in items)
         {
@@ -824,18 +825,21 @@ internal sealed partial class HostHttpServer
         }
     }
 
-    private static bool TryGetConfigValue(IReadOnlyDictionary<string, object?> config, string keyPath, out object? value)
+    private static bool TryGetConfigValue(IReadOnlyDictionary<string, object?> config, string keyPath,
+        out object? value)
     {
         value = null;
         object? node = config;
         foreach (var part in keyPath.Split('.'))
         {
-            if (node is not IReadOnlyDictionary<string, object?> table && node is not IDictionary<string, object?>)
+            if (node is not IReadOnlyDictionary<string, object?> && node is not IDictionary<string, object?>)
                 return false;
             var found = node switch
             {
-                IReadOnlyDictionary<string, object?> readOnly => readOnly.FirstOrDefault(pair => string.Equals(pair.Key, part, StringComparison.OrdinalIgnoreCase)),
-                IDictionary<string, object?> writable => writable.FirstOrDefault(pair => string.Equals(pair.Key, part, StringComparison.OrdinalIgnoreCase)),
+                IReadOnlyDictionary<string, object?> readOnly => readOnly.FirstOrDefault(pair =>
+                    string.Equals(pair.Key, part, StringComparison.OrdinalIgnoreCase)),
+                IDictionary<string, object?> writable => writable.FirstOrDefault(pair =>
+                    string.Equals(pair.Key, part, StringComparison.OrdinalIgnoreCase)),
                 _ => default
             };
             if (found.Key is null) return false;
@@ -850,34 +854,47 @@ internal sealed partial class HostHttpServer
     {
         if (left is null || right is null) return left is null && right is null;
         if (left is string || right is string)
-            return string.Equals(Convert.ToString(left, CultureInfo.InvariantCulture), Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.Ordinal) &&
+            return string.Equals(Convert.ToString(left, CultureInfo.InvariantCulture),
+                       Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.Ordinal) &&
                    left is string == right is string;
-        if (left is bool leftBool || right is bool) return left is bool && right is bool rightBool && (bool)left == rightBool;
+        if (left is bool || right is bool)
+            return left is bool leftBool && right is bool rightBool && leftBool == rightBool;
         if (IsConfigNumber(left) && IsConfigNumber(right))
-            return Convert.ToDecimal(left, CultureInfo.InvariantCulture) == Convert.ToDecimal(right, CultureInfo.InvariantCulture);
-        if (left is IEnumerable<KeyValuePair<string, object?>> leftTable && right is IEnumerable<KeyValuePair<string, object?>> rightTable)
+            return Convert.ToDecimal(left, CultureInfo.InvariantCulture) ==
+                   Convert.ToDecimal(right, CultureInfo.InvariantCulture);
+        if (left is IEnumerable<KeyValuePair<string, object?>> leftTable &&
+            right is IEnumerable<KeyValuePair<string, object?>> rightTable)
         {
             var a = leftTable.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
             var b = rightTable.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-            return a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var other) && ConfigValuesEqual(pair.Value, other));
+            return a.Count == b.Count && a.All(pair =>
+                b.TryGetValue(pair.Key, out var other) && ConfigValuesEqual(pair.Value, other));
         }
-        if (left is System.Collections.IEnumerable leftItems && right is System.Collections.IEnumerable rightItems)
+
+        if (left is not IEnumerable leftItems || right is not IEnumerable rightItems)
+        {
+            return string.Equals(Convert.ToString(left, CultureInfo.InvariantCulture),
+                Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        }
+
         {
             var a = leftItems.Cast<object?>().ToArray();
             var b = rightItems.Cast<object?>().ToArray();
             return a.Length == b.Length && a.Zip(b).All(pair => ConfigValuesEqual(pair.First, pair.Second));
         }
-
-        return string.Equals(Convert.ToString(left, CultureInfo.InvariantCulture), Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
-    private static bool ContainsConfigTable(object? value) =>
-        value is IEnumerable<KeyValuePair<string, object?>> ||
-        value is System.Collections.IEnumerable items and not string &&
-        items.Cast<object?>().Any(item => item is IEnumerable<KeyValuePair<string, object?>>);
+    private static bool ContainsConfigTable(object? value)
+    {
+        return value is IEnumerable<KeyValuePair<string, object?>> ||
+               value is IEnumerable items and not string &&
+               items.Cast<object?>().Any(item => item is IEnumerable<KeyValuePair<string, object?>>);
+    }
 
-    private static bool IsConfigNumber(object value) =>
-        value is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal;
+    private static bool IsConfigNumber(object value)
+    {
+        return value is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal;
+    }
 
     private static void ValidateConfigValue(ConfigSchemaItem field, string key, object? value)
     {
@@ -885,14 +902,14 @@ internal sealed partial class HostHttpServer
         {
             "boolean" => value is bool,
             // Numeric strings are rejected: they would be saved as TOML strings and fail typed loading.
-            "integer" => value is not string && TryGetDouble(value, out var integer) && Math.Truncate(integer) == integer,
+            "integer" => value is not string && TryGetDouble(value, out var integer) && double.IsInteger(integer),
             "number" => value is not string && TryGetDouble(value, out _),
             "array" => value is object?[] items && items.All(item => IsValidConfigItem(field.ItemType, item)),
             "string" => value is string,
             "section" or "object" => value is IDictionary<string, object?>,
             _ => true
         };
-        if (value is null && field.ValueType == "string") valid = true;
+        valid = valid || (value is null && field.ValueType == "string");
         if (!valid)
             throw new InvalidOperationException(field.ValueType == "array"
                 ? $"配置项 {key} 必须是元素类型为 {field.ItemType ?? "string"} 的列表。"
@@ -904,24 +921,20 @@ internal sealed partial class HostHttpServer
             var optionMatches = field.Options.Contains(optionValue, StringComparer.Ordinal);
             // For enum properties, ConfigField.Options contains member labels while the
             // serialized config value is the enum's numeric ordinal (0, 1, ...).
-            if (!optionMatches && field.Type == "select" && field.ValueType == "integer" &&
-                TryGetDouble(value, out var enumValue) && Math.Truncate(enumValue) == enumValue &&
+            if (!optionMatches && field is { Type: "select", ValueType: "integer" } &&
+                TryGetDouble(value, out var enumValue) && double.IsInteger(enumValue) &&
                 enumValue >= 0 && enumValue < field.Options.Length)
-            {
                 optionMatches = true;
-            }
 
             if (!optionMatches)
                 throw new InvalidOperationException($"配置项 {key} 的值不在允许选项中。");
         }
 
-        if (field.Min is not null || field.Max is not null)
-        {
-            if (value is null || !TryGetDouble(value, out var number))
-                throw new InvalidOperationException($"配置项 {key} 必须是数字。");
-            if (field.Min is { } lower && number < lower || field.Max is { } upper && number > upper)
-                throw new InvalidOperationException($"配置项 {key} 超出允许范围。");
-        }
+        if (field.Min is null && field.Max is null) return;
+        if (value is null || !TryGetDouble(value, out var number))
+            throw new InvalidOperationException($"配置项 {key} 必须是数字。");
+        if ((field.Min is { } lower && number < lower) || (field.Max is { } upper && number > upper))
+            throw new InvalidOperationException($"配置项 {key} 超出允许范围。");
     }
 
     private static void ApplyPluginRoutePatch(
@@ -931,33 +944,122 @@ internal sealed partial class HostHttpServer
         string pluginId,
         JsonElement patch)
     {
-        if (patch.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidOperationException("routes 必须是对象。");
-        }
+        if (patch.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("routes 必须是对象。");
 
         var current = routePolicy.Plugins.TryGetValue(pluginId, out var existing) ? existing : routePolicy.Default;
         var mode = current.Mode;
         var groups = current.Groups;
-
-        if (TryGetString(patch, "mode", out var patchedMode))
+        string? prefixMode = null;
+        string? customPrefix = null;
+        if (patch.TryGetProperty("custom_prefix", out var customPrefixSetting))
         {
-            mode = NormalizePluginRouteMode(patchedMode);
+            if (customPrefixSetting.ValueKind != JsonValueKind.String)
+                throw new InvalidOperationException("routes.custom_prefix 必须是字符串；留空使用全局前缀。");
+            customPrefix = customPrefixSetting.GetString()!;
         }
 
-        if (TryGetIdArray(patch, "groups", out var patchedGroups))
+        if (patch.TryGetProperty("prefix_mode", out var prefixSetting))
         {
-            groups = patchedGroups;
+            if (prefixSetting.ValueKind != JsonValueKind.String)
+                throw new InvalidOperationException("routes.prefix_mode 必须是字符串。");
+            prefixMode = prefixSetting.GetString()?.Trim().ToLowerInvariant() switch
+            {
+                "default" => "default",
+                "required" => "required",
+                "disabled" => "disabled",
+                _ => throw new InvalidOperationException("routes.prefix_mode 只能是 default、required 或 disabled。")
+            };
         }
+
+        if (TryGetString(patch, "mode", out var patchedMode)) mode = NormalizePluginRouteMode(patchedMode);
+
+        if (TryGetIdArray(patch, "groups", out var patchedGroups)) groups = patchedGroups;
+
+        if (patch.TryGetProperty("priority", out var priority))
+            ApplyPluginPriorityPatch(configManager, coreConfigPath, routePolicy, pluginId, priority);
+
+        if (prefixMode is not null)
+        {
+            var modes = new Dictionary<string, string>(routePolicy.PrefixModes, StringComparer.OrdinalIgnoreCase);
+            if (prefixMode == "default")
+            {
+                modes.Remove(pluginId);
+            }
+            else
+            {
+                modes[pluginId] = prefixMode;
+            }
+
+            // Plugin IDs are literal dictionary keys, including dots and quotes.
+            configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.prefix_modes", modes);
+            routePolicy.PrefixModes = modes;
+        }
+
+        if (customPrefix is not null)
+        {
+            var prefixes = new Dictionary<string, string>(routePolicy.Prefixes, StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(customPrefix))
+            {
+                prefixes.Remove(pluginId);
+            }
+            else
+            {
+                prefixes[pluginId] = customPrefix;
+            }
+
+            configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.prefixes", prefixes);
+            routePolicy.Prefixes = prefixes;
+        }
+
+        if (!patch.TryGetProperty("mode", out _) && !patch.TryGetProperty("groups", out _)) return;
 
         var rule = new PluginRouteRuleConfig { Mode = mode, Groups = groups };
         routePolicy.Plugins[pluginId] = rule;
-        configManager.SetConfigValue(coreConfigPath, $"plugin_routes.plugins.{pluginId}.mode", rule.Mode);
-        configManager.SetConfigValue(coreConfigPath, $"plugin_routes.plugins.{pluginId}.groups", rule.Groups);
+        configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.plugins",
+            routePolicy.Plugins.ToDictionary(pair => pair.Key, pair => new Dictionary<string, object?>
+            {
+                ["mode"] = pair.Value.Mode,
+                ["groups"] = pair.Value.Groups
+            }));
     }
 
-    private static object CreatePluginRouteResponse(PluginRouteConfig routePolicy, string pluginId)
+    /// <summary>A number overrides the plugin's declared priority; null removes the override.</summary>
+    private static void ApplyPluginPriorityPatch(
+        ConfigManager configManager,
+        string coreConfigPath,
+        PluginRouteConfig routePolicy,
+        string pluginId,
+        JsonElement priority)
     {
+        // Replaced rather than mutated: dispatch reads the dictionary without a lock.
+        var priorities = new Dictionary<string, int>(routePolicy.Priorities, StringComparer.OrdinalIgnoreCase);
+        if (priority.ValueKind == JsonValueKind.Null)
+        {
+            priorities.Remove(pluginId);
+            routePolicy.Priorities = priorities;
+            configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.priorities", priorities);
+            return;
+        }
+
+        if (priority.ValueKind != JsonValueKind.Number || !priority.TryGetInt32(out var value))
+            throw new InvalidOperationException("routes.priority 必须是整数或 null。");
+
+        priorities[pluginId] = value;
+        routePolicy.Priorities = priorities;
+        configManager.ReplaceConfigValue(coreConfigPath, "plugin_routes.priorities", priorities);
+    }
+
+    private static int GetDeclaredPriority(PluginManager pluginManager, PluginConfigTarget plugin)
+    {
+        return FindLoadedPlugin(pluginManager, plugin.Id)?.DeclaredPriority
+               ?? pluginManager.TryProbePluginInfoFile(plugin.AssemblyPath)?.Priority
+               ?? BotPluginAttribute.DefaultPriority;
+    }
+
+    private static object CreatePluginRouteResponse(PluginRouteConfig routePolicy, string pluginId,
+        int declaredPriority)
+    {
+        var configuredPriority = routePolicy.GetPriority(pluginId);
         var configured = routePolicy.Plugins.TryGetValue(pluginId, out var rule) &&
                          !string.Equals(rule.Mode, "default", StringComparison.OrdinalIgnoreCase);
         var effective = configured ? rule! : routePolicy.Default;
@@ -969,24 +1071,41 @@ internal sealed partial class HostHttpServer
             effective_mode = effective.Mode,
             effective_groups = effective.Groups,
             default_mode = routePolicy.Default.Mode,
-            default_groups = routePolicy.Default.Groups
+            default_groups = routePolicy.Default.Groups,
+            priority = configuredPriority ?? declaredPriority,
+            priority_configured = configuredPriority is not null,
+            declared_priority = declaredPriority,
+            prefix_mode = routePolicy.GetPrefixMode(pluginId),
+            custom_prefix = routePolicy.Prefixes.TryGetValue(pluginId, out var custom) ? custom : string.Empty,
+            effective_prefix = routePolicy.GetMessagePrefix(pluginId),
+            message_prefix = routePolicy.MessagePrefix,
+            // Kept for older dashboards: a non-empty global prefix is now always required by default.
+            default_require_prefix = !string.IsNullOrWhiteSpace(routePolicy.MessagePrefix),
+            effective_require_prefix = !string.IsNullOrWhiteSpace(routePolicy.GetMessagePrefix(pluginId)) &&
+                                       routePolicy.RequiresMessagePrefix(pluginId)
         };
     }
 
-    private static string NormalizePluginRouteMode(string mode) => mode.Trim().ToLowerInvariant() switch
+    private static string NormalizePluginRouteMode(string mode)
     {
-        "whitelist" => "whitelist",
-        "blacklist" => "blacklist",
-        "default" => "default",
-        _ => throw new InvalidOperationException("routes.mode 只能是 default、whitelist 或 blacklist。")
-    };
+        return mode.Trim().ToLowerInvariant() switch
+        {
+            "whitelist" => "whitelist",
+            "blacklist" => "blacklist",
+            "default" => "default",
+            _ => throw new InvalidOperationException("routes.mode 只能是 default、whitelist 或 blacklist。")
+        };
+    }
 
-    private static string NormalizePluginActionTone(string? tone) => tone?.Trim().ToLowerInvariant() switch
+    private static string NormalizePluginActionTone(string? tone)
     {
-        "primary" => "primary",
-        "danger" => "danger",
-        _ => "default"
-    };
+        return tone?.Trim().ToLowerInvariant() switch
+        {
+            "primary" => "primary",
+            "danger" => "danger",
+            _ => "default"
+        };
+    }
 
     private static string NormalizeConfigKey(string key)
     {
@@ -999,38 +1118,46 @@ internal sealed partial class HostHttpServer
             chars.Add(char.ToLowerInvariant(ch));
         }
 
-        return new string(chars.ToArray());
+        return new string([.. chars]);
     }
 
-    private static bool IsValidConfigItem(string? itemType, object? item) => itemType switch
+    private static bool IsValidConfigItem(string? itemType, object? item)
     {
-        "boolean" => item is bool,
-        "integer" => item is not string && TryGetDouble(item, out var integer) && Math.Truncate(integer) == integer,
-        "number" => item is not string && TryGetDouble(item, out _),
-        "string" => item is string,
-        "section" or "object" => item is IDictionary<string, object?>,
-        _ => true
-    };
+        return itemType switch
+        {
+            "boolean" => item is bool,
+            "integer" => item is not string && TryGetDouble(item, out var integer) && double.IsInteger(integer),
+            "number" => item is not string && TryGetDouble(item, out _),
+            "string" => item is string,
+            "section" or "object" => item is IDictionary<string, object?>,
+            _ => true
+        };
+    }
 
-    private static object? ConvertJsonValue(JsonElement value) => value.ValueKind switch
+    private static object? ConvertJsonValue(JsonElement value)
     {
-        JsonValueKind.String => value.GetString() ?? string.Empty,
-        JsonValueKind.True => true,
-        JsonValueKind.False => false,
-        JsonValueKind.Number when value.TryGetInt64(out var integer) => integer,
-        JsonValueKind.Number => value.GetDouble(),
-        JsonValueKind.Array => value.EnumerateArray().Select(ConvertJsonValue).ToArray(),
-        // Tables keep their submitted key order so a rewritten [[array]] reads like the original.
-        JsonValueKind.Object => value.EnumerateObject().Aggregate(
-            new OrderedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase),
-            (table, property) =>
-            {
-                table[property.Name] = ConvertJsonValue(property.Value);
-                return table;
-            }),
-        JsonValueKind.Null => null,
-        _ => throw new InvalidOperationException("配置值只能是字符串、数字、布尔值、数组、对象或 null。")
-    };
+        // Unaccepted JSON kinds are deliberately rejected by the default branch.
+        // ReSharper disable once SwitchExpressionHandlesSomeKnownEnumValuesWithExceptionInDefault
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? string.Empty,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when value.TryGetInt64(out var integer) => integer,
+            JsonValueKind.Number => value.GetDouble(),
+            JsonValueKind.Array => value.EnumerateArray().Select(ConvertJsonValue).ToArray(),
+            // Tables keep their submitted key order so a rewritten [[array]] reads like the original.
+            JsonValueKind.Object => value.EnumerateObject().Aggregate(
+                new OrderedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase),
+                (table, property) =>
+                {
+                    table[property.Name] = ConvertJsonValue(property.Value);
+                    return table;
+                }),
+            JsonValueKind.Null => null,
+            _ => throw new InvalidOperationException("配置值只能是字符串、数字、布尔值、数组、对象或 null。")
+        };
+    }
 
     private static bool TryGetDouble(object? value, out double number)
     {
@@ -1045,7 +1172,8 @@ internal sealed partial class HostHttpServer
             case int intValue:
                 number = intValue;
                 return true;
-            case string text when double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed):
+            case string text
+                when double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed):
                 number = parsed;
                 return true;
             default:
@@ -1054,4 +1182,13 @@ internal sealed partial class HostHttpServer
         }
     }
 
+    /// <summary>
+    ///     Shape of a config property for the editor: <c>section</c> is a nested config class with known
+    ///     fields, <c>object</c> a free-form table (dictionary), <c>array</c> a list of <see cref="Item" />.
+    /// </summary>
+    private sealed record ConfigTypeShape(
+        string Kind,
+        TypeDefinitionHandle Section = default,
+        ConfigTypeShape? Item = null,
+        bool IsEnum = false);
 }

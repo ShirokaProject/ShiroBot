@@ -1,9 +1,10 @@
 using System.Threading.Channels;
+using ShiroBot.Hosting.Context;
+using ShiroBot.Hosting.Events;
 using ShiroBot.SDK.Adapter;
 using ShiroBot.SDK.Models;
-using CH = ShiroBot.Console.ConsoleOutput;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Context;
+using CH = ShiroBot.Terminal.ConsoleOutput;
+using Channel = System.Threading.Channels.Channel;
 
 namespace ShiroBot.Adapters;
 
@@ -14,16 +15,14 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
     public IAsyncDisposable Bridge(
         string adapterId,
         string platform,
-        IEventService eventService,
-        Func<MessageEvent, Task> directMessageHandler)
+        IEventService eventService)
     {
         var subscription = new Subscription(
             adapterId,
             platform,
             eventDispatcher,
-            directMessageHandler,
             DefaultQueueCapacity);
-        Func<BotEvent, Task> handler = subscription.EnqueueAsync;
+        var handler = subscription.EnqueueAsync;
         eventService.EventReceived += handler;
         subscription.SetUnsubscribe(() => eventService.EventReceived -= handler);
         return subscription;
@@ -34,30 +33,30 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
         private const int MaxConcurrentDispatches = 8;
 
         private readonly string _adapterId;
-        private readonly string _platform;
-        private readonly HostEventDispatcher _eventDispatcher;
-        private readonly Func<MessageEvent, Task> _directMessageHandler;
-        private readonly Channel<BotEvent> _events;
         private readonly Task _consumer;
+        private readonly HostEventDispatcher _eventDispatcher;
+        private readonly Channel<BotEvent> _events;
+        private readonly string _platform;
+
+        private readonly TaskCompletionSource _producersDrained =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         private readonly Lock _sync = new();
-        private readonly TaskCompletionSource _producersDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private Action? _unsubscribe;
-        private Task? _disposeTask;
-        private int _activeProducers;
         private bool _accepting = true;
+        private int _activeProducers;
+        private Task? _disposeTask;
+        private Action? _unsubscribe;
 
         public Subscription(
             string adapterId,
             string platform,
             HostEventDispatcher eventDispatcher,
-            Func<MessageEvent, Task> directMessageHandler,
             int capacity)
         {
             _adapterId = adapterId;
             _platform = platform;
             _eventDispatcher = eventDispatcher;
-            _directMessageHandler = directMessageHandler;
-            _events = System.Threading.Channels.Channel.CreateBounded<BotEvent>(new BoundedChannelOptions(capacity)
+            _events = Channel.CreateBounded<BotEvent>(new BoundedChannelOptions(capacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = true,
@@ -65,19 +64,6 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
                 AllowSynchronousContinuations = false
             });
             _consumer = ConsumeAsync();
-        }
-
-        public void SetUnsubscribe(Action unsubscribe) => _unsubscribe = unsubscribe;
-
-        public Task EnqueueAsync(BotEvent botEvent)
-        {
-            lock (_sync)
-            {
-                if (!_accepting) return Task.CompletedTask;
-                _activeProducers++;
-            }
-
-            return EnqueueCoreAsync(botEvent);
         }
 
         public ValueTask DisposeAsync()
@@ -98,6 +84,22 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
 
             unsubscribe?.Invoke();
             return new ValueTask(disposeTask);
+        }
+
+        public void SetUnsubscribe(Action unsubscribe)
+        {
+            _unsubscribe = unsubscribe;
+        }
+
+        public Task EnqueueAsync(BotEvent botEvent)
+        {
+            lock (_sync)
+            {
+                if (!_accepting) return Task.CompletedTask;
+                _activeProducers++;
+            }
+
+            return EnqueueCoreAsync(botEvent);
         }
 
         private async Task EnqueueCoreAsync(BotEvent botEvent)
@@ -142,9 +144,7 @@ internal sealed class AdapterEventBridge(HostEventDispatcher eventDispatcher)
                 if (botEvent is MessageReactionEvent { Emoji: PlatformReactionEmoji emoji } reaction)
                     botEvent = reaction with { Emoji = emoji with { InstanceId = _adapterId } };
                 using var _ = AdapterExecutionContext.Enter(_adapterId);
-                await (botEvent is MessageEvent { IsDirect: true } directMessage
-                    ? _directMessageHandler(directMessage)
-                    : _eventDispatcher.PublishAsync(botEvent)).ConfigureAwait(false);
+                await _eventDispatcher.PublishAsync(botEvent).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

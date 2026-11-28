@@ -1,6 +1,12 @@
 name: Build
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild without moving it (for example v1.0.2)
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
@@ -11,6 +17,7 @@ permissions:
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
   DOTNET_NOLOGO: '1'
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
   CONFIGURATION: Release
   HOST_PROJECT: Core/ShiroBot.csproj
   SOLUTION_FILE: Shirobot.slnx
@@ -22,19 +29,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Validate release version
         run: |
           set -euo pipefail
           version="$(sed -n 's/.*<ShiroBotProductVersion>\([^<]*\)<.*/\1/p' Directory.Build.props | head -1)"
-          test "${GITHUB_REF_NAME#v}" = "$version" || { echo "::error::Tag and ShiroBotProductVersion must match"; exit 1; }
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "${RELEASE_TAG#v}" = "$version" || { echo "::error::Tag and ShiroBotProductVersion must match"; exit 1; }
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
+
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
+
+      - name: Verify release ZIP tooling
+        run: python3 -m unittest discover -s .github/scripts -p test_release_zip.py -v
 
       - name: Pack NuGet packages
         run: |
@@ -42,7 +61,7 @@ jobs:
 
           dotnet restore "${{ env.SOLUTION_FILE }}" --property:Configuration="${{ env.CONFIGURATION }}"
 
-          dotnet pack Packaging/ShiroBot.SDK.Package/ShiroBot.SDK.Package.csproj \
+          dotnet pack SDK/Packaging/ShiroBot.SDK.Package.csproj \
             --configuration "${{ env.CONFIGURATION }}" \
             --no-restore \
             --output artifacts/nuget \
@@ -59,6 +78,8 @@ jobs:
             --no-restore
 
       - name: Download dashboard dist
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -68,12 +89,16 @@ jobs:
             exit 1
           fi
 
-          base="https://github.com/ShirokaProject/Shirobot.Dashboard/releases/download/v${version}"
           archive="shirobot-dashboard-${version}.zip"
-
-          curl -fsSL "$base/$archive" -o "/tmp/$archive"
-          curl -fsSL "$base/$archive.sha256" -o "/tmp/$archive.sha256"
-          (cd /tmp && sha256sum -c "$archive.sha256")
+          release="$(gh api "repos/ShirokaProject/Shirobot.Dashboard/releases/tags/v${version}")"
+          url="$(jq -r --arg name "$archive" '.assets[] | select(.name == $name) | .browser_download_url' <<< "$release")"
+          digest="$(jq -r --arg name "$archive" '.assets[] | select(.name == $name) | .digest // empty' <<< "$release")"
+          if [ -z "$url" ] || [[ ! "$digest" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::Dashboard archive is missing or has no GitHub SHA-256 digest"
+            exit 1
+          fi
+          curl -fsSL "$url" -o "/tmp/$archive"
+          printf '%s  %s\n' "${digest#sha256:}" "$archive" | (cd /tmp && sha256sum -c -)
 
           mkdir -p Core/Assets/dashboard
           unzip -q -o "/tmp/$archive" -d Core/Assets/dashboard
@@ -100,12 +125,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          # Keep the target runtime available while building with the latest stable SDK.
+          dotnet-version: |
+            11.0.x
+            latest
           dotnet-quality: ga
+
+      - name: Resolve latest stable NuGet packages
+        run: python .github/scripts/update_nuget_packages.py
 
       - name: Download dashboard assets
         uses: actions/download-artifact@v8.0.2
@@ -152,7 +185,8 @@ jobs:
           test ! -f "$output_dir/ShiroBot.SDK.dll"
 
           chmod +x "$output_dir/$host_exe"
-          (cd "$output_dir" && zip -9 -j "$archive_path" "$host_exe")
+          python3 .github/scripts/release_zip.py --root "$output_dir" --output "$archive_path" \
+            --file "$host_exe" --executable "$host_exe"
 
       - name: Upload host archive
         uses: actions/upload-artifact@v7.0.2
@@ -162,22 +196,23 @@ jobs:
           if-no-files-found: error
 
       - name: Stage container binary
-        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
+        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'self-contained'
         run: |
           set -euo pipefail
           runtime='${{ matrix.runtime }}'
           arch=amd64
           if [ "$runtime" = linux-musl-arm64 ]; then arch=arm64; fi
-          # The image ships the release asset's binary, so Dashboard self-updates replace it with the same kind.
-          mkdir -p "artifacts/docker/$arch"
-          cp "artifacts/host/${runtime}-framework-dependent/ShiroBot" "artifacts/docker/$arch/ShiroBot"
+          # The image ships the self-contained release binary, so Dashboard self-updates download the same
+          # kind and never depend on the .NET runtime of an older image.
+          mkdir -p "artifacts/container/$arch"
+          cp "artifacts/host/${runtime}-self-contained/ShiroBot" "artifacts/container/$arch/ShiroBot"
 
       - name: Upload container files
-        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'framework-dependent'
+        if: startsWith(matrix.runtime, 'linux-musl-') && matrix.publish_kind == 'self-contained'
         uses: actions/upload-artifact@v7.0.2
         with:
           name: shirobot-container-${{ matrix.runtime }}
-          path: artifacts/docker/
+          path: artifacts/container/
           if-no-files-found: error
 
   verify-container:
@@ -197,12 +232,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Download container binaries
         uses: actions/download-artifact@v8.0.2
         with:
           pattern: shirobot-container-linux-musl-*64
-          path: artifacts/docker
+          path: artifacts/container
           merge-multiple: true
 
       - name: Normalize downloaded container files
@@ -210,8 +247,8 @@ jobs:
           set -euo pipefail
 
           for arch in amd64 arm64; do
-            test -f "artifacts/docker/$arch/ShiroBot"
-            chmod 755 "artifacts/docker/$arch/ShiroBot"
+            test -f "artifacts/container/$arch/ShiroBot"
+            chmod 755 "artifacts/container/$arch/ShiroBot"
           done
 
       - name: Resolve image name
@@ -224,8 +261,8 @@ jobs:
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
             type=raw,value=latest
 
       - name: Set up QEMU
@@ -245,7 +282,7 @@ jobs:
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
-          file: Containerfile
+          file: container/Containerfile
           target: prebuilt
           platforms: linux/amd64,linux/arm64
           pull: true
@@ -253,7 +290,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION_TAG=${{ github.ref_name }}
+            VERSION_TAG=${{ env.RELEASE_TAG }}
             BUILD_TIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -265,6 +302,8 @@ jobs:
       contents: read
       id-token: write
     uses: ./.github/workflows/publish-nuget.yml
+    with:
+      source_ref: refs/tags/${{ inputs.tag || github.ref_name }}
 
   release:
     name: Publish GitHub Release
@@ -274,6 +313,7 @@ jobs:
       - name: Checkout release history
         uses: actions/checkout@v7.0.1
         with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Download NuGet packages
@@ -293,7 +333,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          tag='${{ github.ref_name }}'
+          tag="$RELEASE_TAG"
           repo='${{ github.repository }}'
           base_url="https://github.com/${repo}/releases/download/${tag}"
           notes_file=".github/release-notes.md"
@@ -370,7 +410,7 @@ jobs:
             echo "- Linux: $(host_link linux-x64 self-contained x64) | $(host_link linux-arm64 self-contained ARM64)"
             echo "- Linux musl / Alpine: $(host_link linux-musl-x64 self-contained x64) | $(host_link linux-musl-arm64 self-contained ARM64)"
             echo
-            echo "#### 不自带运行时 framework-dependent（需要安装 ASP.NET Core 10 Runtime）"
+            echo "#### 不自带运行时 framework-dependent（需要安装 ASP.NET Core 11 Runtime）"
             echo
             echo "- Windows: $(host_link win-x64 framework-dependent x64) | $(host_link win-arm64 framework-dependent ARM64)"
             echo "- macOS: $(host_link osx-arm64 framework-dependent Apple芯片) | $(host_link osx-x64 framework-dependent Intel芯片)"
@@ -405,7 +445,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          tag='${{ github.ref_name }}'
+          tag="$RELEASE_TAG"
           repo='${{ github.repository }}'
 
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then

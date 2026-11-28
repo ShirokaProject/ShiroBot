@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Text.Json;
 using ShiroBot.Configuration;
 using Tomlyn;
@@ -21,26 +22,50 @@ internal sealed class PackageAdapterConfig
 // The package config is authoritative; mutations preserve other instances and unknown connection fields.
 internal static class AdapterInstanceStore
 {
-    private static readonly object Gate = new();
-    private static readonly TomlSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-    public static bool IsDeclared(string path) => File.Exists(path) && ReadObject(path).ContainsKey("instances");
-    private static Dictionary<string, object?> Normalize(Dictionary<string, object?> values) => values.ToDictionary(pair => pair.Key, pair => NormalizeValue(pair.Value));
-    private static object? NormalizeValue(object? value) => value switch
+    private static readonly Lock Gate = new();
+
+    private static readonly TomlSerializerOptions Options = new()
+        { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+
+    public static bool IsDeclared(string path)
     {
-        TomlTable table => table.ToDictionary(pair => pair.Key, pair => NormalizeValue(pair.Value)),
-        Dictionary<string, object?> table => Normalize(table),
-        TomlTableArray tables => tables.Select(item => NormalizeValue(item)).ToList(),
-        TomlArray array => array.Select(NormalizeValue).ToList(),
-        _ => value
-    };
-    public static Dictionary<string, object?> ReadObject(string path) => File.Exists(path)
-        ? Normalize(TomlSerializer.Deserialize<Dictionary<string, object?>>(File.ReadAllText(path)) ?? new()) : new();
+        return File.Exists(path) && ReadObject(path).ContainsKey("instances");
+    }
+
+    private static Dictionary<string, object?> Normalize(Dictionary<string, object?> values)
+    {
+        return values.ToDictionary(pair => pair.Key, pair => NormalizeValue(pair.Value));
+    }
+
+    private static object? NormalizeValue(object? value)
+    {
+        return value switch
+        {
+            TomlTable table => table.ToDictionary(pair => pair.Key, pair => NormalizeValue(pair.Value)),
+            Dictionary<string, object?> table => Normalize(table),
+            TomlTableArray tables => tables.Select(NormalizeValue).ToList(),
+            TomlArray array => array.Select(NormalizeValue).ToList(),
+            _ => value
+        };
+    }
+
+    public static Dictionary<string, object?> ReadObject(string path)
+    {
+        return File.Exists(path)
+            ? Normalize(TomlSerializer.Deserialize<Dictionary<string, object?>>(File.ReadAllText(path)) ??
+                        new Dictionary<string, object?>())
+            : new Dictionary<string, object?>();
+    }
+
     public static List<PackageAdapterInstance> Read(string path)
     {
-        var instances = File.Exists(path) ? TomlSerializer.Deserialize<PackageAdapterConfig>(File.ReadAllText(path), Options)?.Instances ?? [] : [];
+        var instances = File.Exists(path)
+            ? TomlSerializer.Deserialize<PackageAdapterConfig>(File.ReadAllText(path), Options)?.Instances ?? []
+            : [];
         foreach (var instance in instances) instance.Config = Normalize(instance.Config);
         return instances;
     }
+
     public static void Write(string path, List<PackageAdapterInstance> instances, bool replaceLegacy = false)
     {
         lock (Gate)
@@ -49,15 +74,26 @@ internal static class AdapterInstanceStore
             var temporary = path + ".writing-" + Guid.NewGuid().ToString("N");
             try
             {
-                if (replaceLegacy) File.WriteAllText(temporary, "# Adapter instances: IDs must be unique across all adapter packages.\n");
+                if (replaceLegacy)
+                    File.WriteAllText(temporary,
+                        "# Adapter instances: IDs must be unique across all adapter packages.\n");
                 else if (File.Exists(path)) File.Copy(path, temporary);
-                new ConfigManager(temporary).ReplaceConfigValue(temporary, "instances", instances.Select(item => (object)new Dictionary<string, object?>
-                { ["id"] = item.Id, ["name"] = item.Name, ["enabled"] = item.Enabled, ["config"] = item.Config }).ToList());
-                if (!File.Exists(path) || File.ReadAllText(path) != File.ReadAllText(temporary)) File.Move(temporary, path, overwrite: true);
+                new ConfigManager(temporary).ReplaceConfigValue(temporary, "instances", instances
+                    .Select<PackageAdapterInstance, object>(item =>
+                        new Dictionary<string, object?>
+                        {
+                            ["id"] = item.Id, ["name"] = item.Name, ["enabled"] = item.Enabled, ["config"] = item.Config
+                        }).ToList());
+                if (!File.Exists(path) || File.ReadAllText(path) != File.ReadAllText(temporary))
+                    File.Move(temporary, path, true);
             }
-            finally { File.Delete(temporary); }
+            finally
+            {
+                File.Delete(temporary);
+            }
         }
     }
+
     public static void Mutate(string path, Action<List<PackageAdapterInstance>> mutate)
     {
         lock (Gate)
@@ -67,63 +103,101 @@ internal static class AdapterInstanceStore
             Write(path, instances);
         }
     }
-    public static void Update(string path, string id, Action<PackageAdapterInstance> update) => Mutate(path, instances =>
+
+    public static void Update(string path, string id, Action<PackageAdapterInstance> update)
+    {
+        Mutate(path, instances =>
         {
             var item = instances.SingleOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase))
-                ?? throw new InvalidOperationException($"未找到适配器实例 {id}。");
+                       ?? throw new InvalidOperationException($"未找到适配器实例 {id}。");
             update(item);
         });
+    }
+
     // An undeclared (implicit single-instance) config is the instance's config itself.
-    public static Dictionary<string, object?> GetConfig(string path, string id) => !IsDeclared(path) ? ReadObject(path) : Read(path).Single(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)).Config;
+    public static Dictionary<string, object?> GetConfig(string path, string id)
+    {
+        return !IsDeclared(path)
+            ? ReadObject(path)
+            : Read(path).Single(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)).Config;
+    }
+
     public static T Load<T>(string path, string id) where T : class, new()
     {
         T loaded = new();
-        Patch(path, id, temporary => loaded = new ConfigManager(temporary).LoadConfig<T>(temporary, "适配器实例") ?? new());
+        Patch(path, id,
+            temporary => loaded = new ConfigManager(temporary).LoadConfig<T>(temporary, "适配器实例") ?? new T());
         return loaded;
     }
-    public static void Save<T>(string path, string id, T config) where T : class => Update(path, id, item =>
+
+    public static void Save<T>(string path, string id, T config) where T : class
     {
-        var values = TomlSerializer.Deserialize<Dictionary<string, object?>>(TomlSerializer.Serialize(config, Options)) ?? new();
-        Merge(item.Config, Normalize(values));
-    });
+        Update(path, id, item =>
+        {
+            var values =
+                TomlSerializer.Deserialize<Dictionary<string, object?>>(TomlSerializer.Serialize(config, Options)) ??
+                new Dictionary<string, object?>();
+            Merge(item.Config, Normalize(values));
+        });
+    }
+
     private static void Merge(Dictionary<string, object?> target, Dictionary<string, object?> source)
     {
         foreach (var (key, value) in source)
-            if (value is Dictionary<string, object?> nested && target.GetValueOrDefault(key) is Dictionary<string, object?> existing) Merge(existing, nested);
+            if (value is Dictionary<string, object?> nested &&
+                target.GetValueOrDefault(key) is Dictionary<string, object?> existing) Merge(existing, nested);
             else target[key] = value;
     }
+
     internal static TomlTable ToTomlTable(Dictionary<string, object?> values)
     {
         var table = new TomlTable();
-        foreach (var (key, value) in values) if (value is not null) table[key] = ToTomlValue(value)!;
+        foreach (var (key, value) in values)
+            if (value is not null)
+                table[key] = ToTomlValue(value)!;
         return table;
     }
+
     private static object? ToTomlValue(object? value)
     {
         if (value is Dictionary<string, object?> table) return ToTomlTable(table);
-        if (value is System.Collections.IEnumerable array && value is not string)
+        if (value is string || value is not IEnumerable array)
+        {
+            return value;
+        }
+
         {
             var result = new TomlArray();
             foreach (var item in array) result.Add(ToTomlValue(item));
             return result;
         }
-        return value;
     }
+
     public static void Patch(string path, string id, Action<string> patch)
     {
         lock (Gate)
         {
-            if (!IsDeclared(path)) { patch(path); return; }
-            var temporary = Path.Combine(Path.GetTempPath(), "shiro-instance-" + Guid.NewGuid().ToString("N") + ".toml");
+            if (!IsDeclared(path))
+            {
+                patch(path);
+                return;
+            }
+
+            var temporary = Path.Combine(Path.GetTempPath(),
+                "shiro-instance-" + Guid.NewGuid().ToString("N") + ".toml");
             try
             {
                 File.WriteAllText(temporary, TomlSerializer.Serialize(ToTomlTable(GetConfig(path, id))));
-                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                if (!OperatingSystem.IsWindows())
+                    File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 patch(temporary);
                 var config = ReadObject(temporary);
                 Update(path, id, item => item.Config = config);
             }
-            finally { File.Delete(temporary); }
+            finally
+            {
+                File.Delete(temporary);
+            }
         }
     }
 }

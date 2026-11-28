@@ -1,9 +1,14 @@
+import json
 from pathlib import Path
 import re
 root=Path(__file__).resolve().parent.parent; out=root/'docs/plugin/qq'
 out.mkdir(exist_ok=True)
+# 文档中人工整理过的说明（按 接口.成员#重载序号）；优先于源码注释和下面的通用表。新增成员没有条目时回退。
+texts=json.loads((root/'scripts/qq_reference_text.json').read_text())
 services=[('IQFriendApi','friend','好友'),('IQGroupApi','group','群管理'),('IQGroupApprovalStrategyApi','approval','入群自动审批策略'),('IQFileApi','file','文件'),('IQSystemApi','system','账号与资料'),('IQMessageApi','message','原生消息'),('IQOfficialMessageApi','official-message','官方消息'),('IQOfficialMediaApi','official-media','官方媒体'),('IQOfficialDirectMessageApi','official-direct','官方私聊'),('IQOfficialMessageStream','official-stream','官方流式会话')]
 sources='\n'.join((root/'Models/QQ'/f).read_text() for f in ['IQExtensions.cs','IQGroupApprovalStrategyApi.cs'])
+# XML <param> 说明，用于 meaning 中没有的参数。
+param_docs={m.group(1):re.sub(r'<[^>]+>','',' '.join(m.group(2).split())) for m in re.finditer(r'<param name="([^"]+)">(.*?)</param>',re.sub(r'\n\s*///',' ',sources),re.S)}
 def closing(s,i):
  depth=0
  for j in range(i,len(s)):
@@ -56,37 +61,54 @@ for interface,slug,label in services:
   if body.startswith('=>',end):pos=body.find(';',end)+1
   elif end<len(body) and body[end]=='{':pos=closing(body,end)+1
   else:pos=end+1
- page=[f'# {label}（{interface}）','',f'命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。','']
+ page=[f'# {label}（{interface}）','','命名空间：`ShiroBot.Model.QQ`。','']
+ seen={}
  if interface=='IQOfficialMessageStream':page+=['由 `IQOfficialDirectMessageApi.BeginStream` 返回；使用完调用 `DisposeAsync` 或 `await using`。','']
- else:page+=['```csharp',f'var api = Context.GetAdapterExtension<{interface}>();','if (api is null) return;','```','', '接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。','']
+ else:page+=['```csharp',f'var api = Context.GetAdapterExtension<{interface}>();','if (api is null) return;','```','', '未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。','']
  if interface=='IQGroupApi':page+=['先检查 `Capabilities`。官方与 Milky 的 ID 都为字符串，但各自只在来源实例内有意义。入群审批传原申请对象，分页持续使用 NextCursor，即使当前页 Requests 为空。','']
  for sig,desc in entries:
   if '(' not in sig:
-   prop=sig.split()[-1]; page +=[f'## {prop}','',desc or '当前服务状态或实现能力。','','```csharp',sig+' { get; }','```',''];continue
+   prop=sig.split()[-1]; text=texts.get(f'{interface}.{prop}#0',{}); page +=[f'## {prop}','',text.get('summary') or desc or '当前服务状态或实现能力。','','```csharp',sig+' { get; }','```',''];continue
   method=re.search(r'\b(\w+)\(',sig); assert method, sig
   name=method.group(1); begin=method.end()-1; ret=sig[:method.start()].strip();params=sig[begin+1:sig.rfind(')')]
-  page +=[f'## {name}','',desc or actions.get(name, f'调用 `{interface}.{name}`。'),'','```csharp',(ret+' '+name+'(\n    '+',\n    '.join(split_params(params))+'\n);' if len(sig)>100 else sig+';'),'```','']
+  index=seen.get(name,0); seen[name]=index+1; text=texts.get(f'{interface}.{name}#{index}',{})
+  wrap=text.get('wrap', len(sig)>100)
+  page +=[f'## {name}','',text.get('summary') or desc or actions.get(name, f'调用 `{interface}.{name}`。'),'','```csharp',(ret+' '+name+'(\n    '+',\n    '.join(split_params(params))+'\n);' if wrap else sig+';'),'```','']
   if params:
    page+=['### 参数','','| 参数 | C# 类型 | 默认值 | 说明 |','| --- | --- | --- | --- |']
    for p in split_params(params):
     parts=p.split(' = ',1);decl=parts[0];typ,n=decl.rsplit(' ',1);default=parts[1] if len(parts)>1 else '必传'
-    explanation=meaning[n]
-    if n=='reply' and '?' not in typ:explanation='必传的被动回复凭据，来自消息或事件。'
+    explanation=text.get('params',{}).get(n) or param_docs.get(n) or meaning.get(n) or ''
+    if n=='reply' and '?' not in typ and n not in text.get('params',{}):explanation='必传的被动回复凭据，来自消息或事件。'
     page.append(f'| `{n}` | `{typ}` | `{default}` | {explanation} |')
    page+=['']
-  page+=['### 返回','','`'+ret+'`。'+ ('异步完成后不返回业务值。' if ret in ['Task','ValueTask'] else return_meanings.get(name, '返回发送后的消息 ID。' if ret=='Task<string>' and (name.startswith('Send') or name.startswith('UploadAndSend')) else '返回上传文件的 ID。' if name.startswith('Upload') else '返回创建的文件夹 ID。' if name=='CreateGroupFolderAsync' else '返回下载链接。' if 'DownloadUrl' in name or name=='GetResourceTempUrlAsync' else '返回完成后的消息 ID。' if name=='CompleteAsync' else '等待异步完成后取得签名所列模型或列表。') if ret.startswith(('Task<','ValueTask<')) else return_meanings.get(name,'同步返回结果。')),'']
+  if 'returns' in text: returns=text['returns']
+  elif ret in ['Task','ValueTask']: returns='完成后无返回值。'
+  elif ret.startswith(('Task<','ValueTask<')):
+   returns=return_meanings.get(name) or ('返回发送后的消息 ID。' if ret=='Task<string>' and name.startswith(('Send','UploadAndSend'))
+    else '返回上传文件的 ID。' if name.startswith('Upload') else '返回创建的文件夹 ID。' if name=='CreateGroupFolderAsync'
+    else '返回下载链接。' if 'DownloadUrl' in name or name=='GetResourceTempUrlAsync' else '返回完成后的消息 ID。' if name=='CompleteAsync'
+    else '异步返回 `'+ret[ret.index('<')+1:-1]+'`。')
+  else: returns=return_meanings.get(name,'同步返回结果。')
+  page+=['### 返回','','`'+ret+'`。'+returns,'']
   count+=1
  if interface=='IQGroupApi':page+=['## 入群审批示例','','```csharp','Events.MapPlatform(QEventKinds.GroupJoinRequest, async evt =>','{','    if (evt.Raw is not QGroupJoinRequest request) return;','    var groups = Context.GetAdapterExtension<IQGroupApi>();','    if (groups?.Capabilities.HasFlag(QGroupCapabilities.JoinRequests) == true)','        await groups.AcceptJoinRequestAsync(request);','});','```','']
  if interface=='IQOfficialMessageStream':page+=['## DisposeAsync（继承自 IAsyncDisposable）','','释放会话资源。建议使用 `await using`，是否取消未完成回复由适配器实现决定。','','```csharp','ValueTask DisposeAsync();','```','']
  page+=['## 相关类型','','见[模型、消息段与事件类型](./types)。完整声明中的 `required` 字段创建对象时必须填写；`?` 表示可空。','']
  (out/f'{slug}.md').write_text('\n'.join(page))
 # Keep model declarations exactly as source, including enum values, optional fields and helpers.
-models=[('QEntities.cs','实体与枚举'),('QGroupManagement.cs','群管理与策略'),('QMessages.cs','原生消息'),('QSegments.cs','入站与出站消息段'),('QEvents.cs','事件与事件 Kind'),('QOfficialMessages.cs','官方消息、Markdown、按钮与媒体')]
-page=['# QQ C# 类型参考','','命名空间：`ShiroBot.Model.QQ`。以下完整声明对应 QQ Model ABI `1.0.0.0`。','','`required` 属性必须初始化；`init` 属性在创建对象时设置；位置式 record 使用所列构造参数。','ID 与分页游标均为不透明字符串。文件大小、计数、时间及枚举保持各自类型。','继承类型同时拥有基类属性。消息、事件和申请中的 ID 应交回产生它们的适配器实例。','']
+models=[('QEntities.cs','实体与枚举'),('QGroupManagement.cs','群管理与策略'),('QMessages.cs','原生消息'),('QSegments.cs','入站与出站消息段'),('QEvents.cs','事件与事件 Kind'),('QOfficialMessages.cs','官方消息、Markdown、按钮与媒体'),('QOfficialMaterials.cs','官方图片素材'),('QErrors.cs','异常')]
+page=['# QQ C# 类型参考','','命名空间：`ShiroBot.Model.QQ`。','','`required` 属性必须初始化；`init` 属性在创建对象时设置；位置式 record 使用所列构造参数。','ID 与分页游标均为不透明字符串。文件大小、计数、时间及枚举保持各自类型。','继承类型同时拥有基类属性。消息、事件和申请中的 ID 应交回产生它们的适配器实例。','']
 for file,label in models:
  src=(root/'Models/QQ'/file).read_text();page +=[f'## {label}','']
  for decl in re.finditer(r'^public (?:(?:abstract|sealed|static|readonly) )?(?:record(?: struct)?|enum|class|struct) (\w+)',src,re.M):
   start=decl.start(); i=decl.end(); depth=0
+  # 连同紧邻的 /// 注释和特性一起输出。
+  while True:
+   prev=src.rfind('\n',0,start-1)+1
+   line=src[prev:start].strip()
+   if start>0 and (line.startswith('///') or line.startswith('[')):start=prev
+   else:break
   while i<len(src):
    c=src[i]
    if c=='(':depth+=1
@@ -98,8 +120,13 @@ for file,label in models:
 # Capability enum lives beside strategy interface.
 src=(root/'Models/QQ/IQGroupApprovalStrategyApi.cs').read_text();page+=['## 群管理能力标记','','```csharp',src[src.index('[Flags]'):].strip(),'```','']
 (out/'types.md').write_text('\n'.join(page))
-index=['# QQ C# 接口参考','','这里按插件调用方式记录全部 QQ Model 扩展接口，包含 C# 方法签名、参数、默认值与返回类型。','无需构造 HTTP 请求。插件通过 `Context.GetAdapterExtension<T>()` 获取当前实例的服务。','','SDK 与 QQ Model ABI 均为 **1.0.0.0**；所有引用旧 ABI 的组件需重新编译。','所有用户、群、消息、申请 ID 均使用字符串。数值字符串与 OpenID 仍属于各自的来源实例。','','## 服务接口','','| 分类 | C# 接口 | 文档 |','| --- | --- | --- |']
-for interface,slug,label in services:index.append(f'| {label} | `{interface}` | [{label}](./qq/{slug}) |')
-index+=['','## 模型与迁移','','- [完整 C# 类型：实体、消息、消息段、事件、按钮和策略](./qq/types)','- [ABI 变更及迁移表](./qq-interface-review)','- [官方 Markdown 与按钮使用示例](./qq-official)','','## 适配器支持','','群管理通过 `IQGroupApi.Capabilities` 检查具体操作。其他扩展先检查服务是否为 null；','拿到服务后，未实现的方法仍可能抛出 `NotSupportedException`。','官方自动审批策略使用独立的 `IQGroupApprovalStrategyApi`；平台权限由 QQ 管理。','']
+index=['# QQ C# 接口参考','','本页按插件调用方式列出 QQ Model 扩展接口的 C# 签名、参数、默认值与返回类型。','插件通过 `Context.GetAdapterExtension<T>()` 获取当前实例的服务。','','版本要求与兼容规则见 [ABI 兼容性与版本](./api-compatibility)。','所有用户、群、消息、申请 ID 均使用字符串。数值字符串与 OpenID 仍属于各自的来源实例。','','## QQ 原生接口','','适用于适配器暴露的 QQ 好友、群管理、文件与原生消息能力。','','| 分类 | C# 接口 | 文档 |','| --- | --- | --- |']
+for interface,slug,label in services:
+ if not interface.startswith('IQOfficial'):
+  index.append(f'| {label} | `{interface}` | [{label}](./qq/{slug}) |')
+index+=['','## QQ 官方机器人','','官方开放平台的消息、媒体、私聊、流式会话，以及 Markdown 与按钮示例，集中在 [QQ 官方机器人](./qq/official)。','','## 模型与契约','','- [完整 C# 类型：实体、消息、消息段、事件、按钮和策略](./qq/types)','- [QQ 契约语义](./qq-interface-review)','','## 适配器支持','','群管理通过 `IQGroupApi.Capabilities` 检查具体操作。其他扩展先检查服务是否为 null；','拿到服务后，未实现的方法仍可能抛出 `NotSupportedException`。','官方平台的入群自动审批策略使用独立的 `IQGroupApprovalStrategyApi`；平台权限由 QQ 管理。','']
 (root/'docs/plugin/qq-reference.md').write_text('\n'.join(index))
 print(f'Generated {len(services)} interface pages, {count} methods and complete model declarations.')
+# 类型页重新生成后补回“对应主消息段”链接。
+import runpy
+runpy.run_path(str(root/'scripts/generate_segment_map.py'))

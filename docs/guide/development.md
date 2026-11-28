@@ -1,14 +1,14 @@
 # 从源码构建
 
-本页面向参与 ShiroBot 宿主开发的贡献者。只开发插件或适配器时不需要构建宿主，参见[创建第一个插件](/plugin/)与[创建适配器](/adapter/)。
+本页面向宿主开发者。插件与适配器开发分别参见[创建第一个插件](/plugin/)与[创建适配器](/adapter/)。
 
 ## 仓库结构
 
 - `Core`：ShiroBot 宿主本体，内置 Avalonia Headless 渲染集成。
-- `SDK`：插件与适配器 SDK，内置 Avalonia 控件渲染契约和编译支持。
+- `SDK`：插件与适配器 SDK；`Generators` 为源生成器，`Packaging` 为 NuGet 打包项目。
 - `Models`：Discord、QQ、Telegram 平台契约，随宿主内置。
-- `Templates`：`dotnet new` 插件与适配器项目模板。
-- `Packaging`：`ShiroBot.SDK` NuGet 包。
+- `Templates`：`dotnet new` 插件与适配器项目模板，以及 `Examples` 中可运行的互调示例。
+- `container`：镜像构建、Compose、入口脚本、默认配置和启动验证脚本。
 - `Tests`：主仓库验证与共享契约探针。
 - `docs`：本文档站（VitePress）。
 - Dashboard：宿主 Web 面板前端，位于独立仓库 [Shirobot.Dashboard](https://github.com/ShirokaProject/Shirobot.Dashboard)。
@@ -26,17 +26,17 @@ dotnet build Shirobot.slnx
 dotnet run --project Tests/Verification/ShiroBot.Verification.csproj
 ```
 
-构建宿主时会从 Shirobot.Dashboard 的 Release 下载 `ShirobotDashboardVersion` 对应的前端成品并嵌入程序集，不需要 Node.js。离线或该版本尚未发布时构建仍会成功，但 `/dashboard` 不可用；发布流程使用 `-p:RequireDashboard=true` 强制校验。联调未发布的前端改动时使用 `-p:DashboardDistPath=<本地 dist 目录>`。
+构建宿主时会从 Shirobot.Dashboard 的 Release 下载 `ShirobotDashboardVersion` 对应的前端成品并嵌入程序集。离线或该版本尚未发布时构建仍会成功，但 `/dashboard` 不可用；发布流程使用 `-p:RequireDashboard=true` 强制校验。联调未发布的前端改动时使用 `-p:DashboardDistPath=<本地 dist 目录>`。
 
 宿主保持 `PublishTrimmed=false`：插件发现、配置 schema 和程序集加载依赖反射与 metadata，目前不具备安全裁剪条件。镜像与发布包也因此没有启用 NativeAOT。
 
 ## 本地构建镜像
 
 ```bash
-podman build -f Containerfile -t shirobot:local .
+podman build --ignorefile container/Containerfile.dockerignore -f container/Containerfile -t shirobot:local .
 ```
 
-Docker 也可使用 `docker build -f Containerfile -t shirobot:local .`。容器版与 Release 中的 `linux-musl` framework-dependent 包使用同一个单文件主程序，Dashboard 自更新下载的也是它；镜像通过 `SHIROBOT_HOME=/app` 固定宿主目录，自更新的主程序放在数据卷的 `/data/host`。
+Docker 也可使用 `docker build -f container/Containerfile -t shirobot:local .`。容器版与 Release 中的 `linux-musl` self-contained 包使用同一个单文件主程序，Dashboard 自更新下载的也是它，因此不依赖镜像里的 .NET 运行时；镜像通过 `SHIROBOT_HOME=/app` 固定宿主目录，自更新的主程序放在数据卷的 `/data/host`。
 
 ## 文档
 
@@ -49,4 +49,4 @@ npm run build   # 构建静态站点
 
 ## 发布
 
-推送 `v*` tag 后，GitHub Actions 会发布各平台安装包、NuGet 包与 Docker 镜像。直接修改固定文件 `.github/release-notes.md`，其中内容会作为下次 Release 的更新日志，无需按 tag 新建文件。
+推送 `v*` tag 后，GitHub Actions 会发布各平台安装包、NuGet 包与 Docker 镜像。下次 Release 的更新日志统一在 `.github/release-notes.md` 中维护。

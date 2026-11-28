@@ -39,12 +39,18 @@ public sealed class ProbePlugin : PluginBase, IConfigurableComponent<ProbeConfig
     public override string Name => "update-probe.plugin";
     protected override Task LoadAsync()
     {
+        // A version that cannot start must not replace a working one.
+        if (File.Exists(Path.Combine(Path.GetDirectoryName(Context.Config.ConfigPath)!, "fail-load-" + BuildInfo.Version)))
+            throw new InvalidOperationException("Integration probe deliberately refused to load.");
         // Validate executing code, rather than only PE metadata in the installed package.
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(Context.Config.ConfigPath)!, "running-version.txt"), BuildInfo.Version);
         return Task.CompletedTask;
     }
     protected override Task OnUnloadAsync()
     {
+        // Never finishes: the host has to give up waiting while this code is still running.
+        if (File.Exists(Path.Combine(Path.GetDirectoryName(Context.Config.ConfigPath)!, "hang-unload")))
+            return Task.Delay(Timeout.Infinite);
         if (File.Exists(Path.Combine(Path.GetDirectoryName(Context.Config.ConfigPath)!, "hold-unload")))
             throw new InvalidOperationException("Integration probe deliberately refused unload.");
         return Task.CompletedTask;
@@ -78,7 +84,12 @@ public sealed class ProbeAdapter : IBotAdapter
             throw new InvalidOperationException("Integration probe deliberately refused startup.");
         return Task.CompletedTask;
     }
-    public Task StopAsync() => Task.CompletedTask;
+    public Task StopAsync()
+    {
+        if (File.Exists(Path.Combine(Path.GetDirectoryName(Config.ConfigPath)!, "fail-stop")))
+            throw new InvalidOperationException("Integration probe deliberately refused to stop.");
+        return Task.CompletedTask;
+    }
 }
 internal sealed class ProbeMessages : IMessageService
 {

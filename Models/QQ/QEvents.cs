@@ -46,6 +46,8 @@ public static class QEventKinds
     public const string GroupJoinRequest = "group_join_request";
     public const string GroupDisband = "group_disband";
     public const string PeerPinChange = "peer_pin_change";
+    /// <summary>闪传上传或下载的进度与完成。Raw 为 <see cref="QFlashFileTransfer"/>。</summary>
+    public const string FlashFileTransfer = "flash_file_transfer";
 }
 
 /// <summary>
@@ -95,6 +97,30 @@ public sealed record QFriendNudge : QEventPayload
 
     /// <summary>戳一戳动作图片 URL(存在时用于取代动作提示文本)。</summary>
     public string? DisplayActionImgUrl { get; init; }
+}
+
+/// <summary>闪传上传或下载的进度与完成。</summary>
+public sealed record QFlashFileTransfer : QEventPayload
+{
+    public required QFlashTransferState State { get; init; }
+    public required string FileSetId { get; init; }
+    public string? Title { get; init; }
+    public string? ShareLink { get; init; }
+
+    /// <summary>文件列表；下载完成时带本地路径。</summary>
+    public IReadOnlyList<QFlashFile> Files { get; init; } = [];
+
+    /// <summary>已上传或已下载的字节数，传输中才有。</summary>
+    public long? TransferredSize { get; init; }
+
+    /// <summary>总字节数。</summary>
+    public long? TotalSize { get; init; }
+
+    /// <summary>当前速度（字节/秒）。</summary>
+    public long? Speed { get; init; }
+
+    /// <summary>预计剩余时间。</summary>
+    public TimeSpan? RemainingTime { get; init; }
 }
 
 /// <summary>好友文件上传。</summary>

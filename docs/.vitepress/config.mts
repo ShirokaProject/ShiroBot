@@ -1,13 +1,59 @@
+import { readdirSync, readFileSync } from 'node:fs'
 import { defineConfig } from 'vitepress'
+
+const docsBase = (process.env.DOCS_BASE ?? '/').replace(/\/?$/, '/')
+
+// 更新日志侧边栏：按 docs/changelog/v*.md 自动生成，新版本只需新增一页。
+function changelogSidebar() {
+  const dir = new URL('../changelog/', import.meta.url)
+  const versions = readdirSync(dir)
+    .filter(file => /^v\d+-\d+-\d+\.md$/.test(file))
+    .map(file => {
+      const source = readFileSync(new URL(file, dir), 'utf8')
+      const version = source.match(/^version:\s*(\S+)/m)?.[1] ?? file.slice(1, -3).replaceAll('-', '.')
+      const unreleased = /^unreleased:\s*true/m.test(source)
+      return { version, unreleased, link: `/changelog/${file.slice(0, -3)}` }
+    })
+    .sort((a, b) => {
+      const pa = a.version.split('.').map(Number)
+      const pb = b.version.split('.').map(Number)
+      for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pb[i] - pa[i]
+      return 0
+    })
+  return [
+    {
+      text: '更新日志',
+      items: [
+        { text: '全部版本', link: '/changelog/' },
+        ...versions.map(v => ({ text: v.unreleased ? `${v.version}（待发布）` : v.version, link: v.link }))
+      ]
+    }
+  ]
+}
+
 
 export default defineConfig({
   lang: 'zh-CN',
   title: 'ShiroBot',
   description: 'ShiroBot 安装、插件开发与适配器开发文档',
-  base: process.env.DOCS_BASE ?? '/',
+  base: docsBase,
   cleanUrls: true,
+  vite: { server: { allowedHosts: true } },
+  markdown: {
+    config(md) {
+      const fence = md.renderer.rules.fence!
+      md.renderer.rules.fence = (tokens, index, options, env, renderer) => {
+        const token = tokens[index]
+        if (token.info.trim() === 'mermaid')
+          return `<MermaidDiagram code="${md.utils.escapeHtml(token.content)}" />\n`
+        return fence(tokens, index, options, env, renderer)
+      }
+    }
+  },
   lastUpdated: true,
   head: [
+    ['link', { rel: 'icon', type: 'image/png', sizes: '200x200', href: `${docsBase}favicon.png` }],
+    ['link', { rel: 'apple-touch-icon', sizes: '200x200', href: `${docsBase}favicon.png` }],
     ['meta', { name: 'theme-color', content: '#6750a4' }],
     ['meta', { name: 'color-scheme', content: 'light dark' }]
   ],
@@ -16,6 +62,7 @@ export default defineConfig({
       { text: '开始使用', link: '/guide/' },
       { text: '插件开发', link: '/plugin/' },
       { text: '适配器开发', link: '/adapter/' },
+      { text: '更新日志', link: '/changelog/' },
       {
         text: '生态',
         items: [
@@ -25,6 +72,7 @@ export default defineConfig({
       }
     ],
     sidebar: {
+      '/changelog/': changelogSidebar(),
       '/guide/': [
         {
           text: '开始使用',
@@ -45,47 +93,127 @@ export default defineConfig({
           ]
         },
         {
-          text: 'SDK',
+          text: '插件SDK方法',
           items: [
             { text: '接收消息与事件', link: '/plugin/routes-events' },
             { text: '调用 API', link: '/plugin/apis' },
-            { text: '通用富消息与互动', link: '/plugin/rich-messages' },
-            { text: '插件操作与控制台', link: '/plugin/actions' },
+            { text: '插件互调用', link: '/plugin/interop' },
+            { text: '自定义配置页面', link: '/plugin/dashboard-pages' },
             { text: '上下文、配置与日志', link: '/plugin/context-config' },
-            { text: 'ABI 兼容性与版本', link: '/plugin/api-compatibility' }
+            { text: 'ABI 兼容性与版本', link: '/plugin/api-compatibility' },
+            { text: '插件操作与控制台', link: '/plugin/actions' },
           ]
         },
         {
           text: 'Model',
           items: [
             { text: '通用 Model', link: '/plugin/models' },
+            { text: '消息段对照', link: '/plugin/segments' },
             {
               text: 'QQ Model',
+              collapsed: true,
               items: [
                 { text: 'QQ 特有能力', link: '/plugin/qq-model' },
                 {
-                  text: 'C# 接口参考',
+                  text: '接口参考',
                   link: '/plugin/qq-reference',
-                  collapsed: false,
+                  collapsed: true,
                   items: [
                     { text: '好友接口', link: '/plugin/qq/friend' },
                     { text: '群管理接口', link: '/plugin/qq/group' },
                     { text: '入群审批策略', link: '/plugin/qq/approval' },
                     { text: '文件接口', link: '/plugin/qq/file' },
                     { text: '账号与资料接口', link: '/plugin/qq/system' },
-                    { text: '原生消息接口', link: '/plugin/qq/message' },
-                    { text: '官方消息接口', link: '/plugin/qq/official-message' },
-                    { text: '官方媒体接口', link: '/plugin/qq/official-media' },
-                    { text: '官方私聊接口', link: '/plugin/qq/official-direct' },
-                    { text: '官方流式会话', link: '/plugin/qq/official-stream' },
-                    { text: 'C# 类型参考', link: '/plugin/qq/types' },
-                    { text: '官方 Markdown 与按钮', link: '/plugin/qq-official' }
+                    { text: '原生消息接口', link: '/plugin/qq/message' }
                   ]
-                }
+                },
+                {
+                  text: '官方机器人接口',
+                  link: '/plugin/qq/official',
+                  collapsed: false,
+                  items: [
+                    { text: 'Markdown 与按钮', link: '/plugin/qq-official' },
+                    { text: '消息接口', link: '/plugin/qq/official-message' },
+                    { text: '媒体接口', link: '/plugin/qq/official-media' },
+                    { text: '私聊接口', link: '/plugin/qq/official-direct' },
+                    { text: '流式会话', link: '/plugin/qq/official-stream' }
+                  ]
+                },
+                { text: 'C# 类型参考', link: '/plugin/qq/types' }
               ]
             },
-            { text: 'Discord Model', link: '/plugin/discord-model' },
-            { text: 'Telegram Model', link: '/plugin/telegram-model' }
+            {
+              text: 'Discord Model',
+              collapsed: true,
+              items: [
+                { text: 'Discord 特有能力', link: '/plugin/discord-model' },
+                {
+                  text: '接口参考',
+                  link: '/plugin/discord-reference',
+                  collapsed: true,
+                  items: [
+                    { text: '账号信息', link: '/plugin/discord/client' },
+                    { text: '服务器管理', link: '/plugin/discord/guild' },
+                    { text: '原生消息', link: '/plugin/discord/message' },
+                    { text: '原始调用', link: '/plugin/discord/raw' }
+                  ]
+                },
+                {
+                  text: '机器人接口',
+                  link: '/plugin/discord/bot',
+                  collapsed: true,
+                  items: [
+                    { text: '交互与应用命令', link: '/plugin/discord/interaction' }
+                  ]
+                },
+                {
+                  text: '用户账号接口',
+                  link: '/plugin/discord/user',
+                  collapsed: true,
+                  items: [
+                    { text: '账号操作', link: '/plugin/discord/account' }
+                  ]
+                },
+                { text: 'C# 类型参考', link: '/plugin/discord/types' }
+              ]
+            },
+            {
+              text: 'Telegram Model',
+              collapsed: true,
+              items: [
+                { text: 'Telegram 特有能力', link: '/plugin/telegram-model' },
+                {
+                  text: '接口参考',
+                  link: '/plugin/telegram-reference',
+                  collapsed: true,
+                  items: [
+                    { text: '账号信息', link: '/plugin/telegram/client' },
+                    { text: '会话管理', link: '/plugin/telegram/chat' },
+                    { text: '原生消息', link: '/plugin/telegram/message' }
+                  ]
+                },
+                {
+                  text: '机器人接口',
+                  link: '/plugin/telegram/bot',
+                  collapsed: true,
+                  items: [
+                    { text: 'inline 模式', link: '/plugin/telegram/inline' },
+                    { text: '支付', link: '/plugin/telegram/payment' },
+                    { text: '命令菜单与资料', link: '/plugin/telegram/bot-profile' },
+                    { text: 'Bot API 原始调用', link: '/plugin/telegram/bot-api' }
+                  ]
+                },
+                {
+                  text: '用户账号接口',
+                  link: '/plugin/telegram/user',
+                  collapsed: true,
+                  items: [
+                    { text: '账号操作', link: '/plugin/telegram/account' }
+                  ]
+                },
+                { text: 'C# 类型参考', link: '/plugin/telegram/types' }
+              ]
+            }
           ]
         },
         {

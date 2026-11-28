@@ -1,11 +1,11 @@
 # 创建第一个插件
 
-本章创建一个可以响应群聊和私聊消息的单 DLL 插件。后续按用途阅读 [接收消息与事件](/plugin/routes-events)、[调用 API](/plugin/apis)、[插件操作与控制台](/plugin/actions) 和 [Model](/plugin/models)。
+本章创建响应群聊和私聊消息的单 DLL 插件。其他功能见 [接收消息与事件](/plugin/routes-events)、[调用 API](/plugin/apis)、[插件操作与控制台](/plugin/actions) 和 [Model](/plugin/models)。
 
 ## 环境要求
 
-- .NET SDK 10
-- 支持 `net10.0` 的 IDE，例如 Rider 或 Visual Studio
+- .NET SDK 11
+- 支持 `net11.0` 的 IDE，例如 Rider 或 Visual Studio
 - 与目标宿主版本一致的 `ShiroBot.SDK` NuGet 包（由模板项目引用）
 
 ## 创建项目
@@ -16,7 +16,7 @@ dotnet new shirobot-plugin -n HelloPlugin --creator "Your Name" --allow-scripts 
 cd HelloPlugin
 ```
 
-已安装过模板的用户可以用以下命令更新到最新版本：
+更新已安装的模板：
 
 ```bash
 dotnet new update --check-only  # 检查是否有更新
@@ -81,7 +81,7 @@ public sealed class Plugin : PluginBase
 }
 ```
 
-`BotPlugin` 的第一个参数是稳定插件 ID，宿主使用它去重、热卸载、匹配群路由和创建数据目录。发布新版本时不要随意修改 ID。
+`BotPlugin` 的第一个参数是稳定插件 ID，宿主用它去重、热卸载、匹配群路由和创建数据目录。发布新版本时不要随意修改 ID。
 
 ### 元数据字段
 
@@ -100,7 +100,7 @@ public sealed class Plugin : PluginBase
 
 大部分插件只需要 `ConfigureRoutes()`。宿主为插件设置 `Context` 后同步调用它，然后才读取并注册路由。
 
-只有确实存在异步初始化时才重写 `LoadAsync()`：
+需要异步初始化时重写 `LoadAsync()`：
 
 ```csharp
 protected override async Task LoadAsync()
@@ -132,15 +132,7 @@ protected override Task OnUnloadAsync()
 dotnet build -c Release
 ```
 
-SDK 会识别带有 `BotPluginAttribute` 的程序集并自动处理依赖。将以下文件复制到宿主：
-
-```text
-bin/Release/net10.0/HelloPlugin.dll
-    ↓
-ShiroBot/plugins/HelloPlugin.dll
-```
-
-启动宿主,将插件dll复制到plugins目录中加载。
+SDK 识别带有 `BotPluginAttribute` 的程序集并自动处理依赖。将 `bin/Release/net11.0/HelloPlugin.dll` 复制为宿主目录中的 `plugins/HelloPlugin.dll`，然后启动宿主。
 
 ### 本地调试
 
@@ -149,7 +141,7 @@ ShiroBot/plugins/HelloPlugin.dll
 1. 打开生成的项目或解决方案。通过 Rider 的新建项目窗口选择 **ShiroBot Plugin** 也可以；是否将解决方案和项目放在同一目录不影响运行。
 2. 将构建配置设为 **Debug**，保留运行配置中的“启动前构建”步骤。
 3. 首次使用先构建项目。如果创建项目时没有执行准备脚本，Debug 构建会自动下载与 `Directory.Packages.props` 中 SDK 版本匹配的宿主，并复制插件及调试符号。
-4. 选择唯一的 **ShiroBot** 运行配置，点击三角形运行，或点击小虫子调试。该配置直接启动 .NET 宿主，Run 与 Debug 共用，不需要再选择单独的 Debug 配置。
+4. 选择唯一的 **ShiroBot** 运行配置，点击三角形运行，或点击小虫子调试。该配置直接启动 .NET 宿主，供 Run 与 Debug 共用。
 5. 在 `src/Plugin.cs` 的 `ping` 处理方法中设置断点。到开发宿主的 Dashboard 添加并启用适配器实例，连接机器人后发送 `#ping`；插件会回复 `pong`，调试时会命中断点。
 
 创建项目时自动选择当前操作系统，宿主架构由当前 .NET SDK 的 RID 决定，例如 `osx-arm64`。`Properties/launchSettings.json` 定义启动入口；开发宿主位于项目目录下的 `.shirobot-dev/host/<RID>/`。
@@ -187,12 +179,12 @@ Run、Debug 和脚本启动默认允许控制台交互；需要关闭输入时�
 
 #### 测试尚未发布的宿主 / SDK
 
-这只适用于开发版本测试，正式发布的版本不需要手动准备：
+测试尚未发布的开发版本时，按以下步骤准备：
 
 1. 从同一份源码构建 SDK 和 Templates NuGet 包，将模板包用 `dotnet new install <模板包路径>` 安装；给生成项目配置本地 NuGet 源，确保 SDK 从该目录还原。已有同版本本地 SDK 缓存时，确认没有继续使用旧构建。
 2. 从对应源码发布当前系统/架构的宿主，将发布目录中的文件放入项目的 `.shirobot-dev/host/<RID>/`，保留可执行权限。
-3. 在该目录创建 `.host-version` 文本文件，内容为 `Directory.Packages.props` 中的 SDK 产品版本，例如 `1.0.0`。脚本仅在可执行文件存在且版本标记匹配时跳过自动下载。
-4. 再执行 Debug 构建并使用同一个 **ShiroBot** 配置调试。不要用旧版本宿主冒充新的 SDK 版本。
+3. 在该目录创建 `.host-version` 文本文件，内容为 `Directory.Build.props` 中的 SDK 产品版本。脚本仅在可执行文件存在且版本标记匹配时跳过自动下载。
+4. 再执行 Debug 构建并使用同一个 **ShiroBot** 配置调试。宿主可执行文件应与该 SDK 版本匹配。
 
 使用 `dotnet new shirobot-plugin` 生成的项目会带 `.github/workflows/release.yml`。推送代码或提交 PR 时自动构建；将 `src/Plugin.cs` 中的 `Version` 改为目标版本后推送同版本 tag（如 `v1.0.0`），Action 会把 Release 构建输出的 ZIP 和入口 DLL 上传到 GitHub Release。
 

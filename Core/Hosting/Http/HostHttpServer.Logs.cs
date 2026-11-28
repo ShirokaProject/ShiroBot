@@ -1,64 +1,41 @@
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.IO.Compression;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
-using ShiroBot.Configuration;
-using ShiroBot.Hosting.Events;
-using ShiroBot.Hosting.Context;
-using ShiroBot.Adapters;
-using ShiroBot.Components.Reloading;
-using ShiroBot.Hosting.Logging;
-using ShiroBot.Hosting.Runtime;
-using ShiroBot.Packages;
-using ShiroBot.Plugins;
-using ShiroBot.Plugins.Loading;
-using ShiroBot.Plugins.Marketplace;
-using ShiroBot.Update;
-using ShiroBot.Console;
-using ShiroBot.Integrations.Avalonia;
-using ShiroBot.SDK.Abstractions;
-using ShiroBot.SDK.Plugin;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Routing;
 
 namespace ShiroBot.Hosting.Http;
 
 internal sealed partial class HostHttpServer
 {
-    private static void MapLogEndpoints(RouteGroupBuilder api, HostLogHub logHub)
+    internal sealed partial class DiagnosticsEndpoints
     {
-        api.MapGet("/logs/sources", () => Results.Ok(logHub.GetSources()));
-        api.MapGet("/logs/stream", async context =>
+        private void MapLogs(RouteGroupBuilder api)
         {
-            if (!context.WebSockets.IsWebSocketRequest)
+            api.MapGet("/logs/sources", () => Results.Ok(logHub.GetSources()));
+            api.MapGet("/logs/stream", async context =>
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await context.Response.WriteAsync("Expected WebSocket request.").ConfigureAwait(false);
-                return;
-            }
+                var source = context.Request.Query.TryGetValue("source", out var sourceValues)
+                    ? sourceValues.ToString()
+                    : "all";
+                var tail = context.Request.Query.TryGetValue("tail", out var tailValues) &&
+                           int.TryParse(tailValues.ToString(), out var parsedTail)
+                    ? parsedTail
+                    : 100;
 
-            var source = context.Request.Query.TryGetValue("source", out var sourceValues)
-                ? sourceValues.ToString()
-                : "all";
-            var tail = context.Request.Query.TryGetValue("tail", out var tailValues) &&
-                       int.TryParse(tailValues.ToString(), out var parsedTail)
-                ? parsedTail
-                : 100;
-
-            using var webSocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-            await logHub.StreamAsync(webSocket, source, tail, context.RequestAborted).ConfigureAwait(false);
-        });
+                context.Response.ContentType = "text/event-stream";
+                context.Response.Headers.CacheControl = "no-cache, no-transform";
+                context.Response.Headers["X-Accel-Buffering"] = "no";
+                context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+                try
+                {
+                    await logHub.StreamAsync(context.Response.Body, source, tail, context.RequestAborted).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
+                catch (Exception error) when (error is IOException or OperationCanceledException)
+                {
+                    context.Abort(); // Slow/disconnected clients reconnect and receive a fresh bounded history.
+                }
+            });
+        }
     }
-
 }

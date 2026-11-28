@@ -45,7 +45,7 @@ if (-not (Test-Path $hostExe) -or $installedVersion -ne $sdkVersion) {
 }
 
 $pluginDir = Join-Path $cacheDir 'plugins/PluginTemplate'
-$buildDir = (Resolve-Path 'bin/Debug/net10.0').Path
+$buildDir = (Resolve-Path 'bin/Debug/net11.0').Path
 $manifest = Join-Path $pluginDir '.shirobot-dev-files'
 New-Item -ItemType Directory -Force $pluginDir | Out-Null
 # Remove files copied by the previous run that the build no longer produces. Files the

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using ShiroBot.Metadata;
+using ShiroBot.SDK.Plugin;
 
 namespace ShiroBot.Hosting.Runtime;
 
@@ -9,15 +10,17 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
     private const int BucketHours = 2;
     private const int BucketCount = 24 / BucketHours;
     private const int MaxEvents = 20;
+
     /// <summary>Errors are one-off events; the overview stops reporting one after this long.</summary>
     internal static readonly TimeSpan ErrorDisplayDuration = TimeSpan.FromHours(1);
 
+    private readonly Queue<RuntimeEvent> _events = new();
+
     private readonly Lock _lock = new();
     private readonly int[] _messageBuckets = new int[BucketCount];
-    private readonly Queue<RuntimeEvent> _events = new();
     private readonly Dictionary<string, string> _restartReasons = new(StringComparer.Ordinal);
-    private long _messageCount;
     private RuntimeEvent? _latestError;
+    private long _messageCount;
 
     private DateTimeOffset StartedAt { get; } = startedAt;
     private string BotVersion { get; } = GetBotVersion();
@@ -77,15 +80,9 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         lock (_lock)
         {
             _events.Enqueue(runtimeEvent);
-            while (_events.Count > MaxEvents)
-            {
-                _events.Dequeue();
-            }
+            while (_events.Count > MaxEvents) _events.Dequeue();
 
-            if (string.Equals(level, "error", StringComparison.OrdinalIgnoreCase))
-            {
-                _latestError = runtimeEvent;
-            }
+            if (string.Equals(level, "error", StringComparison.OrdinalIgnoreCase)) _latestError = runtimeEvent;
         }
     }
 
@@ -97,6 +94,7 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
             _restartReasons[source] = message;
             while (_restartReasons.Count > MaxEvents) _restartReasons.Remove(_restartReasons.Keys.First());
         }
+
         RecordEvent(message, "warning");
     }
 
@@ -105,22 +103,25 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         lock (_lock)
         {
             var reasons = _restartReasons.Where(item => scope is null ||
-                (scope == "plugin" && (item.Key.StartsWith("plugin:", StringComparison.Ordinal) ||
-                    item.Key.StartsWith("plugin-", StringComparison.Ordinal) || item.Key == "shadow-cleanup")) ||
-                (scope == "adapter" && (item.Key.StartsWith("adapter:", StringComparison.Ordinal) ||
-                    item.Key.StartsWith("adapter-", StringComparison.Ordinal))))
+                                                        (scope == "plugin" &&
+                                                         (item.Key.StartsWith("plugin:", StringComparison.Ordinal) ||
+                                                          item.Key.StartsWith("plugin-", StringComparison.Ordinal) ||
+                                                          item.Key == "shadow-cleanup")) ||
+                                                        (scope == "adapter" &&
+                                                         (item.Key.StartsWith("adapter:", StringComparison.Ordinal) ||
+                                                          item.Key.StartsWith("adapter-", StringComparison.Ordinal))))
                 .Select(item => item.Value).ToArray();
             return new { recommended = reasons.Length > 0, reasons };
         }
     }
 
-    /// <summary>The overview's data for plugins; see <see cref="ShiroBot.SDK.Plugin.IBotContext.GetHostStatus"/>.</summary>
-    public ShiroBot.SDK.Plugin.HostStatus CreateHostStatus(DateTimeOffset? now = null)
+    /// <summary>The overview's data for plugins; see <see cref="ShiroBot.SDK.Plugin.IBotContext.GetHostStatus" />.</summary>
+    public HostStatus CreateHostStatus(DateTimeOffset? now = null)
     {
         lock (_lock)
         {
             ExpireLatestError(now);
-            return new ShiroBot.SDK.Plugin.HostStatus
+            return new HostStatus
             {
                 Version = BotVersion,
                 SdkAbiVersion = BotMetadataProvider.SdkAbiVersion,
@@ -130,12 +131,15 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
                 PluginCount = PluginsCount,
                 ModelCount = ModelsCount,
                 MessageCount = _messageCount,
-                MessageFrequency = Enumerable.Range(0, BucketCount).Select(i => new ShiroBot.SDK.Plugin.MessageFrequencyBucket
-                {
-                    Start = new TimeOnly(i * BucketHours, 0),
-                    End = new TimeOnly((i + 1) * BucketHours % 24, 0),
-                    Count = _messageBuckets[i]
-                }).ToArray(),
+                MessageFrequency =
+                [
+                    .. Enumerable.Range(0, BucketCount).Select(i => new MessageFrequencyBucket
+                    {
+                        Start = new TimeOnly(i * BucketHours, 0),
+                        End = new TimeOnly((i + 1) * BucketHours % 24, 0),
+                        Count = _messageBuckets[i]
+                    })
+                ],
                 Healthy = _latestError is null,
                 LatestError = _latestError?.Message
             };
@@ -194,11 +198,9 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
     private static string GetBotVersion()
     {
         var assembly = typeof(Program).Assembly;
-        var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        if (!string.IsNullOrWhiteSpace(informationalVersion))
-        {
-            return informationalVersion.Split('+', 2)[0];
-        }
+        var informationalVersion =
+            assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informationalVersion)) return informationalVersion.Split('+', 2)[0];
 
         return assembly.GetName().Version?.ToString(3) ?? "0.9.5";
     }
@@ -217,7 +219,6 @@ internal sealed class HostRuntimeState(DateTimeOffset startedAt)
         // ReSharper disable once UnusedAutoPropertyAccessor.Local
         public string Level { get; init; } = string.Empty;
 
-        [JsonIgnore]
-        public DateTimeOffset RecordedAt { get; init; }
+        [JsonIgnore] public DateTimeOffset RecordedAt { get; init; }
     }
 }

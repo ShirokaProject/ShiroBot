@@ -12,23 +12,56 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 
 启动、停止、重载或更新适配器不会自动重启插件。插件实例、配置监听及事件订阅保持不变，通用接口按 `InstanceId` 路由到重新加载的实例。重载期间目标实例可能暂时不可用，其他实例继续运行。
 
-如果插件缓存了 `GetAdapterExtension<T>()` 返回的对象，或适配器自身有未释放引用，旧程序集可能无法卸载。宿主会提示需要重启，阻止该实例重复加载；更新包可以暂存到重启时应用。不会为释放适配器引用而自动卸载所有插件。
+如果插件缓存了 `GetAdapterExtension<T>()` 返回的对象，或适配器自身有未释放引用，旧程序集可能无法卸载。宿主会提示需要重启，阻止该实例重复加载；更新包可以暂存到重启时应用。
 
 ## 在 Dashboard 中编辑 config.toml
 
-在插件或适配器的配置窗口中点击“在完整页面打开”，完整配置页右上角可以切换到“编辑 config.toml”，直接编辑配置文件的全部内容，包括表单中没有的字段。保存时宿主先校验 TOML 格式，格式错误不会写入；校验通过后写入文件并立即应用，与表单保存相同。
+在插件或适配器配置窗口点击“在完整页面打开”，再从右上角切换到“编辑 config.toml”，即可编辑全部配置，包括表单未列出的字段。保存时宿主先校验 TOML 格式，通过后写入并立即应用，与表单保存相同；格式错误不会写入。
 
 如果配置文件在打开编辑器之后被其他地方修改（手工编辑、插件自身保存或另一个 Dashboard 页面），保存会被拒绝，需要重新加载后再编辑。插件编辑的是自己的 `config.toml`，注释会保留；多实例适配器只编辑当前实例的配置表，保存后不保留注释。
 
 ## 自动更新
 
-插件、适配器和主程序的自动更新分别开关，默认都关闭。开启任意一项后，宿主每天在 `auto_update_time`（默认 `02:00`）依次更新已开启的项目：
+自动更新的设置都在 `[update]` 表里。插件、适配器和主程序分别开关，默认都关闭；开启任意一项后，宿主每天在 `time`（默认 `02:00`）依次更新已开启的项目：
 
-1. `auto_update_plugins`：配置了 GitHub 仓库的已加载插件；
-2. `auto_update_adapters`：在适配器市场中有新版本的已安装适配器包（跳过预发布版本，下载时校验 SHA-256）；
-3. `auto_update_host`：主程序本身（与 Dashboard 中的主程序更新相同，新版本先试运行再替换，替换后自动重启）。
+1. `plugins`：配置了 GitHub 仓库的已加载插件；
+2. `adapters`：在适配器市场中有新版本的已安装适配器包（跳过预发布版本，下载时校验 SHA-256）；
+3. `host`：主程序本身（与 Dashboard 中的主程序更新相同，新版本先试运行再替换，替换后自动重启）。
 
-插件或适配器当前版本无法热替换时，新版本会暂存到下次启动。`auto_update_restart_on_pending` 默认开启，此时自动更新结束后会重启宿主完成替换；关闭后只记录日志并在 Dashboard 中提示需要重启。主程序已更新并重启时会一并完成暂存的替换。
+```toml
+[update]
+host = false
+plugins = true
+exclude_plugins = ["AiChatPlugin", "MyPatchedPlugin"]
+adapters = true
+exclude_adapters = ["qq-official"]
+skip_major = true
+time = "02:00"
+restart_on_pending = true
+```
+
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `host` | `false` | 每天自动更新主程序 |
+| `plugins` | `false` | 每天自动更新插件 |
+| `exclude_plugins` | `[]` | 不自动更新的插件 ID |
+| `adapters` | `false` | 每天自动更新适配器包 |
+| `exclude_adapters` | `[]` | 不自动更新的适配器包 ID |
+| `skip_major` | `true` | 主版本号变化时不自动更新，只通知 Owner |
+| `time` | `"02:00"` | 执行时间，`HH:mm`，宿主本地时区 |
+| `restart_on_pending` | `true` | 有插件或适配器无法热替换时，自动重启宿主完成更新 |
+
+Dashboard 的插件页和适配器页也有自动更新开关，和配置中心修改的是同一份配置。
+
+### 排除和跳过大版本
+
+不想自动更新的插件或适配器写进 `exclude_plugins` / `exclude_adapters`，填插件 ID 或适配器包 ID，不区分大小写；也可以在 Dashboard 的插件或适配器详情中关掉“自动更新”。新安装的插件和适配器默认参与自动更新。
+
+`skip_major` 默认开启：新版本的主版本号变大（如 `1.4.3` → `2.0.0`）时不自动安装，只通知 Owner 手动更新，同一个版本只通知一次。插件、适配器和主程序都适用。版本号读不出主版本号（如日期或 commit hash）时照常更新。
+
+### 执行规则
+
+插件或适配器当前版本无法热替换时，新版本会暂存到下次启动。`restart_on_pending` 开启时，自动更新结束后会重启宿主完成替换；关闭后只记录日志并在 Dashboard 中提示需要重启。主程序已更新并重启时会一并完成暂存的替换。
 
 执行时间使用宿主所在系统的本地时区。到点后一小时内宿主未运行时当天跳过；每天只执行一次，执行日期记录在 `cache/auto-update-last-run`，更新导致的重启不会在当天再次执行。单个插件或适配器更新失败只记录警告，不影响其他项目。
 
@@ -37,7 +70,7 @@ ShiroBot 使用 TOML。默认核心配置文件位于宿主程序旁的 `config.
 `owner_notifications` 默认开启，宿主会私聊 `owner_list` 中当前已加载实例的 Owner：
 
 - 每日自动更新的结果：更新了哪些插件、适配器或主程序，哪些失败或无法热替换，以及是否自动重启。没有任何更新时不发送。主程序更新会重启宿主，通知在重启前发出。
-- 待确认的更新（控制台 `update check` 或插件通过 `IUpdater` 请求的更新）：引用回复这条消息「确认」执行更新、「取消」放弃，24 小时内有效；其他内容会提示正确的回复方式。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 收到的同一条通知也随之失效。控制台的 `update confirm <id>` / `update cancel <id>` 仍然可用。
+- 待确认的更新（控制台 `update`、`plugin update` 或插件通过 `IUpdater` 请求的更新）：引用回复这条消息「确认」执行更新、「取消」放弃，24 小时内有效；其他内容会提示正确的回复方式。只接受 Owner 的回复，任意一位 Owner 处理后其他 Owner 收到的同一条通知也随之失效。控制台的 `update confirm|cancel <id>`（主程序）和 `plugin update confirm|cancel <id>`（插件）仍然可用。
 
 关闭后宿主不再私聊 Owner，待确认的更新只能在控制台处理。
 
@@ -55,15 +88,20 @@ disable_console_input = false
 github_proxy = ""
 host_update_repository = "ShirokaProject/ShiroBot"
 owner_notifications = true
-auto_update_plugins = false
-auto_update_adapters = false
-auto_update_host = false
-auto_update_time = "02:00"
-auto_update_restart_on_pending = true
 avalonia_theme = "Auto"
 
 owner_list = ["qq-work:123456789"]
 admin_list = ["qq-official:06E88C1E2090950724B8D9E8A4E097E3"]
+
+[update]
+host = false
+plugins = false
+exclude_plugins = []
+adapters = false
+exclude_adapters = []
+skip_major = true
+time = "02:00"
+restart_on_pending = true
 
 [api]
 enable = true
@@ -91,11 +129,7 @@ groups = [10001, 10002]
 | `github_proxy` | 空 | GitHub 下载代理前缀 |
 | `host_update_repository` | `ShirokaProject/ShiroBot` | 宿主更新仓库 |
 | `owner_notifications` | `true` | 私聊推送重要信息给 Owner，见 [Owner 通知](#owner-通知) |
-| `auto_update_plugins` | `false` | 每天自动更新插件，见[自动更新](#自动更新) |
-| `auto_update_adapters` | `false` | 每天自动更新适配器包 |
-| `auto_update_host` | `false` | 每天自动更新主程序 |
-| `auto_update_time` | `02:00` | 自动更新时间，`HH:mm`，宿主本地时区 |
-| `auto_update_restart_on_pending` | `true` | 自动更新中有插件或适配器无法热替换时，自动重启宿主完成更新 |
+| `[update]` | — | 自动更新，见[自动更新](#自动更新) |
 | `avalonia_theme` | `Auto` | `Light`、`Dark` 或 `Auto`（按时间切换，18:00–6:00 为深色） |
 | `owner_list` | `[]` | 所有者身份列表（`instanceId:userId`）；自动拥有管理员权限，`Context.IsOwner` 和 `Context.IsAdmin` 均返回 `true` |
 | `admin_list` | `[]` | 管理员身份列表（`instanceId:userId`）；owner 无需重复填写，插件通过 `Context.IsAdmin` 判断 |
@@ -107,7 +141,7 @@ groups = [10001, 10002]
 
 ### 开发时加载独立适配器 DLL
 
-已安装包的总开关只由主配置 `protocols` 管理，例如 `protocols = ["qq-official", "milky"]`。Dashboard 打开包时添加其 ID，关闭时移除；包内实例的 `enabled` 与连接配置保存在适配器自己的 `config.toml`。只有包 ID 已列入且实例启用时才启动。旧总开关文件和旧实例注册表不读取、不迁移。手工修改总开关在重启时应用，Dashboard 开关立即操作运行状态。
+已安装包的总开关只由主配置 `protocols` 管理，例如 `protocols = ["qq-official", "milky"]`。Dashboard 打开包时添加其 ID，关闭时移除；包内实例的 `enabled` 与连接配置保存在适配器自己的 `config.toml`。只有包 ID 已列入且实例启用时才启动。手工修改总开关在重启时应用，Dashboard 开关立即操作运行状态。
 
 开发适配器时，可以不打包安装，直接加载一个 DLL：
 
@@ -120,7 +154,7 @@ protocols = ["MyAdapter"]
 
 ## 适配器实例清单
 
-把实例清单和连接配置放在各适配器自己的 `config.toml` 中，主配置不再保存实例。安装包后，在 Dashboard 展开适配器并添加唯一 ID，或直接编辑文件：
+把实例清单和连接配置放在各适配器自己的 `config.toml` 中，主配置只管理适配器包的总开关。安装包后，在 Dashboard 展开适配器并添加唯一 ID，或直接编辑文件：
 
 ```toml
 [[instances]]
@@ -139,7 +173,7 @@ enabled = false
 # 另一个账号的连接配置。
 ```
 
-实例 ID 全局唯一，enabled 默认 false，不再自动创建包 ID 对应的实例。`instances = []` 保留已安装包但不加载机器人。WebUI/CLI 创建、启停、删除写回同一份文件；修改实例清单后重启生效。没有 `[[instances]]` 的旧配置按单实例处理（实例 ID 为包 ID，根配置即连接配置），文件保持原样；新增实例、重命名或删除该实例时才改写为 `[[instances]]`，并保留 ID、启用状态和连接配置。
+实例 ID 全局唯一，enabled 默认 false，实例需显式创建。`instances = []` 保留已安装包但不加载机器人。WebUI/CLI 创建、启停、删除写回同一份文件；修改实例清单后重启生效。单实例也可使用根级连接配置，此时实例 ID 为包 ID；添加实例或编辑实例清单时，宿主写入 `[[instances]]` 结构，并保留实例 ID、启用状态和连接配置。
 
 完整部署、备份和无需 WebUI 的管理方法见[配置与部署](/adapter/deployment#没有-webui-时)。
 
@@ -147,13 +181,13 @@ enabled = false
 
 Dashboard 的“关于”页可手动检查宿主更新。找到适合当前平台、架构和运行形态的发布包后，可点击“更新并重启”。此功能适用于单文件 Release 发布包；开发运行或通过 `dotnet ShiroBot.dll` 启动时只检查版本。Docker 中会显示拉取新镜像的命令；systemd 服务更新后需要 `Restart=on-failure` 或 `Restart=always` 才能自动重启。
 
-控制台可使用 `update check host`、`update check plugins`，再通过 `update confirm <id>` 执行更新。插件更新与 Dashboard 共用整包替换逻辑，保留 `config.toml` 和组件数据；无法卸载或文件被占用时暂存新包，重启宿主后应用。执行失败的更新请求仍可再次确认，或使用 `update cancel <id>` 取消。
+控制台使用 `update` 检查主程序、`plugin update` 检查插件，再通过 `update confirm <id>` 或 `plugin update confirm <id>` 执行更新。插件更新与 Dashboard 共用整包替换逻辑，保留 `config.toml` 和组件数据；无法卸载或文件被占用时暂存新包，重启宿主后应用。执行失败的更新请求仍可再次确认，或使用对应的 `cancel <id>` 取消。
 
 Dashboard 删除插件时会取消同一插件的待确认更新和暂存更新。如果当前版本无法卸载或文件仍被占用，删除任务会写入 `plugins/.update/<id>/`，面板提示重启后删除。下次启动会在加载插件、应用更新之前执行删除；失败的删除任务保留，后续启动继续重试。
 
 ## 插件群路由
 
-群路由用于限制插件在哪些群中接收事件。
+群路由指定插件可以在哪些群中接收事件。
 
 ```toml
 [plugin_routes.default]
@@ -172,7 +206,21 @@ mode = "whitelist"
 groups = [10001, 10002]
 ```
 
-路由配置保存后会热更新，插件不需要重新加载。
+路由配置保存后立即生效。
+
+## 插件优先级
+
+插件按优先级接收事件：数字越小越先收到，相同数字并发执行；某个插件处理了消息（例如命令匹配）后，数字更大的插件不再收到。插件在 `BotPlugin` 中声明优先级，未声明时为 `2`。私聊命令同时触发 AI 回复时，把 AI 插件设为更大的数字（如 `10`）即可。
+
+Owner 可以按插件 ID 覆盖，支持负数：
+
+```toml
+[plugin_routes.priorities]
+ai-chat = 10
+guard = 0
+```
+
+只写入单独设置过的插件，其余插件使用自己声明的值。Dashboard 插件配置的“路由”页可以修改或恢复插件默认，保存后立即生效。插件开发说明见[优先级与已处理](/plugin/routes-events#优先级与已处理)。
 
 ## HTTP API
 
@@ -186,8 +234,8 @@ token = ""
 
 - `enable_dashboard` 默认为 `true`。设为 `false` 后不提供宿主 `/dashboard` 页面及其静态资源；HTTP API 和插件 Web 路由仍可使用，适合使用独立部署的 Dashboard。修改后重启宿主生效。`api.enable = false` 则关闭整个 HTTP 服务。
 - `listen_urls` 是监听地址列表；只监听一个地址时也写成单元素数组，默认为 `["http://127.0.0.1:7001"]`。
-- `public_base_url` 是反向代理后的外部地址数组，插件 `Context.WebHost` 生成链接使用第一个非空地址；空数组使用第一个监听地址。只接受数组，不兼容旧字符串格式。额外的公开地址需要自行配置 DNS、反向代理，数组本身不会新增监听或执行负载均衡。
-- API 始终要求鉴权，配置使用 `[api].token`，不再提供 `[api.auth]` 或关闭鉴权的开关。`token` 为空时，宿主启动会自动生成随机令牌并写回配置；运行时不能通过配置 API 将令牌设为空。旧 `api.auth.key` 不再读取，需要将原值手动填入 `api.token`。
+- `public_base_url` 是反向代理后的外部地址数组，插件 `Context.WebHost` 生成链接使用第一个非空地址；空数组使用第一个监听地址。额外公开地址的 DNS、反向代理和负载均衡需另行配置。
+- API 始终要求鉴权，令牌由 `[api].token` 配置。`token` 为空时，宿主启动会自动生成随机令牌并写回配置；运行时不能通过配置 API 将令牌设为空。
 
 使用 Nginx、Caddy 等反向代理时，应同时配置 TLS 和访问控制。
 
@@ -209,7 +257,7 @@ token = ""
 timeout_seconds = 15
 ```
 
-新插件可继承 `PluginBase<TConfig>`，由宿主在 `LoadAsync()` 前加载 `TConfig`。新 Adapter 实现 `IConfigurableAdapter` 和 `IConfigurableComponent<TConfig>`；宿主在调用 `StartAsync()` 前加载配置，并负责文件监听和热更新派发。组件只需在 `OnConfigChangedAsync` 中更新它缓存的运行资源。未迁移的旧组件仍可使用 `IConfigContext.Load<T>()` 和 `Watch<T>()`。
+插件可继承 `PluginBase<TConfig>`，由宿主在 `LoadAsync()` 前加载 `TConfig`。Adapter 实现 `IConfigurableAdapter` 和 `IConfigurableComponent<TConfig>`；宿主在调用 `StartAsync()` 前加载配置，并负责文件监听和热更新派发。组件只需在 `OnConfigChangedAsync` 中更新它缓存的运行资源。组件也可通过 `IConfigContext.Load<T>()` 和 `Watch<T>()` 显式加载与监听配置。
 
 配置字段可通过 `ConfigFieldAttribute` 声明分类和顺序：`Group` 是稳定分类 ID，`GroupLabel` 是界面显示名称，`GroupIcon` 和 `GroupDescription` 提供分类图标与说明；Dashboard Schema 会返回这些分类元数据。Core、Plugin 和 Adapter 共用 TOML 读写器，但由宿主按各自生命周期加载：Core 在启动早期读取，Plugin/Adapter 在组件加载时读取。
 
@@ -225,9 +273,9 @@ timeout_seconds = 15
 
 配置 API：`GET/PATCH /api/v1/config` 管理宿主配置。GET 返回 `{ schema, config }`：`config` 使用 CoreConfig 对应的 snake_case 嵌套结构，`schema` 提供可编辑字段、默认值和分类元数据（稳定 ID、名称、图标、说明与顺序）。PATCH 请求使用 `{ "config": { ... } }`，字段键与 Schema 一致；Dashboard 按该 Schema 展示和生成更新内容，不维护另一份宿主配置字段表。由适配器总开关 API 管理的 `protocols` 和由专门路由 API 管理的 `plugin_routes` 不包含在可编辑 Schema 中。
 
-`GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和旧组件仅保存文件的情况。
+`GET/PATCH /api/v1/plugins/{id}/config` 与 `GET/PATCH /api/v1/adapters/{id}/config` 管理组件配置。PATCH 响应的 `apply_status` 区分已应用、等待组件启动和仅保存文件的情况。
 
 权限配置不接受裸用户 ID。冒号等保留字符按 URI 组件编码，例如用户 ID 内的 `:` 写成 `%3A`。
-相同用户在两个实例共享权限时，分别配置两个条目；不同平台的相同 ID 不再互相授予权限。
+相同用户在两个实例共享权限时，分别配置两个条目；权限按实例隔离，不同平台的相同 ID 不会互相授予权限。
 
-1.0 仅支持当前宿主配置格式，不迁移旧字段、不修复旧版重复配置段。`protocols`、`listen_urls`、`public_base_url` 均使用数组，鉴权令牌使用 `api.token`。新生成配置将 `[api]` 放在 `[plugin_routes]` 之前；保存已有配置仍保留用户的段落顺序和注释。
+`protocols`、`listen_urls`、`public_base_url` 均使用数组，鉴权令牌使用 `api.token`。生成配置时将 `[api]` 放在 `[plugin_routes]` 之前；保存已有配置仍保留用户的段落顺序和注释。

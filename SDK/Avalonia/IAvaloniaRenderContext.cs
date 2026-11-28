@@ -5,7 +5,7 @@ using ShiroBot.SDK.Plugin;
 namespace ShiroBot.AvaloniaSdk;
 
 /// <summary>
-/// Options for rendering an Avalonia control in the host headless renderer.
+///     Options for rendering an Avalonia control in the host headless renderer.
 /// </summary>
 public sealed record ControlRenderOptions(
     RenderTheme Theme = RenderTheme.Light,
@@ -15,7 +15,7 @@ public sealed record ControlRenderOptions(
 }
 
 /// <summary>
-/// Avalonia rendering capabilities supplied by every ShiroBot host.
+///     Avalonia rendering capabilities supplied by every ShiroBot host.
 /// </summary>
 public interface IAvaloniaRenderContext : IRenderContext
 {
@@ -34,9 +34,12 @@ public interface IAvaloniaRenderContext : IRenderContext
 
 public static class RenderContextExtensions
 {
-    private static IAvaloniaRenderContext AsAvalonia(this IRenderContext? renderer) =>
-        renderer as IAvaloniaRenderContext
-        ?? throw new InvalidOperationException("Avalonia rendering is unavailable because host initialization failed.");
+    private static IAvaloniaRenderContext AsAvalonia(this IRenderContext? renderer)
+    {
+        return renderer as IAvaloniaRenderContext
+               ?? throw new InvalidOperationException(
+                   "Avalonia rendering is unavailable because host initialization failed.");
+    }
 
     extension(IBotContext context)
     {
@@ -44,14 +47,18 @@ public static class RenderContextExtensions
             object? dataContext = null,
             ControlRenderOptions? options = null,
             CancellationToken ct = default)
-            where TControl : Control, new() =>
-            context.Render.AsAvalonia().RenderControlPngAsync<TControl>(dataContext, options, ct);
+            where TControl : Control, new()
+        {
+            return context.Render.AsAvalonia().RenderControlPngAsync<TControl>(dataContext, options, ct);
+        }
 
         public Task<string> RenderControlPngToFileUriAsync<TControl>(
             object? dataContext = null,
             ControlRenderOptions? options = null,
             CancellationToken ct = default)
-            where TControl : Control, new() =>
-            context.Render.AsAvalonia().RenderControlPngToFileUriAsync<TControl>(dataContext, options, ct);
+            where TControl : Control, new()
+        {
+            return context.Render.AsAvalonia().RenderControlPngToFileUriAsync<TControl>(dataContext, options, ct);
+        }
     }
 }

@@ -1,17 +1,17 @@
 # 原生消息（IQMessageApi）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 ```csharp
 var api = Context.GetAdapterExtension<IQMessageApi>();
 if (api is null) return;
 ```
 
-接口可获取不表示每个方法都已实现；未实现的操作会抛出 `NotSupportedException`。平台权限与参数错误仍可能导致调用失败。
+未实现的方法抛出 `NotSupportedException`；调用还受平台权限和参数约束。
 
 ## SendMessageAsync
 
-用 QQ 原生段发送消息(LightApp、合并转发等核心模型未覆盖的内容)。
+用 QQ 原生段发送 LightApp、合并转发等消息。
 
 ```csharp
 Task<string> SendMessageAsync(
@@ -139,7 +139,7 @@ Task RecallMessageAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## GetResourceTempUrlAsync
 
@@ -183,7 +183,7 @@ Task<IReadOnlyList<QForwardedIncomingMessage>> GetForwardedMessagesAsync(
 
 ### 返回
 
-`Task<IReadOnlyList<QForwardedIncomingMessage>>`。等待异步完成后取得签名所列模型或列表。
+`Task<IReadOnlyList<QForwardedIncomingMessage>>`。返回合并转发中的消息列表。
 
 ## MarkAsReadAsync
 
@@ -209,7 +209,37 @@ Task MarkAsReadAsync(
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
+
+## ForwardSingleMessageAsync
+
+把一条已有消息单独转发给好友或群，不是合并转发。QQ Model `1.2.0.0` 新增；目前的 QQ 适配器都还没有实现，调用会抛出 `NotSupportedException`。
+
+```csharp
+Task<string> ForwardSingleMessageAsync(
+    QMessageScene scene,
+    string peerId,
+    string messageId,
+    QMessageScene targetScene,
+    string targetPeerId,
+    CancellationToken cancellationToken = default
+);
+```
+
+### 参数
+
+| 参数 | C# 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `scene` | `QMessageScene` | `必传` | 源消息所在的场景。 |
+| `peerId` | `string` | `必传` | 源消息所在的会话 ID，与 scene 对应。 |
+| `messageId` | `string` | `必传` | 要转发的消息 ID。 |
+| `targetScene` | `QMessageScene` | `必传` | 转发目标场景，只支持 `Friend` 和 `Group`。 |
+| `targetPeerId` | `string` | `必传` | 目标好友 QQ 号或群号。 |
+| `cancellationToken` | `CancellationToken` | `default` | 取消令牌；默认不主动取消。 |
+
+### 返回
+
+`Task<string>`。返回转发后新消息的 ID。
 
 ## 相关类型
 

@@ -1,8 +1,0 @@
-protocols = []
-disable_console_input = true
-
-[api]
-enable = true
-listen_urls = ["http://0.0.0.0:7001"]
-public_base_url = []
-token = ""

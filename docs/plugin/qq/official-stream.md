@@ -1,12 +1,12 @@
 # 官方流式会话（IQOfficialMessageStream）
 
-命名空间：`ShiroBot.Model.QQ`。QQ Model ABI：`1.0.0.0`。
+命名空间：`ShiroBot.Model.QQ`。
 
 由 `IQOfficialDirectMessageApi.BeginStream` 返回；使用完调用 `DisposeAsync` 或 `await using`。
 
 ## HasStarted
 
-当前服务状态或实现能力。
+流式回复是否已开始。
 
 ```csharp
 bool HasStarted { get; }
@@ -29,7 +29,7 @@ Task AppendAsync(string cumulativeText, CancellationToken cancellationToken = de
 
 ### 返回
 
-`Task`。异步完成后不返回业务值。
+`Task`。完成后无返回值。
 
 ## CompleteAsync
 

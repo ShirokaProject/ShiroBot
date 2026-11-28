@@ -1,0 +1,41 @@
+skia: family=PingFang SC
+rss-post-light: desired=920, 985, bounds=0, 0, 920, 985
+  X / Twitter: requested=PingFang SC/700; lines=1; height=28.00; bounds=28.00; faces=PingFang SC/700/Bold
+  山海观测站 · Mountain Desk: requested=PingFang SC/700; lines=1; height=32.20; bounds=33.00; faces=PingFang SC/700/Bold
+  周末观测记录 · 山间晚霞与星空 😀: requested=PingFang SC/600; lines=1; height=58.00; bounds=58.00; faces=PingFang SC/600/None, /600/Bold
+  从山脚出发，沿步道走到观景台。今晚能见度不错，记录三种云层与天边的颜色变化。 最后附上一张固定样图，供检查正文断行、头像和圆角。: requested=PingFang SC/400; lines=3; height=120.00; bounds=120.00; faces=PingFang SC/400/None
+heybox-card-light: desired=360, 520, bounds=0, 0, 360, 520
+  小黑盒 / Heybox: requested=PingFang SC/900; lines=1; height=16.80; bounds=18.00; faces=PingFang SC/900/Bold
+  HB 20261128: requested=PingFang SC/600; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/600/None
+  小黑盒周报：新地图实机体验 😀: requested=PingFang SC/900; lines=1; height=25.00; bounds=25.00; faces=PingFang SC/900/Bold, /900/Bold
+  山海观测站: requested=PingFang SC/500; lines=1; height=16.80; bounds=17.00; faces=PingFang SC/500/None
+  固定样例：检查中文正文、封面裁切、背景模糊与渐变。: requested=PingFang SC/400; lines=2; height=40.00; bounds=40.00; faces=PingFang SC/400/None
+  图文: requested=PingFang SC/500; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/500/None
+  小黑盒: requested=PingFang SC/500; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/500/None
+  1.2 万浏览 · 386 点赞 · 42 评论: requested=PingFang SC/600; lines=1; height=18.00; bounds=18.00; faces=PingFang SC/600/None
+bili-live-light: desired=420, 288, bounds=0, 0, 420, 288
+  山海观测站 · Live: requested=PingFang SC/700; lines=1; height=21.00; bounds=21.00; faces=PingFang SC/700/Bold
+  直播中: requested=PingFang SC/700; lines=1; height=16.80; bounds=17.00; faces=PingFang SC/700/Bold
+  Bilibili 直播: requested=PingFang SC/500; lines=1; height=16.80; bounds=17.00; faces=PingFang SC/500/None
+  山间直播：一起等日落 😀: requested=PingFang SC/900; lines=1; height=27.00; bounds=27.00; faces=PingFang SC/900/Bold, /900/Bold
+  房间号 123456: requested=PingFang SC/600; lines=1; height=19.60; bounds=20.00; faces=PingFang SC/600/None
+  房间观众: requested=PingFang SC/400; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/400/None
+  1.2 万: requested=PingFang SC/700; lines=1; height=19.60; bounds=20.00; faces=PingFang SC/700/Bold
+  人气/看过: requested=PingFang SC/400; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/400/None
+  3.4 万: requested=PingFang SC/700; lines=1; height=19.60; bounds=20.00; faces=PingFang SC/700/Bold
+  开播时间: requested=PingFang SC/400; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/400/None
+  18:30: requested=PingFang SC/600; lines=1; height=18.20; bounds=19.00; faces=PingFang SC/600/None
+  直播时长: requested=PingFang SC/400; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/400/None
+  1 小时 24 分: requested=PingFang SC/600; lines=1; height=18.20; bounds=19.00; faces=PingFang SC/600/None
+heybox-article-light: desired=720, 1136, bounds=0, 0, 720, 1136
+  小黑盒文章: requested=PingFang SC/900; lines=1; height=16.80; bounds=19.00; faces=PingFang SC/900/Bold
+  小黑盒 / Heybox: requested=PingFang SC/600; lines=1; height=16.80; bounds=17.00; faces=PingFang SC/600/None
+  盒: requested=PingFang SC/900; lines=1; height=11.20; bounds=12.00; faces=PingFang SC/900/Bold
+  山海观测站: requested=PingFang SC/700; lines=1; height=25.20; bounds=26.00; faces=PingFang SC/700/Bold
+  2026-11-28 · 小黑盒: requested=PingFang SC/500; lines=1; height=16.80; bounds=17.00; faces=PingFang SC/500/None
+  新地图体验：从山脚走到观测台 😀: requested=PingFang SC/900; lines=1; height=35.00; bounds=35.00; faces=PingFang SC/900/Bold, /900/Bold
+  1.2 万浏览 · 386 点赞: requested=PingFang SC/600; lines=1; height=18.20; bounds=19.00; faces=PingFang SC/600/None
+  路线与观测记录: requested=PingFang SC/700; lines=1; height=24.00; bounds=24.00; faces=PingFang SC/700/Bold
+  沿着山谷向上走，路过两处废弃营地。太阳落到山脊以后，云层仍然保留了一点橙色。这里用同一张图检查正文插图、景深模糊、标题与段落换行。: requested=PingFang SC/400; lines=2; height=48.00; bounds=48.00; faces=PingFang SC/400/None
+  图 1 · 山间晚霞: requested=PingFang SC/400; lines=1; height=15.40; bounds=16.00; faces=PingFang SC/400/None
+  结束前，回头还能看见第一颗星。: requested=PingFang SC/400; lines=1; height=24.00; bounds=24.00; faces=PingFang SC/400/None

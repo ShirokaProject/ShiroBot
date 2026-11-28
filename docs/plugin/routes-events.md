@@ -42,7 +42,7 @@ GroupCommands.MapWhen(
 
 ## 在 Dashboard 中显示监听内容
 
-Dashboard 的插件详情会列出插件注册的监听：前缀、完整命令、`MapMention`（及指定用户）、`MapMentionAll`、`MapReply`、`MapAll`、通用事件类型和 `MapPlatform` 的 Kind。`MapWhen` 的条件是代码，默认只显示为“自定义条件”；需要说明时，传入描述文字（SDK ABI 1.3.0.0 起）：
+Dashboard 的插件详情会列出插件注册的监听：前缀、完整命令、`MapMention`（及指定用户）、`MapMentionAll`、`MapReply`、`MapAll`、通用事件类型和 `MapPlatform` 的 Kind。`MapWhen` 的条件是代码，默认只显示为“自定义条件”；需要说明时，传入描述文字：
 
 ```csharp
 GroupCommands.MapWhen(
@@ -58,7 +58,7 @@ Events.MapWhen<MemberLeftEvent>(
 
 重写 `OnGroupMessageAsync` / `OnDirectMessageAsync` 或订阅 `Events.Map<MessageEvent>` 的插件会显示为接收全部群聊或私聊消息。宿主接口 `GET /api/v1/plugins/{id}` 的 `listeners` 字段返回这些信息，插件未加载时为 `null`。
 
-旧 SDK 编译的插件无需重新编译：`MapMention`、`MapReply`、`MapPlatform` 等由宿主的 SDK 执行，升级宿主后即可显示具体类型。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
+`MapMention`、`MapReply`、`MapPlatform` 等由宿主的 SDK 执行，Dashboard 显示对应的监听类型。不要仅用 Platform 或 SelfId 判断运行来源：它们都可能相同。后台发送、保存消息后的回复和订阅见[调用 API](/plugin/apis#适配器实例与后台发送)。
 
 ## 接收通用事件
 
@@ -76,13 +76,15 @@ protected override void ConfigureRoutes()
 }
 ```
 
-可订阅的通用事件包括 `MessageDeletedEvent`、`MemberJoinedEvent`、`MemberLeftEvent`、`FriendRequestEvent`、`GuildInviteEvent` 和 `BotOfflineEvent`。所有类型继承 `BotEvent`，并带有 `Platform`、可选 `SelfId` 与 `Raw`。新增类型只需用 `Events.Map<TEvent>()` 注册。
+可订阅的通用事件包括 `MessageEditedEvent`（消息被编辑，不会再次触发命令）、`MessageDeletedEvent`、`MemberJoinedEvent`、`MemberLeftEvent`、`FriendRequestEvent`、`GuildInviteEvent` 和 `BotOfflineEvent`。所有类型继承 `BotEvent`，并带有 `Platform`、可选 `SelfId` 与 `Raw`。新增类型只需用 `Events.Map<TEvent>()` 注册。
 
 ## 接收平台特有事件
 
 适配器把无法映射成通用事件的内容放进 `PlatformEvent`，用 `Kind` 区分事件类型，`Raw` 保存平台 Model 的负载：
 
-```csharp
+::: code-group
+
+```csharp [QQ]
 using ShiroBot.Model.QQ;
 
 Events.MapPlatform(QEventKinds.OfficialButtonInteraction, evt =>
@@ -94,10 +96,53 @@ Events.MapPlatform(QEventKinds.OfficialButtonInteraction, evt =>
 });
 ```
 
-QQ 事件详见 [QQ Model](/plugin/qq-model)，官方按钮事件详见[官方 Markdown 与按钮](/plugin/qq-official)。
+```csharp [Telegram]
+using ShiroBot.Model.Telegram;
+
+Events.MapPlatform(TelegramEventKinds.ChatJoinRequest, async evt =>
+{
+    if (evt.Raw is not TelegramChatJoinRequest request) return;
+    var chatApi = Context.GetAdapterExtension<ITelegramChatApi>();
+    if (chatApi is not null)
+        await chatApi.ApproveJoinRequestAsync(request.Chat.ChatId.ToString(), request.User.UserId.ToString());
+});
+```
+
+```csharp [Discord]
+using ShiroBot.Model.Discord;
+
+Events.MapPlatform(DiscordEventKinds.VoiceStateUpdate, evt =>
+{
+    if (evt.Raw is DiscordVoiceStateUpdated { ChannelId: null } left)
+        BotLog.Info($"{left.UserId} 离开了语音");
+    return Task.CompletedTask;
+});
+```
+
+:::
+
+各平台的事件 Kind 与负载类型见 [QQ](/plugin/qq-model#qq-特有事件)、[Telegram](/plugin/telegram-model#事件)、[Discord](/plugin/discord-model#入站内容与事件)；QQ 官方按钮事件另见[官方 Markdown 与按钮](/plugin/qq-official)。
+
+## 优先级与已处理
+
+同一事件按插件优先级依次分发：数字越小越先收到，相同数字的插件并发执行。在 `BotPlugin` 上声明，未声明（包括此前编译的插件）时为 `2`：
+
+```csharp
+// AI 聊天作为兜底：只在其他插件没有处理消息时回复
+[BotPlugin("ai-chat", Name = "AI Chat", Priority = 10)]
+public sealed class AiChatPlugin : PluginBase { }
+```
+
+事件被标记为已处理后，数字更大的插件不再收到，相同数字的插件不受影响：
+
+- `MapExact`、`MapPrefix`、带条件的 `MapWhen` 以及 `MapMention`、`MapMentionAll`、`MapReply` 匹配时自动标记，在处理器执行前生效。无条件的 `MapAll` 只算旁听，不标记，日志、统计类插件不会拦住其他插件。
+- 重写 `OnGroupMessageAsync` / `OnDirectMessageAsync` 自行解析命令，或在 `Events` 中处理事件后，调用 `e.MarkHandled()` 手动标记；`e.IsHandled()` 读取当前状态。
+- 引用回复被[回复订阅](/plugin/apis#回复订阅)接收时，按优先级 `2` 视为已处理：普通插件仍会收到，数字大于 2 的兜底插件不再收到。
+
+一个优先级的插件超过 5 秒仍未处理完时，宿主记录警告并继续分发给后面的优先级。Owner 可以在 Dashboard 插件路由或 `plugin_routes.priorities` 中覆盖插件声明的优先级，见[宿主配置](/guide/configuration#插件优先级)。
 
 ## 并发与范围
 
 - 事件处理时 `Context.Platform` 和 `Context.InstanceId` 指向事件来源平台及实例；后台任务用 `Context.UseInstance(id)` 按实例 ID 指定目标。实例接口见[通用 API](/plugin/apis)。
-- 不同插件可并发处理同一个事件，同一个插件也可能同时收到多条事件；共享状态应自行同步。
+- 相同优先级的插件并发处理同一个事件，同一个插件也可能同时收到多条事件；共享状态应自行同步。
 - 群路由限制由宿主配置 `plugin_routes` 控制。收到事件后不要长时间同步阻塞。

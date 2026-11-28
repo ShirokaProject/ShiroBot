@@ -2,6 +2,18 @@
 
 Run the standard checks with `dotnet run --project Tests/Verification`.
 
+To check that a plugin or adapter DLL releases its collectible assembly after unloading, load it
+into an isolated temporary host directory, let it run for a few seconds and unload it:
+
+```sh
+dotnet run --project Tests/Verification -- --plugin-unload-check path/to/Plugin.dll [seconds]
+dotnet run --project Tests/Verification -- --adapter-unload-check path/to/Adapter.dll [seconds]
+```
+
+The plugin check copies the DLL's whole directory. The adapter check copies only the DLL, starts it
+with a default config (never your real credentials), applies one config reload and stops it.
+`--plugin-interop` runs the lifetime, named service and event bus checks with `Templates/Examples/PluginInterop`.
+
 For system-font selection and actual Avalonia headless rendering checks:
 
 ```sh
@@ -24,7 +36,7 @@ The Dashboard path is optional. Two actual loadable component builds (`1.0.0` an
 
 The checks also cover deferred plugin deletion, cancellation of staged/console updates on deletion, blocking reinstalls while deletion is pending, and avoiding resurrection at startup. The checks cover plugin HTTP updates, console `update check plugins` / `update confirm`, plugin unload failure and staged application, adapter HTTP updates, pinned adapter assemblies and staged application, adapter startup failure with rollback, and process shutdown without waiting for a pinned assembly. Assertions inspect the running component version, installed files, obsolete file removal, and preservation of user configuration and data. Staged application uses the same startup applier after stopping the component; it does not reboot the machine or restart the host process.
 
-The runner prints an artifact directory containing the old/new packages, each isolated installation, and `report.json`. Keep that directory to inspect a failure. For Windows verification, run the same Python script with .NET 10 installed (`python` may be the appropriate command there).
+The runner prints an artifact directory containing the old/new packages, each isolated installation, and `report.json`. Keep that directory to inspect a failure. For Windows verification, run the same Python script with .NET 11 installed (`python` may be the appropriate command there).
 
 For actual macOS arm64 host self-update and terminal restart checks, publish two
 single-file, framework-dependent hosts from the current source into separate
@@ -62,3 +74,13 @@ dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -c Release 
 ```
 
 覆盖无消息时到期清理、保留订阅句柄不再保留回调、卸载所属插件释放回调、定时器不保留临时上下文，以及慢日志订阅者的有界缓存。此验证中的强制 GC 仅用于检查对象可回收性。
+
+日志持久化与 SSE 集成回归：
+
+```bash
+dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -- --local-logs
+```
+
+覆盖本地文件、保留清理、配置热更新、历史快照与实时边界、突发批量发送、慢客户端，以及真实 HTTP 下的鉴权、SSE 帧、多行与中文、心跳、断开释放和重连历史。
+
+启动顺序回归：`dotnet run --project Tests/Verification/ShiroBot.Verification.csproj -- --startup-order`。以独立宿主进程验证端口占用时不启动组件，以及 HTTP 就绪、适配器逐个启动、插件加载和正常退出的顺序。

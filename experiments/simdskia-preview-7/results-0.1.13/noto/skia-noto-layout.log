@@ -1,0 +1,47 @@
+skia: family=fonts:Lab#Noto Sans SC
+face=, weight=400, simulation=None, SHA256=D5B1A35589D62EB69131DAC525F8071C71BE347397E1D1EC5BBC734E8C814693
+face=Noto Sans SC, weight=500, simulation=None, SHA256=631990B03FA1866B9179CB42E0247B6688AFAA333AC4100F5A48252971AB47CF
+face=Noto Sans SC, weight=600, simulation=None, SHA256=A184D34C8179549FC87C64F84AA0D5F98751D5E08C020A40A0ECB02A7FF86F81
+face=, weight=700, simulation=None, SHA256=DEB9A529FA8EC3545699E0D198E049E70992B839A2062017475D16D2BFBD7E3A
+face=Noto Sans SC, weight=800, simulation=None, SHA256=F4120C44B203E17D3809EE7C0B5041A0DB2EC4FABB773B76F85F1DACE0AE7DCC
+face=Noto Sans SC, weight=900, simulation=None, SHA256=2C208F06B3D9D712A778540E6DE688A55D5D277365FF4677F1ABD17371563FE0
+rss-post-light: desired=920, 985, bounds=0, 0, 920, 985
+  X / Twitter: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=28.96; bounds=29.00; faces=/700/None
+  山海观测站 · Mountain Desk: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=33.30; bounds=34.00; faces=/700/None
+  周末观测记录 · 山间晚霞与星空 😀: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=58.00; bounds=58.00; faces=Noto Sans SC/600/None, /600/Bold
+  从山脚出发，沿步道走到观景台。今晚能见度不错，记录三种云层与天边的颜色变化。 最后附上一张固定样图，供检查正文断行、头像和圆角。: requested=fonts:Lab#Noto Sans SC/400; lines=3; height=120.00; bounds=120.00; faces=/400/None
+heybox-card-light: desired=360, 520, bounds=0, 0, 360, 520
+  小黑盒 / Heybox: requested=fonts:Lab#Noto Sans SC/900; lines=1; height=17.38; bounds=18.00; faces=Noto Sans SC/900/None
+  HB 20261128: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=15.93; bounds=16.00; faces=Noto Sans SC/600/None
+  小黑盒周报：新地图实机体验 😀: requested=fonts:Lab#Noto Sans SC/900; lines=1; height=25.00; bounds=25.00; faces=Noto Sans SC/900/None, /900/Bold
+  山海观测站: requested=fonts:Lab#Noto Sans SC/500; lines=1; height=17.38; bounds=18.00; faces=Noto Sans SC/500/None
+  固定样例：检查中文正文、封面裁切、背景模糊与渐变。: requested=fonts:Lab#Noto Sans SC/400; lines=2; height=40.00; bounds=40.00; faces=/400/None
+  图文: requested=fonts:Lab#Noto Sans SC/500; lines=1; height=15.93; bounds=16.00; faces=Noto Sans SC/500/None
+  小黑盒: requested=fonts:Lab#Noto Sans SC/500; lines=1; height=15.93; bounds=16.00; faces=Noto Sans SC/500/None
+  1.2 万浏览 · 386 点赞 · 42 评论: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=18.00; bounds=18.00; faces=Noto Sans SC/600/None
+bili-live-light: desired=420, 290, bounds=0, 0, 420, 290
+  山海观测站 · Live: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=21.72; bounds=22.00; faces=/700/None
+  直播中: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=17.38; bounds=18.00; faces=/700/None
+  Bilibili 直播: requested=fonts:Lab#Noto Sans SC/500; lines=1; height=17.38; bounds=18.00; faces=Noto Sans SC/500/None
+  山间直播：一起等日落 😀: requested=fonts:Lab#Noto Sans SC/900; lines=1; height=27.00; bounds=27.00; faces=Noto Sans SC/900/None, /900/Bold
+  房间号 123456: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=20.27; bounds=21.00; faces=Noto Sans SC/600/None
+  房间观众: requested=fonts:Lab#Noto Sans SC/400; lines=1; height=15.93; bounds=16.00; faces=/400/None
+  1.2 万: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=20.27; bounds=21.00; faces=/700/None
+  人气/看过: requested=fonts:Lab#Noto Sans SC/400; lines=1; height=15.93; bounds=16.00; faces=/400/None
+  3.4 万: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=20.27; bounds=21.00; faces=/700/None
+  开播时间: requested=fonts:Lab#Noto Sans SC/400; lines=1; height=15.93; bounds=16.00; faces=/400/None
+  18:30: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=18.82; bounds=19.00; faces=Noto Sans SC/600/None
+  直播时长: requested=fonts:Lab#Noto Sans SC/400; lines=1; height=15.93; bounds=16.00; faces=/400/None
+  1 小时 24 分: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=18.82; bounds=19.00; faces=Noto Sans SC/600/None
+heybox-article-light: desired=720, 1136, bounds=0, 0, 720, 1136
+  小黑盒文章: requested=fonts:Lab#Noto Sans SC/900; lines=1; height=17.38; bounds=20.00; faces=Noto Sans SC/900/None
+  小黑盒 / Heybox: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=17.38; bounds=18.00; faces=Noto Sans SC/600/None
+  盒: requested=fonts:Lab#Noto Sans SC/900; lines=1; height=11.58; bounds=12.00; faces=Noto Sans SC/900/None
+  山海观测站: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=26.06; bounds=27.00; faces=/700/None
+  2026-11-28 · 小黑盒: requested=fonts:Lab#Noto Sans SC/500; lines=1; height=17.38; bounds=18.00; faces=Noto Sans SC/500/None
+  新地图体验：从山脚走到观测台 😀: requested=fonts:Lab#Noto Sans SC/900; lines=1; height=35.00; bounds=35.00; faces=Noto Sans SC/900/None, /900/Bold
+  1.2 万浏览 · 386 点赞: requested=fonts:Lab#Noto Sans SC/600; lines=1; height=18.82; bounds=19.00; faces=Noto Sans SC/600/None
+  路线与观测记录: requested=fonts:Lab#Noto Sans SC/700; lines=1; height=24.00; bounds=24.00; faces=/700/None
+  沿着山谷向上走，路过两处废弃营地。太阳落到山脊以后，云层仍然保留了一点橙色。这里用同一张图检查正文插图、景深模糊、标题与段落换行。: requested=fonts:Lab#Noto Sans SC/400; lines=2; height=48.00; bounds=48.00; faces=/400/None
+  图 1 · 山间晚霞: requested=fonts:Lab#Noto Sans SC/400; lines=1; height=15.93; bounds=16.00; faces=/400/None
+  结束前，回头还能看见第一颗星。: requested=fonts:Lab#Noto Sans SC/400; lines=1; height=24.00; bounds=24.00; faces=/400/None

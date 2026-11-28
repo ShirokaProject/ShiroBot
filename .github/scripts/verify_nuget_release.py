@@ -41,7 +41,7 @@ def validate_packages(directory, packages, sdk_version):
             if values.get("id") != name or values.get("version") != version:
                 raise RuntimeError(f"Incorrect identity or version: {name}")
             if name == "ShiroBot.SDK":
-                for entry in ["lib/net10.0/ShiroBot.SDK.dll", *[f"lib/net10.0/ShiroBot.Model.{kind}.dll" for kind in ("QQ", "Discord", "Telegram")], "tools/ILRepack.Lib.MSBuild.Task.dll", "buildTransitive/ShiroBot.SDK.props", "buildTransitive/ShiroBot.SDK.targets"]:
+                for entry in ["lib/net11.0/ShiroBot.SDK.dll", *[f"lib/net11.0/ShiroBot.Model.{kind}.dll" for kind in ("QQ", "Discord", "Telegram")], "tools/ILRepack.Lib.MSBuild.Task.dll", "buildTransitive/ShiroBot.SDK.props", "buildTransitive/ShiroBot.SDK.targets"]:
                     if entry not in archive.namelist():
                         raise RuntimeError(f"Missing SDK asset: {entry}")
             else:

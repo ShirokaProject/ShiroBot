@@ -15,8 +15,8 @@ internal static class AdapterExecutionContext
 
     private sealed class Scope(string? previous) : IDisposable
     {
-        private string? _previous = previous;
         private int _disposed;
+        private string? _previous = previous;
 
         public void Dispose()
         {

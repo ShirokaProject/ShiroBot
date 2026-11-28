@@ -5,8 +5,8 @@
 | 平台 | `IBotAdapter.Platform` | 内置 Model | 当前接入方式 |
 | --- | --- | --- | --- |
 | QQ | `qq` | `ShiroBot.Model.QQ` | 通用消息和服务照常映射；按需实现 `IQFriendApi`、`IQGroupApi`、`IQFileApi`、`IQSystemApi`、`IQMessageApi` 或 `IQOfficialMessageApi` |
-| Discord | `discord` | `ShiroBot.Model.Discord` | 通用服务为主；`DiscordUser` 保留原生用户字段，当前没有 Discord 专有扩展接口 |
-| Telegram | `telegram` | `ShiroBot.Model.Telegram` | 通用服务为主；`TelegramUser` 保留原生用户字段，当前没有 Telegram 专有扩展接口 |
+| Discord | `discord` | `ShiroBot.Model.Discord` | 通用消息和服务照常映射；按需实现 `IDiscordClientApi`、`IDiscordGuildApi`、`IDiscordMessageApi`、`IDiscordRawApi`，机器人另可实现 `IDiscordInteractionApi`，用户账号另可实现 `IDiscordAccountApi` |
+| Telegram | `telegram` | `ShiroBot.Model.Telegram` | 通用消息和服务照常映射；按需实现 `ITelegramClientApi`、`ITelegramChatApi`、`ITelegramMessageApi`，机器人另可实现 `ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi`、`ITelegramBotApi`；会话 ID 一律使用 Bot API 格式 |
 | 其他平台 | 自定义稳定 ID | 通用 SDK | 从通用模型开始；需要插件共享自定义类型时使用共享契约程序集 |
 
 ## 常用 Model 字段
@@ -48,7 +48,7 @@
 
 ## 功能实现对照
 
-下表的“适配器实现”描述开发适配器时应做什么。当前仓库提供 SDK 和 Model 契约，没有 Milky、OneBot、Discord 或 Telegram 协议适配器的实现代码，所以不能据此判断某个已安装适配器支持哪些方法。
+下表列出适配器需要实现的功能。本仓库只提供 SDK 和 Model 契约，不包含 Milky、OneBot、Discord 或 Telegram 协议适配器实现；已安装适配器支持哪些方法，需另行确认。
 
 | 功能 | Model / 接口 | 适配器实现 | 必需 |
 | --- | --- | --- | --- |
@@ -63,9 +63,22 @@
 | QQ 原生消息 | `IQMessageApi` | 原生段收发、历史消息、撤回、已读等 | 可选扩展 |
 | QQ 官方消息 | `IQOfficialMessageApi` | Markdown 与按钮能力探测、发送和互动回应；按需实现文本与 Ark 发送 | 可选扩展 |
 | QQ 官方私聊 | `IQOfficialDirectMessageApi` | 输入状态与流式回复 | 可选扩展 |
-| Discord / Telegram 平台扩展 | 当前无专有扩展接口 | 通过通用服务实现；原生用户字段使用对应用户 Model | 无额外接口 |
+| Telegram 会话管理 | `ITelegramChatApi` | 成员与权限、置顶、邀请链接、入群审批、话题 | 可选扩展 |
+| Telegram 原生消息 | `ITelegramMessageApi` | 投票、位置、相册、发票等原生内容；编辑、转发、复制、输入状态、回调提示 | 可选扩展 |
+| Telegram inline / 支付 / 资料 | `ITelegramInlineApi`、`ITelegramPaymentApi`、`ITelegramBotProfileApi` | inline 查询回答、付款确认与退款、命令菜单 | 可选扩展 |
+| Telegram 账号信息 | `ITelegramClientApi` | 账号类型、传输方式、文件上限、自身资料 | 建议实现 |
+| Telegram Bot API 原始调用 | `ITelegramBotApi` | 任意 Bot API 方法与原始 Update；仅 Bot API 传输 | 可选扩展 |
+| Telegram 用户账号操作 | `ITelegramAccountApi` | 会话列表、加入群组、标记已读、通讯录；仅用户账号 | 可选扩展 |
+| Telegram 事件与入站内容 | `TelegramEventKinds`、`TelegramSegmentKinds` | 特有 Update 以 `PlatformEvent` 上报，`Raw` 为对应负载；`MessageEvent.Raw` 为 `TelegramMessage` | 实现扩展时建议遵循 |
+| Discord 服务器管理 | `IDiscordGuildApi` | 频道、权限覆盖、角色、成员、超时、封禁、邀请、表情、子区 | 可选扩展 |
+| Discord 原生消息 | `IDiscordMessageApi` | Embed、组件、投票、附件；编辑、置顶、批量删除、Reaction 管理 | 可选扩展 |
+| Discord 交互与命令 | `IDiscordInteractionApi` | 交互回复、延迟、弹窗、自动补全、后续消息；应用命令注册 | 可选扩展 |
+| Discord 账号信息 | `IDiscordClientApi` | 账号类型、自身资料、用户查询、在线状态 | 建议实现 |
+| Discord 用户账号操作 | `IDiscordAccountApi` | 私聊列表、加入服务器、标记已读；仅用户账号 | 可选扩展 |
+| Discord 原始调用 | `IDiscordRawApi` | 任意 REST 路由、Gateway 指令与原始 Dispatch | 可选扩展 |
+| Discord 事件与入站内容 | `DiscordEventKinds`、`DiscordSegmentKinds` | 特有 Gateway 事件以 `PlatformEvent` 上报；`MessageEvent.Raw` 为 `DiscordMessage`，`InteractionEvent.Raw` 为 `DiscordInteraction` | 实现扩展时建议遵循 |
 
-通用接口的方法清单见[实现服务接口](/adapter/services)，QQ 扩展的功能清单见[QQ Model](/plugin/qq-model)。扩展接口是否存在与某个方法是否真的可用是两回事：未实现的方法默认抛 `NotSupportedException`。
+通用接口的方法清单见[实现服务接口](/adapter/services)，QQ 扩展的功能清单见[QQ Model](/plugin/qq-model)。取得扩展接口不代表所有方法都可用；未实现的方法默认抛 `NotSupportedException`。
 
 选择模板的 `--platform qq`、`discord` 或 `telegram` 后，会生成对应的 `RequiresShiroBotPackage` 声明。宿主内置这三个 Model，并在加载适配器前校验最低版本。自己创建项目时也应声明所依赖的 Model，例如 QQ：
 
@@ -160,10 +173,10 @@ static User ToCommonUser(TelegramUser source) =>
     };
 ```
 
-Discord 文本频道可映射为 `ChannelType.Group`，Thread 映射为 `Thread`；Telegram 私聊映射为 `Direct`，群聊映射为 `Group`，话题映射为 `Thread`。具体协议字段由适配器负责转换，Model 不会自动完成映射。
+Discord 文本频道可映射为 `ChannelType.Group`，Thread 映射为 `Thread`；Telegram 私聊映射为 `Direct`，群聊映射为 `Group`，话题映射为 `Thread`。具体协议字段由适配器转换。
 
 ## 自定义平台契约
 
 若通用 `Raw` 负载和服务不足以表达插件要调用的能力，可把扩展接口与负载类型放在独立的共享契约 DLL。例如程序集名为 `MyPlatform.Contracts` 时，在适配器的 `BotAdapterAttribute.SharedAssemblies` 和插件的 `BotPluginAttribute.SharedAssemblies` 中都写入该名称；共享 DLL 放在适配器入口 DLL 旁。宿主会先把它加载为共享程序集，让插件和适配器看到相同的类型。
 
-不要把协议客户端内部 DTO 直接作为插件 API。若只需要标准消息与事件，无需自定义契约或 Model 包。
+不要把协议客户端内部 DTO 直接作为插件 API。标准消息与事件使用通用 SDK 契约。

@@ -1,8 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <Version>$(ShiroBotProductVersion)</Version>
         <InformationalVersion Condition="'$(ShiroBotStartupVersion)' != ''">$(ShiroBotStartupVersion)</InformationalVersion>
         <ImplicitUsings>enable</ImplicitUsings>
@@ -10,8 +10,12 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Configurations>Debug;Release</Configurations>
         <SelfContained Condition="'$(SelfContained)'==''">false</SelfContained>
-        <!-- Publish with the latest runtime patch supplied by the selected .NET 10 SDK. -->
-        <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+        <!-- Framework-dependent hosts accept every .NET 11 patch, regardless of the build SDK. -->
+        <TargetLatestRuntimePatch Condition="'$(SelfContained)' != 'true'">false</TargetLatestRuntimePatch>
+        <RuntimeFrameworkVersion Condition="'$(SelfContained)' != 'true'">11.0.0</RuntimeFrameworkVersion>
+        <RollForward>LatestPatch</RollForward>
+        <!-- Self-contained hosts still bundle the latest runtime patch supplied by the SDK. -->
+        <TargetLatestRuntimePatch Condition="'$(SelfContained)' == 'true'">true</TargetLatestRuntimePatch>
         <!-- Prefer Workstation GC for typical bot workloads and lower idle memory use. -->
         <ServerGarbageCollection Condition="'$(ServerGarbageCollection)' == ''">false</ServerGarbageCollection>
     </PropertyGroup>
@@ -45,7 +49,8 @@
         <PublishAot>false</PublishAot>
         <PublishTrimmed>false</PublishTrimmed>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-        <DebuggerSupport>false</DebuggerSupport>
+        <DebuggerSupport>true</DebuggerSupport>
+        <StackTraceSupport>true</StackTraceSupport>
     </PropertyGroup>
 
     <ItemGroup>
@@ -72,6 +77,24 @@
             <_Parameter2>$(RuntimeIdentifier)</_Parameter2>
         </AssemblyAttribute>
     </ItemGroup>
+
+    <!-- Record the target framework's latest runtime shipped by the build SDK as an advisory baseline.
+         Keep RuntimeFrameworkVersion at 11.0.0 so older patches can still start. -->
+    <Target Name="RecordBuildRuntimeBaseline" BeforeTargets="GetAssemblyAttributes">
+        <ItemGroup>
+            <_BuildRuntimeFramework Include="@(KnownFrameworkReference)"
+                Condition="'%(KnownFrameworkReference.Identity)' == 'Microsoft.NETCore.App' and '%(KnownFrameworkReference.TargetFramework)' == '$(TargetFramework)'" />
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>ShiroBot.BuildRuntimeVersion</_Parameter1>
+                <_Parameter2>@(_BuildRuntimeFramework->'%(LatestRuntimeFrameworkVersion)')</_Parameter2>
+            </AssemblyAttribute>
+            <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+                <_Parameter1>ShiroBot.BuildSdkVersion</_Parameter1>
+                <_Parameter2>$(NETCoreSdkVersion)</_Parameter2>
+            </AssemblyAttribute>
+        </ItemGroup>
+        <Error Condition="'@(_BuildRuntimeFramework)' == ''" Text="Cannot determine build runtime baseline for $(TargetFramework)." />
+    </Target>
 
     <Target Name="AcquireDashboardAssets" BeforeTargets="PrepareForBuild">
         <PropertyGroup>

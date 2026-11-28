@@ -6,24 +6,21 @@ using System.Runtime.Loader;
 namespace ShiroBot.Plugins.Loading;
 
 /// <summary>
-/// 共享程序集解析表。宿主程序集前缀和动态插件契约都在这里注册；
-/// 插件 ALC 在解析时优先查询该表，确保所有插件看到同一个共享 Type。
+///     共享程序集解析表。宿主程序集前缀和动态插件契约都在这里注册；
+///     插件 ALC 在解析时优先查询该表，确保所有插件看到同一个共享 Type。
 /// </summary>
 public sealed class SharedAssemblyResolver
 {
-    private readonly Lock _lock = new();
-    private readonly List<Entry> _entries = new();
     private readonly Dictionary<string, Assembly> _assemblies = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<Entry> _entries = [];
+    private readonly Lock _lock = new();
 
     public void Register(string[] prefixes, AssemblyLoadContext alc)
     {
         ArgumentNullException.ThrowIfNull(prefixes);
         ArgumentNullException.ThrowIfNull(alc);
 
-        if (prefixes.Length == 0)
-        {
-            return;
-        }
+        if (prefixes.Length == 0) return;
 
         lock (_lock)
         {
@@ -33,10 +30,7 @@ public sealed class SharedAssemblyResolver
 
     public Assembly? TryResolve(AssemblyName name)
     {
-        if (string.IsNullOrEmpty(name.Name))
-        {
-            return null;
-        }
+        if (string.IsNullOrEmpty(name.Name)) return null;
 
         Entry[] snapshot;
         lock (_lock)
@@ -47,22 +41,16 @@ public sealed class SharedAssemblyResolver
                 return exactAssembly;
             }
 
-            snapshot = _entries.ToArray();
+            snapshot = [.. _entries];
         }
 
         foreach (var entry in snapshot)
         {
-            if (!Matches(name.Name, entry.Prefixes))
-            {
-                continue;
-            }
+            if (!Matches(name.Name, entry.Prefixes)) continue;
 
             try
             {
-                if (TryGetLoadedAssembly(entry.Alc, name) is { } loadedAssembly)
-                {
-                    return loadedAssembly;
-                }
+                if (TryGetLoadedAssembly(entry.Alc, name) is { } loadedAssembly) return loadedAssembly;
 
                 var resolved = entry.Alc.LoadFromAssemblyName(name);
                 EnsureCompatible(name, resolved.GetName(), GetAssemblyOrigin(resolved));
@@ -70,11 +58,9 @@ public sealed class SharedAssemblyResolver
             }
             catch (FileNotFoundException)
             {
-                if (TryLoadFromDefaultBaseDirectory(entry.Alc, name) is { } assembly)
-                {
-                    EnsureCompatible(name, assembly.GetName(), GetAssemblyOrigin(assembly));
-                    return assembly;
-                }
+                if (TryLoadFromDefaultBaseDirectory(entry.Alc, name) is not { } assembly) continue;
+                EnsureCompatible(name, assembly.GetName(), GetAssemblyOrigin(assembly));
+                return assembly;
 
                 // 该 ALC 没有这个程序集，继续下一个候选。
             }
@@ -85,20 +71,14 @@ public sealed class SharedAssemblyResolver
 
     public Assembly? TryGetRegisteredAssembly(string assemblyName)
     {
-        if (string.IsNullOrWhiteSpace(assemblyName))
-        {
-            return null;
-        }
+        if (string.IsNullOrWhiteSpace(assemblyName)) return null;
 
         var simpleName = assemblyName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
             ? assemblyName[..^4]
             : assemblyName;
         lock (_lock)
         {
-            if (_assemblies.TryGetValue(simpleName, out var registered))
-            {
-                return registered;
-            }
+            if (_assemblies.TryGetValue(simpleName, out var registered)) return registered;
         }
 
         return AssemblyLoadContext.Default.Assemblies.FirstOrDefault(assembly =>
@@ -110,9 +90,7 @@ public sealed class SharedAssemblyResolver
         var fullPath = Path.GetFullPath(assemblyPath);
         var requestedName = AssemblyName.GetAssemblyName(fullPath);
         if (string.IsNullOrWhiteSpace(requestedName.Name))
-        {
             throw new InvalidOperationException($"Assembly has no simple name: {fullPath}");
-        }
 
         lock (_lock)
         {
@@ -143,9 +121,7 @@ public sealed class SharedAssemblyResolver
     {
         var name = assembly.GetName();
         if (string.IsNullOrWhiteSpace(name.Name))
-        {
             throw new InvalidOperationException("Shared assembly has no simple name.");
-        }
 
         lock (_lock)
         {
@@ -167,22 +143,19 @@ public sealed class SharedAssemblyResolver
         lock (_lock)
         {
             if (_assemblies.TryGetValue(name, out var registered) && ReferenceEquals(registered, assembly))
-            {
                 _assemblies.Remove(name);
-            }
         }
     }
 
     internal static void EnsureCompatible(AssemblyName requested, AssemblyName loaded, string requestedPath)
     {
         var majorMatches = !(string.Equals(requested.Name, "ShiroBot.SDK", StringComparison.OrdinalIgnoreCase)
-            || requested.Name?.StartsWith("ShiroBot.Model.", StringComparison.OrdinalIgnoreCase) == true) || requested.Version is null
-            || requested.Version.Major == loaded.Version?.Major;
+                             || requested.Name?.StartsWith("ShiroBot.Model.", StringComparison.OrdinalIgnoreCase) ==
+                             true) || requested.Version is null
+                                   || requested.Version.Major == loaded.Version?.Major;
         if (HasSameIdentity(requested, loaded) && majorMatches &&
-            (requested.Version is null || loaded.Version is not null && loaded.Version >= requested.Version))
-        {
+            (requested.Version is null || (loaded.Version is not null && loaded.Version >= requested.Version)))
             return;
-        }
 
         throw new InvalidOperationException(
             $"Shared assembly conflict for {requested.Name}: {loaded.FullName} is already loaded, " +
@@ -196,9 +169,7 @@ public sealed class SharedAssemblyResolver
         if (!string.Equals(left.Name, right.Name, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(left.CultureName ?? string.Empty, right.CultureName ?? string.Empty,
                 StringComparison.OrdinalIgnoreCase))
-        {
             return false;
-        }
 
         return (left.GetPublicKeyToken() ?? []).SequenceEqual(right.GetPublicKeyToken() ?? []);
     }
@@ -206,10 +177,7 @@ public sealed class SharedAssemblyResolver
     private static void EnsureSameModuleOrRestart(Assembly loaded, string requestedPath)
     {
         var requestedModuleVersionId = ReadModuleVersionId(requestedPath);
-        if (requestedModuleVersionId == loaded.ManifestModule.ModuleVersionId)
-        {
-            return;
-        }
+        if (requestedModuleVersionId == loaded.ManifestModule.ModuleVersionId) return;
 
         throw new SharedAssemblyRestartRequiredException(
             $"Shared assembly {loaded.GetName().Name} changed on disk, but its previous version is " +
@@ -221,9 +189,7 @@ public sealed class SharedAssemblyResolver
         using var stream = File.OpenRead(assemblyPath);
         using var peReader = new PEReader(stream);
         if (!peReader.HasMetadata)
-        {
             throw new BadImageFormatException("Shared assembly has no managed metadata.", assemblyPath);
-        }
 
         var metadata = peReader.GetMetadataReader();
         return metadata.GetGuid(metadata.GetModuleDefinition().Mvid);
@@ -237,10 +203,7 @@ public sealed class SharedAssemblyResolver
 
     private static Assembly? TryGetLoadedAssembly(AssemblyLoadContext alc, AssemblyName name)
     {
-        if (string.IsNullOrWhiteSpace(name.Name))
-        {
-            return null;
-        }
+        if (string.IsNullOrWhiteSpace(name.Name)) return null;
 
         var loaded = alc.Assemblies.FirstOrDefault(assembly =>
             string.Equals(assembly.GetName().Name, name.Name, StringComparison.OrdinalIgnoreCase));
@@ -250,16 +213,10 @@ public sealed class SharedAssemblyResolver
 
     private static Assembly? TryLoadFromDefaultBaseDirectory(AssemblyLoadContext alc, AssemblyName name)
     {
-        if (alc != AssemblyLoadContext.Default || string.IsNullOrWhiteSpace(name.Name))
-        {
-            return null;
-        }
+        if (alc != AssemblyLoadContext.Default || string.IsNullOrWhiteSpace(name.Name)) return null;
 
         var assemblyPath = Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
-        if (!File.Exists(assemblyPath))
-        {
-            return null;
-        }
+        if (!File.Exists(assemblyPath)) return null;
 
         try
         {
@@ -276,21 +233,12 @@ public sealed class SharedAssemblyResolver
     {
         foreach (var prefix in prefixes)
         {
-            if (string.IsNullOrEmpty(prefix))
-            {
-                continue;
-            }
+            if (string.IsNullOrEmpty(prefix)) continue;
 
-            if (assemblyName.Equals(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+            if (assemblyName.Equals(prefix, StringComparison.OrdinalIgnoreCase)) return true;
 
             // 前缀匹配要求 prefix 是完整的命名空间段，避免 "Avalonia" 误匹配 "AvaloniaXyz" 这种第三方。
-            if (assemblyName.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+            if (assemblyName.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase)) return true;
         }
 
         return false;

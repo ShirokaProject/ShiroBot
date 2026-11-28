@@ -1,4 +1,41 @@
-# SimdSkia 0.1.0-preview.7 替换实验
+# SimdSkia 渲染后端实验
+
+## SimdSkia 0.1.13 复测
+
+2026-11-28，Apple M4 / macOS 27.2.1 arm64 / .NET SDK 11.0.100 / Avalonia 12.2.0。测试使用 ShiroBot 主线 `b48abc48dc53a13520c0266eb6037ae959852183` 的 `AxamlRenderer`，以独立进程驱动发布版控件。上游 NuGet 包 `SimdSkia.Avalonia.Desktop 0.1.13` 来源是 `05681e11e4c18ef60dee2a1812db46b889502786`。核对时上游 `main` 为 `630d4e42de27ffa4fb4400eefbf53cfd2acf2068`，相对该版本仅更新发布记录。 [上游发布](https://github.com/donet-org-cn/SimdSkia/releases/tag/v0.1.13) · [上游差异](https://github.com/donet-org-cn/SimdSkia/compare/v0.1.13...630d4e42de27ffa4fb4400eefbf53cfd2acf2068)
+
+复用旧实验的 MyParser v0.6.15 和 RSS Subscriber v0.2.2 发布 DLL，ZIP 哈希与原记录一致。为四个控件重新构造固定中文、数字、Emoji、头像和封面输入。两个后端均以 Release 构建运行，192 DPI，每主题每用例在两个独立进程各预热 3 次并计时 9 次，取合计 18 次的中位数。时间涵盖控件创建、布局、位图渲染和内存 PNG 编码。上次 preview.7 采用不同输入和 Debug 构建，历史倍数用于参考。
+
+### 耗时与出图
+
+表中每格为 Skia → SimdSkia，中位数单位为 ms。明暗两套在默认字体和相同 Noto 字体下均成功生成。
+
+| 控件 | 默认字体浅色 | 默认字体深色 | 静态 Noto 浅色 | 静态 Noto 深色 |
+| --- | ---: | ---: | ---: | ---: |
+| RSS PostCard | 90.0 → 146.2 | 86.5 → 142.4 | 95.3 → 179.5 | 100.0 → 161.8 |
+| HeyboxCard | 38.2 → 172.9 | 37.9 → 170.7 | 41.3 → 178.3 | 39.2 → 183.4 |
+| BiliLiveCard | 31.8 → 106.7 | 36.8 → 108.9 | 33.6 → 132.3 | 36.8 → 127.5 |
+| HeyboxArticleDocument | 125.2 → 581.8 | 130.4 → 592.7 | 140.8 → 631.8 | 134.0 → 621.9 |
+
+默认字体下 Skia 选 PingFang SC，SimdSkia 选 Heiti SC。BiliLiveCard 的标题请求 900、统计数字请求 700，SimdSkia 均解析为 400。统计数字的文本行高分别为 19.60 和 14.42 DIP，整卡尺寸分别为 840×576 和 840×530。换成同一批静态 Noto Sans SC 后，实际字重与文件 SHA-256 均匹配，统计数字行高均为 20.27 DIP，整卡尺寸均为 840×580。上述高度差由该样例的字体选择和度量差异触发。Emoji 走各后端的回退路径，本次笑脸可彩色显示。
+
+合入主线后，以 Release 构建的实验宿主通过正常的离屏渲染入口复跑了同一组发布控件。两套字体、两个后端、明暗两套共 32 张 PNG 均成功生成，尺寸与上表对应测试一致。表中性能数据来自前述独立计时实验。
+
+### 仍存在的替换问题
+
+- **系统默认字体的粗体和布局**。SimdSkia 在测试 Mac 上选到的 Heiti SC 缺少所需字重，导致中文粗体和部分布局与原版不同。相同静态字重让本次卡片对齐。实验内置字体仅覆盖固定样例，生产部署仍需完整字体和跨平台回退验证。
+- **CPU 出图耗时**。相同 Noto 下 SimdSkia 耗时仍为原版的 1.62–4.67 倍，Heybox 长文约 0.62–0.63 秒。当前数据来自单机离屏渲染。
+- **像素和字体回退差异**。同尺寸样本仍有字形边缘、模糊区域和 Emoji 回退差异。0.1.13 能显示本次彩色 Emoji，组合或其他平台需按字体另验。
+- **插件依赖原版 SkiaSharp**。发布版 MyParser 仍依赖 `SKCodec`、`SKBitmap`、`SKSurface`，需保留原版 SkiaSharp。 [MyParser v0.6.21 图像路径](https://github.com/ShirokaProject/Shirobot.Plugin.MyParser/tree/v0.6.21/src/MyParser/CardRendering)
+- **适配器选取**。早期最小探针的一次构建误载入 Avalonia 12.1 适配器并抛出 `CreateStreamGeometryBuilder` 的 `TypeLoadException`。干净构建和 macOS ARM64 单文件发布的最小探针选中了 12.2 适配器并通过。 [上游版本兼容说明](https://github.com/donet-org-cn/SimdSkia/blob/v0.1.13/docs/AVALONIA-VERSION-COMPATIBILITY.md)
+
+生产宿主仍建议使用原版 Skia。
+
+[默认字体汇总](results-0.1.13/default/summary.json) · [静态 Noto 汇总](results-0.1.13/noto/summary.json) · [BiliLiveCard 字体对照](results-0.1.13/noto/bili-live-font-comparison.png) · [浅色 Noto 总览](results-0.1.13/noto/overview-light.png) · [深色 Noto 总览](results-0.1.13/noto/overview-dark.png) · [Skia 布局日志](results-0.1.13/noto/skia-noto-layout.log) · [SimdSkia 布局日志](results-0.1.13/noto/simd-noto-layout.log)
+
+---
+
+## SimdSkia 0.1.0-preview.7 替换实验
 
 日期：2026-10-27。环境：Apple M4、macOS 27.0.1、arm64、.NET SDK 10.0.402。宿主基线：`d2233a7`，产品版本 1.0.2 / SDK ABI 1.3.0.0。
 

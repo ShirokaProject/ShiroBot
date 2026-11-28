@@ -31,16 +31,15 @@ internal static class SystemFontConfiguration
         string[] preferred = platform == OSPlatform.OSX ? ["PingFang SC", "Heiti SC"]
             : platform == OSPlatform.Windows ? ["Microsoft YaHei UI", "Microsoft YaHei", "DengXian"]
             : [];
-        string[] cjk = ["Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
-            "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback"];
+        string[] cjk =
+        [
+            "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
+            "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback"
+        ];
         var available = installed.ToArray();
-        foreach (var family in preferred.Concat(cjk))
-        {
-            var match = available.FirstOrDefault(x =>
-                string.Equals(x, family, StringComparison.OrdinalIgnoreCase));
-            if (match is not null) return match;
-        }
-
-        return null;
+        return preferred.Concat(cjk)
+            .Select(family =>
+                available.FirstOrDefault(name => string.Equals(name, family, StringComparison.OrdinalIgnoreCase)))
+            .FirstOrDefault(match => match is not null);
     }
 }

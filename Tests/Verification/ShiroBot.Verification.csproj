@@ -1,17 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../../Templates/Examples/DashboardWeb/Web/index.html" LogicalName="test-web/index.html" />
     <ProjectReference Include="..\..\Core\ShiroBot.csproj" />
     <ProjectReference Include="..\..\SDK\ShiroBot.SDK.csproj" />
     <ProjectReference Include="..\SharedContractPluginProbe\ShiroBot.SharedContractPluginProbe.csproj" />
     <ProjectReference Include="../ExternalConfigPluginProbe/ShiroBot.ExternalConfigPluginProbe.csproj" />
+    <!-- 示例插件只复制 DLL 供 PluginInteropVerification 加载到可回收 ALC，测试代码不引用它们的类型。 -->
+    <ProjectReference Include="../../Templates/Examples/PluginInterop/Greeter/ShiroBot.Samples.Greeter.csproj" />
+    <ProjectReference Include="../InteropContractProbe/ShiroBot.InteropContractProbe.csproj" />
+    <!-- 只复制 DLL 供 PluginWebJsonVerification 加载到可回收 ALC，测试代码不引用它的类型。 -->
+    <ProjectReference Include="../WebJsonPluginProbe/ShiroBot.WebJsonPluginProbe.csproj" />
+    <ProjectReference Include="../../Templates/Examples/PluginInterop/GreeterClient/ShiroBot.Samples.GreeterClient.csproj" />
     <None Include="../AbiFixtures/frozen/**/*.dll" Link="fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

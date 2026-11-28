@@ -24,6 +24,27 @@ if (sent.Reference is { } reference)
 
 `Context.Message` 是 `IMessageContext`，也提供 `GetMessageAsync`、`GetHistoryMessagesAsync` 和 `GetResourceUrlAsync`。资源段支持的 URI 形式由适配器决定。
 
+## 编辑、置顶与输入状态
+
+```csharp
+await Context.Message.SendTypingAsync(new ChannelReference(message.InstanceId!, message.Channel));
+var sent = await Context.Message.ReplyAsync(message, "处理中…");
+if (sent.Reference is { } reference)
+{
+    await Context.Message.EditMessageAsync(reference, new OutgoingMessage { Segments = [new TextSegment("处理完成")] });
+    await Context.Message.PinMessageAsync(reference);
+}
+
+await Context.Message.DeleteMessagesAsync(message.Channel, messageIds);
+```
+
+- `EditMessageAsync` 传入编辑后的完整内容；`Segments` 为空时只替换按钮，`Buttons` 也为空则移除按钮。不能修改引用。各平台能编辑的范围不同，例如 Telegram 不能把文字消息改成图片，不支持时抛出 `NotSupportedException`。
+- `DeleteMessagesAsync` 在平台有批量接口时一次删除，否则逐条删除。
+- `SendTypingAsync` 显示的“正在输入”通常几秒后或发出消息时消失，长任务需要定时重复调用。
+- 收到别人编辑消息时触发 `MessageEditedEvent`，不会再次触发命令；见[接收消息与事件](/plugin/routes-events)。
+
+各平台的支持情况见 [QQ](./qq-model#通用能力支持)、[Telegram](./telegram-model#通用能力支持)、[Discord](./discord-model#通用能力支持)。
+
 宿主在通用发送、回复和引用回复入口拦截适配器发送异常，按适配器实例记录错误，并返回 `IsSuccess = false`、空 `MessageId` 和 `ErrorMessage`，原始异常不再传给插件。依赖发送成功的操作（例如缓存消息 ID、订阅回复、撤回）应先检查 `IsSuccess`。取消、参数为空和来源实例选择错误仍会抛出异常。其他消息操作、用户/频道服务和平台专有扩展保留原有异常语义，不支持的方法仍会抛出 `NotSupportedException`。
 
 ## 查询用户与频道
@@ -38,11 +59,15 @@ var members = await Context.Channel.GetMembersAsync(groupId);
 var member = await Context.Channel.GetMemberAsync(groupId, userId);
 ```
 
-`Context.Channel` 还定义了改名、踢人、禁言和退出频道等操作；`Context.User` 定义了好友请求处理。是否可用取决于适配器与协议。
+`Context.Channel` 还定义了改名、踢人、禁言、封禁与解封（`BanMemberAsync` / `UnbanMemberAsync`，被封禁的成员不能再加入）和退出频道等操作；`Context.User` 定义了好友请求处理。是否可用取决于适配器与协议。
 
 ## 平台特有能力
 
-```csharp
+通用接口表达不了的操作通过平台 Model 的扩展接口调用，适配器未实现时返回 `null`：
+
+::: code-group
+
+```csharp [QQ]
 using ShiroBot.Model.QQ;
 
 var groupApi = Context.GetAdapterExtension<IQGroupApi>();
@@ -50,11 +75,30 @@ if (groupApi?.Capabilities.HasFlag(QGroupCapabilities.Nudge) == true)
     await groupApi.SendNudgeAsync(groupId, userId);
 ```
 
-可选扩展未实现时返回 `null`。Milky 和 QQ 官方适配器共用 `IQGroupApi`，通过 `Capabilities` 区分支持的操作。QQ 官方消息专有功能通过 `IQOfficialMessageApi` 提供。QQ 的用户、群和消息 ID 均使用字符串，插件无需转换成数字；ID 仍属于原适配器实例，不能跨平台互换。分别参见 [QQ 特有能力](/plugin/qq-model)与[官方 Markdown 与按钮](/plugin/qq-official)。
+```csharp [Telegram]
+using ShiroBot.Model.Telegram;
+
+var chatApi = Context.GetAdapterExtension<ITelegramChatApi>();
+if (chatApi is not null)
+    await chatApi.PinMessageAsync(message.Channel.Id, message.MessageId);
+```
+
+```csharp [Discord]
+using ShiroBot.Model.Discord;
+
+var messageApi = Context.GetAdapterExtension<IDiscordMessageApi>();
+if (messageApi is not null)
+    await messageApi.PinAsync(message.Channel, message.MessageId);
+```
+
+:::
+
+用户、会话和消息 ID 都是字符串，只在来源适配器实例内有效，不能跨平台互换。各平台的接口与示例见
+[QQ](./qq-model)、[Telegram](./telegram-model)、[Discord](./discord-model) 特有能力。
 
 ## 适配器实例与后台发送
 
-事件处理期间，`Context` 自动绑定来源适配器实例，绑定跨 `await` 保留。`Context.Platform` 是平台类型，`Context.InstanceId` 是当前实例 ID；`message.SelfId` 是平台账号 ID。这三个值含义不同，即使两个实例的平台和账号相同，也按实例 ID 分别路由。
+事件处理期间，`Context` 自动绑定来源适配器实例，绑定跨 `await` 保留。`Context.Platform` 是平台类型，`Context.InstanceId` 是当前实例 ID；`message.SelfId` 是平台账号 ID。即使平台和账号相同，也按实例 ID 分别路由。
 
 `groupId` 和 `userId` 只指定会话，不用于选择适配器。定时任务或 Dashboard Action 没有事件上下文时，用实例 ID 指定目标，否则使用宿主默认适配器：
 
@@ -134,7 +178,7 @@ using (Context.UseInstance(savedMessage.InstanceId!))
 
 `ReplyAsync`、`QuoteReplyAsync`、`DeleteMessageAsync(message)` 和接收 `MessageReference` 的查询、撤回接口按来源实例路由；保存后台目标时可以使用 `ChannelReference` / `MessageReference`。仅有 groupId、userId、Channel 或 MessageId 不能自行推断适配器。
 
-只能按实例 ID 选择实例，`UsePlatform` 已移除；需要按平台或协议挑选时，从 `Context.GetAdapterInstances()` 中筛选后传其 `Id`。独立后台任务、加载钩子及 Dashboard Action 没有来源事件时，未显式选择就使用第一个已加载适配器；给指定账号发消息不要依赖加载顺序。
+使用实例 ID 选择实例；需要按平台或协议挑选时，从 `Context.GetAdapterInstances()` 中筛选后传其 `Id`。独立后台任务、加载钩子及 Dashboard Action 没有来源事件时，未显式选择就使用第一个已加载适配器；给指定账号发消息不要依赖加载顺序。
 
 ### 回复订阅
 
@@ -155,13 +199,13 @@ using (Context.UseInstance("qq-work"))
 
 需要按机器人隔离的缓存、任务或去重记录，用 `(InstanceId, ChannelId)`、`(InstanceId, Channel, MessageId)` 等键。只用 Platform、SelfId 或群号不能区分同平台同账号的多个实例；`(Platform, SelfId)` 表示平台账号，InstanceId 表示运行来源。
 
-当前 SDK 使用 `UseInstance` 选择实例。旧组件迁移与 ABI 加载规则见[ABI 兼容性与版本](/plugin/api-compatibility)。
+实例选择使用 `UseInstance`；程序集加载规则见[ABI 兼容性与版本](/plugin/api-compatibility)。
 
 调用其他插件导出的共享服务使用 `Context.Services`；配置、日志和数据目录参见[上下文、配置与日志](/plugin/context-config)。
 
 ## 读取宿主状态
 
-`Context.GetHostStatus()` 返回宿主运行状态的快照，内容与 Dashboard 概览相同（SDK ABI 1.3.0.0 起，宿主 1.0.2）：
+`Context.GetHostStatus()` 返回宿主运行状态的快照，内容与 Dashboard 概览相同：
 
 ```csharp
 GroupCommands.MapExact("#status", async message =>
@@ -199,13 +243,13 @@ GroupCommands.MapExact("#status", async message =>
 
 ## 通用富消息与互动
 
-普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/rich-messages)，QQ 特有能力见[QQ C# 接口参考](/plugin/qq-reference)。
+普通消息继续使用通用 SDK；Markdown、卡片和基础按钮使用 `OutgoingMessage`。按 `ChannelReference` 查询能力与检查请求，降级需明确允许，发送结果记录转换。互动回复、Reaction 以来源实例和会话路由。完整 C# 签名及示例见[通用富消息与互动](/plugin/models#富消息、按钮与表情回应)，各平台支持见 [QQ](./qq-model#通用能力支持)、[Telegram](./telegram-model#通用能力支持)、[Discord](./discord-model#通用能力支持)。
 
 ## 通用文件上传与发送
 
 直接发送文件优先使用 `Context.Message.ReplyAsync(message, new FileSegment(fileUri) { FileName = "report.pdf" })`，并检查 `SentMessage.IsSuccess`。
-Milky 将单独的文件段映射到群/私聊文件上传；它不返回消息 ID，成功结果的 `UploadedFile` 包含文件 ID，`MessageId` 为空且 `Reference` 为 null。文件 ID 不能用于撤回消息或订阅引用回复。Milky 当前不自动拆分文本与文件混合消息。
+部分平台把文件作为独立上传发送，不返回消息 ID：此时成功结果的 `UploadedFile` 包含文件 ID，`MessageId` 为空且 `Reference` 为 null。
 
 需要单独上传时使用 `Context.GetAdapterExtension<IFileService>()`，在当前实例作用域内调用 `UploadAsync(channel, request)`。先检查 `GetFileCapabilities(channel).CanUpload`。
-Milky 的 `UploadPublishes`/结果 `IsPublished` 为 true，上传已向接收者发布文件；官方为 false，返回的是尚未发送的媒体凭据。不能仅凭上传成功向用户报告已经发送，也不能跨实例或会话复用文件 ID。通用接口尚未提供上传凭据的后续发送方法。
-QQ `IQFileApi` 保持独立并保留原有方法；Milky 的两个入口共享上传实现。
+`UploadPublishes` / 结果的 `IsPublished` 说明上传是否已经发给接收者；为 false 时返回的只是尚未发送的媒体凭据，不能据此向用户报告已经发送。文件 ID 不能跨实例或会话复用；通用接口尚未提供上传凭据的后续发送方法。
+各平台的具体行为见 [QQ](./qq-model#通用能力支持)、[Telegram](./telegram-model#通用能力支持)、[Discord](./discord-model#通用能力支持)。

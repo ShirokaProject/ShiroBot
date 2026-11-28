@@ -1,39 +1,40 @@
-using ShiroBot.Hosting.Runtime;
+using System.Globalization;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using ShiroBot.Hosting.Context;
 using ShiroBot.Hosting.Logging;
-using ShiroBot.Plugins.Loading;
 using ShiroBot.Integrations.Avalonia;
+using ShiroBot.Plugins.Dashboard;
+using ShiroBot.Plugins.Loading;
 using ShiroBot.SDK.Abstractions;
+using ShiroBot.SDK.Config;
 using ShiroBot.SDK.Core;
 using ShiroBot.SDK.Models;
 using ShiroBot.SDK.Plugin;
-using ShiroBot.SDK.Config;
-using System.Reflection;
-using System.Text.Json;
-using System.Runtime.CompilerServices;
 
 namespace ShiroBot.Plugins;
 
-internal sealed class LoadedPluginHandle
+internal sealed class LoadedPluginHandle : IDashboardOwner
 {
     private static readonly TimeSpan DefaultActiveDispatchDrainTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultPluginOnUnloadTimeout = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _activeDispatchDrainTimeout;
+    private readonly SemaphoreSlim _configUpdateGate = new(1, 1);
 
     private readonly Lock _dispatchLock = new();
-    private readonly SemaphoreSlim _configUpdateGate = new(1, 1);
-    private readonly TimeSpan _activeDispatchDrainTimeout;
-    private readonly TimeSpan _pluginOnUnloadTimeout;
-    private int _activeDispatches;
-    private bool _isUnloading;
-    private TaskCompletionSource? _dispatchesDrained;
-    private Task<PluginUnloadResult>? _unloadTask;
-    private IBotPlugin? _plugin;
-    private PluginContext? _context;
-    private DllLoader<IBotPlugin>? _loader;
     private readonly Func<string, bool>? _groupRouteFilter;
-    private readonly string _assemblyPath;
     private readonly HostLogHub _logHub;
+    private readonly TimeSpan _pluginOnUnloadTimeout;
+    private readonly Func<int?>? _priorityOverride;
+    private int _activeDispatches;
     private string? _configFingerprint;
+    private PluginContext? _context;
+    private TaskCompletionSource? _dispatchesDrained;
+    private bool _isUnloading;
+    private DllLoader<IBotPlugin>? _loader;
+    private IBotPlugin? _plugin;
+    private Task<PluginUnloadResult>? _unloadTask;
 
     public LoadedPluginHandle(
         IBotPlugin plugin,
@@ -43,13 +44,16 @@ internal sealed class LoadedPluginHandle
         PluginProbeInfo metadata,
         HostLogHub logHub,
         Func<string, bool>? groupRouteFilter = null,
+        Func<int?>? priorityOverride = null,
         TimeSpan? activeDispatchDrainTimeout = null,
         TimeSpan? pluginOnUnloadTimeout = null)
     {
         _plugin = plugin;
         _context = context;
         _loader = loader;
-        _assemblyPath = assemblyPath;
+        // 其他插件的按名称调用和事件处理与宿主事件一样计入正在处理的调用，卸载时一并等待。
+        context.AttachDispatchGuard(work => DispatchAsync<IBotPlugin>(_ => work()));
+        AssemblyPath = assemblyPath;
         var source = new FileInfo(assemblyPath);
         SourceLength = source.Length;
         SourceLastWriteTimeUtc = source.LastWriteTimeUtc;
@@ -61,7 +65,9 @@ internal sealed class LoadedPluginHandle
             ConfigContext.WatchUntyped(context.Config, configurable.ConfigType, updated =>
                 _ = QueueConfigCandidateAsync(updated));
         }
+
         _groupRouteFilter = groupRouteFilter;
+        _priorityOverride = priorityOverride;
         _activeDispatchDrainTimeout = activeDispatchDrainTimeout ?? DefaultActiveDispatchDrainTimeout;
         _pluginOnUnloadTimeout = pluginOnUnloadTimeout ?? DefaultPluginOnUnloadTimeout;
 
@@ -73,21 +79,30 @@ internal sealed class LoadedPluginHandle
         Category = metadata.Category;
         GithubRepo = metadata.GithubRepo;
         Dependencies = metadata.Dependencies;
-        SubscribedEventTypes = plugin is PluginBase pluginBase
-            ? pluginBase.GetEffectiveEventTypes().ToHashSet()
-            : plugin is IBotEventSubscriber
-                ? [typeof(BotEvent)]
-                : [];
-        GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
-        DirectMessageRoutes = plugin is PluginBase directPluginBase ? directPluginBase.GetDirectMessageRoutes() : Array.Empty<MessageRouteDescriptor>();
-        EventRoutes = plugin is PluginBase eventPluginBase
-            ? eventPluginBase.GetEventRoutes()
-            : plugin is IBotEventSubscriber
-                ? [new EventRouteDescriptor(typeof(BotEvent))]
-                : [];
-        RequiresGroupMessageBroadcast = plugin is PluginBase groupBroadcastPluginBase && groupBroadcastPluginBase.RequiresGroupMessageBroadcast();
-        RequiresDirectMessageBroadcast = plugin is PluginBase directBroadcastPluginBase && directBroadcastPluginBase.RequiresDirectMessageBroadcast();
+        DeclaredPriority = metadata.Priority;
+        SubscribedEventTypes = plugin switch
+        {
+            PluginBase pluginBase => pluginBase.GetEffectiveEventTypes().ToHashSet(),
+            IBotEventSubscriber => [typeof(BotEvent)],
+            _ => []
+        };
+        GroupMessageRoutes = plugin is PluginBase groupPluginBase ? groupPluginBase.GetGroupMessageRoutes() : [];
+        DirectMessageRoutes = plugin is PluginBase directPluginBase ? directPluginBase.GetDirectMessageRoutes() : [];
+        EventRoutes = plugin switch
+        {
+            PluginBase eventPluginBase => eventPluginBase.GetEventRoutes(),
+            IBotEventSubscriber => [new EventRouteDescriptor(typeof(BotEvent))],
+            _ => []
+        };
+        RequiresGroupMessageBroadcast = plugin is PluginBase groupBroadcastPluginBase &&
+                                        groupBroadcastPluginBase.RequiresGroupMessageBroadcast();
+        RequiresDirectMessageBroadcast = plugin is PluginBase directBroadcastPluginBase &&
+                                         directBroadcastPluginBase.RequiresDirectMessageBroadcast();
     }
+
+    /// <summary>插件注册的 Dashboard 页面；卸载后为 null。</summary>
+    PluginDashboardScope? IDashboardOwner.Dashboard => Dashboard;
+    internal PluginDashboardScope? Dashboard => _context?.DashboardScope;
 
     public string Name { get; }
     public string DisplayName { get; }
@@ -97,7 +112,15 @@ internal sealed class LoadedPluginHandle
     public PluginCategory Category { get; }
     public string? GithubRepo { get; }
     public IReadOnlyList<string> Dependencies { get; }
-    public string AssemblyPath => _assemblyPath;
+
+    /// <summary>The priority from the plugin's attribute.</summary>
+    public int DeclaredPriority { get; }
+
+    /// <summary>The dispatch priority in effect: the owner's override, else <see cref="DeclaredPriority" />.</summary>
+    public int Priority => _priorityOverride?.Invoke() ?? DeclaredPriority;
+
+    public string AssemblyPath { get; }
+
     public long SourceLength { get; }
     public DateTime SourceLastWriteTimeUtc { get; }
 
@@ -106,9 +129,13 @@ internal sealed class LoadedPluginHandle
     {
         get
         {
-            lock (_dispatchLock) return _isUnloading ? null : _plugin?.GetType().Assembly;
+            lock (_dispatchLock)
+            {
+                return _isUnloading ? null : _plugin?.GetType().Assembly;
+            }
         }
     }
+
     public IReadOnlySet<Type> SubscribedEventTypes { get; }
     public IReadOnlyList<MessageRouteDescriptor> GroupMessageRoutes { get; }
     public IReadOnlyList<MessageRouteDescriptor> DirectMessageRoutes { get; }
@@ -124,48 +151,38 @@ internal sealed class LoadedPluginHandle
         RequiresDirectMessageBroadcast ||
         (SubscribesTo(typeof(MessageEvent)) && DirectMessageRoutes.Count == 0);
 
-    public bool SubscribesTo(Type eventType) =>
-        SubscribedEventTypes.Any(subscribedType => subscribedType.IsAssignableFrom(eventType));
+    public bool SubscribesTo(Type eventType)
+    {
+        return SubscribedEventTypes.Any(subscribedType => subscribedType.IsAssignableFrom(eventType));
+    }
 
     public bool AllowsGroup(string? groupId)
     {
-        if (groupId is null || _groupRouteFilter is null)
-        {
-            return true;
-        }
+        if (groupId is null || _groupRouteFilter is null) return true;
 
         return _groupRouteFilter(groupId);
     }
 
     /// <summary>
-    /// Gets the combined on-disk size of assembly files loaded into this plugin's load context.
-    /// This is not the plugin's runtime memory usage.
+    ///     Gets the combined on-disk size of assembly files loaded into this plugin's load context.
+    ///     This is not the plugin's runtime memory usage.
     /// </summary>
     public long GetLoadedAssemblyFileBytes()
     {
         var loader = _loader;
-        if (loader?.Alc is null)
-        {
-            return 0;
-        }
+        if (loader?.Alc is null) return 0;
 
         long totalBytes = 0;
         foreach (var assembly in loader.Alc.Assemblies)
         {
 #pragma warning disable IL3000
-            if (assembly.IsDynamic || string.IsNullOrWhiteSpace(assembly.Location))
-            {
-                continue;
-            }
+            if (assembly.IsDynamic || string.IsNullOrWhiteSpace(assembly.Location)) continue;
 
             try
             {
                 var fileInfo = new FileInfo(assembly.Location);
 #pragma warning restore IL3000
-                if (fileInfo.Exists)
-                {
-                    totalBytes += fileInfo.Length;
-                }
+                if (fileInfo.Exists) totalBytes += fileInfo.Length;
             }
             catch (Exception)
             {
@@ -207,7 +224,11 @@ internal sealed class LoadedPluginHandle
         try
         {
             IConfigurableComponent? configurable;
-            lock (_dispatchLock) configurable = _plugin as IConfigurableComponent;
+            lock (_dispatchLock)
+            {
+                configurable = _plugin as IConfigurableComponent;
+            }
+
             if (configurable is null) return;
 
             var fingerprint = Fingerprint(candidate, configurable.ConfigType);
@@ -225,14 +246,26 @@ internal sealed class LoadedPluginHandle
 
     private async Task QueueConfigCandidateAsync(object candidate)
     {
-        try { await ApplyConfigCandidateAsync(candidate).ConfigureAwait(false); }
-        catch (Exception ex) { BotLog.Error($"插件配置热重载失败: {Name} - {ex.Message}"); }
+        try
+        {
+            await ApplyConfigCandidateAsync(candidate).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            BotLog.Error($"插件配置热重载失败: {Name} - {ex.Message}");
+        }
     }
 
     private static string Fingerprint(object? value, Type type)
     {
-        try { return JsonSerializer.Serialize(ConfigFingerprintValue.Create(value)); }
-        catch { return RuntimeHelpers.GetHashCode(value ?? type).ToString(System.Globalization.CultureInfo.InvariantCulture); }
+        try
+        {
+            return JsonSerializer.Serialize(ConfigFingerprintValue.Create(value));
+        }
+        catch
+        {
+            return RuntimeHelpers.GetHashCode(value ?? type).ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     public async Task<bool> DispatchAsync<THandler>(Func<THandler, Task> dispatch)
@@ -243,9 +276,7 @@ internal sealed class LoadedPluginHandle
         lock (_dispatchLock)
         {
             if (_isUnloading || _plugin is not THandler candidate || _context?.Logger is not { } contextLogger)
-            {
                 return false;
-            }
 
             handler = candidate;
             logger = contextLogger;
@@ -272,9 +303,7 @@ internal sealed class LoadedPluginHandle
         lock (_dispatchLock)
         {
             if (_isUnloading || _plugin is not THandler candidate || _context?.Logger is not { } contextLogger)
-            {
                 return new PluginDispatchResult<TResult>(false, default);
-            }
 
             handler = candidate;
             logger = contextLogger;
@@ -297,10 +326,7 @@ internal sealed class LoadedPluginHandle
     {
         lock (_dispatchLock)
         {
-            if (_unloadTask is not null)
-            {
-                return _unloadTask;
-            }
+            if (_unloadTask is not null) return _unloadTask;
 
             _isUnloading = true;
             var dispatchesDrained = _activeDispatches == 0
@@ -319,10 +345,7 @@ internal sealed class LoadedPluginHandle
         lock (_dispatchLock)
         {
             _activeDispatches--;
-            if (_activeDispatches == 0)
-            {
-                dispatchesDrained = _dispatchesDrained;
-            }
+            if (_activeDispatches == 0) dispatchesDrained = _dispatchesDrained;
         }
 
         dispatchesDrained?.TrySetResult();
@@ -356,12 +379,23 @@ internal sealed class LoadedPluginHandle
         }
         catch (Exception ex)
         {
-            if (!dispatchesDrained.IsCompleted)
+            if (dispatchesDrained.IsCompleted)
+            {
+                return CompleteFailedUnload(
+                    Name,
+                    AssemblyPath,
+                    pluginWeakReference,
+                    contextWeakReference,
+                    context,
+                    loader,
+                    ex);
+            }
+
             {
                 _ = CompleteFailedUnloadAfterDispatchesDrainAsync(
                     dispatchesDrained,
                     Name,
-                    _assemblyPath,
+                    AssemblyPath,
                     pluginWeakReference,
                     contextWeakReference,
                     context,
@@ -369,25 +403,27 @@ internal sealed class LoadedPluginHandle
                     ex);
                 return new PluginUnloadResult(
                     Name,
-                    _assemblyPath,
+                    AssemblyPath,
                     false,
                     null,
                     pluginWeakReference,
                     contextWeakReference,
                     ex);
             }
-
-            return CompleteFailedUnload(
-                Name,
-                _assemblyPath,
-                pluginWeakReference,
-                contextWeakReference,
-                context,
-                loader,
-                ex);
         }
 
-        if (await Task.WhenAny(dispatchesDrained, Task.Delay(_activeDispatchDrainTimeout)).ConfigureAwait(false) != dispatchesDrained)
+        if (await Task.WhenAny(dispatchesDrained, Task.Delay(_activeDispatchDrainTimeout)).ConfigureAwait(false) ==
+            dispatchesDrained)
+        {
+            return await UnloadPluginCoreAsync(
+                    plugin,
+                    context,
+                    loader,
+                    pluginWeakReference,
+                    contextWeakReference)
+                .ConfigureAwait(false);
+        }
+
         {
             _ = CompleteUnloadAfterDispatchesDrainAsync(dispatchesDrained, plugin, context, loader);
             return CreateTimeoutResult(
@@ -396,14 +432,6 @@ internal sealed class LoadedPluginHandle
                 $"Timed out after {_activeDispatchDrainTimeout} waiting for active plugin dispatches to finish. " +
                 "The plugin remains resident and the host must be restarted to guarantee cleanup.");
         }
-
-        return await UnloadPluginCoreAsync(
-                plugin,
-                context,
-                loader,
-                pluginWeakReference,
-                contextWeakReference)
-            .ConfigureAwait(false);
     }
 
     private async Task CompleteUnloadAfterDispatchesDrainAsync(
@@ -432,16 +460,28 @@ internal sealed class LoadedPluginHandle
     {
         try
         {
-            if (plugin is null)
-            {
-                throw new InvalidOperationException("Plugin is not available for unload.");
-            }
+            if (plugin is null) throw new InvalidOperationException("Plugin is not available for unload.");
 
             ReleaseAvaloniaPluginResources(plugin.GetType().Assembly.GetName().Name);
+            // 先停掉插件登记的后台任务和计时器（上下文仍可用），再执行插件自己的 OnUnload，最后释放登记的资源。
+            // Disposal occurs after this task, including the deferred cleanup on timeout.
+            // ReSharper disable AccessToDisposedClosure
             var unloadTask = Task.Run(() =>
                 BotLog.RunScoped(
                     new ConsoleLogger($"[Plugin:{Name}]", _logHub),
-                    plugin.OnUnload));
+                    async () =>
+                    {
+                        if (context is not null) await context.StopLifetimeTasksAsync().ConfigureAwait(false);
+                        try
+                        {
+                            await plugin.OnUnload().ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            if (context is not null) await context.DisposeLifetimeAsync().ConfigureAwait(false);
+                        }
+                    }));
+            // ReSharper restore AccessToDisposedClosure
 
             if (await Task.WhenAny(unloadTask, Task.Delay(_pluginOnUnloadTimeout)).ConfigureAwait(false) != unloadTask)
             {
@@ -460,7 +500,7 @@ internal sealed class LoadedPluginHandle
 
             return new PluginUnloadResult(
                 Name,
-                _assemblyPath,
+                AssemblyPath,
                 true,
                 alcWeakReference,
                 pluginWeakReference,
@@ -472,7 +512,7 @@ internal sealed class LoadedPluginHandle
         {
             return CompleteFailedUnload(
                 Name,
-                _assemblyPath,
+                AssemblyPath,
                 pluginWeakReference,
                 contextWeakReference,
                 context,
@@ -524,15 +564,17 @@ internal sealed class LoadedPluginHandle
     private PluginUnloadResult CreateTimeoutResult(
         WeakReference? pluginWeakReference,
         WeakReference? contextWeakReference,
-        string message) =>
-        new(
+        string message)
+    {
+        return new PluginUnloadResult(
             Name,
-            _assemblyPath,
+            AssemblyPath,
             false,
             null,
             pluginWeakReference,
             contextWeakReference,
             new TimeoutException(message));
+    }
 
     private static PluginUnloadResult CompleteFailedUnload(
         string name,

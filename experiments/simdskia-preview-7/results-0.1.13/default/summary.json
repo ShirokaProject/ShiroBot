@@ -1,0 +1,128 @@
+[
+  {
+    "card": "RSS PostCard",
+    "theme": "light",
+    "skia_ms": 89.96545,
+    "simd_ms": 146.19684999999998,
+    "ratio": 1.62503327666343,
+    "skia_size": [
+      1840,
+      1970
+    ],
+    "simd_size": [
+      1840,
+      1970
+    ],
+    "pixels_over_10_pct": 3.2497517104391966
+  },
+  {
+    "card": "HeyboxCard",
+    "theme": "light",
+    "skia_ms": 38.24055,
+    "simd_ms": 172.86805,
+    "ratio": 4.520542983822147,
+    "skia_size": [
+      720,
+      1040
+    ],
+    "simd_size": [
+      720,
+      1040
+    ],
+    "pixels_over_10_pct": 5.655448717948718
+  },
+  {
+    "card": "BiliLiveCard",
+    "theme": "light",
+    "skia_ms": 31.7945,
+    "simd_ms": 106.68355,
+    "ratio": 3.355408954378902,
+    "skia_size": [
+      840,
+      576
+    ],
+    "simd_size": [
+      840,
+      530
+    ]
+  },
+  {
+    "card": "HeyboxArticleDocument",
+    "theme": "light",
+    "skia_ms": 125.1789,
+    "simd_ms": 581.76275,
+    "ratio": 4.64745056874601,
+    "skia_size": [
+      1440,
+      2272
+    ],
+    "simd_size": [
+      1440,
+      2272
+    ],
+    "pixels_over_10_pct": 5.598988898669797
+  },
+  {
+    "card": "RSS PostCard",
+    "theme": "dark",
+    "skia_ms": 86.45595,
+    "simd_ms": 142.37605000000002,
+    "ratio": 1.6468045287802635,
+    "skia_size": [
+      1840,
+      1970
+    ],
+    "simd_size": [
+      1840,
+      1970
+    ],
+    "pixels_over_10_pct": 3.2561244758331496
+  },
+  {
+    "card": "HeyboxCard",
+    "theme": "dark",
+    "skia_ms": 37.8592,
+    "simd_ms": 170.74759999999998,
+    "ratio": 4.510068886822753,
+    "skia_size": [
+      720,
+      1040
+    ],
+    "simd_size": [
+      720,
+      1040
+    ],
+    "pixels_over_10_pct": 5.764155982905983
+  },
+  {
+    "card": "BiliLiveCard",
+    "theme": "dark",
+    "skia_ms": 36.7705,
+    "simd_ms": 108.9161,
+    "ratio": 2.9620511007465224,
+    "skia_size": [
+      840,
+      576
+    ],
+    "simd_size": [
+      840,
+      530
+    ]
+  },
+  {
+    "card": "HeyboxArticleDocument",
+    "theme": "dark",
+    "skia_ms": 130.411,
+    "simd_ms": 592.68065,
+    "ratio": 4.544713636119653,
+    "skia_size": [
+      1440,
+      2272
+    ],
+    "simd_size": [
+      1440,
+      2272
+    ],
+    "pixels_over_10_pct": 5.751876711658842
+  }
+]
