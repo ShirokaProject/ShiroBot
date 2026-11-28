@@ -296,7 +296,7 @@ internal sealed class AutoUpdateRunner(
         JsonArray entries;
         try
         {
-            entries = await AdapterMarketplaceCache.Shared.GetAsync(cancellationToken).ConfigureAwait(false);
+            entries = await AdapterMarketplaceCache.Shared.GetAsync(cancellationToken, true).ConfigureAwait(false);
         }
         catch (Exception ex) when (!IsCancellation(ex, cancellationToken))
         {

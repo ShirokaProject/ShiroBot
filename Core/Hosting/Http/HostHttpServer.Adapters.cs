@@ -202,7 +202,10 @@ internal sealed partial class HostHttpServer
             {
                 var installed = adapterPackages.List();
                 var loaded = adapterManager.LoadedIds;
-                var entries = await AdapterMarketplaceCache.GetAsync(context.RequestAborted).ConfigureAwait(false);
+                var forceRefresh = context.Request.Query.TryGetValue("refresh", out var refreshValue) &&
+                                   refreshValue == "1";
+                var entries = await AdapterMarketplaceCache.GetAsync(context.RequestAborted, forceRefresh)
+                    .ConfigureAwait(false);
                 foreach (var node in entries)
                 {
                     if (node is not JsonObject entry || entry["id"]?.GetValue<string>() is not { } id) continue;
